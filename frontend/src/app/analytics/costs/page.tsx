@@ -61,8 +61,7 @@ export default function CostsPage() {
   const [dateRange, setDateRange] = useState(7);
   const [filterProvider, setFilterProvider] = useState<string>('');
   const [filterUsageType, setFilterUsageType] = useState<string>('');
-  const [execOffset, setExecOffset] = useState(0);
-  const execLimit = 20;
+  const execLimit = 5;
 
   const getDateParams = () => {
     const end = new Date();
@@ -85,7 +84,6 @@ export default function CostsPage() {
         analyticsApi.getCacheStats(),
         analyticsApi.getExecutionsWithCost({
           limit: execLimit,
-          offset: execOffset,
           ...(filterProvider ? { provider: filterProvider } : {}),
           ...(filterUsageType ? { usage_type: filterUsageType } : {}),
         }),
@@ -100,7 +98,7 @@ export default function CostsPage() {
     }
   };
 
-  useEffect(() => { fetchAll(); }, [dateRange, filterProvider, filterUsageType, execOffset]);
+  useEffect(() => { fetchAll(); }, [dateRange, filterProvider, filterUsageType]);
 
   // Unique providers & usage types for filters
   const providers = analytics ? [...new Set(analytics.by_provider.map((p) => p.provider))] : [];
@@ -156,7 +154,7 @@ export default function CostsPage() {
             </select>
             <select
               value={filterProvider}
-              onChange={(e) => { setFilterProvider(e.target.value); setExecOffset(0); }}
+              onChange={(e) => { setFilterProvider(e.target.value); }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
               <option value="">Todos Provedores</option>
@@ -166,7 +164,7 @@ export default function CostsPage() {
             </select>
             <select
               value={filterUsageType}
-              onChange={(e) => { setFilterUsageType(e.target.value); setExecOffset(0); }}
+              onChange={(e) => { setFilterUsageType(e.target.value); }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
               <option value="">Todos os Tipos</option>
@@ -174,7 +172,7 @@ export default function CostsPage() {
                 <option key={u} value={u}>{u}</option>
               ))}
             </select>
-            <Button onClick={() => { setExecOffset(0); fetchAll(); }}>Atualizar</Button>
+            <Button onClick={fetchAll}>Atualizar</Button>
           </div>
         </div>
 
@@ -404,30 +402,7 @@ export default function CostsPage() {
                   </table>
                 </div>
 
-                {/* Pagination */}
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <div className="text-sm text-gray-500">
-                    Mostrando {execOffset + 1}–{execOffset + executions.length}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setExecOffset(Math.max(0, execOffset - execLimit))}
-                      disabled={execOffset === 0}
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setExecOffset(execOffset + execLimit)}
-                      disabled={executions.length < execLimit}
-                    >
-                      Proximo
-                    </Button>
-                  </div>
-                </div>
+                <div className="mt-3 text-xs text-gray-400 text-right">Ultimas {executions.length} execucoes</div>
               </div>
             </Card>
 
