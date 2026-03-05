@@ -166,12 +166,23 @@ user_prompt: |
   TASKS JÁ EXISTENTES NESTA STORY (NÃO DUPLICAR):
   {{ existing_children_text }}
 
-  ATENÇÃO: As Tasks acima JÁ EXISTEM. NÃO gere Tasks similares ou duplicadas.
-  Analise o que FALTA. Gere Tasks que:
-  - Cubram LACUNAS técnicas não abordadas pelas existentes
-  - Tragam INSIGHTS sobre: error handling, performance, segurança, observabilidade
-  - Proponham aspectos que as Tasks existentes ignoram (testes, migrations, configs)
-  - Identifiquem RISCOS técnicos ou cenários de falha não cobertos
+  **REGRA ABSOLUTA DE NÃO-DUPLICAÇÃO:**
+  As Tasks acima JÁ EXISTEM e representam funcionalidades JÁ IMPLEMENTADAS.
+  - NUNCA gere uma Task que reimplemente algo que ja existe acima (mesmo com titulo diferente)
+  - Se existe "Adapter Anthropic (Claude)", NUNCA gere "Implementar Adapter Anthropic"
+  - Se existe "Classe X base", NUNCA gere "Implementar funcionalidades de X"
+  - Títulos genéricos como "Implementar funcionalidades", "Implementar métodos" são PROIBIDOS
+
+  **O QUE VOCÊ DEVE GERAR INSTEAD:**
+  Pense como um tech lead sênior revisando o que JÁ FOI FEITO e identificando:
+  - Testes automatizados (unitários, integração, e2e) para as funcionalidades existentes
+  - Tratamento de erros e edge cases não cobertos
+  - Monitoramento, logging, métricas e observabilidade
+  - Otimizações de performance (cache, lazy loading, connection pooling)
+  - Segurança (validação de input, rate limiting, auditoria)
+  - Documentação técnica (API docs, diagramas de arquitetura)
+  - Configurabilidade (feature flags, configs externalizadas)
+  - Resiliência (retry, circuit breaker, graceful degradation)
   {% endif %}
 
   {% if wiki_context_text %}

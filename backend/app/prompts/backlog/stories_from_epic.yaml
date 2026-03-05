@@ -170,12 +170,22 @@ user_prompt: |
   STORIES JÁ EXISTENTES NESTE EPIC (NÃO DUPLICAR):
   {{ existing_children_text }}
 
-  ATENÇÃO: As Stories acima JÁ EXISTEM. NÃO gere Stories similares ou duplicadas.
-  Analise o que FALTA. Gere Stories que:
-  - Cubram LACUNAS não abordadas pelas existentes
-  - Tragam INSIGHTS sobre edge cases, resiliência, UX, segurança
-  - Proponham MELHORIAS que complementem o que já existe
-  - Identifiquem RISCOS ou cenários que as Stories existentes não cobrem
+  **REGRA ABSOLUTA DE NÃO-DUPLICAÇÃO:**
+  As Stories acima JÁ EXISTEM e representam funcionalidades JÁ IMPLEMENTADAS.
+  - NUNCA gere uma Story que reimplemente algo que ja existe acima (mesmo com titulo diferente)
+  - Se existe "Core Engine", NUNCA gere "Implementar motor principal"
+  - Se existe "Fallback & Recovery", NUNCA gere "Tratamento de erros e fallback"
+  - Títulos genéricos como "Implementar funcionalidades principais" são PROIBIDOS
+
+  **O QUE VOCÊ DEVE GERAR INSTEAD:**
+  Pense como um PO sênior revisando o que JÁ FOI FEITO e identificando:
+  - Qualidade e testes (cobertura, testes de regressão, stress tests)
+  - Melhorias de UX e acessibilidade
+  - Edge cases e cenários de erro não cobertos
+  - Observabilidade (dashboards, alertas, health checks)
+  - Performance e escalabilidade
+  - Segurança e compliance
+  - Documentação e onboarding para novos devs
   {% endif %}
 
   {% if wiki_context_text %}

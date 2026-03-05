@@ -130,7 +130,13 @@ def _normalize_title(title: str) -> str:
 
 
 def _title_similarity(a: str, b: str) -> float:
-    """Compute word-overlap similarity between two titles (0.0 to 1.0)."""
+    """
+    Compute similarity between two titles using max(Jaccard, containment).
+
+    Jaccard alone misses cases like "Adapter Anthropic (Claude)" vs
+    "Implementar Adapter Anthropic" (Jaccard=0.50 but clearly the same thing).
+    Containment catches when most words of one title appear in the other.
+    """
     na = _normalize_title(a)
     nb = _normalize_title(b)
     if na == nb:
@@ -141,7 +147,10 @@ def _title_similarity(a: str, b: str) -> float:
         return 0.0
     intersection = words_a & words_b
     union = words_a | words_b
-    return len(intersection) / len(union)
+    jaccard = len(intersection) / len(union)
+    # Containment: what fraction of the SMALLER set is covered?
+    containment = len(intersection) / min(len(words_a), len(words_b))
+    return max(jaccard, containment)
 
 
 def _is_title_duplicate(
@@ -149,7 +158,7 @@ def _is_title_duplicate(
     parent_id: UUID,
     db: "Session",
     batch_titles: List[str],
-    threshold: float = 0.70,
+    threshold: float = 0.60,
 ) -> bool:
     """
     Check if a title is duplicate using LOCAL checks (no RAG dependency).
