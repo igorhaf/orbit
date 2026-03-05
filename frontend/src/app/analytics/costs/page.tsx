@@ -11,6 +11,7 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { analyticsApi } from '@/lib/api';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 import type {
   CostAnalyticsResponse,
   CacheStatsResponse,
@@ -19,10 +20,10 @@ import type {
 
 const formatNumber = (num: number) => new Intl.NumberFormat('pt-BR').format(num);
 
-const formatCost = (cost: number) => {
-  if (cost < 0.0001) return `$${cost.toFixed(6)}`;
-  if (cost < 0.01) return `$${cost.toFixed(4)}`;
-  return `$${cost.toFixed(2)}`;
+const formatBRL = (costUSD: number, rate: number) => {
+  const brl = costUSD * rate;
+  if (brl < 0.01) return `R$ ${brl.toFixed(4)}`;
+  return `R$ ${brl.toFixed(2)}`;
 };
 
 const formatDate = (dateStr: string) =>
@@ -60,6 +61,8 @@ export default function CostsPage() {
   const [executions, setExecutions] = useState<ExecutionWithCost[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState(7);
+  const { rate: usdBrlRate, convertTooltip } = useExchangeRate();
+  const rate = usdBrlRate || 5.70; // fallback
   const [filterProvider, setFilterProvider] = useState<string>('');
   const [filterUsageType, setFilterUsageType] = useState<string>('');
   const execLimit = 5;
@@ -160,6 +163,11 @@ export default function CostsPage() {
             <p className="mt-1 text-sm text-gray-500">
               Acompanhamento de custos, detalhamento por provedor e tipo, economias e projecoes
             </p>
+            {usdBrlRate && (
+              <p className="mt-1 text-xs text-gray-400" title={convertTooltip}>
+                Cotacao USD/BRL: R$ {usdBrlRate.toFixed(2)}
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             <select
@@ -204,7 +212,7 @@ export default function CostsPage() {
                 <div className="p-6">
                   <div className="text-sm font-medium text-gray-500">Custo Total</div>
                   <div className="mt-2 text-3xl font-bold text-green-700">
-                    {formatCost(analytics.summary.total_cost)}
+                    {formatBRL(analytics.summary.total_cost, rate)}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
                     {formatNumber(analytics.summary.total_executions)} execucoes
@@ -216,7 +224,7 @@ export default function CostsPage() {
                 <div className="p-6">
                   <div className="text-sm font-medium text-gray-500">Custo Medio/Execucao</div>
                   <div className="mt-2 text-3xl font-bold text-blue-700">
-                    {formatCost(analytics.summary.avg_cost_per_execution)}
+                    {formatBRL(analytics.summary.avg_cost_per_execution, rate)}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">Por chamada de IA</div>
                 </div>
@@ -226,7 +234,7 @@ export default function CostsPage() {
                 <div className="p-6">
                   <div className="text-sm font-medium text-gray-500">Economia do Cache</div>
                   <div className="mt-2 text-3xl font-bold text-emerald-700">
-                    {formatCost(cacheSaved)}
+                    {formatBRL(cacheSaved, rate)}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
                     {formatNumber(tokensSaved)} tokens economizados
@@ -245,7 +253,7 @@ export default function CostsPage() {
                 <div className="p-6">
                   <div className="text-sm font-medium text-gray-500">Projecao Mensal</div>
                   <div className="mt-2 text-3xl font-bold text-amber-600">
-                    {formatCost(projectedMonthly)}
+                    {formatBRL(projectedMonthly, rate)}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">Baseado no consumo atual</div>
                   {dateRange < 7 && (
@@ -280,7 +288,7 @@ export default function CostsPage() {
                                 {p.provider}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right font-medium">{formatCost(p.total_cost)}</td>
+                            <td className="px-4 py-3 text-right font-medium">{formatBRL(p.total_cost, rate)}</td>
                             <td className="px-4 py-3 text-right text-sm text-gray-500">{formatNumber(p.execution_count)}</td>
                             <td className="px-4 py-3 text-right text-sm text-gray-500">{formatNumber(p.total_tokens)}</td>
                             <td className="px-4 py-3 text-right">
@@ -325,8 +333,8 @@ export default function CostsPage() {
                         {analytics.by_usage_type.map((u) => (
                           <tr key={u.usage_type} className="hover:bg-gray-50">
                             <td className="px-4 py-3 text-sm font-medium text-gray-900">{u.usage_type}</td>
-                            <td className="px-4 py-3 text-right font-medium">{formatCost(u.total_cost)}</td>
-                            <td className="px-4 py-3 text-right text-sm text-gray-500">{formatCost(u.avg_cost_per_execution)}</td>
+                            <td className="px-4 py-3 text-right font-medium">{formatBRL(u.total_cost, rate)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-gray-500">{formatBRL(u.avg_cost_per_execution, rate)}</td>
                             <td className="px-4 py-3 text-right text-sm text-gray-500">{formatNumber(u.execution_count)}</td>
                             <td className="px-4 py-3 text-right text-sm text-gray-500">
                               {analytics.summary.total_cost > 0
@@ -360,7 +368,7 @@ export default function CostsPage() {
                             <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 pointer-events-none">
                               <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
                                 <div className="font-semibold">{formatShortDate(day.date)}</div>
-                                <div>{formatCost(day.total_cost)}</div>
+                                <div>{formatBRL(day.total_cost, rate)}</div>
                                 <div className="text-gray-300">{formatNumber(day.execution_count)} exec</div>
                               </div>
                               <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
@@ -422,7 +430,7 @@ export default function CostsPage() {
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-700">{exec.usage_type}</td>
                             <td className="px-4 py-3 text-right text-sm">{formatNumber(exec.total_tokens)}</td>
-                            <td className="px-4 py-3 text-right text-sm font-medium">{formatCost(exec.cost)}</td>
+                            <td className="px-4 py-3 text-right text-sm font-medium">{formatBRL(exec.cost, rate)}</td>
                             <td className="px-4 py-3 text-center">
                               <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(exec.status)}`}>
                                 {exec.status}
@@ -447,19 +455,19 @@ export default function CostsPage() {
                   <div>
                     <div className="text-sm text-gray-500">Custo Sem Cache</div>
                     <div className="text-xl font-bold text-gray-400 line-through">
-                      {formatCost(totalWithoutCache)}
+                      {formatBRL(totalWithoutCache, rate)}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-gray-500">Custo Real</div>
                     <div className="text-xl font-bold text-green-700">
-                      {formatCost(analytics.summary.total_cost)}
+                      {formatBRL(analytics.summary.total_cost, rate)}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-gray-500">Economia Total</div>
                     <div className="text-xl font-bold text-emerald-600">
-                      {formatCost(cacheSaved)}
+                      {formatBRL(cacheSaved, rate)}
                       <span className="text-sm font-normal text-gray-500 ml-2">
                         ({savingsPercent.toFixed(1)}%)
                       </span>

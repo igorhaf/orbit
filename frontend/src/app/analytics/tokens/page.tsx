@@ -11,6 +11,7 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { analyticsApi } from '@/lib/api';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 import type {
   CostAnalyticsResponse,
   CacheStatsResponse,
@@ -53,6 +54,8 @@ export default function TokensPage() {
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState(7);
+  const { rate: usdBrlRate } = useExchangeRate();
+  const brlRate = usdBrlRate || 5.70;
 
   const getDateParams = () => {
     const end = new Date();
@@ -308,7 +311,7 @@ export default function TokensPage() {
                         <div>
                           <div className="text-sm text-gray-500">Custo Economizado</div>
                           <div className="text-2xl font-bold text-blue-600">
-                            ${cacheStats.statistics.total.estimated_cost_saved.toFixed(4)}
+                            R$ {(cacheStats.statistics.total.estimated_cost_saved * brlRate).toFixed(2)}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">De respostas em cache</div>
                         </div>
