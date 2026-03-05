@@ -124,8 +124,19 @@ export default function CostsPage() {
   const totalWithoutCache = (analytics?.summary.total_cost || 0) + cacheSaved;
   const savingsPercent = totalWithoutCache > 0 ? (cacheSaved / totalWithoutCache) * 100 : 0;
 
-  // Daily costs chart — always 30 days
-  const dailyCosts = trendData?.daily_costs || [];
+  // Daily costs chart — fill all 30 days (backend only returns days with data)
+  const dailyCosts = (() => {
+    const raw = trendData?.daily_costs || [];
+    const byDate = new Map(raw.map((d) => [d.date, d]));
+    const days = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      days.push(byDate.get(key) || { date: key, total_cost: 0, input_tokens: 0, output_tokens: 0, total_tokens: 0, execution_count: 0 });
+    }
+    return days;
+  })();
   const maxDailyCost = Math.max(...dailyCosts.map((d) => d.total_cost), 0.0001);
 
   if (loading && !analytics) {
