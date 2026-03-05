@@ -116,6 +116,77 @@ def _build_wiki_context_text(db: "Session", project: Project, search_terms: str,
     return "\n\n".join(parts)
 
 
+def _normalize_title(title: str) -> str:
+    """Normalize a title for comparison: lowercase, strip, remove punctuation."""
+    import unicodedata
+    t = title.lower().strip()
+    # Remove accents
+    t = unicodedata.normalize('NFD', t)
+    t = ''.join(c for c in t if unicodedata.category(c) != 'Mn')
+    # Remove punctuation and extra spaces
+    t = re.sub(r'[^\w\s]', ' ', t)
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t
+
+
+def _title_similarity(a: str, b: str) -> float:
+    """Compute word-overlap similarity between two titles (0.0 to 1.0)."""
+    na = _normalize_title(a)
+    nb = _normalize_title(b)
+    if na == nb:
+        return 1.0
+    words_a = set(w for w in na.split() if len(w) > 2)
+    words_b = set(w for w in nb.split() if len(w) > 2)
+    if not words_a or not words_b:
+        return 0.0
+    intersection = words_a & words_b
+    union = words_a | words_b
+    return len(intersection) / len(union)
+
+
+def _is_title_duplicate(
+    new_title: str,
+    parent_id: UUID,
+    db: "Session",
+    batch_titles: List[str],
+    threshold: float = 0.70,
+) -> bool:
+    """
+    Check if a title is duplicate using LOCAL checks (no RAG dependency).
+
+    Checks against:
+    1. Existing sibling titles in the DB (direct query, always up-to-date)
+    2. Titles already created in the current generation batch
+
+    Args:
+        new_title: The candidate title to check
+        parent_id: Parent card ID (to query siblings)
+        db: Database session
+        batch_titles: List of titles already generated in this batch
+        threshold: Word-overlap similarity threshold (0.70 = 70% word overlap)
+
+    Returns:
+        True if duplicate found, False otherwise
+    """
+    # Get existing sibling titles from DB (always current, no RAG lag)
+    siblings = db.query(Task.title).filter(Task.parent_id == parent_id).all()
+    existing_titles = [s[0] for s in siblings if s[0]]
+
+    # Combine DB siblings + current batch titles
+    all_titles = existing_titles + batch_titles
+
+    for existing in all_titles:
+        sim = _title_similarity(new_title, existing)
+        if sim >= threshold:
+            logger.info(
+                f"Local dedup: '{new_title[:50]}' similar to '{existing[:50]}' "
+                f"(similarity={sim:.2f}, threshold={threshold})"
+            )
+            return True
+
+    return False
+
+
 class DraftGeneratorMixin:
     """Mixin providing draft generation and batch processing methods."""
 
@@ -479,6 +550,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             # Create Story tasks with full content
             created_stories = []
             skipped_count = 0
+            batch_titles: List[str] = []  # PROMPT #253 - Track titles in current batch
             rag_svc = RAGService(self.db)
 
             for i, story_data in enumerate(stories_data):
@@ -488,7 +560,13 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
                     story_title = story_data.get("title", f"Story {i+1}")
 
-                    # PROMPT #162 - Check for similar cards (auto-skip)
+                    # PROMPT #253 - Local dedup: check DB siblings + current batch (no RAG lag)
+                    if _is_title_duplicate(story_title, epic.id, self.db, batch_titles):
+                        logger.info(f"Skipping duplicate story (local dedup): '{story_title[:50]}...'")
+                        skipped_count += 1
+                        continue
+
+                    # PROMPT #162 - Also check RAG for cross-parent similarity
                     similar_cards = rag_svc.find_similar_cards(
                         title=story_title,
                         description=None,
@@ -498,7 +576,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         top_k=1
                     )
                     if similar_cards:
-                        logger.info(f"Skipping similar story: '{story_title[:50]}...'")
+                        logger.info(f"Skipping similar story (RAG): '{story_title[:50]}...'")
                         skipped_count += 1
                         continue
 
@@ -548,13 +626,14 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     )
                     self.db.add(story)
                     created_stories.append(story)
+                    batch_titles.append(story_title)  # PROMPT #253 - Track for batch dedup
                     logger.info(f"Created story {i+1}/{len(stories_data)}: {story_title[:50]}...")
 
                 except Exception as story_error:
                     logger.error(f"Error creating story '{story_data}': {str(story_error)}")
 
             if skipped_count > 0:
-                logger.info(f"Skipped {skipped_count} duplicate stories")
+                logger.info(f"Skipped {skipped_count} duplicate stories (local+RAG dedup)")
 
             self.db.commit()
             logger.info(f"Created {len(created_stories)} stories with full content")
@@ -775,6 +854,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             # Create Task objects with full content
             created_tasks = []
             skipped_count = 0
+            batch_titles: List[str] = []  # PROMPT #253 - Track titles in current batch
             rag_svc = RAGService(self.db)
 
             for i, task_data in enumerate(tasks_data):
@@ -784,7 +864,13 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
                     task_title = task_data.get("title", f"Task {i+1}")
 
-                    # PROMPT #162 - Check for similar cards
+                    # PROMPT #253 - Local dedup: check DB siblings + current batch (no RAG lag)
+                    if _is_title_duplicate(task_title, story.id, self.db, batch_titles):
+                        logger.info(f"Skipping duplicate task (local dedup): '{task_title[:50]}...'")
+                        skipped_count += 1
+                        continue
+
+                    # PROMPT #162 - Also check RAG for cross-parent similarity
                     similar_cards = rag_svc.find_similar_cards(
                         title=task_title,
                         description=None,
@@ -794,7 +880,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         top_k=1
                     )
                     if similar_cards:
-                        logger.info(f"Skipping similar task: '{task_title[:50]}...'")
+                        logger.info(f"Skipping similar task (RAG): '{task_title[:50]}...'")
                         skipped_count += 1
                         continue
 
@@ -842,13 +928,14 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     )
                     self.db.add(task)
                     created_tasks.append(task)
+                    batch_titles.append(task_title)  # PROMPT #253 - Track for batch dedup
                     logger.info(f"Created task {i+1}/{len(tasks_data)}: {task_title[:50]}...")
 
                 except Exception as task_error:
                     logger.error(f"Error creating task '{task_data}': {str(task_error)}")
 
             if skipped_count > 0:
-                logger.info(f"Skipped {skipped_count} duplicate tasks")
+                logger.info(f"Skipped {skipped_count} duplicate tasks (local+RAG dedup)")
 
             self.db.commit()
             logger.info(f"Created {len(created_tasks)} tasks with full content")
