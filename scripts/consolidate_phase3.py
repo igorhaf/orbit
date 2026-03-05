@@ -351,14 +351,16 @@ def step2_create_cards(cur):
         )
 
         card_id = str(uuid.uuid4())
+        sp_text = ctx.get("semantic_prompt", "")
         cur.execute("""
             INSERT INTO tasks (id, project_id, title, description, type, status, priority,
                                story_points, parent_id, "order", "column", item_type,
-                               generation_context, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s::json, NOW(), NOW())
+                               generation_context, generated_prompt, prompt_edited_by,
+                               created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s::json, %s, 'ai', NOW(), NOW())
         """, (card_id, PROJECT_ID, card["title"], description,
               item_type, status, priority, story_points, parent_id,
-              column, item_type, json.dumps(ctx)))
+              column, item_type, json.dumps(ctx), sp_text))
 
         # Index in RAG
         rag_content = (

@@ -342,6 +342,11 @@ def main():
                 title, description or "", item_type, domain, related_rules, sp
             )
             ctx["semantic_prompt"] = sp_text
+            # Also save to generated_prompt (the field the frontend reads)
+            cur.execute("""
+                UPDATE tasks SET generated_prompt = %s, prompt_edited_by = 'ai'
+                WHERE id = %s AND (generated_prompt IS NULL OR generated_prompt = '')
+            """, (sp_text, card_id))
             prompt_added += 1
             changed = True
 
