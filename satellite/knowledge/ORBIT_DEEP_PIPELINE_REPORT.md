@@ -333,13 +333,94 @@ Gaps menores documentados para próxima iteração:
 
 ---
 
+---
+
+## Consolidation Phase — Deduplication & Cross-References
+
+### Deduplication
+
+| Verificação | Resultado |
+|------------|-----------|
+| Exact content duplicates found | 156 groups (369 rows) |
+| Redundant rows removed | 213 |
+| Semantic near-duplicates in rules | 0 (all 48 are distinct) |
+| RAG total after dedup | 15,611 |
+
+### Cross-Reference Enrichment
+
+| Ação | Resultado |
+|------|-----------|
+| Cards with domain labels | 128/128 (100%) |
+| Epics linked to related rules | 13/14 (pattern_discovery has 0 rules) |
+| RAG card docs enriched with domain | 41 (Epics + Stories) |
+| Wiki RAG docs enriched with card/rule counts | 17/24 (7 are cross-cutting) |
+| Frontend sub-stories remapped | 2 (analytics, ai_flow to specific domains) |
+
+### Domain Coverage Matrix
+
+| Domain | Cards | Rules | Wiki Page | Code Chunks |
+|--------|-------|-------|-----------|-------------|
+| rag_knowledge | 14 | 5 | rag-pipeline | 790 |
+| deep_pipeline | 13 | 5 | deep-pipeline | 176 |
+| ai_orchestration | 11 | 5 | orquestracao-ia | 339 |
+| wiki_system | 11 | 4 | wiki-automatica | 269 |
+| interviews | 10 | 3 | sistema-entrevistas | 945 |
+| prompt_management | 10 | 2 | prompts-externalizados | 746 |
+| caching | 10 | 3 | cache-multinivel | 63 |
+| backlog_generation | 9 | 6 | geracao-backlog | 912 |
+| project_management | 8 | 2 | gestao-projetos | - |
+| infrastructure | 5 | 2 | infraestrutura | 2,992 |
+| framework_specs | 5 | 2 | framework-specs | - |
+| pattern_discovery | 5 | 0 | pattern-discovery | 165 |
+| job_system | 5 | 2 | sistema-jobs | 278 |
+| git_integration | 5 | 1 | integracao-git | 188 |
+| ai_flow | 4 | 2 | ai-flow-studio | 428 |
+| analytics | 3 | 2 | analytics-monitoramento | 244 |
+| kanban | - | 2 | kanban-board | 96 |
+
+### Cross-Cutting Wiki Pages (no single domain)
+- visao-geral, arquitetura, regra-zero, convencoes-desenvolvimento, api-keys-seguranca, satellite-directory, fluxos-principais
+
+### Validation Results (12/12 PASS)
+
+| Check | Result |
+|-------|--------|
+| Project active | PASS |
+| Stack configured | PASS |
+| context_semantic populated | PASS |
+| RAG total > 15,000 | PASS |
+| Business rules = 48 | PASS |
+| Code files > 8,000 | PASS |
+| Cards = 128 | PASS |
+| Epics = 14 | PASS |
+| Wiki pages = 24 | PASS |
+| All cards have domain labels | PASS |
+| No exact content duplicates | PASS |
+| Epics linked to rules | PASS |
+
+### Semantic Search Cross-Type Validation
+
+Query: "Nomic Embed Text 768-Dimensional Embeddings" rule
+
+| Type | Similarity | Description |
+|------|-----------|-------------|
+| business_rule | 1.000 | Self-match (exact) |
+| code_file | 0.802 | Related code implementation |
+| card | 0.799 | RAG Pipeline card |
+| document | 0.778 | Related documentation |
+
+---
+
 ## Status: COMPLETED ✅
 
 O ORBIT foi auto-bootstrapped via Deep Pipeline Simulation com sucesso:
-- **15,824 documentos** indexados no RAG (docs + código + regras + cards + wiki)
-- **48 regras de negócio** reais extraídas de análise de código
-- **128 cards** hierárquicos (14 Epics → 27 Stories → 87 Tasks) baseados em 17 domínios
-- **24 wiki pages** ricas cobrindo todos os domínios e aspectos do sistema
+- **15,611 documentos** indexados no RAG (sem duplicatas) — docs + código + regras + cards + wiki
+- **48 regras de negócio** reais extraídas de análise de código em 16 domínios
+- **128 cards** hierárquicos (14 Epics → 27 Stories → 87 Tasks) com domain labels e rule links
+- **24 wiki pages** ricas cobrindo todos os 17 domínios + 7 páginas transversais
 - **Mapa arquitetural** completo com domínios, dependências, e design patterns
-- **Busca semântica** operacional com similaridade 0.826
+- **Cross-references** entre cards ↔ rules ↔ wiki ↔ código
+- **Zero duplicatas** — 213 redundantes removidas na consolidação
+- **Busca semântica cross-type** operacional (rule→code 0.802, rule→card 0.799)
 - **Quality Score** médio de 88.8/100 (todas as fases ≥ 85)
+- **12/12 validações** aprovadas
