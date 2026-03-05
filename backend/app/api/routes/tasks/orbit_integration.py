@@ -283,12 +283,12 @@ async def suggest_title(
 
     orchestrator = AIOrchestrator(db)
     response = await orchestrator.execute(
-        usage_type="general",
+        usage_type="prompt_generation",
         messages=[{"role": "user", "content": usr_prompt}],
         system_prompt=sys_prompt,
-        max_tokens=100,
+        max_tokens=500,  # Qwen3 thinking tokens consume budget; need 300+ for thinking + actual response
         project_id=body.project_id,
-        metadata={"type": "suggest_title"},
+        metadata={"type": "suggest_title", "skip_context_build": True},
     )
 
     suggested = response.get("content", "").strip().strip('"').strip("'")
@@ -436,6 +436,185 @@ async def check_orbit_result(
         found=False,
         message="Nenhum resultado encontrado em orbit/results/"
     )
+
+
+# ============================================================================
+# Generate description for a card (any status, not just suggested)
+# ============================================================================
+
+@router.post("/{task_id}/generate-description")
+async def generate_card_description(
+    task_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    Generate AI description for a card regardless of status.
+    Unlike /activate, this works on any card (not just draft/suggested).
+    Runs as a background job.
+    Respects REGRA #0: won't overwrite human-edited description.
+    """
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
+
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Card {task_id} não encontrado")
+
+    # REGRA #0: check if description was human-edited
+    if task.description_edited_by == "human":
+        raise HTTPException(
+            status_code=409,
+            detail="Descrição foi editada manualmente. Remova a edição antes de regenerar."
+        )
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.DESCRIPTION_GENERATION,
+        input_data={
+            "action": "generate_card_description",
+            "task_id": str(task_id),
+            "task_title": task.title or "",
+            "item_type": task.item_type.value if task.item_type else "task",
+        },
+        project_id=task.project_id,
+        task_id=task_id,
+        notification_title=f"Descrição IA — '{(task.title or '')[:40]}'",
+    )
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_card_description_async,
+        job.id,
+        str(task_id),
+    )
+
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Geração de descrição enfileirada",
+    }
+
+
+async def _process_card_description_async(job_id: UUID, task_id_str: str):
+    """Background task: generate description for a card using AI."""
+    import json
+    import time
+    from uuid import UUID as UUIDType
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.models.project import Project
+    from app.models.task import Task
+    from app.services.ai_orchestrator import AIOrchestrator
+
+    db = SessionLocal()
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        task_id = UUIDType(task_id_str)
+
+        task = db.query(Task).filter(Task.id == task_id).first()
+        if not task:
+            job_manager.fail_job(job_id, f"Card {task_id} não encontrado")
+            return
+
+        project = db.query(Project).filter(Project.id == task.project_id).first()
+        if not project:
+            job_manager.fail_job(job_id, "Projeto não encontrado")
+            return
+
+        job_manager.update_progress(job_id, 10.0, "Carregando contexto...")
+
+        # Gather parent context
+        parent = None
+        if task.parent_id:
+            parent = db.query(Task).filter(Task.id == task.parent_id).first()
+
+        # Build prompt
+        item_type = task.item_type.value if task.item_type else "task"
+        context_parts = [
+            f"Projeto: {project.name}",
+        ]
+        if project.description:
+            context_parts.append(f"Descrição do projeto: {project.description[:300]}")
+        if parent:
+            context_parts.append(f"Item pai: {parent.title}")
+            if parent.description:
+                context_parts.append(f"Descrição do pai: {parent.description[:500]}")
+
+        context = "\n".join(context_parts)
+
+        system_prompt = (
+            "Você é um Product Owner sênior. Gere uma descrição técnica detalhada "
+            f"para um card de backlog do tipo '{item_type}'. "
+            "A descrição deve ser clara, acionável e incluir:\n"
+            "1. O que precisa ser feito (objetivo)\n"
+            "2. Contexto relevante\n"
+            "3. Requisitos técnicos principais\n"
+            "Escreva em português. Mínimo 200 caracteres. Máximo 2000 caracteres.\n"
+            "Responda APENAS com o texto da descrição (sem JSON, sem markdown extra)."
+        )
+
+        user_prompt = (
+            f"Gere uma descrição detalhada para este {item_type}:\n\n"
+            f"Título: {task.title}\n\n"
+            f"Contexto:\n{context}"
+        )
+
+        job_manager.update_progress(job_id, 30.0, "Chamando IA...")
+
+        start_time = time.time()
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=2000,
+            project_id=str(task.project_id),
+            metadata={"type": "card_description", "skip_context_build": True},
+        )
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        description = response.get("content", "").strip()
+        ai_model = response.get("model_name", "unknown")
+
+        if not description or len(description) < 50:
+            job_manager.fail_job(job_id, "IA gerou descrição muito curta ou vazia")
+            return
+
+        job_manager.update_progress(job_id, 80.0, "Salvando descrição...")
+
+        # REGRA #0: double-check before saving
+        db.refresh(task)
+        if task.description_edited_by == "human":
+            job_manager.fail_job(job_id, "Descrição foi editada manualmente durante a geração")
+            return
+
+        task.description = description
+        task.description_edited_by = "ai"
+        task.created_by_ai_model = ai_model
+        db.commit()
+
+        logger.info(
+            f"Generated description for card {task_id} "
+            f"({len(description)} chars, model={ai_model}, {elapsed_ms}ms)"
+        )
+
+        job_manager.complete_job(job_id, {
+            "description": description,
+            "ai_model": ai_model,
+            "chars": len(description),
+        })
+
+    except Exception as e:
+        logger.error(f"Card description job {job_id} failed: {e}", exc_info=True)
+        try:
+            job_manager.fail_job(job_id, str(e)[:500])
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 # PROMPT #248 - Generate semantic prompt for a card

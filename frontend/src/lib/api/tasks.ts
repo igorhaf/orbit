@@ -229,6 +229,16 @@ export const tasksApi = {
       method: 'POST',
     }),
 
+  // Generate AI description for a card (any status, not just suggested)
+  generateDescription: (taskId: string) =>
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/tasks/${taskId}/generate-description`, {
+      method: 'POST',
+    }),
+
   // PROMPT #248 - Generate semantic prompt from card + RAG/wiki/git context
   // Returns job_id for polling (background execution)
   generateSemanticPrompt: (taskId: string, force?: boolean) =>

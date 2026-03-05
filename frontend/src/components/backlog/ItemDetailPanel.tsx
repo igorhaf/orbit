@@ -565,31 +565,29 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   };
 
   // PROMPT #254 - AI content generation handler
-  // Reuses the existing activate pipeline (ContextGeneratorService)
+  // Uses dedicated description generation endpoint (works on any card status)
   const handleGenerateContent = async () => {
     if (isGeneratingContent) return;
 
     setIsGeneratingContent(true);
     try {
-      const result = await tasksApi.activateSuggestedEpic(item.id);
+      const result = await tasksApi.generateDescription(item.id);
 
       if (result.job_id) {
-        const jobType = item.item_type === 'epic' ? 'epic_activation' :
-                        item.item_type === 'story' ? 'story_activation' : 'task_activation';
         addJob(
           result.job_id,
-          jobType,
-          `Gerando conteúdo: ${item.title.substring(0, 30)}...`,
+          'description_generation',
+          `Gerando descrição: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id
         );
-        showSuccess('Geração de conteúdo iniciada! Acompanhe o progresso nas notificações.');
+        showSuccess('Geração de descrição iniciada! Acompanhe o progresso nas notificações.');
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to generate content:', error);
-      showError(`Falha na geração de conteúdo IA: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha na geração de descrição IA: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsGeneratingContent(false);
     }
