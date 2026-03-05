@@ -844,10 +844,10 @@ async def _process_semantic_prompt_async(
         ai_model = "unknown"
 
         ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
-        ollama_model = os.getenv("OLLAMA_SEMANTIC_MODEL", "qwen3:8b")
+        ollama_model = os.getenv("OLLAMA_SEMANTIC_MODEL", "qwen3:14b")
 
         async def _call_ollama() -> str:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0)) as client:
                 resp = await client.post(
                     f"{ollama_host}/api/chat",
                     json={
