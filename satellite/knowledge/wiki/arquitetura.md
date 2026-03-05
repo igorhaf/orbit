@@ -1,65 +1,82 @@
 ---
 title: "Arquitetura do Sistema"
 slug: "arquitetura"
-source: bootstrap
-order: 1
-created_at: "2026-03-05T07:12:22.270106+00:00"
+source: "generated"
+order_index: 2
+created_at: "2026-03-05T04:46:24.694327"
+updated_at: "2026-03-05T04:46:24.694327"
 ---
 
 # Arquitetura do Sistema
 
-## Visão de Alto Nível
+## Visão de Camadas
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌──────────────┐
-│  Frontend   │───▶│  Backend    │───▶│  AI Providers│
-│  Next.js 14 │    │  FastAPI    │    │  Claude/GPT/ │
-│  React/TS   │    │  SQLAlchemy │    │  Gemini      │
-└─────────────┘    └──────┬──────┘    └──────────────┘
-                          │
-                   ┌──────┴──────┐
-                   │             │
-              ┌────▼────┐  ┌────▼────┐
-              │PostgreSQL│  │  Redis  │
-              │+pgvector │  │  Cache  │
-              └─────────┘  └─────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                  PRESENTATION LAYER                          │
+│  Next.js 14 App Router + React 18 + Tailwind CSS            │
+│  Pages: projetos, kanban, interview, analytics, ai-flow     │
+├─────────────────────────────────────────────────────────────┤
+│                      API LAYER                               │
+│  FastAPI APIRouter + Pydantic Schemas                        │
+│  REST endpoints com dependency injection (Depends)           │
+├─────────────────────────────────────────────────────────────┤
+│                    SERVICE LAYER                             │
+│  AIOrchestrator | BacklogGenerator | RAGService              │
+│  InterviewService | WikiService | DeepPipeline               │
+│  CacheService | JobExecutor | SpecService                    │
+├─────────────────────────────────────────────────────────────┤
+│                      DATA LAYER                              │
+│  SQLAlchemy 2.0 ORM | Alembic Migrations                    │
+│  PostgreSQL 15 + pgvector | Redis 7                          │
+├─────────────────────────────────────────────────────────────┤
+│                      AI LAYER                                │
+│  AIOrchestrator + PromptLoader + CacheService                │
+│  Anthropic | OpenAI | Google | Ollama                        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Backend (FastAPI)
+## Mapa de Domínios
 
-### Camadas
+O sistema é organizado em 17 domínios com dependências claras:
 
-1. **Routes** (`backend/app/api/routes/`): Endpoints REST da API
-2. **Services** (`backend/app/services/`): Lógica de negócio
-3. **Models** (`backend/app/models/`): Modelos SQLAlchemy
-4. **Schemas** (`backend/app/schemas/`): Schemas Pydantic (validação)
-5. **Prompts** (`backend/app/prompts/`): Prompts YAML externalizados
+### Domínios Core (sem dependências externas)
+- **infrastructure**: Database, Redis, Ollama, migrations
+- **prompt_management**: 76 YAML prompts com Jinja2 templating
+- **framework_specs**: 47 specs para token reduction
 
-### Serviços Principais
+### Domínios Intermediários
+- **caching**: Cache L1/L2/L3 sobre Redis
+- **rag_knowledge**: RAG pipeline com pgvector
+- **ai_orchestration**: Hub central de chamadas AI (depende de caching, rag)
+- **project_management**: CRUD de projetos, satellite dirs
 
-- **AIOrchestrator**: Orquestração centralizada de chamadas de IA
-- **RAGService**: Armazenamento e busca semântica
-- **BacklogGeneratorService**: Geração de hierarquia Epic/Story/Task
-- **InterviewService**: Engine de entrevistas contextuais
-- **PromptLoader**: Carregamento de prompts YAML com Jinja2
+### Domínios de Feature
+- **interviews**: 3 fases de entrevista (depende de ai_orchestration, rag)
+- **backlog_generation**: Epic->Story->Task (depende de interviews, ai_orchestration)
+- **deep_pipeline**: 7 fases de análise (depende de rag, ai_orchestration, backlog, wiki)
+- **wiki_system**: Geração e operações de wiki (depende de ai_orchestration, rag)
+- **job_system**: Background processing (depende de infrastructure)
+- **analytics**: Token e cost dashboards (depende de ai_orchestration)
 
-## Frontend (Next.js 14)
+### Domínios de Interface
+- **kanban**: Board com drag-and-drop
+- **ai_flow**: AI Studio interface
+- **git_integration**: Git operations e commit generation
+- **pattern_discovery**: Tech stack e pattern detection
 
-### Estrutura de Páginas
+## Design Patterns Utilizados
 
-- `/` — Lista de projetos
-- `/projects/[id]` — Detalhes do projeto (tabs)
-- `/analytics/tokens` — Tokens & Desempenho
-- `/analytics/costs` — Custos
-- `/prompts` — Gerenciamento de prompts
-- `/ai-flow` — AI Studio (pipeline visual)
-- `/jobs` — Jobs assíncronos
-- `/settings` — Configurações
-- `/ai-models` — Gestão de modelos de IA
+| Pattern | Onde Usado |
+|---------|-----------|
+| Strategy | Provider adapters no AIOrchestrator |
+| Chain of Responsibility | Cache L1->L2->L3, Fallback de providers |
+| Observer | Usage logging, Notification bell |
+| Composite | Hierarquia Epic->Story->Task |
+| Factory | Card generation, Project initialization |
+| Template Method | PromptLoader Jinja2, AI operations (Generate/Expand/Summarize) |
+| State Machine | File states no RAG (pending->scanned->indexed), Job lifecycle |
+| Repository | Document CRUD no RAG, Project CRUD |
+| Singleton | DB connection, AIOrchestrator por sessão |
+| Guard | REGRA #0 (human data protection) |
 
-### Componentes Chave
-
-- **Navbar**: Navegação top-bar com links e ações
-- **KanbanBoard**: Board com drag-and-drop (DnD Kit)
-- **ChatInterface**: Interface de chat para entrevistas
-- **MarkdownEditor**: Editor rich-text com toolbar
