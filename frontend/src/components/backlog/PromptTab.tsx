@@ -51,6 +51,8 @@ export default function PromptTab({
   const [sources, setSources] = useState<PromptSources | null>(null);
   const [showForceConfirm, setShowForceConfirm] = useState(false);
   const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
+  const [progressMsg, setProgressMsg] = useState<string | null>(null);
+  const [progressPercent, setProgressPercent] = useState<number>(0);
 
   // Use generated prompt from state (fresh generation) or item (persisted)
   const displayPrompt = generatedPrompt || item.generated_prompt;
@@ -59,23 +61,40 @@ export default function PromptTab({
     setIsGenerating(true);
     setGenerationError(null);
     setShowForceConfirm(false);
+    setProgressMsg(null);
+    setProgressPercent(0);
 
     try {
-      const result = await tasksApi.generateSemanticPrompt(item.id, force);
+      const result = await tasksApi.generateSemanticPromptWithPolling(
+        item.id,
+        force,
+        (percent, message) => {
+          setProgressPercent(percent);
+          setProgressMsg(message);
+        }
+      );
 
-      if (result.success && result.prompt) {
+      // REGRA #0: inline response when prompt was human-edited
+      if (result?.success === false && result?.message?.includes('editado manualmente')) {
+        setShowForceConfirm(true);
+      } else if (result?.success && result?.prompt) {
         setGeneratedPrompt(result.prompt);
         setSources(result.sources || null);
         onPromptGenerated?.(result.prompt);
-      } else if (result.message?.includes('editado manualmente')) {
-        setShowForceConfirm(true);
+      } else if (result?.prompt) {
+        // Job result format: { prompt, sources, ... }
+        setGeneratedPrompt(result.prompt);
+        setSources(result.sources || null);
+        onPromptGenerated?.(result.prompt);
       } else {
-        setGenerationError(result.message || 'Erro desconhecido na geração');
+        setGenerationError(result?.message || 'Erro desconhecido na geração');
       }
     } catch (err: any) {
       setGenerationError(err.message || 'Falha ao conectar com o servidor');
     } finally {
       setIsGenerating(false);
+      setProgressMsg(null);
+      setProgressPercent(0);
     }
   };
 
@@ -105,7 +124,7 @@ export default function PromptTab({
                   disabled={isGenerating}
                   className="px-2 py-1 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded transition-colors disabled:opacity-50"
                 >
-                  {isGenerating ? 'Gerando...' : 'Regenerar'}
+                  {isGenerating ? (progressMsg || 'Gerando...') : 'Regenerar'}
                 </button>
                 <button
                   onClick={() => navigator.clipboard.writeText(displayPrompt || '')}
@@ -170,15 +189,28 @@ export default function PromptTab({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Gerando Prompt...
+                  {progressMsg || 'Gerando Prompt...'}
                 </span>
               ) : (
                 'Gerar Prompt Semântico'
               )}
             </button>
-            <p className="text-xs text-gray-400 mt-3 max-w-xs mx-auto">
-              Usa wiki, regras de negócio, contexto do projeto e hierarquia do card para gerar um prompt técnico completo
-            </p>
+            {isGenerating && progressPercent > 0 && (
+              <div className="mt-4 max-w-xs mx-auto">
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div
+                    className="bg-purple-600 h-1.5 rounded-full transition-all duration-500"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{Math.round(progressPercent)}%</p>
+              </div>
+            )}
+            {!isGenerating && (
+              <p className="text-xs text-gray-400 mt-3 max-w-xs mx-auto">
+                Usa wiki, regras de negócio, contexto do projeto e hierarquia do card para gerar um prompt técnico completo
+              </p>
+            )}
           </div>
         )}
 

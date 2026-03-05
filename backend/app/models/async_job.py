@@ -84,6 +84,9 @@ class JobType(str, enum.Enum):
     # PROMPT #247: Per-page wiki AI operations (generate/expand/summarize/rephrase)
     WIKI_PAGE_AI = "wiki_page_ai"
 
+    # PROMPT #248: Semantic prompt generation from card + RAG/wiki/git context
+    SEMANTIC_PROMPT = "semantic_prompt"
+
 
 def _load_job_priorities() -> dict:
     """PROMPT #256 - Load job priorities from contract YAML."""
@@ -126,6 +129,7 @@ def _load_job_priorities() -> dict:
             JobType.WIKI_GENERATION: JobPriority.NORMAL,
             JobType.DESCRIPTION_GENERATION: JobPriority.NORMAL,
             JobType.WIKI_PAGE_AI: JobPriority.NORMAL,
+            JobType.SEMANTIC_PROMPT: JobPriority.NORMAL,
         }
 
 

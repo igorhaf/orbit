@@ -230,22 +230,40 @@ export const tasksApi = {
     }),
 
   // PROMPT #248 - Generate semantic prompt from card + RAG/wiki/git context
+  // Returns job_id for polling (background execution)
   generateSemanticPrompt: (taskId: string, force?: boolean) =>
     request<{
-      success: boolean;
-      prompt: string | null;
-      ai_model: string | null;
-      message: string | null;
-      sources: {
-        wiki_pages: string[];
-        rules_count: number;
-        parent_context: boolean;
-        project_context: boolean;
-      } | null;
+      job_id?: string;
+      status?: string;
+      message?: string;
+      // Fallback fields for REGRA #0 inline response (human-edited check)
+      success?: boolean;
+      prompt?: string | null;
     }>(`/api/v1/tasks/${taskId}/generate-semantic-prompt`, {
       method: 'POST',
       body: JSON.stringify({ force: force || false }),
     }),
+
+  // PROMPT #248 - Generate semantic prompt with polling (waits for completion)
+  generateSemanticPromptWithPolling: async (
+    taskId: string,
+    force?: boolean,
+    onProgress?: (percent: number, message: string | null) => void
+  ) => {
+    const res = await tasksApi.generateSemanticPrompt(taskId, force);
+
+    // REGRA #0: inline response when prompt was human-edited
+    if (res.success === false && !res.job_id) {
+      return res;
+    }
+
+    if (!res.job_id) {
+      throw new Error(res.message || 'Falha ao criar job');
+    }
+
+    const result = await jobsApi.poll(res.job_id, onProgress);
+    return result;
+  },
 
   // PROMPT #253 - AI title suggestion
   suggestTitle: (data: {

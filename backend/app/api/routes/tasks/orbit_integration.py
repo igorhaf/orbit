@@ -451,7 +451,7 @@ class SemanticPromptResponse(BaseModel):
     sources: Optional[Dict[str, Any]] = None
 
 
-@router.post("/{task_id}/generate-semantic-prompt", response_model=SemanticPromptResponse)
+@router.post("/{task_id}/generate-semantic-prompt")
 async def generate_semantic_prompt(
     task_id: UUID,
     request: SemanticPromptRequest = SemanticPromptRequest(),
@@ -464,15 +464,17 @@ async def generate_semantic_prompt(
     business rules (RAG), and tech stack. Calls AI to compose an actionable
     implementation prompt.
 
+    Now runs as a background job (visible in Jobs page) and creates a Prompt record
+    (visible in Prompts page).
+
     POST /api/v1/tasks/{task_id}/generate-semantic-prompt
     Body: { "force": false }
+    Returns: { "job_id": "...", "status": "pending", "message": "..." }
     """
-    import json
-    from app.models.project import Project
-    from app.models.wiki_page import WikiPage
-    from app.contracts.loader import ContractLoader
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
 
-    # 1. Fetch card
+    # 1. Fetch card for validation
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail=f"Card {task_id} nao encontrado")
@@ -484,168 +486,266 @@ async def generate_semantic_prompt(
             message="Este prompt foi editado manualmente. Use force=true para sobrescrever.",
         )
 
-    # 2. Fetch project
-    project = db.query(Project).filter(Project.id == task.project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+    # 2. Create async job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.SEMANTIC_PROMPT,
+        input_data={
+            "action": "generate_semantic_prompt",
+            "task_id": str(task_id),
+            "task_title": task.title or "",
+            "force": request.force,
+        },
+        project_id=task.project_id,
+        task_id=task_id,
+        notification_title=f"Prompt semântico — '{(task.title or '')[:40]}'",
+    )
 
-    # 3. Fetch parent hierarchy
-    parent = None
-    if task.parent_id:
-        parent = db.query(Task).filter(Task.id == task.parent_id).first()
+    # 3. Submit to priority executor
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_semantic_prompt_async,
+        job.id,
+        str(task_id),
+        request.force,
+    )
 
-    # 4. Fetch wiki pages for context
-    sources = {
-        "wiki_pages": [],
-        "rules_count": 0,
-        "parent_context": parent is not None,
-        "project_context": bool(project.context_semantic),
+    # 4. Return job_id immediately
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Geração de prompt semântico enfileirada",
     }
 
-    wiki_context = ""
-    try:
-        wiki_pages = (
-            db.query(WikiPage)
-            .filter(WikiPage.project_id == project.id)
-            .order_by(WikiPage.order_index)
-            .limit(5)
-            .all()
-        )
-        if wiki_pages:
-            wiki_parts = []
-            for wp in wiki_pages:
-                wiki_parts.append(f"### {wp.title}\n{(wp.content or '')[:1500]}")
-                sources["wiki_pages"].append(wp.title)
-            wiki_context = "\n\n".join(wiki_parts)
-    except Exception as e:
-        logger.warning(f"Failed to fetch wiki pages: {e}")
 
-    # 5. Fetch business rules from RAG
-    rules_text = ""
-    try:
-        from app.services.rag_service import RAGService
-        rag = RAGService(db)
-        rules = rag.get_business_rules(
-            project_id=project.id,
-            query=task.title,
-            top_k=10,
-        )
-        if rules:
-            rules_text = rag.format_business_rules_for_prompt(rules, max_chars=3000)
-            sources["rules_count"] = len(rules)
-    except Exception as e:
-        logger.warning(f"Failed to fetch business rules: {e}")
-
-    # 6. Build context and render contract
-    contract_loader = ContractLoader(db)
-    variables = {
-        "card_title": task.title or "",
-        "card_type": task.item_type.value if task.item_type else "task",
-        "card_description": task.description or "Sem descricao",
-        "labels": ", ".join(task.labels) if task.labels else "",
-        "acceptance_criteria": "\n".join(
-            f"- {ac}" for ac in (task.acceptance_criteria or [])
-        ) if task.acceptance_criteria else "",
-        "parent_title": parent.title if parent else "",
-        "parent_prompt": (parent.generated_prompt or "")[:2000] if parent else "",
-        "project_context": (project.context_semantic or "")[:3000],
-        "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
-        "business_rules": rules_text,
-        "wiki_context": wiki_context[:4000],
-    }
-
-    try:
-        system_prompt, user_prompt = contract_loader.render(
-            "pipeline/card_semantic_prompt", variables
-        )
-        logger.info(f"Contract loaded OK. system_prompt length={len(system_prompt)}, has OBJETIVO={'OBJETIVO' in system_prompt}")
-    except Exception as e:
-        logger.warning(f"Failed to load contract: {e}", exc_info=True)
-        # Fallback: build inline
-        system_prompt = (
-            "Voce e um engenheiro de software senior. Gere um prompt semantico tecnico "
-            "e completo para implementar o item descrito. Minimo 500 chars, maximo 5000. "
-            "Portugues. Sem emojis. Responda APENAS com o texto do prompt."
-        )
-        user_prompt = "\n".join(f"{k}: {v}" for k, v in variables.items() if v)
-
-    # 7. Call AI via Ollama (always available, no external dependencies)
-    prompt_text = None
-    ai_model = "unknown"
-
+async def _process_semantic_prompt_async(
+    job_id: UUID,
+    task_id_str: str,
+    force: bool,
+):
+    """Background task: generate semantic prompt and save to card + Prompt record."""
+    import json
     import httpx
     import os
     import asyncio
-    ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
-    ollama_model = "qwen3:14b"
+    import time
+    from uuid import UUID as UUIDType
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.models.project import Project
+    from app.models.wiki_page import WikiPage
+    from app.models.task import Task
+    from app.models.prompt import Prompt
+    from app.contracts.loader import ContractLoader
 
-    async def _call_ollama() -> str:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=15.0)) as client:
-            resp = await client.post(
-                f"{ollama_host}/api/chat",
-                json={
-                    "model": ollama_model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "stream": False,
-                    "options": {"num_predict": 4000},
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("message", {}).get("content", "").strip()
-
-    # Retry once on failure (handles cold-start / model loading delays)
-    last_error = None
-    for attempt in range(2):
-        try:
-            prompt_text = await _call_ollama()
-            ai_model = ollama_model
-            break
-        except Exception as e:
-            last_error = e
-            err_msg = str(e) or type(e).__name__
-            logger.error(f"Ollama call failed (attempt {attempt + 1}/2): {err_msg}", exc_info=True)
-            if attempt == 0:
-                await asyncio.sleep(3)
-
-    if prompt_text is None:
-        err_detail = str(last_error) or type(last_error).__name__ if last_error else "Erro desconhecido"
-        return SemanticPromptResponse(
-            success=False,
-            message=f"Erro na geração: {err_detail[:200]}",
-        )
-
-    if not prompt_text or len(prompt_text) < 100:
-        return SemanticPromptResponse(
-            success=False,
-            message="IA gerou resposta muito curta ou vazia",
-        )
-
-    # 8. Save to card (REGRA #0 compliant — we checked above)
+    db = SessionLocal()
     try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+
+        task_id = UUIDType(task_id_str)
+
+        # 1. Fetch card
+        job_manager.update_progress(job_id, 5.0, "Carregando card...")
+        task = db.query(Task).filter(Task.id == task_id).first()
+        if not task:
+            job_manager.fail_job(job_id, f"Card {task_id} não encontrado")
+            return
+
+        # 2. Fetch project
+        job_manager.update_progress(job_id, 10.0, "Carregando projeto...")
+        project = db.query(Project).filter(Project.id == task.project_id).first()
+        if not project:
+            job_manager.fail_job(job_id, "Projeto não encontrado")
+            return
+
+        # 3. Fetch parent hierarchy
+        parent = None
+        if task.parent_id:
+            parent = db.query(Task).filter(Task.id == task.parent_id).first()
+
+        # 4. Fetch wiki pages for context
+        sources = {
+            "wiki_pages": [],
+            "rules_count": 0,
+            "parent_context": parent is not None,
+            "project_context": bool(project.context_semantic),
+        }
+
+        job_manager.update_progress(job_id, 20.0, "Buscando wiki e regras de negócio...")
+        wiki_context = ""
+        try:
+            wiki_pages = (
+                db.query(WikiPage)
+                .filter(WikiPage.project_id == project.id)
+                .order_by(WikiPage.order_index)
+                .limit(5)
+                .all()
+            )
+            if wiki_pages:
+                wiki_parts = []
+                for wp in wiki_pages:
+                    wiki_parts.append(f"### {wp.title}\n{(wp.content or '')[:1500]}")
+                    sources["wiki_pages"].append(wp.title)
+                wiki_context = "\n\n".join(wiki_parts)
+        except Exception as e:
+            logger.warning(f"Failed to fetch wiki pages: {e}")
+
+        # 5. Fetch business rules from RAG
+        rules_text = ""
+        try:
+            from app.services.rag_service import RAGService
+            rag = RAGService(db)
+            rules = rag.get_business_rules(
+                project_id=project.id,
+                query=task.title,
+                top_k=10,
+            )
+            if rules:
+                rules_text = rag.format_business_rules_for_prompt(rules, max_chars=3000)
+                sources["rules_count"] = len(rules)
+        except Exception as e:
+            logger.warning(f"Failed to fetch business rules: {e}")
+
+        # 6. Build context and render contract
+        job_manager.update_progress(job_id, 30.0, "Montando prompt...")
+        contract_loader = ContractLoader(db)
+        variables = {
+            "card_title": task.title or "",
+            "card_type": task.item_type.value if task.item_type else "task",
+            "card_description": task.description or "Sem descricao",
+            "labels": ", ".join(task.labels) if task.labels else "",
+            "acceptance_criteria": "\n".join(
+                f"- {ac}" for ac in (task.acceptance_criteria or [])
+            ) if task.acceptance_criteria else "",
+            "parent_title": parent.title if parent else "",
+            "parent_prompt": (parent.generated_prompt or "")[:2000] if parent else "",
+            "project_context": (project.context_semantic or "")[:3000],
+            "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
+            "business_rules": rules_text,
+            "wiki_context": wiki_context[:4000],
+        }
+
+        try:
+            system_prompt, user_prompt = contract_loader.render(
+                "pipeline/card_semantic_prompt", variables
+            )
+        except Exception as e:
+            logger.warning(f"Failed to load contract: {e}", exc_info=True)
+            system_prompt = (
+                "Voce e um engenheiro de software senior. Gere um prompt semantico tecnico "
+                "e completo para implementar o item descrito. Minimo 500 chars, maximo 5000. "
+                "Portugues. Sem emojis. Responda APENAS com o texto do prompt."
+            )
+            user_prompt = "\n".join(f"{k}: {v}" for k, v in variables.items() if v)
+
+        # 7. Call AI via Ollama
+        job_manager.update_progress(job_id, 40.0, "Chamando IA (Ollama)...")
+        prompt_text = None
+        ai_model = "unknown"
+
+        ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
+        ollama_model = "qwen3:14b"
+
+        async def _call_ollama() -> str:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=15.0)) as client:
+                resp = await client.post(
+                    f"{ollama_host}/api/chat",
+                    json={
+                        "model": ollama_model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "stream": False,
+                        "options": {"num_predict": 4000},
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("message", {}).get("content", "").strip()
+
+        start_time = time.time()
+
+        # Retry once on failure (handles cold-start / model loading delays)
+        last_error = None
+        for attempt in range(2):
+            try:
+                prompt_text = await _call_ollama()
+                ai_model = ollama_model
+                break
+            except Exception as e:
+                last_error = e
+                err_msg = str(e) or type(e).__name__
+                logger.error(f"Ollama call failed (attempt {attempt + 1}/2): {err_msg}", exc_info=True)
+                if attempt == 0:
+                    job_manager.update_progress(job_id, 50.0, "Retry: modelo carregando...")
+                    await asyncio.sleep(3)
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        if prompt_text is None:
+            err_detail = str(last_error) or type(last_error).__name__ if last_error else "Erro desconhecido"
+            job_manager.fail_job(job_id, f"Erro na geração: {err_detail[:200]}")
+            return
+
+        if not prompt_text or len(prompt_text) < 100:
+            job_manager.fail_job(job_id, "IA gerou resposta muito curta ou vazia")
+            return
+
+        # 8. Save to card (REGRA #0 compliant)
+        job_manager.update_progress(job_id, 80.0, "Salvando prompt no card...")
         task.generated_prompt = prompt_text
         task.prompt_edited_by = "ai"
         task.created_by_ai_model = ai_model
+
+        # 9. Create Prompt record (visible in /prompts page)
+        job_manager.update_progress(job_id, 90.0, "Registrando no log de prompts...")
+        prompt_record = Prompt(
+            project_id=task.project_id,
+            content=prompt_text,
+            type="semantic_prompt",
+            is_reusable=False,
+            ai_model_used=ai_model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response=prompt_text,
+            input_tokens=0,
+            output_tokens=0,
+            total_cost_usd=0.0,
+            execution_time_ms=elapsed_ms,
+            execution_metadata={
+                "task_id": task_id_str,
+                "task_title": task.title,
+                "sources": sources,
+            },
+            status="success",
+        )
+        db.add(prompt_record)
         db.commit()
 
         logger.info(
             f"Generated semantic prompt for card {task_id} "
-            f"({len(prompt_text)} chars, model={ai_model})"
+            f"({len(prompt_text)} chars, model={ai_model}, {elapsed_ms}ms)"
         )
 
-        return SemanticPromptResponse(
-            success=True,
-            prompt=prompt_text,
-            ai_model=ai_model,
-            sources=sources,
-        )
+        # 10. Complete job with result
+        result = {
+            "success": True,
+            "prompt": prompt_text,
+            "ai_model": ai_model,
+            "sources": sources,
+            "prompt_id": str(prompt_record.id),
+        }
+        job_manager.complete_job(job_id, result)
 
     except Exception as e:
-        logger.error(f"Failed to save semantic prompt: {e}", exc_info=True)
-        return SemanticPromptResponse(
-            success=False,
-            message=f"Erro ao salvar: {str(e)[:200]}",
-        )
+        logger.error(f"Semantic prompt job {job_id} failed: {e}", exc_info=True)
+        try:
+            job_manager.fail_job(job_id, str(e)[:500])
+        except Exception:
+            pass
+    finally:
+        db.close()
