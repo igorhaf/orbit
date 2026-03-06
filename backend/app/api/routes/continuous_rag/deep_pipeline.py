@@ -1,0 +1,463 @@
+"""
+Continuous RAG - Deep Pipeline Orchestration Endpoints
+
+PROMPT #260 - Deep Pipeline (7-phase Claudio pipeline).
+Pipeline profiles CRUD and pipeline run history/comparison.
+"""
+
+from typing import Optional
+from uuid import UUID
+
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.async_job import AsyncJob, JobStatus, JobType
+from app.models.project import Project
+from app.services.job_manager import JobManager
+
+router = APIRouter()
+
+
+def _profile_to_dict(p):
+    """Helper to serialize a PipelineProfile to dict."""
+    return {
+        "id": str(p.id),
+        "name": p.name,
+        "description": p.description,
+        "quality_threshold": p.quality_threshold,
+        "is_default": p.is_default,
+        "phase_configs": p.phase_configs,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+@router.post("/{project_id}/rag/deep-pipeline")
+async def trigger_deep_pipeline(
+    project_id: UUID,
+    background_tasks: BackgroundTasks,
+    profile: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #260 - Start the 7-phase deep pipeline via Claudio.
+    Phases: Scan -> File Analysis (Haiku) -> Rule Synthesis (Sonnet) ->
+    Architectural Map (Sonnet+Thinking) -> Cards (Opus/Sonnet/Haiku) ->
+    Wiki (Opus) -> QA (Sonnet+Thinking) -> Gap Fill (conditional).
+
+    Optional query param `profile`: name of the pipeline profile to use.
+    Default: 'economy' (unico perfil ativo).
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    if not project.code_path:
+        raise HTTPException(status_code=400, detail="Projeto não tem code_path configurado")
+
+    # Check for existing running deep pipeline or legacy pipeline
+    existing = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.parent_job_id.is_(None),
+        AsyncJob.job_type.in_([
+            JobType.DEEP_PIPELINE,
+            JobType.PROJECT_PIPELINE,
+        ]),
+    ).first()
+    if existing:
+        return {
+            "message": "Um pipeline já está em andamento",
+            "job_id": str(existing.id),
+            "status": existing.status.value,
+        }
+
+    profile_name = profile  # capture for closure
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.DEEP_PIPELINE,
+        input_data={"project_id": str(project_id), "phase": "deep_pipeline_v2", "profile": profile_name},
+        project_id=project_id,
+        notification_title=f"Deep Pipeline (7 fases) — {project.name or 'Projeto'}" + (f" [{profile_name}]" if profile_name else ""),
+        deep_link=f"/projects/{project_id}",
+    )
+
+    async def _run_deep_pipeline(job_id, proj_id):
+        from app.database import get_db as get_db_gen
+        db_session = next(get_db_gen())
+        try:
+            from app.services.deep_pipeline import DeepPipelineService
+            jm = JobManager(db_session)
+            jm.start_job(job_id)
+
+            pipeline = DeepPipelineService(db_session, profile_name=profile_name)
+
+            # Set actual model name from pipeline profile (not from ai_models table)
+            try:
+                from app.models.async_job import AsyncJob
+                job_record = db_session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+                if job_record:
+                    p1_model = pipeline._get_model("phase_1", "unknown")
+                    provider = pipeline._provider or "claudio"
+                    label = pipeline._model_label(p1_model)
+                    job_record.ai_model_name = f"{label} ({provider})"
+                    db_session.commit()
+            except Exception:
+                pass
+
+            # Phase-aware progress weights reflecting actual time distribution
+            # Phase 1 (file analysis) takes ~90% of total time, so it gets 60% of the bar
+            _PHASE_OFFSETS = {
+                0: (0, 5),     # Phase 0: 0-5%   (quick filesystem scan)
+                1: (5, 60),    # Phase 1: 5-65%  (heavy per-file analysis)
+                2: (65, 5),    # Phase 2: 65-70% (synthesis)
+                3: (70, 7),    # Phase 3: 70-77% (architecture)
+                4: (77, 7),    # Phase 4: 77-84% (cards)
+                5: (84, 7),    # Phase 5: 84-91% (wiki)
+                6: (91, 8),    # Phase 6: 91-99% (QA)
+            }
+
+            async def _update_progress(phase, pct, msg):
+                try:
+                    start, weight = _PHASE_OFFSETS.get(phase, (0, 14))
+                    overall_pct = min(99, int(start + pct / 100 * weight))
+                    jm.update_progress(job_id, overall_pct, f"[Fase {phase}] {msg}")
+                except Exception:
+                    pass
+
+            result = await pipeline.run(proj_id, progress_callback=_update_progress)
+            jm.complete_job(job_id, result)
+        except Exception as e:
+            try:
+                db_session.rollback()
+                jm.fail_job(job_id, str(e))
+            except Exception:
+                # Last resort: try with a fresh session
+                try:
+                    db_session.rollback()
+                    from app.database import get_db as get_db_gen2
+                    fresh = next(get_db_gen2())
+                    JobManager(fresh).fail_job(job_id, str(e)[:500])
+                    fresh.close()
+                except Exception:
+                    pass
+        finally:
+            db_session.close()
+
+    background_tasks.add_task(_run_deep_pipeline, job.id, project_id)
+
+    return {
+        "message": "Deep Pipeline (7 fases) iniciado via Claudio",
+        "job_id": str(job.id),
+        "status": "pending",
+        "pipeline_version": "v2",
+        "profile": profile_name or "default",
+    }
+
+
+@router.get("/{project_id}/rag/deep-pipeline/status")
+async def get_deep_pipeline_status(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #260 - Get detailed deep pipeline status.
+    Shows per-phase progress, quality score, and artifact counts.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+
+    # Find active or most recent deep pipeline job
+    active_job = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.job_type == JobType.DEEP_PIPELINE,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.parent_job_id.is_(None),
+    ).first()
+
+    last_completed = None
+    if not active_job:
+        last_completed = db.query(AsyncJob).filter(
+            AsyncJob.project_id == project_id,
+            AsyncJob.job_type == JobType.DEEP_PIPELINE,
+            AsyncJob.status == JobStatus.COMPLETED,
+        ).order_by(AsyncJob.updated_at.desc()).first()
+
+    # Count artifacts per phase
+    from app.models.pipeline_artifact import PipelineArtifact
+    from sqlalchemy import func as sql_func
+
+    artifact_counts = dict(
+        db.query(PipelineArtifact.phase, sql_func.count(PipelineArtifact.id))
+        .filter(PipelineArtifact.project_id == project_id)
+        .group_by(PipelineArtifact.phase)
+        .all()
+    )
+
+    response = {
+        "pipeline_version": project.pipeline_version or "v1",
+        "quality_score": project.pipeline_quality_score,
+        "has_architecture": project.project_architecture is not None,
+        "is_running": active_job is not None,
+        "artifacts": {
+            f"phase_{p}": artifact_counts.get(p, 0)
+            for p in range(8)
+        },
+    }
+
+    if active_job:
+        response["active_job"] = {
+            "id": str(active_job.id),
+            "status": active_job.status.value,
+            "progress_percent": active_job.progress_percent,
+            "progress_message": active_job.progress_message,
+            "started_at": active_job.started_at.isoformat() if active_job.started_at else None,
+        }
+    elif last_completed:
+        response["last_completed"] = {
+            "id": str(last_completed.id),
+            "completed_at": last_completed.updated_at.isoformat() if last_completed.updated_at else None,
+            "result": last_completed.result,
+        }
+
+    return response
+
+
+# =========================================================================
+# PIPELINE PROFILES ENDPOINTS
+# =========================================================================
+
+@router.get("/pipeline/profiles")
+async def list_pipeline_profiles(db: Session = Depends(get_db)):
+    """List all available pipeline execution profiles."""
+    from app.models.pipeline_profile import PipelineProfile
+    profiles = db.query(PipelineProfile).order_by(PipelineProfile.name).all()
+    return [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "description": p.description,
+            "quality_threshold": p.quality_threshold,
+            "is_default": p.is_default,
+            "phase_configs": p.phase_configs,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in profiles
+    ]
+
+
+@router.post("/pipeline/profiles")
+async def create_pipeline_profile(data: dict = Body(...), db: Session = Depends(get_db)):
+    """Create a new pipeline execution profile."""
+    from app.models.pipeline_profile import PipelineProfile
+
+    if not data.get("name"):
+        raise HTTPException(status_code=400, detail="Name is required")
+
+    profile = PipelineProfile(
+        name=data["name"],
+        description=data.get("description", ""),
+        phase_configs=data.get("phase_configs", {}),
+        quality_threshold=data.get("quality_threshold", 60),
+        is_default=False,
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return _profile_to_dict(profile)
+
+
+@router.put("/pipeline/profiles/{profile_id}")
+async def update_pipeline_profile(profile_id: UUID, data: dict = Body(...), db: Session = Depends(get_db)):
+    """Update a pipeline execution profile."""
+    from app.models.pipeline_profile import PipelineProfile
+
+    profile = db.query(PipelineProfile).filter(PipelineProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Pipeline profile not found")
+
+    if "name" in data:
+        profile.name = data["name"]
+    if "description" in data:
+        profile.description = data["description"]
+    if "phase_configs" in data:
+        profile.phase_configs = data["phase_configs"]
+    if "quality_threshold" in data:
+        profile.quality_threshold = data["quality_threshold"]
+
+    db.commit()
+    db.refresh(profile)
+    return _profile_to_dict(profile)
+
+
+@router.delete("/pipeline/profiles/{profile_id}")
+async def delete_pipeline_profile(profile_id: UUID, db: Session = Depends(get_db)):
+    """Delete a pipeline execution profile."""
+    from app.models.pipeline_profile import PipelineProfile
+
+    profile = db.query(PipelineProfile).filter(PipelineProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Pipeline profile not found")
+    if profile.is_default:
+        raise HTTPException(status_code=400, detail="Cannot delete the default profile")
+
+    db.delete(profile)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/pipeline/profiles/{profile_id}/set-default")
+async def set_default_pipeline_profile(profile_id: UUID, db: Session = Depends(get_db)):
+    """Set a pipeline profile as the default (unsets all others)."""
+    from app.models.pipeline_profile import PipelineProfile
+
+    profile = db.query(PipelineProfile).filter(PipelineProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Pipeline profile not found")
+
+    db.query(PipelineProfile).update({"is_default": False})
+    profile.is_default = True
+    db.commit()
+    db.refresh(profile)
+    return _profile_to_dict(profile)
+
+
+# =========================================================================
+# PIPELINE RUNS ENDPOINTS
+# =========================================================================
+
+@router.get("/{project_id}/rag/deep-pipeline/runs")
+async def list_pipeline_runs(
+    project_id: UUID,
+    limit: int = Query(default=20, le=100),
+    db: Session = Depends(get_db),
+):
+    """List pipeline run history for a project, ordered by most recent."""
+    from app.models.pipeline_run import PipelineRun
+    runs = (
+        db.query(PipelineRun)
+        .filter(PipelineRun.project_id == project_id)
+        .order_by(PipelineRun.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": str(r.id),
+            "profile_name": r.profile_name,
+            "version": r.version,
+            "status": r.status,
+            "overall_score": r.overall_score,
+            "phase_scores": r.phase_scores,
+            "phase_durations": r.phase_durations,
+            "total_files_scanned": r.total_files_scanned,
+            "total_rules_extracted": r.total_rules_extracted,
+            "total_domains": r.total_domains,
+            "total_cards_created": r.total_cards_created,
+            "total_wiki_pages": r.total_wiki_pages,
+            "total_input_tokens": r.total_input_tokens,
+            "total_output_tokens": r.total_output_tokens,
+            "estimated_cost_usd": float(r.estimated_cost_usd) if r.estimated_cost_usd else None,
+            "reinforcement_applied": r.reinforcement_applied,
+            "error": r.error,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+        }
+        for r in runs
+    ]
+
+
+@router.get("/{project_id}/rag/deep-pipeline/runs/{run_id}")
+async def get_pipeline_run_detail(
+    project_id: UUID,
+    run_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Get detailed info for a specific pipeline run."""
+    from app.models.pipeline_run import PipelineRun
+    run = (
+        db.query(PipelineRun)
+        .filter(PipelineRun.id == run_id, PipelineRun.project_id == project_id)
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="Pipeline run not found")
+
+    return {
+        "id": str(run.id),
+        "project_id": str(run.project_id),
+        "profile_id": str(run.profile_id) if run.profile_id else None,
+        "profile_name": run.profile_name,
+        "profile_snapshot": run.profile_snapshot,
+        "version": run.version,
+        "status": run.status,
+        "overall_score": run.overall_score,
+        "phase_scores": run.phase_scores,
+        "phase_durations": run.phase_durations,
+        "total_files_scanned": run.total_files_scanned,
+        "total_rules_extracted": run.total_rules_extracted,
+        "total_domains": run.total_domains,
+        "total_cards_created": run.total_cards_created,
+        "total_wiki_pages": run.total_wiki_pages,
+        "total_input_tokens": run.total_input_tokens,
+        "total_output_tokens": run.total_output_tokens,
+        "estimated_cost_usd": float(run.estimated_cost_usd) if run.estimated_cost_usd else None,
+        "reinforcement_applied": run.reinforcement_applied,
+        "error": run.error,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+    }
+
+
+@router.get("/{project_id}/rag/deep-pipeline/compare")
+async def compare_pipeline_runs(
+    project_id: UUID,
+    run1: UUID = Query(..., description="First run ID"),
+    run2: UUID = Query(..., description="Second run ID"),
+    db: Session = Depends(get_db),
+):
+    """Compare two pipeline runs side-by-side."""
+    from app.models.pipeline_run import PipelineRun
+
+    r1 = db.query(PipelineRun).filter(PipelineRun.id == run1, PipelineRun.project_id == project_id).first()
+    r2 = db.query(PipelineRun).filter(PipelineRun.id == run2, PipelineRun.project_id == project_id).first()
+
+    if not r1 or not r2:
+        raise HTTPException(status_code=404, detail="One or both runs not found")
+
+    def _run_summary(r):
+        return {
+            "id": str(r.id),
+            "profile_name": r.profile_name,
+            "status": r.status,
+            "overall_score": r.overall_score,
+            "phase_scores": r.phase_scores or {},
+            "phase_durations": r.phase_durations or {},
+            "total_cards_created": r.total_cards_created,
+            "total_wiki_pages": r.total_wiki_pages,
+            "total_files_scanned": r.total_files_scanned,
+            "total_rules_extracted": r.total_rules_extracted,
+            "estimated_cost_usd": float(r.estimated_cost_usd) if r.estimated_cost_usd else None,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+        }
+
+    s1, s2 = _run_summary(r1), _run_summary(r2)
+
+    # Compute diffs for phase scores
+    score_diffs = {}
+    all_phases = set(list((s1["phase_scores"] or {}).keys()) + list((s2["phase_scores"] or {}).keys()))
+    for phase in sorted(all_phases):
+        v1 = (s1["phase_scores"] or {}).get(phase, 0)
+        v2 = (s2["phase_scores"] or {}).get(phase, 0)
+        score_diffs[phase] = {"run1": v1, "run2": v2, "diff": v2 - v1}
+
+    return {
+        "run1": s1,
+        "run2": s2,
+        "score_comparison": score_diffs,
+        "overall_diff": (s2.get("overall_score") or 0) - (s1.get("overall_score") or 0),
+    }

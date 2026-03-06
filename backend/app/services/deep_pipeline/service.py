@@ -1,0 +1,475 @@
+"""
+Deep Pipeline Service - 7-Phase Sequential Pipeline via Claudio
+
+Orchestrates the complete deep analysis of a codebase:
+  Phase 0: Structural scan (filesystem, no AI)
+  Phase 1: Per-file analysis (Haiku, parallel)
+  Phase 2: Cross-file rule synthesis (Sonnet, multi-turn)
+  Phase 3: Architectural map (Sonnet + extended thinking)
+  Phase 4: Hierarchical card generation (Opus/Sonnet/Haiku)
+  Phase 5: Wiki generation (Opus, multi-turn)
+  Phase 6: Quality assurance (Sonnet + extended thinking)
+  Phase 7: Gap filling (conditional)
+"""
+
+import json
+import logging
+import os
+from datetime import datetime
+from typing import Any, Dict, Optional
+from uuid import UUID, uuid4
+
+from sqlalchemy.orm import Session
+
+from app.contracts.loader import ContractLoader
+from app.models.pipeline_profile import PipelineProfile
+from app.models.pipeline_run import PipelineRun
+from app.models.project import Project
+from app.services.claudio_pipeline import (
+    ClaudioPipelineService,
+    ClaudioPipelineError,
+    MODEL_HAIKU,
+    MODEL_SONNET,
+    MODEL_OPUS,
+)
+from app.services.console_logger import get_console_logger
+
+from .phases_0_to_3 import Phase0to3Mixin
+from .phases_4_to_7 import Phase4to7Mixin
+from .telemetry import TelemetryMixin
+from .utils import UtilsMixin, _get_redis
+
+logger = logging.getLogger(__name__)
+
+
+class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsMixin):
+    """Orchestrates the 7-phase deep pipeline using Claudio or Ollama."""
+
+    def __init__(self, db: Session, profile_name: str = None):
+        self.db = db
+        self._contract_loader = ContractLoader(db)
+        self._profile = self._load_profile(profile_name)
+        self._phase_configs = self._profile.phase_configs if self._profile else {}
+
+        # ── Provider dispatch: profile determines Claudio vs Ollama ────
+        self._provider = self._detect_provider()
+        if self._provider == "ollama":
+            from app.services.ollama_pipeline import OllamaPipelineService
+            self.claudio = OllamaPipelineService()
+        else:
+            self.claudio = ClaudioPipelineService()
+
+        # ── PROMPT #237: Pipeline telemetry ────
+        self._console = get_console_logger()
+        self._telemetry_trace_id: str = ""
+        self._telemetry_project_id: str = ""
+        self._telemetry_job_id: str | None = None
+        self._run_tokens_in: int = 0
+        self._run_tokens_out: int = 0
+        self._run_cost: float = 0.0
+        self._phase_scores: Dict[str, int] = {}
+
+    @staticmethod
+    def _model_label(model_name: str) -> str:
+        """Extract a human-readable label from model name (works for both Claude and Ollama).
+        'claude-sonnet-4-6' -> 'Sonnet', 'qwen3:14b' -> 'Qwen3', 'gemma2:9b' -> 'Gemma2'
+        """
+        if "-" in model_name and model_name.startswith("claude"):
+            return model_name.split("-")[1].title()
+        # Ollama format: "qwen3:14b" -> "qwen3" -> "Qwen3"
+        return model_name.split(":")[0].title()
+
+    def _detect_provider(self) -> str:
+        """Detect provider from phase_configs. If any phase has provider='ollama', use Ollama."""
+        for phase_key, cfg in self._phase_configs.items():
+            if isinstance(cfg, dict) and cfg.get("provider") == "ollama":
+                return "ollama"
+        return "claudio"
+
+    def _load_profile(self, profile_name: str = None) -> Optional[PipelineProfile]:
+        """Load a named profile or the default one."""
+        if profile_name:
+            profile = self.db.query(PipelineProfile).filter(PipelineProfile.name == profile_name).first()
+            if profile:
+                return profile
+            logger.warning(f"Profile '{profile_name}' not found, falling back to default")
+        # Try default
+        profile = self.db.query(PipelineProfile).filter(PipelineProfile.is_default == True).first()
+        if profile:
+            return profile
+        # Try economy as last resort
+        return self.db.query(PipelineProfile).filter(PipelineProfile.name == "economy").first()
+
+    def _get_phase_config(self, phase_key: str, field: str, default=None):
+        """Get a config value for a phase from the loaded profile."""
+        cfg = self._phase_configs.get(phase_key, {})
+        return cfg.get(field, default)
+
+    def _get_model(self, phase_key: str, default: str = MODEL_SONNET) -> str:
+        """Get model for a phase from profile config."""
+        return self._get_phase_config(phase_key, "model", default)
+
+    def _get_max_tokens(self, phase_key: str, default: int = 8000) -> int:
+        """Get max_tokens for a phase from profile config."""
+        return self._get_phase_config(phase_key, "max_tokens", default)
+
+    def _get_concurrency(self, phase_key: str, default: int = 5) -> int:
+        """Get concurrency for a phase from profile config."""
+        return self._get_phase_config(phase_key, "concurrency", default)
+
+    def _get_contract_name(self, phase_key: str, default: str = None) -> Optional[str]:
+        """Get contract name for a phase from profile config."""
+        return self._get_phase_config(phase_key, "contract", default)
+
+    def _is_phase_enabled(self, phase_key: str) -> bool:
+        """Check if a phase is enabled in the current profile."""
+        return self._get_phase_config(phase_key, "enabled", True)
+
+    def _ollama_kwargs(self, phase_key: str) -> dict:
+        """Build Ollama-specific kwargs for a phase call. Empty dict for Claudio."""
+        if self._provider != "ollama":
+            return {}
+        return {
+            "temperature": self._get_phase_config(phase_key, "temperature", 0.1),
+            "num_ctx": self._get_phase_config(phase_key, "num_ctx", 16384),
+            "keep_alive": self._get_phase_config(phase_key, "keep_alive", "5m"),
+        }
+
+    # =========================================================================
+    # MAIN ORCHESTRATOR
+    # =========================================================================
+
+    async def run(
+        self,
+        project_id: UUID,
+        progress_callback: Any = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute the complete 7-phase deep pipeline.
+
+        Args:
+            project_id: UUID of the project to analyze
+            progress_callback: Optional async callable(phase, pct, message)
+
+        Returns:
+            Dict with pipeline results and quality score
+        """
+        import time as _time
+
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        if not project.code_path or not os.path.isdir(project.code_path):
+            raise ValueError(f"Invalid code_path: {project.code_path}")
+
+        profile_name = self._profile.name if self._profile else "quality"
+
+        # ── Check for interrupted run with checkpoint (resume support) ──
+        existing_run = self.db.query(PipelineRun).filter(
+            PipelineRun.project_id == project.id,
+            PipelineRun.status == "interrupted",
+            PipelineRun.checkpoint_state.isnot(None),
+        ).order_by(PipelineRun.created_at.desc()).first()
+
+        if existing_run:
+            run_id = existing_run.id
+            pipeline_run = existing_run
+            pipeline_run.status = "running"
+            self.db.commit()
+            logger.info(f"Resuming interrupted pipeline run {run_id} for project '{project.name}' "
+                         f"(checkpoint: {len(existing_run.checkpoint_state.get('completed_files', []))} files done)")
+        else:
+            run_id = uuid4()
+            logger.info(f"Starting deep pipeline for project '{project.name}' "
+                         f"(run_id={run_id}, profile={profile_name})")
+
+        # ── PROMPT #237: Initialize telemetry context ────
+        self._telemetry_trace_id = str(run_id)
+        self._telemetry_project_id = str(project_id)
+        self._run_tokens_in = 0
+        self._run_tokens_out = 0
+        self._run_cost = 0.0
+        self._phase_scores = {}
+        import time as _t_init
+        self._run_started_at = int(_t_init.time() * 1000)  # epoch ms for frontend elapsed calc
+
+        if not existing_run:
+            # ── Create NEW PipelineRun record ────────────────────────────
+            pipeline_run = PipelineRun(
+                id=run_id,
+                project_id=project.id,
+                profile_id=self._profile.id if self._profile else None,
+                profile_name=profile_name,
+                profile_snapshot=self._phase_configs,
+                version="v2",
+                status="running",
+                phase_scores={},
+                phase_durations={},
+                started_at=datetime.utcnow(),
+            )
+            self.db.add(pipeline_run)
+            self.db.commit()
+
+            # ── Cleanup data from previous pipeline runs ──────────────────
+            # Removes AI-generated cards and wiki pages from old runs.
+            # REGRA #0: human-edited data is NEVER deleted.
+            self._cleanup_previous_runs(project.id, run_id)
+
+        # ── Apply reinforcement from previous run ────────────────────────
+        reinforcement = self._apply_reinforcement(project.id)
+        if reinforcement:
+            pipeline_run.reinforcement_applied = reinforcement
+            self.db.commit()
+
+        quality_threshold = self._profile.quality_threshold if self._profile else 60
+
+        async def _progress(phase: int, pct: float, msg: str):
+            logger.info(f"[Phase {phase}] {pct:.0f}% - {msg}")
+            if progress_callback:
+                try:
+                    await progress_callback(phase, pct, msg)
+                except Exception:
+                    pass
+
+        # Check AI service health (Claudio or Ollama)
+        healthy = await self.claudio.health_check()
+        if not healthy:
+            svc_name = "Ollama" if self._provider == "ollama" else "Claudio"
+            pipeline_run.status = "failed"
+            pipeline_run.error = f"{svc_name} not reachable at {self.claudio.base_url}"
+            pipeline_run.completed_at = datetime.utcnow()
+            self.db.commit()
+            raise ClaudioPipelineError(
+                f"{svc_name} is not reachable at {self.claudio.base_url}. Start it first."
+            )
+
+        results = {}
+        phase_scores = {}
+        phase_durations = {}
+
+        def _phase_timer():
+            return _time.monotonic()
+
+        try:
+            # Phase 0: Structural Scan (0-5%)
+            t0 = _phase_timer()
+            await _progress(0, 0, "Iniciando scan estrutural...")
+            file_inventory = await self._phase0_structural_scan(project)
+            results["phase0"] = {"files_found": len(file_inventory)}
+            phase_scores["phase_0"] = self._compute_phase_score("phase_0", results["phase0"])
+            self._phase_scores = dict(phase_scores)
+            phase_durations["phase_0"] = int((_phase_timer() - t0) * 1000)
+            await self._emit_telemetry("phase_0", "structural_scan", f"Scan completo: {len(file_inventory)} arquivos", len(file_inventory), len(file_inventory), duration_ms=phase_durations["phase_0"])
+            await _progress(0, 100, f"Scan completo: {len(file_inventory)} arquivos (score: {phase_scores['phase_0']})")
+
+            # Phase 1: Per-file Analysis (5-25%)
+            t0 = _phase_timer()
+            model_1 = self._get_model("phase_1", MODEL_HAIKU)
+            await _progress(1, 0, f"Analisando {len(file_inventory)} arquivos com {self._model_label(model_1)}...")
+            file_analyses = await self._phase1_file_analysis(
+                project, file_inventory, run_id, _progress, pipeline_run
+            )
+            p1_data = {
+                "files_analyzed": len(file_analyses),
+                "files_total": len(file_inventory),
+                "domains_found": len(set(a.get("domain_classification", "?") for a in file_analyses)),
+            }
+            results["phase1"] = p1_data
+            phase_scores["phase_1"] = self._compute_phase_score("phase_1", p1_data)
+            self._phase_scores = dict(phase_scores)
+            phase_durations["phase_1"] = int((_phase_timer() - t0) * 1000)
+            await _progress(1, 100, f"Analise completa: {len(file_analyses)} arquivos (score: {phase_scores['phase_1']})")
+
+            # Phase 2: Cross-file Rule Synthesis (25-40%)
+            t0 = _phase_timer()
+            model_2 = self._get_model("phase_2", MODEL_SONNET)
+            await _progress(2, 0, f"Sintetizando regras cross-file com {self._model_label(model_2)}...")
+            domain_rules = await self._phase2_rule_synthesis(
+                project, file_analyses, run_id, _progress
+            )
+            total_rules = sum(len(d.get("consolidated_rules", [])) for d in domain_rules.values())
+            p2_data = {"domains": len(domain_rules), "total_rules": total_rules}
+            results["phase2"] = p2_data
+            phase_scores["phase_2"] = self._compute_phase_score("phase_2", p2_data)
+            self._phase_scores = dict(phase_scores)
+            phase_durations["phase_2"] = int((_phase_timer() - t0) * 1000)
+            await _progress(2, 100, f"Sintese completa: {total_rules} regras em {len(domain_rules)} dominios (score: {phase_scores['phase_2']})")
+
+            # Phase 3: Architectural Map (40-45%)
+            t0 = _phase_timer()
+            if self._is_phase_enabled("phase_3"):
+                await _progress(3, 0, "Construindo mapa arquitetural com Extended Thinking...")
+                arch_map = await self._phase3_architectural_map(
+                    project, domain_rules, file_inventory, run_id
+                )
+                p3_data = {
+                    "domains": len(arch_map.get("domains", [])),
+                    "cross_domain_flows": len(arch_map.get("cross_domain_flows", [])),
+                    "arch_map": arch_map,
+                }
+                results["phase3"] = {"domains": p3_data["domains"], "cross_domain_flows": p3_data["cross_domain_flows"]}
+                phase_scores["phase_3"] = self._compute_phase_score("phase_3", p3_data)
+                self._phase_scores = dict(phase_scores)
+                # Save to project
+                project.project_architecture = arch_map
+                project.pipeline_version = "v2"
+                self.db.commit()
+                await _progress(3, 100, f"Mapa arquitetural construido (score: {phase_scores['phase_3']})")
+            else:
+                # Build minimal arch_map from domain_rules (no AI call)
+                arch_map = self._build_local_arch_map(domain_rules, file_inventory, project)
+                results["phase3"] = {"domains": len(arch_map.get("domains", [])), "cross_domain_flows": 0, "skipped": True}
+                phase_scores["phase_3"] = 50
+                project.project_architecture = arch_map
+                project.pipeline_version = "v2"
+                self.db.commit()
+                await _progress(3, 100, "Mapa arquitetural construido localmente (fase desabilitada)")
+            phase_durations["phase_3"] = int((_phase_timer() - t0) * 1000)
+
+            # Phase 4: Card Generation (45-70%)
+            t0 = _phase_timer()
+            await _progress(4, 0, "Gerando cards hierarquicos...")
+            card_stats = await self._phase4_card_generation(
+                project, arch_map, domain_rules, run_id, _progress
+            )
+            results["phase4"] = card_stats
+            phase_scores["phase_4"] = self._compute_phase_score("phase_4", card_stats)
+            self._phase_scores = dict(phase_scores)
+            phase_durations["phase_4"] = int((_phase_timer() - t0) * 1000)
+            await _progress(4, 100, f"Cards gerados: {card_stats.get('total_cards', 0)} (score: {phase_scores['phase_4']})")
+
+            # Phase 5: Wiki Generation (70-85%)
+            t0 = _phase_timer()
+            await _progress(5, 0, "Gerando wiki...")
+            wiki_stats = await self._phase5_wiki_generation(
+                project, arch_map, domain_rules, card_stats, run_id, _progress
+            )
+            results["phase5"] = wiki_stats
+            phase_scores["phase_5"] = self._compute_phase_score("phase_5", wiki_stats)
+            self._phase_scores = dict(phase_scores)
+            phase_durations["phase_5"] = int((_phase_timer() - t0) * 1000)
+            await _progress(5, 100, f"Wiki gerada: {wiki_stats.get('total_pages', 0)} paginas (score: {phase_scores['phase_5']})")
+
+            # Phase 6: Quality Assurance (85-95%)
+            t0 = _phase_timer()
+            if self._is_phase_enabled("phase_6"):
+                await _progress(6, 0, "Executando Quality Assurance com Thinking...")
+                qa_result = await self._phase6_quality_assurance(
+                    project, arch_map, domain_rules, card_stats, wiki_stats, run_id
+                )
+            else:
+                await _progress(6, 0, "Executando Quality Assurance local...")
+                qa_result = self._phase6_local_qa(
+                    domain_rules, card_stats, wiki_stats, run_id, project
+                )
+            results["phase6"] = qa_result
+            phase_scores["phase_6"] = self._compute_phase_score("phase_6", qa_result)
+            self._phase_scores = dict(phase_scores)
+            phase_durations["phase_6"] = int((_phase_timer() - t0) * 1000)
+            project.pipeline_quality_score = str(qa_result.get("overall_score", 0))
+            self.db.commit()
+            await _progress(6, 100, f"QA completo. Score: {qa_result.get('overall_score', 0)}/100")
+
+            # Phase 7: Gap Filling (95-100%) - conditional
+            t0 = _phase_timer()
+            if qa_result.get("overall_score", 100) < quality_threshold:
+                await _progress(7, 0, f"Score < {quality_threshold} - executando correcao de gaps...")
+                gap_result = await self._phase7_gap_filling(
+                    project, qa_result, arch_map, domain_rules, run_id
+                )
+                results["phase7"] = gap_result
+                await _progress(7, 100, "Correcao de gaps concluida")
+            else:
+                results["phase7"] = {"skipped": True, "reason": f"Score >= {quality_threshold}"}
+                await _progress(7, 100, f"Score >= {quality_threshold} - gap filling nao necessario")
+            phase_durations["phase_7"] = int((_phase_timer() - t0) * 1000)
+
+            # ── Post-pipeline: Project Enrichment (description + context_semantic) ──
+            await self._enrich_project_fields(
+                project, arch_map, domain_rules, file_inventory,
+                total_rules, card_stats, wiki_stats, _progress,
+            )
+
+            # ── Post-pipeline: Mark cards as DONE (code already exists) ──────
+            await self._mark_cards_as_done(project, run_id, _progress)
+
+            # ── Update PipelineRun with final results ────────────────────
+            pipeline_run.status = "completed"
+            pipeline_run.overall_score = qa_result.get("overall_score", 0)
+            pipeline_run.phase_scores = phase_scores
+            pipeline_run.phase_durations = phase_durations
+            pipeline_run.total_files_scanned = len(file_inventory)
+            pipeline_run.total_rules_extracted = total_rules
+            pipeline_run.total_domains = len(domain_rules)
+            pipeline_run.total_cards_created = card_stats.get("total_cards", 0)
+            pipeline_run.total_wiki_pages = wiki_stats.get("total_pages", 0)
+            pipeline_run.total_input_tokens = self._run_tokens_in
+            pipeline_run.total_output_tokens = self._run_tokens_out
+            pipeline_run.estimated_cost_usd = self._run_cost
+            pipeline_run.completed_at = datetime.utcnow()
+            self.db.commit()
+
+            # PROMPT #237: Mark pipeline as completed in Redis
+            try:
+                r = _get_redis()
+                if r:
+                    r.hset(f"pipeline:live:{self._telemetry_project_id}", mapping={
+                        "status": "completed",
+                        "tokens_in": str(self._run_tokens_in),
+                        "tokens_out": str(self._run_tokens_out),
+                        "cost_usd": f"{self._run_cost:.6f}",
+                        "phase_scores": json.dumps(phase_scores),
+                    })
+                    r.expire(f"pipeline:live:{self._telemetry_project_id}", 3600)
+            except Exception:
+                pass
+
+            # PROMPT #247: Broadcast pipeline completion via WebSocket
+            try:
+                await self._console.log_pipeline_activity(
+                    project_id=self._telemetry_project_id,
+                    trace_id=self._telemetry_trace_id,
+                    phase="completed",
+                    action="pipeline_completed",
+                    item_name=f"Pipeline concluido. Score: {qa_result.get('overall_score', 0)}/100",
+                    item_index=1,
+                    item_total=1,
+                    cumulative_tokens_in=self._run_tokens_in,
+                    cumulative_tokens_out=self._run_tokens_out,
+                    cumulative_cost=self._run_cost,
+                    phase_scores=phase_scores,
+                    job_id=self._telemetry_job_id,
+                    details={"pipeline_status": "completed", "overall_score": qa_result.get("overall_score", 0)},
+                )
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.error(f"Deep pipeline failed at run {run_id}: {e}", exc_info=True)
+            results["error"] = str(e)
+            # Update run status -- "interrupted" if checkpoint exists (can resume), "failed" otherwise
+            try:
+                if pipeline_run.checkpoint_state:
+                    pipeline_run.status = "interrupted"
+                    logger.info(f"Pipeline interrupted with checkpoint -- can be resumed")
+                else:
+                    pipeline_run.status = "failed"
+                pipeline_run.error = str(e)[:1000]
+                pipeline_run.phase_scores = phase_scores
+                pipeline_run.phase_durations = phase_durations
+                pipeline_run.completed_at = datetime.utcnow()
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+            raise
+        finally:
+            await self.claudio.close()
+
+        logger.info(f"Deep pipeline completed for project '{project.name}' "
+                     f"(run_id={run_id}, profile={profile_name}, "
+                     f"score={pipeline_run.overall_score})")
+        results["run_id"] = str(run_id)
+        results["profile"] = profile_name
+        results["phase_scores"] = phase_scores
+        return results

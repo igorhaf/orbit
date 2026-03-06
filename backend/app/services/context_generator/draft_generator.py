@@ -4,6 +4,11 @@ Draft generation and batch processing mixin.
 Handles generation of suggested epics, draft stories/tasks,
 incremental epic generation, and cards from memory.
 Extracted from context_generator.py during modularization (PROMPT #249).
+
+Sub-modules:
+- draft_helpers.py: Shared helper functions (dedup, hierarchy, wiki context)
+- draft_stories.py: DraftStoriesMixin (story generation from epics)
+- draft_tasks.py: DraftTasksMixin (task generation from stories)
 """
 
 from typing import Dict, List, Optional, Any
@@ -22,183 +27,26 @@ from app.services.rag_service import RAGService
 from .utils import (
     _robust_json_parse,
     _strip_emojis,
+    _strip_markdown_json,
     _convert_semantic_to_human,
     _extract_content_from_raw_response,
 )
+from .draft_stories import DraftStoriesMixin
+from .draft_tasks import DraftTasksMixin
 
 logger = logging.getLogger(__name__)
 
 
-def _build_existing_children_text(db: "Session", parent_id: UUID) -> str:
-    """Build text listing existing children of a card for dedup context."""
-    children = db.query(Task).filter(Task.parent_id == parent_id).order_by(Task.order).all()
-    if not children:
-        return ""
-    lines = []
-    for c in children:
-        status = c.workflow_state or "unknown"
-        desc_preview = (c.description or "")[:150].replace("\n", " ")
-        lines.append(f"- [{status.upper()}] {c.title}: {desc_preview}")
-    return "\n".join(lines)
+class DraftGeneratorMixin(DraftStoriesMixin, DraftTasksMixin):
+    """Mixin providing draft generation and batch processing methods.
 
+    Composes story and task generation from sub-mixins:
+    - DraftStoriesMixin: _generate_draft_stories, fallback methods
+    - DraftTasksMixin: _generate_draft_tasks, fallback methods
 
-def _build_full_hierarchy_text(db: "Session", task: Task) -> str:
-    """Build full hierarchy text from project root down to the current card."""
-    parts = []
-    # Walk up to collect ancestors
-    ancestors = []
-    current = task
-    while current.parent_id:
-        parent = db.query(Task).filter(Task.id == current.parent_id).first()
-        if not parent:
-            break
-        ancestors.append(parent)
-        current = parent
-
-    ancestors.reverse()
-    indent = 0
-    for a in ancestors:
-        prefix = "  " * indent
-        parts.append(f"{prefix}- [{a.item_type.value.upper()}] {a.title}")
-        indent += 1
-
-    # Current card
-    prefix = "  " * indent
-    parts.append(f"{prefix}- [{task.item_type.value.upper()}] {task.title} (ATUAL)")
-
-    return "\n".join(parts)
-
-
-def _build_wiki_context_text(db: "Session", project: Project, search_terms: str, max_pages: int = 3) -> str:
-    """Find relevant wiki pages and return their content as context."""
-    code_path = getattr(project, "code_path", None)
-    if not code_path:
-        return ""
-
-    try:
-        from app.services.wiki_fs import list_pages
-        all_pages = list_pages(code_path)
-    except Exception as e:
-        logger.warning(f"Could not list wiki pages: {e}")
-        return ""
-
-    if not all_pages:
-        return ""
-
-    # Score pages by keyword overlap with search terms
-    search_lower = search_terms.lower()
-    search_words = set(w for w in search_lower.split() if len(w) > 3)
-
-    scored = []
-    for page in all_pages:
-        title_lower = (page.title or page.slug).lower()
-        content_lower = (page.content or "")[:2000].lower()
-        score = 0
-        for word in search_words:
-            if word in title_lower:
-                score += 3
-            if word in content_lower:
-                score += 1
-        if score > 0:
-            scored.append((score, page))
-
-    scored.sort(key=lambda x: -x[0])
-    top_pages = scored[:max_pages]
-
-    if not top_pages:
-        return ""
-
-    parts = []
-    for _, page in top_pages:
-        title = page.title or page.slug
-        content = (page.content or "")[:1500]
-        parts.append(f"### Wiki: {title}\n{content}")
-
-    return "\n\n".join(parts)
-
-
-def _normalize_title(title: str) -> str:
-    """Normalize a title for comparison: lowercase, strip, remove punctuation."""
-    import unicodedata
-    t = title.lower().strip()
-    # Remove accents
-    t = unicodedata.normalize('NFD', t)
-    t = ''.join(c for c in t if unicodedata.category(c) != 'Mn')
-    # Remove punctuation and extra spaces
-    t = re.sub(r'[^\w\s]', ' ', t)
-    t = re.sub(r'\s+', ' ', t).strip()
-    return t
-
-
-def _title_similarity(a: str, b: str) -> float:
+    Epic generation, suggested epics, incremental generation,
+    and cards-from-memory remain in this class.
     """
-    Compute similarity between two titles using max(Jaccard, containment).
-
-    Jaccard alone misses cases like "Adapter Anthropic (Claude)" vs
-    "Implementar Adapter Anthropic" (Jaccard=0.50 but clearly the same thing).
-    Containment catches when most words of one title appear in the other.
-    """
-    na = _normalize_title(a)
-    nb = _normalize_title(b)
-    if na == nb:
-        return 1.0
-    words_a = set(w for w in na.split() if len(w) > 2)
-    words_b = set(w for w in nb.split() if len(w) > 2)
-    if not words_a or not words_b:
-        return 0.0
-    intersection = words_a & words_b
-    union = words_a | words_b
-    jaccard = len(intersection) / len(union)
-    # Containment: what fraction of the SMALLER set is covered?
-    containment = len(intersection) / min(len(words_a), len(words_b))
-    return max(jaccard, containment)
-
-
-def _is_title_duplicate(
-    new_title: str,
-    parent_id: UUID,
-    db: "Session",
-    batch_titles: List[str],
-    threshold: float = 0.60,
-) -> bool:
-    """
-    Check if a title is duplicate using LOCAL checks (no RAG dependency).
-
-    Checks against:
-    1. Existing sibling titles in the DB (direct query, always up-to-date)
-    2. Titles already created in the current generation batch
-
-    Args:
-        new_title: The candidate title to check
-        parent_id: Parent card ID (to query siblings)
-        db: Database session
-        batch_titles: List of titles already generated in this batch
-        threshold: Word-overlap similarity threshold (0.70 = 70% word overlap)
-
-    Returns:
-        True if duplicate found, False otherwise
-    """
-    # Get existing sibling titles from DB (always current, no RAG lag)
-    siblings = db.query(Task.title).filter(Task.parent_id == parent_id).all()
-    existing_titles = [s[0] for s in siblings if s[0]]
-
-    # Combine DB siblings + current batch titles
-    all_titles = existing_titles + batch_titles
-
-    for existing in all_titles:
-        sim = _title_similarity(new_title, existing)
-        if sim >= threshold:
-            logger.info(
-                f"Local dedup: '{new_title[:50]}' similar to '{existing[:50]}' "
-                f"(similarity={sim:.2f}, threshold={threshold})"
-            )
-            return True
-
-    return False
-
-
-class DraftGeneratorMixin:
-    """Mixin providing draft generation and batch processing methods."""
 
     def _get_usage_type(self) -> str:
         """Return usage_type for AI calls. Supports temporary override via _usage_type_override."""
@@ -396,9 +244,10 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
         self.db.commit()
 
-        logger.info(f"✅ Generated {len(saved_epics)} suggested epics for project {project_id}")
+        logger.info(f"Generated {len(saved_epics)} suggested epics for project {project_id}")
 
         return saved_epics
+
     async def generate_children(self, parent_id: UUID, count: int = 10) -> Dict:
         """
         PROMPT #127 - Generate draft children for an approved item on-demand.
@@ -437,7 +286,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             ItemType.STORY: "tasks",
         }.get(parent.item_type, "items")
 
-        logger.info(f"📝 Generated {len(children)} {child_type} for {parent.item_type.value}: {parent.title}")
+        logger.info(f"Generated {len(children)} {child_type} for {parent.item_type.value}: {parent.title}")
 
         return {
             "parent_id": str(parent.id),
@@ -445,286 +294,6 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             "children_generated": len(children),
             "child_type": child_type,
         }
-    async def _generate_draft_stories(
-        self,
-        epic: Task,
-        project: Project,
-        count: int = 15
-    ) -> List[Task]:
-        """
-        PROMPT #257 - Generate stories with FULL CONTENT using stories_from_epic.yaml.
-
-        Uses the existing rich YAML prompt to generate complete Stories
-        with description, semantic_map, acceptance_criteria, and story_points.
-
-        Args:
-            epic: The activated epic
-            project: The project with context
-            count: Number of stories to generate (default 15)
-
-        Returns:
-            List of created Story tasks with full content
-        """
-        logger.info(f"Generating {count} stories with full content for: {epic.title}")
-
-        # Extract epic's semantic map for context
-        epic_semantic_map = {}
-        if epic.interview_insights and isinstance(epic.interview_insights, dict):
-            epic_semantic_map = epic.interview_insights.get("semantic_map", {})
-
-        semantic_map_text = ""
-        if epic_semantic_map:
-            semantic_map_text = "\nMAPA SEMÂNTICO DO EPIC:\n"
-            semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
-
-        # PROMPT #252 - Fetch RELEVANT business rules from RAG using semantic search
-        business_rules_text = ""
-        try:
-            rag_service = RAGService(self.db)
-            # Use epic title + description as semantic query to get RELEVANT rules
-            search_query = f"{epic.title} {(epic.description or '')[:500]}"
-            rules = rag_service.get_business_rules(
-                project_id=project.id,
-                query=search_query,
-                top_k=50,
-                similarity_threshold=0.3
-            )
-            if rules:
-                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=10000)
-                logger.info(f"Injected {len(rules)} relevant business rules for epic: {epic.title[:40]}")
-        except Exception as e:
-            logger.warning(f"Could not fetch business rules for stories: {e}")
-
-        # PROMPT #252 - Build context: existing children, hierarchy, wiki
-        existing_children_text = _build_existing_children_text(self.db, epic.id)
-        full_hierarchy_text = _build_full_hierarchy_text(self.db, epic)
-        wiki_search = f"{epic.title} {(epic.description or '')[:200]}"
-        wiki_context_text = _build_wiki_context_text(self.db, project, wiki_search)
-
-        if existing_children_text:
-            logger.info(f"Passing {existing_children_text.count(chr(10))+1} existing children as dedup context")
-        if wiki_context_text:
-            logger.info(f"Injected wiki context ({len(wiki_context_text)} chars) for epic: {epic.title[:40]}")
-
-        try:
-            # PROMPT #257 - Use PromptLoader with stories_from_epic.yaml
-            from app.prompts.loader import get_prompt_loader
-            loader = get_prompt_loader()
-
-            system_prompt, user_prompt = loader.render(
-                "backlog/stories_from_epic",
-                {
-                    "epic_title": epic.title,
-                    "epic_description": (epic.description or "Não especificada")[:5000],
-                    "epic_story_points": epic.story_points or 13,
-                    "epic_priority": epic.priority.value if epic.priority else "medium",
-                    "epic_acceptance_criteria": "\n".join(epic.acceptance_criteria or []),
-                    "semantic_map_text": semantic_map_text,
-                    "epic_interview_insights": json.dumps(epic.interview_insights, ensure_ascii=False) if epic.interview_insights else "",
-                    "business_rules_text": business_rules_text,
-                    "existing_children_text": existing_children_text,
-                    "wiki_context_text": wiki_context_text,
-                    "full_hierarchy_text": full_hierarchy_text,
-                    "count": count,
-                    "rag_context": "",
-                }
-            )
-
-            orchestrator = AIOrchestrator(self.db)
-            response = await orchestrator.execute(
-                usage_type=self._get_usage_type(),
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=16384,
-                enable_rag=True,
-                project_id=str(project.id)
-            )
-
-            response_content = response.get("content", "")
-            stories_data = self._parse_json_response(response_content)
-
-            if not stories_data or not isinstance(stories_data, list):
-                logger.warning("AI did not return valid stories array, trying to extract from raw content")
-                # Try to extract content from raw response before falling back
-                extracted = _extract_content_from_raw_response(response_content)
-                if extracted and isinstance(extracted, list):
-                    stories_data = extracted
-                else:
-                    return await self._generate_draft_stories_fallback(epic, project, count)
-
-            stories_data = stories_data[:count]
-            logger.info(f"Generated {len(stories_data)} complete story objects for epic: {epic.title}")
-
-            # Create Story tasks with full content
-            created_stories = []
-            skipped_count = 0
-            batch_titles: List[str] = []  # PROMPT #253 - Track titles in current batch
-            rag_svc = RAGService(self.db)
-
-            for i, story_data in enumerate(stories_data):
-                try:
-                    if isinstance(story_data, str):
-                        story_data = {"title": story_data}
-
-                    story_title = story_data.get("title", f"Story {i+1}")
-
-                    # PROMPT #253 - Local dedup: check DB siblings + current batch (no RAG lag)
-                    if _is_title_duplicate(story_title, epic.id, self.db, batch_titles):
-                        logger.info(f"Skipping duplicate story (local dedup): '{story_title[:50]}...'")
-                        skipped_count += 1
-                        continue
-
-                    # PROMPT #162 - Also check RAG for cross-parent similarity
-                    similar_cards = rag_svc.find_similar_cards(
-                        title=story_title,
-                        description=None,
-                        project_id=epic.project_id,
-                        item_type="story",
-                        similarity_threshold=0.85,
-                        top_k=1
-                    )
-                    if similar_cards:
-                        logger.info(f"Skipping similar story (RAG): '{story_title[:50]}...'")
-                        skipped_count += 1
-                        continue
-
-                    # Extract content from AI response
-                    # PROMPT #233 - PD-3 fix: generated_prompt = semantic, description = human-readable
-                    generated_prompt = story_data.get("description_markdown", story_data.get("description", ""))
-                    story_semantic_map = story_data.get("semantic_map", {})
-                    description = _convert_semantic_to_human(generated_prompt, story_semantic_map) if generated_prompt else ""
-                    acceptance_criteria = story_data.get("acceptance_criteria", [])
-                    story_points = story_data.get("story_points", 5)
-                    priority_str = story_data.get("priority", "medium").lower()
-
-                    # Map priority string to enum
-                    priority_map = {
-                        "critical": PriorityLevel.CRITICAL,
-                        "high": PriorityLevel.HIGH,
-                        "medium": PriorityLevel.MEDIUM,
-                        "low": PriorityLevel.LOW,
-                        "trivial": PriorityLevel.TRIVIAL,
-                    }
-                    priority = priority_map.get(priority_str, PriorityLevel.MEDIUM)
-
-                    story = Task(
-                        project_id=epic.project_id,
-                        parent_id=epic.id,
-                        item_type=ItemType.STORY,
-                        title=story_title,
-                        description=description or f"Story derivada do Epic: {epic.title}",
-                        generated_prompt=generated_prompt,
-                        acceptance_criteria=acceptance_criteria,
-                        story_points=story_points if isinstance(story_points, int) else 5,
-                        priority=priority,
-                        labels=["suggested"],
-                        workflow_state="draft",
-                        status=TaskStatus.BACKLOG,
-                        order=i,
-                        reporter="system",
-                        # PROMPT #233 - PD-2 fix: mark as AI-generated for REGRA #0
-                        description_edited_by='ai',
-                        prompt_edited_by='ai',
-                        interview_insights={
-                            "derived_from_epic": str(epic.id),
-                            "semantic_map": story_semantic_map,
-                        },
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
-                    )
-                    self.db.add(story)
-                    created_stories.append(story)
-                    batch_titles.append(story_title)  # PROMPT #253 - Track for batch dedup
-                    logger.info(f"Created story {i+1}/{len(stories_data)}: {story_title[:50]}...")
-
-                except Exception as story_error:
-                    logger.error(f"Error creating story '{story_data}': {str(story_error)}")
-
-            if skipped_count > 0:
-                logger.info(f"Skipped {skipped_count} duplicate stories (local+RAG dedup)")
-
-            self.db.commit()
-            logger.info(f"Created {len(created_stories)} stories with full content")
-            return created_stories
-
-        except Exception as e:
-            logger.error(f"Error generating stories: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return await self._generate_draft_stories_fallback(epic, project, count)
-
-    async def _generate_draft_stories_fallback(
-        self,
-        epic: Task,
-        project: Project,
-        count: int = 15
-    ) -> List[Task]:
-        """Fallback: create stories with contextual titles when AI fails."""
-        fallback_titles = self._generate_fallback_story_titles(epic)
-        created_stories = []
-        for i, title in enumerate(fallback_titles[:min(5, count)]):
-            story = Task(
-                project_id=epic.project_id,
-                parent_id=epic.id,
-                item_type=ItemType.STORY,
-                title=title,
-                description=f"Story derivada do Epic **{epic.title}**. {(epic.description or '')[:300]}",
-                generated_prompt="",
-                acceptance_criteria=[],
-                story_points=5,
-                priority=PriorityLevel.MEDIUM,
-                labels=["suggested"],
-                workflow_state="draft",
-                status=TaskStatus.BACKLOG,
-                order=i,
-                interview_insights={"derived_from_epic": str(epic.id)}
-            )
-            self.db.add(story)
-            created_stories.append(story)
-
-        self.db.commit()
-        return created_stories
-
-    def _generate_fallback_story_titles(self, epic: Task) -> List[str]:
-        """Generate fallback story titles based on epic context.
-
-        PROMPT #252 - Uses epic description to extract meaningful story titles
-        instead of generic CRUD templates."""
-        base_title = epic.title.replace("Epic: ", "").replace("Módulo: ", "")
-        desc = (epic.description or "")[:2000]
-
-        # Try to extract meaningful concepts from the description
-        titles = []
-
-        # If we have a rich description, extract key concepts from bold items
-        import re
-        bold_items = re.findall(r'\*\*([^*]+)\*\*', desc)
-        if bold_items:
-            for item in bold_items[:10]:
-                # Skip items that are section headers
-                item_clean = item.strip().rstrip(':')
-                if len(item_clean) > 5 and len(item_clean) < 80:
-                    titles.append(f"{item_clean} para {base_title}")
-
-        # If no bold items found, try bullet points
-        if not titles:
-            bullets = re.findall(r'[-•]\s+(.+?)(?:\n|$)', desc)
-            for bullet in bullets[:10]:
-                clean = bullet.strip()
-                if len(clean) > 10 and len(clean) < 100:
-                    titles.append(clean)
-
-        # Final fallback with contextual titles
-        if not titles:
-            titles = [
-                f"Configuração e setup de {base_title}",
-                f"Implementação core de {base_title}",
-                f"Integração de {base_title} com o sistema",
-                f"Validações e regras de {base_title}",
-                f"Testes e qualidade de {base_title}",
-            ]
-
-        return titles
 
     def _parse_json_response(self, content: str) -> Any:
         """Parse JSON from AI response, handling various formats."""
@@ -746,278 +315,6 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 except json.JSONDecodeError:
                     pass
             return None
-
-    async def _generate_draft_tasks(
-        self,
-        story: Task,
-        project: Project,
-        count: int = 8
-    ) -> List[Task]:
-        """
-        PROMPT #257 - Generate tasks with FULL CONTENT using tasks_from_story.yaml.
-
-        Args:
-            story: The activated story
-            project: The project with context
-            count: Number of tasks to generate (default 8)
-
-        Returns:
-            List of created Task items with full content
-        """
-        logger.info(f"Generating {count} tasks with full content for story: {story.title}")
-
-        # Get parent epic and story semantic maps for context
-        parent_epic = None
-        epic_semantic_map = {}
-        story_semantic_map = {}
-
-        if story.parent_id:
-            parent_epic = self.db.query(Task).filter(Task.id == story.parent_id).first()
-            if parent_epic and parent_epic.interview_insights:
-                epic_semantic_map = parent_epic.interview_insights.get("semantic_map", {})
-
-        if story.interview_insights:
-            story_semantic_map = story.interview_insights.get("semantic_map", {})
-
-        combined_semantic_map = {**epic_semantic_map, **story_semantic_map}
-        semantic_map_text = ""
-        if combined_semantic_map:
-            semantic_map_text = "\nMAPA SEMÂNTICO DO EPIC/STORY:\n"
-            semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
-
-        # PROMPT #252 - Fetch RELEVANT business rules from RAG using semantic search
-        business_rules_text = ""
-        try:
-            rag_service = RAGService(self.db)
-            # Use story title + description + parent epic title as semantic query
-            epic_title = parent_epic.title if parent_epic else ""
-            search_query = f"{epic_title} {story.title} {(story.description or '')[:500]}"
-            rules = rag_service.get_business_rules(
-                project_id=project.id,
-                query=search_query,
-                top_k=50,
-                similarity_threshold=0.3
-            )
-            if rules:
-                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=10000)
-                logger.info(f"Injected {len(rules)} relevant business rules for story: {story.title[:40]}")
-        except Exception as e:
-            logger.warning(f"Could not fetch business rules for tasks: {e}")
-
-        # PROMPT #252 - Build context: existing children, hierarchy, wiki
-        existing_children_text = _build_existing_children_text(self.db, story.id)
-        full_hierarchy_text = _build_full_hierarchy_text(self.db, story)
-        wiki_search = f"{epic_title} {story.title} {(story.description or '')[:200]}"
-        wiki_context_text = _build_wiki_context_text(self.db, project, wiki_search)
-
-        if existing_children_text:
-            logger.info(f"Passing {existing_children_text.count(chr(10))+1} existing children as dedup context for story: {story.title[:40]}")
-        if wiki_context_text:
-            logger.info(f"Injected wiki context ({len(wiki_context_text)} chars) for story: {story.title[:40]}")
-
-        try:
-            # PROMPT #257 - Use PromptLoader with tasks_from_story.yaml
-            from app.prompts.loader import get_prompt_loader
-            loader = get_prompt_loader()
-
-            system_prompt, user_prompt = loader.render(
-                "backlog/tasks_from_story",
-                {
-                    "story_title": story.title,
-                    "story_description": (story.description or "Não especificada")[:5000],
-                    "story_story_points": story.story_points or 8,
-                    "story_priority": story.priority.value if story.priority else "medium",
-                    "story_acceptance_criteria": "\n".join(story.acceptance_criteria or []),
-                    "semantic_map_text": semantic_map_text,
-                    "business_rules_text": business_rules_text,
-                    "existing_children_text": existing_children_text,
-                    "wiki_context_text": wiki_context_text,
-                    "full_hierarchy_text": full_hierarchy_text,
-                    "count": count,
-                    "rag_context": "",
-                }
-            )
-
-            orchestrator = AIOrchestrator(self.db)
-            response = await orchestrator.execute(
-                usage_type=self._get_usage_type(),
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=16384,
-                enable_rag=True,
-                project_id=str(project.id)
-            )
-
-            response_content = response.get("content", "")
-            tasks_data = self._parse_json_response(response_content)
-
-            if not tasks_data or not isinstance(tasks_data, list):
-                logger.warning("AI did not return valid tasks array, falling back to title-only")
-                return self._generate_draft_tasks_fallback(story)
-
-            tasks_data = tasks_data[:count]
-            logger.info(f"Generated {len(tasks_data)} complete task objects for story: {story.title}")
-
-            # Create Task objects with full content
-            created_tasks = []
-            skipped_count = 0
-            batch_titles: List[str] = []  # PROMPT #253 - Track titles in current batch
-            rag_svc = RAGService(self.db)
-
-            for i, task_data in enumerate(tasks_data):
-                try:
-                    if isinstance(task_data, str):
-                        task_data = {"title": task_data}
-
-                    task_title = task_data.get("title", f"Task {i+1}")
-
-                    # PROMPT #253 - Local dedup: check DB siblings + current batch (no RAG lag)
-                    if _is_title_duplicate(task_title, story.id, self.db, batch_titles):
-                        logger.info(f"Skipping duplicate task (local dedup): '{task_title[:50]}...'")
-                        skipped_count += 1
-                        continue
-
-                    # PROMPT #162 - Also check RAG for cross-parent similarity
-                    similar_cards = rag_svc.find_similar_cards(
-                        title=task_title,
-                        description=None,
-                        project_id=story.project_id,
-                        item_type="task",
-                        similarity_threshold=0.85,
-                        top_k=1
-                    )
-                    if similar_cards:
-                        logger.info(f"Skipping similar task (RAG): '{task_title[:50]}...'")
-                        skipped_count += 1
-                        continue
-
-                    # PROMPT #233 - PD-3 fix: generated_prompt = semantic, description = human-readable
-                    generated_prompt = task_data.get("description_markdown", task_data.get("description", ""))
-                    task_semantic_map = task_data.get("semantic_map", {})
-                    description = _convert_semantic_to_human(generated_prompt, task_semantic_map) if generated_prompt else ""
-                    acceptance_criteria = task_data.get("acceptance_criteria", [])
-                    story_points = task_data.get("story_points", 3)
-                    priority_str = task_data.get("priority", "medium").lower()
-
-                    priority_map = {
-                        "critical": PriorityLevel.CRITICAL,
-                        "high": PriorityLevel.HIGH,
-                        "medium": PriorityLevel.MEDIUM,
-                        "low": PriorityLevel.LOW,
-                        "trivial": PriorityLevel.TRIVIAL,
-                    }
-                    priority = priority_map.get(priority_str, story.priority or PriorityLevel.MEDIUM)
-
-                    task = Task(
-                        project_id=story.project_id,
-                        parent_id=story.id,
-                        item_type=ItemType.TASK,
-                        title=task_title,
-                        description=description or f"Task derivada da Story: {story.title}",
-                        generated_prompt=generated_prompt,
-                        acceptance_criteria=acceptance_criteria,
-                        story_points=story_points if isinstance(story_points, int) else 3,
-                        priority=priority,
-                        labels=["suggested"],
-                        workflow_state="draft",
-                        status=TaskStatus.BACKLOG,
-                        order=i,
-                        reporter="system",
-                        # PROMPT #233 - PD-2 fix: mark as AI-generated for REGRA #0
-                        description_edited_by='ai',
-                        prompt_edited_by='ai',
-                        interview_insights={
-                            "derived_from_story": str(story.id),
-                            "semantic_map": task_semantic_map,
-                        },
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
-                    )
-                    self.db.add(task)
-                    created_tasks.append(task)
-                    batch_titles.append(task_title)  # PROMPT #253 - Track for batch dedup
-                    logger.info(f"Created task {i+1}/{len(tasks_data)}: {task_title[:50]}...")
-
-                except Exception as task_error:
-                    logger.error(f"Error creating task '{task_data}': {str(task_error)}")
-
-            if skipped_count > 0:
-                logger.info(f"Skipped {skipped_count} duplicate tasks (local+RAG dedup)")
-
-            self.db.commit()
-            logger.info(f"Created {len(created_tasks)} tasks with full content")
-            return created_tasks
-
-        except Exception as e:
-            logger.error(f"Error generating tasks: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return self._generate_draft_tasks_fallback(story)
-
-    def _generate_draft_tasks_fallback(self, story: Task) -> List[Task]:
-        """Fallback: create tasks with basic titles when AI fails."""
-        fallback_titles = self._generate_fallback_task_titles(story)
-        created_tasks = []
-        for i, title in enumerate(fallback_titles[:5]):
-            task = Task(
-                project_id=story.project_id,
-                parent_id=story.id,
-                item_type=ItemType.TASK,
-                title=title,
-                description=f"Task derivada da Story **{story.title}**. {(story.description or '')[:300]}",
-                generated_prompt="",
-                acceptance_criteria=[],
-                story_points=3,
-                priority=story.priority or PriorityLevel.MEDIUM,
-                labels=["suggested"],
-                workflow_state="draft",
-                status=TaskStatus.BACKLOG,
-                order=i,
-                interview_insights={"derived_from_story": str(story.id)}
-            )
-            self.db.add(task)
-            created_tasks.append(task)
-        self.db.commit()
-        return created_tasks
-
-    def _generate_fallback_task_titles(self, story: Task) -> List[str]:
-        """Generate fallback task titles based on story context.
-
-        PROMPT #252 - Uses story description to extract meaningful task titles
-        instead of generic templates."""
-        base_title = story.title[:50] if story.title else "funcionalidade"
-        desc = (story.description or "")[:2000]
-
-        import re
-        titles = []
-
-        # Extract from bold items in description
-        bold_items = re.findall(r'\*\*([^*]+)\*\*', desc)
-        if bold_items:
-            for item in bold_items[:8]:
-                item_clean = item.strip().rstrip(':')
-                if len(item_clean) > 5 and len(item_clean) < 80:
-                    titles.append(f"Implementar {item_clean}")
-
-        # Extract from bullet points
-        if not titles:
-            bullets = re.findall(r'[-•]\s+(.+?)(?:\n|$)', desc)
-            for bullet in bullets[:8]:
-                clean = bullet.strip()
-                if len(clean) > 10 and len(clean) < 100:
-                    titles.append(clean)
-
-        # Contextual fallback
-        if not titles:
-            titles = [
-                f"Modelagem de dados para {base_title}",
-                f"Lógica de negócio para {base_title}",
-                f"API e integração de {base_title}",
-                f"Interface de {base_title}",
-                f"Testes de {base_title}",
-            ]
-
-        return titles
 
     async def generate_cards_from_memory(
         self,
@@ -1054,14 +351,14 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         """
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            logger.error(f"❌ Project {project_id} not found for card generation")
+            logger.error(f"Project {project_id} not found for card generation")
             return {"success": False, "error": "Projeto não encontrado"}
 
         if not project.initial_memory_context:
-            logger.warning(f"⚠️ Project {project_id} has no memory context for card generation")
+            logger.warning(f"Project {project_id} has no memory context for card generation")
             return {"success": False, "error": "Nenhum contexto de memória disponível"}
 
-        logger.info(f"🎯 Starting card generation from memory for project: {project.name}")
+        logger.info(f"Starting card generation from memory for project: {project.name}")
 
         result = {
             "success": True,
@@ -1079,7 +376,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         ).count()
 
         if existing_suggested_epics > 0:
-            logger.info(f"ℹ️ Project {project_id} already has {existing_suggested_epics} suggested epics, skipping epic generation")
+            logger.info(f"Project {project_id} already has {existing_suggested_epics} suggested epics, skipping epic generation")
             # Still allow business rule cards to be regenerated if missing
             result["skipped_epics"] = True
 
@@ -1094,31 +391,31 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     ai_timeout=120
                 )
                 result["context_auto_generated"] = True
-                logger.info(f"✅ Rich context generated for project {project.name}")
+                logger.info(f"Rich context generated for project {project.name}")
             except Exception as e:
-                logger.warning(f"⚠️ Rich context failed, falling back to auto-context: {e}")
+                logger.warning(f"Rich context failed, falling back to auto-context: {e}")
                 # Fallback to basic deterministic context
                 try:
                     auto_context = await self._generate_auto_context_from_memory(project)
                     result["context_auto_generated"] = True
-                    logger.info(f"✅ Auto-generated context (fallback) for project {project.name}")
+                    logger.info(f"Auto-generated context (fallback) for project {project.name}")
                 except Exception as e2:
-                    logger.warning(f"⚠️ Auto-context also failed: {e2}")
+                    logger.warning(f"Auto-context also failed: {e2}")
                     # Continue anyway - we can still generate cards
 
         # Step 2: Generate business rule cards (closed)
         try:
             business_rule_cards = await self.generate_business_rule_cards(project_id)
             result["business_rule_cards"] = business_rule_cards
-            logger.info(f"✅ Generated {len(business_rule_cards)} business rule cards")
+            logger.info(f"Generated {len(business_rule_cards)} business rule cards")
         except Exception as e:
-            logger.error(f"❌ Failed to generate business rule cards: {e}")
+            logger.error(f"Failed to generate business rule cards: {e}")
 
         # Step 3: Generate suggested epics from memory context
         # PROMPT #156 - Skip only if suggested epics already exist
         # PROMPT #155 - Use incremental generation if job_manager is provided
         if result.get("skipped_epics"):
-            logger.info("⏭️ Skipping epic generation - suggested epics already exist")
+            logger.info("Skipping epic generation - suggested epics already exist")
         else:
             try:
                 if job_manager and job_id:
@@ -1126,7 +423,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     import math
                     epics_per_batch = min(epic_count, 5)
                     max_batches = math.ceil(epic_count / epics_per_batch) if epics_per_batch > 0 else 1
-                    logger.info(f"📊 Epic generation: {epic_count} epics requested ({max_batches} batches x {epics_per_batch})")
+                    logger.info(f"Epic generation: {epic_count} epics requested ({max_batches} batches x {epics_per_batch})")
                     # Incremental generation with WebSocket updates
                     epic_result = await self.generate_epics_incrementally(
                         project=project,
@@ -1137,20 +434,21 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     )
                     result["suggested_epics"] = epic_result.get("epics", [])
                     result["batches_processed"] = epic_result.get("batches_processed", 0)
-                    logger.info(f"✅ Generated {len(result['suggested_epics'])} suggested epics (incremental)")
+                    logger.info(f"Generated {len(result['suggested_epics'])} suggested epics (incremental)")
                 else:
                     # Legacy single-call generation
                     suggested_epics = await self._generate_suggested_epics_from_memory(project)
                     result["suggested_epics"] = suggested_epics
-                    logger.info(f"✅ Generated {len(suggested_epics)} suggested epics")
+                    logger.info(f"Generated {len(suggested_epics)} suggested epics")
             except Exception as e:
-                logger.error(f"❌ Failed to generate suggested epics: {e}")
+                logger.error(f"Failed to generate suggested epics: {e}")
 
-        logger.info(f"🎉 Card generation complete for project {project.name}")
+        logger.info(f"Card generation complete for project {project.name}")
         logger.info(f"   - Business Rules: {len(result['business_rule_cards'])}")
         logger.info(f"   - Suggested Epics: {len(result['suggested_epics'])}")
 
         return result
+
     async def _generate_suggested_epics_from_memory(self, project: Project) -> List[Dict]:
         """
         PROMPT #153 - Generate suggested epics from memory scan data.
@@ -1303,12 +601,12 @@ IMPORTANTE:
                 })
 
             self.db.commit()
-            logger.info(f"✅ Created {len(saved_epics)} suggested epics for project {project.name}")
+            logger.info(f"Created {len(saved_epics)} suggested epics for project {project.name}")
 
             return saved_epics
 
         except Exception as e:
-            logger.error(f"❌ Error generating suggested epics from memory: {e}")
+            logger.error(f"Error generating suggested epics from memory: {e}")
             return []
 
     # =========================================================================
@@ -1324,10 +622,10 @@ IMPORTANTE:
         epics_per_batch: int = 5
     ) -> Dict[str, Any]:
         """
-        PROMPT #155 - Geração incremental de épicos.
+        PROMPT #155 - Incremental epic generation.
 
-        Gera épicos em lotes menores, salvando cada lote no banco
-        e notificando o frontend via WebSocket após cada batch.
+        Generates epics in smaller batches, saving each batch to the database
+        and notifying the frontend via WebSocket after each batch.
 
         Args:
             project: Project instance
@@ -1340,7 +638,7 @@ IMPORTANTE:
             Dict with success status, total_epics, batches_processed, and epics list
         """
         all_epics = []
-        existing_titles = set()  # Evita duplicatas entre batches
+        existing_titles = set()  # Avoid duplicates between batches
         batches_processed = 0
 
         # Get memory context for prompt building
@@ -1373,7 +671,7 @@ IMPORTANTE:
 
             if not batch_epics:
                 # AI indicated no more relevant epics
-                logger.info(f"📋 Batch {batch_num}: No more epics to generate")
+                logger.info(f"Batch {batch_num}: No more epics to generate")
                 break
 
             # Save epics to database immediately
@@ -1387,7 +685,7 @@ IMPORTANTE:
             # Broadcast to frontend (epics created in this batch)
             await self._broadcast_epic_batch(project.id, saved_epics, batch_num, max_batches)
 
-            logger.info(f"✅ Batch {batch_num}: Generated {len(saved_epics)} epics")
+            logger.info(f"Batch {batch_num}: Generated {len(saved_epics)} epics")
 
         return {
             "success": True,
@@ -1515,7 +813,7 @@ IMPORTANTE:
             return epics
 
         except Exception as e:
-            logger.error(f"❌ Error generating epic batch {batch_number}: {e}")
+            logger.error(f"Error generating epic batch {batch_number}: {e}")
             return []
 
     def _save_epic_batch(self, project: Project, epics: List[Dict]) -> List[Dict]:
@@ -1607,7 +905,7 @@ IMPORTANTE:
                 "epics": epics
             })
 
-            logger.debug(f"📡 Broadcast epic batch {batch_num}: {len(epics)} epics")
+            logger.debug(f"Broadcast epic batch {batch_num}: {len(epics)} epics")
 
         except Exception as e:
-            logger.warning(f"⚠️ Failed to broadcast epic batch: {e}")
+            logger.warning(f"Failed to broadcast epic batch: {e}")
