@@ -2,8 +2,8 @@
 ## Arquivo de Instruções Permanentes para Claude Code
 
 **Data de Criação:** December 29, 2025
-**Última Atualização:** February 19, 2026
-**Versão:** 1.6 - Human Data Supremacy Rule
+**Última Atualização:** March 5, 2026
+**Versão:** 1.7 - Hardcoded Prompts & Contracts
 
 ---
 
@@ -293,135 +293,130 @@ REDIS_PORT=6379
 
 ---
 
-### 0.3. PROMPTS EXTERNALIZADOS PARA YAML (CRÍTICO) 📝
+### 0.3. PROMPTS E CONTRATOS HARDCODED EM PYTHON (CRÍTICO) 📝
 
-**⚠️ ATENÇÃO: TODOS OS PROMPTS DE IA DEVEM ESTAR EM ARQUIVOS YAML ⚠️**
+**⚠️ ATENÇÃO: TODOS OS PROMPTS E CONTRATOS SÃO CONSTANTES PYTHON HARDCODED ⚠️**
 
-**REGRA FUNDAMENTAL (PROMPT #103):**
-O ORBIT utiliza um sistema de **prompts externalizados** onde TODOS os prompts de IA são armazenados em arquivos YAML na pasta `backend/app/prompts/`.
+**REGRA FUNDAMENTAL (PROMPT #260):**
+O ORBIT utiliza um sistema de **prompts e contratos hardcoded** onde TODOS os prompts e contratos são armazenados como **constantes Python** em módulos organizados por domínio.
 
-**Estrutura de pastas:**
+**⚠️ NUNCA use:**
+- ❌ Arquivos YAML para prompts ou contratos
+- ❌ Banco de dados para carregar prompts ou contratos
+- ❌ Leitura de arquivos no filesystem para prompts
+- ❌ PromptService com acesso a DB para prompts
+
+**Estrutura dos módulos:**
 ```
 backend/app/prompts/
-├── backlog/           # Prompts de geração de backlog (Epic, Stories, Tasks)
-├── commits/           # Prompts de geração de commits
-├── components/        # Componentes reutilizáveis (semantic_methodology, etc.)
-├── context/           # Prompts de contexto e especificações
-├── discovery/         # Prompts de descoberta de padrões
-└── interviews/        # Prompts de entrevistas
-    ├── card_focused/  # Prompts por tipo de card
-    ├── sections/      # Seções especializadas (business, design, mobile)
-    └── task_types/    # Prompts por tipo de task
+├── loader.py              # PromptLoader (registry de constantes Python)
+├── service.py             # PromptService (usa PromptLoader internamente)
+├── render.py              # Utilitário Jinja2 para render de templates
+├── components.py          # Componentes reutilizáveis (ALL_COMPONENTS)
+├── backlog.py             # 7 prompts (epic, story, task generation)
+├── interviews_prompts.py  # 25 prompts (entrevistas, card_focused, sections)
+├── context_prompts.py     # 20 prompts (activation, specs, wiki, RAG)
+├── commits_prompts.py     # 1 prompt (commit messages)
+├── discovery_prompts.py   # 4 prompts (pattern/convention discovery)
+├── memory_prompts.py      # 3 prompts (codebase analysis)
+├── projects_prompts.py    # 5 prompts (title, description)
+├── rag_prompts.py         # 3 prompts (rule extraction, cards)
+├── utility_prompts.py     # 1 prompt (markdown formatter)
+└── wiki_prompts.py        # 4 prompts (wiki page operations)
+
+backend/app/contracts/
+├── loader.py              # ContractLoader (registry de constantes Python)
+├── models.py              # Modelos Pydantic (Contract, ContractMetadata)
+├── business_contracts.py  # 8 contratos (hierarchy, workflow, scoring)
+├── execution_contracts.py # 3 contratos (thresholds, limits, budgets)
+├── validation_contracts.py# 1 contrato (response rules)
+├── interviews_contracts.py# 25 contratos
+├── generation_contracts.py# 19 contratos
+├── memory_contracts.py    # 7 contratos
+├── pipeline_contracts.py  # 21 contratos
+├── commits_contracts.py   # 1 contrato
+└── components_contracts.py# 3 contratos
 ```
 
-**DURANTE QUALQUER PROMPT/TAREFA, VOCÊ DEVE:**
+**Como funcionam os prompts (73 total):**
 
-1. **VERIFICAR** se existe código de prompt hardcoded no arquivo que está modificando
-2. **SE ENCONTRAR** prompt hardcoded (system_prompt = """...""", user_prompt = """..."""):
-   - **CRIAR** arquivo YAML correspondente em `backend/app/prompts/`
-   - **SUBSTITUIR** o código hardcoded para usar o PromptLoader
-   - **TESTAR** se o YAML carrega corretamente
-
-**Como identificar prompts hardcoded:**
+Cada módulo Python exporta constantes `_SYSTEM` e `_USER` e um dict `PROMPTS`:
 ```python
-# ❌ ERRADO - Prompt hardcoded
-system_prompt = """Você é um Product Owner especialista...
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
-...
-"""
+# Em backend/app/prompts/backlog.py
+BACKLOG_EPIC_FROM_INTERVIEW_SYSTEM = """Você é um Product Owner..."""
+BACKLOG_EPIC_FROM_INTERVIEW_USER = """Analise: {{ conversation_text }}"""
 
-# ❌ ERRADO - F-string com prompt longo
-system_prompt = f"""Você está conduzindo uma entrevista...
-{context}
-...
-"""
+PROMPTS = {
+    "backlog/epic_from_interview": {
+        "system": BACKLOG_EPIC_FROM_INTERVIEW_SYSTEM,
+        "user": BACKLOG_EPIC_FROM_INTERVIEW_USER,
+        "usage_type": "prompt_generation",
+    },
+}
 ```
 
-**Como deve ser (externalizado):**
+**Como funcionam os contratos (88 total):**
+
+Mesma estrutura, com `CONTRACTS` dict e constantes `_DATA` para contratos de configuração:
 ```python
-# ✅ CORRETO - Usando PromptLoader
+# Em backend/app/contracts/execution_contracts.py
+SIMILARITY_THRESHOLDS: SimilarityThresholds = {
+    "exact_match_cache": 0.95,
+    "card_deduplication": 0.85,
+    ...
+}
+
+CONTRACTS = {
+    "execution/similarity_thresholds": {
+        "system": ..., "user": ..., "usage_type": "_config",
+        "data": EXECUTION_SIMILARITY_THRESHOLDS_DATA,
+    },
+}
+```
+
+**Como usar (API do consumidor - não mudou):**
+```python
+# ✅ CORRETO - Usar PromptLoader (lê do registry Python)
 from app.prompts.loader import PromptLoader
 
 loader = PromptLoader()
 system_prompt, user_prompt = loader.render(
     "backlog/epic_from_interview",
-    {
-        "project_name": project.name,
-        "conversation_text": conversation_text
-    }
+    {"project_name": project.name, "conversation_text": text}
 )
+
+# ✅ CORRETO - Usar ContractLoader para dados de configuração
+from app.contracts.loader import ContractLoader
+
+cloader = ContractLoader()
+data = cloader.load_data("business/generation_counts")
+
+# ✅ CORRETO - Importar typed exports diretamente
+from app.contracts.execution_contracts import SIMILARITY_THRESHOLDS
+threshold = SIMILARITY_THRESHOLDS["exact_match_cache"]  # 0.95
 ```
 
-**Formato do arquivo YAML:**
-```yaml
-name: epic_from_interview
-version: 1
-category: backlog
-description: Gera Epic a partir de conversa de entrevista
-usage_type: prompt_generation
-estimated_tokens: 2500
-tags:
-  - backlog
-  - epic
-  - portuguese
+**Para CRIAR um novo prompt:**
+1. Adicione constantes `_SYSTEM` e `_USER` no módulo de domínio apropriado
+2. Adicione a entrada no dict `PROMPTS` do mesmo módulo
+3. Use variáveis Jinja2 (`{{ variable }}`) para dados dinâmicos
+4. Componentes via `{{ components.semantic_methodology }}`
 
-variables:
-  required:
-    - project_name
-    - conversation_text
-  optional:
-    - semantic_map_text
+**Para MODIFICAR um prompt existente:**
+1. Localize o módulo Python do domínio (ex: `backlog.py`, `interviews_prompts.py`)
+2. Edite a constante `_SYSTEM` ou `_USER` correspondente
+3. Teste: `python -c "from app.prompts.loader import PromptLoader; ..."`
 
-components:
-  - semantic_methodology
+**Para CRIAR um novo contrato:**
+1. Adicione constantes no módulo `*_contracts.py` do domínio
+2. Se tiver dados de configuração, crie constante `_DATA` e TypedDict
+3. Adicione entrada no dict `CONTRACTS`
 
-system_prompt: |
-  Você é um Product Owner especialista...
-
-  {{ components.semantic_methodology }}
-
-  ...
-
-user_prompt: |
-  Analise esta conversa: {{ conversation_text }}
-  Projeto: {{ project_name }}
-```
-
-**NUNCA faça:**
-- ❌ Criar novos prompts hardcoded em código Python
-- ❌ Modificar prompts diretamente no código Python
-- ❌ Ignorar prompts hardcoded existentes ao trabalhar em um arquivo
-
-**SEMPRE faça:**
-- ✅ Verificar se há prompts hardcoded ao abrir qualquer arquivo de serviço
-- ✅ Externalizar prompts encontrados para YAML
-- ✅ Usar o PromptLoader para carregar prompts
-- ✅ Manter variáveis dinâmicas usando sintaxe Jinja2 ({{ variable }})
-
-**REGRA DE OURO PARA MODIFICAÇÕES DE PROMPTS (PROMPT #109):**
-Quando precisar modificar QUALQUER prompt de IA (seja para corrigir formato de perguntas,
-ajustar instruções, ou melhorar resultados):
-
-1. **PRIMEIRO**: Localize o arquivo YAML correspondente em `backend/app/prompts/`
-2. **FAÇA AS ALTERAÇÕES NO YAML**: Modifique `system_prompt:` ou `user_prompt:`
-3. **VERIFIQUE**: Se o código Python ainda usa prompt hardcoded, migre para PromptLoader
-4. **TESTE**: Reinicie o servidor e teste a funcionalidade
-
-Exemplo de fluxo correto:
-- Problema: "Gemini não está gerando perguntas fechadas com opções"
-- Solução: Edite `backend/app/prompts/interviews/context_interview_ai.yaml`
-- Não faça: Modificar strings de prompt diretamente no Python
-
-**Arquivos com prompts já externalizados (51 YAMLs):**
-- Total: 51 arquivos YAML
-- Cobertura: 100% dos prompts principais
-
-**Se encontrar prompt hardcoded:**
-1. Crie o arquivo YAML na pasta apropriada
-2. Copie o conteúdo do prompt para `system_prompt:` e `user_prompt:`
-3. Identifique variáveis e adicione em `variables:`
-4. Substitua o código Python para usar PromptLoader
-5. Teste se funciona corretamente
+**Componentes reutilizáveis** (`backend/app/prompts/components.py`):
+- `SEMANTIC_METHODOLOGY` - Metodologia de referências semânticas
+- `JSON_OUTPUT_RULES` - Regras de output JSON
+- `PROJECT_CONTEXT` - Template de contexto do projeto
+- Injetados via `{{ components.semantic_methodology }}` nos templates Jinja2
 
 ---
 
@@ -431,12 +426,12 @@ Exemplo de fluxo correto:
 
 #### Estrutura do Arquivo:
 ```
-satellite/knowledge/PROMPT_[NÚMERO]_[DESCRIÇÃO].md
+docs/PROMPT_[NÚMERO]_[DESCRIÇÃO].md
 ```
 
-**Template:** Seguir estrutura dos exemplos existentes em `satellite/knowledge/`. Secoes obrigatorias: Objective, What Was Implemented, Files Modified/Created, Testing Results, Status.
+**Template:** Seguir estrutura dos exemplos existentes em `docs/`. Secoes obrigatorias: Objective, What Was Implemented, Files Modified/Created, Testing Results, Status.
 
-**Referencia:** `satellite/knowledge/PROMPT_50_IMPLEMENTATION_REPORT.md` (exemplo completo)
+**Referencia:** `docs/PROMPT_50_IMPLEMENTATION_REPORT.md` (exemplo completo)
 
 ---
 
@@ -453,7 +448,7 @@ Ao final de cada tarefa: `git status` → `git add` → `git commit` → `git pu
 ## 📋 WORKFLOW POR PROMPT
 
 Ao completar implementacao:
-1. Criar `satellite/knowledge/PROMPT_[N]_[TIPO]_REPORT.md` (ver template em `satellite/knowledge/PROMPT_50_IMPLEMENTATION_REPORT.md`)
+1. Criar `docs/PROMPT_[N]_[TIPO]_REPORT.md` (ver template em `docs/PROMPT_50_IMPLEMENTATION_REPORT.md`)
 2. Git commit + push
 3. Informar usuario: resumo, arquivos modificados, confirmar doc e commit
 
@@ -475,9 +470,9 @@ satellite/
 ```
 
 **Regras:**
-- ✅ Todos os reports de PROMPT vao em `satellite/knowledge/`
+- ✅ Todos os reports de PROMPT vao em `docs/`
 - ✅ Upload de documentos externos vai para `satellite/docs/` (vigiado pelo RAG)
-- ✅ Wiki pages ficam em `satellite/knowledge/wiki/`
+- ✅ Wiki pages ficam em `docs/wiki/`
 - ✅ CLAUDE.md e README.md permanecem na raiz (sao arquivos especiais)
 - ❌ NUNCA criar .md de documentacao na raiz do projeto
 
@@ -534,7 +529,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 ## ⚠️ REGRAS IMPORTANTES
 
 ### SEMPRE:
-1. ✅ Criar arquivo satellite/knowledge/PROMPT_[N]_REPORT.md após cada implementação
+1. ✅ Criar arquivo docs/PROMPT_[N]_REPORT.md após cada implementação
 2. ✅ Fazer git commit e push no final de CADA prompt
 3. ✅ Seguir padrões existentes do código
 4. ✅ Usar componentes e funções já existentes
@@ -553,8 +548,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Histórico completo de prompts:** Consulte `satellite/knowledge/PROMPT_HISTORY.md`
-**Último prompt registrado:** PROMPT #250
+**Histórico completo de prompts:** Consulte `docs/PROMPT_HISTORY.md`
+**Último prompt registrado:** PROMPT #260
 
 ---
 
@@ -583,7 +578,7 @@ git commit -m "docs: update CLAUDE.md memory file
 
 Sua responsabilidade é:
 1. 📝 Implementar features seguindo padrões
-2. 📋 Documentar tudo em arquivos satellite/knowledge/PROMPT_N.md
+2. 📋 Documentar tudo em arquivos docs/PROMPT_N.md
 3. 💾 Commitar e fazer push de TODAS as mudanças
 4. 🎯 Manter qualidade e consistência do código
 5. 🚀 Entregar valor ao usuário
