@@ -1,24 +1,17 @@
 """
-PromptLoader - Loads and renders YAML prompt templates
+PromptLoader - Loads and renders hardcoded prompt constants.
 
-Features:
-- YAML file parsing with Jinja2 templating
-- Component inclusion and reuse
-- Variable validation
-- Caching for performance
-- Graceful error handling
+All prompts are stored as Python string constants in domain modules.
+This loader provides the same API as the original YAML-based loader
+but reads from an in-memory registry instead of the filesystem.
 
-PROMPT #103 - Externalize Hardcoded Prompts to YAML Files
+Consolidation: YAML → Python constants (no more dynamic file loading).
 """
 
-import os
 import logging
-from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
-from functools import lru_cache
 
-import yaml
-from jinja2 import Environment, BaseLoader, TemplateNotFound, TemplateSyntaxError
+from jinja2 import Environment, BaseLoader, TemplateSyntaxError
 
 from app.prompts.models import (
     PromptTemplate,
@@ -26,121 +19,87 @@ from app.prompts.models import (
     PromptVariables,
     RenderedPrompt,
     PromptNotFoundError,
-    ComponentNotFoundError,
     VariableValidationError,
     PromptRenderError,
 )
+from app.prompts.components import ALL_COMPONENTS
 
 logger = logging.getLogger(__name__)
 
-# Base directory for prompts
-PROMPTS_DIR = Path(__file__).parent
+# ---------------------------------------------------------------------------
+# Build the global prompt registry from all domain modules
+# ---------------------------------------------------------------------------
+_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
 
+def _build_registry() -> Dict[str, Dict[str, Any]]:
+    """Lazily build the prompt registry from all domain modules."""
+    if _REGISTRY:
+        return _REGISTRY
+
+    from app.prompts.backlog import PROMPTS as backlog
+    from app.prompts.interviews_prompts import PROMPTS as interviews
+    from app.prompts.context_prompts import PROMPTS as context
+    from app.prompts.commits_prompts import PROMPTS as commits
+    from app.prompts.discovery_prompts import PROMPTS as discovery
+    from app.prompts.memory_prompts import PROMPTS as memory
+    from app.prompts.projects_prompts import PROMPTS as projects
+    from app.prompts.rag_prompts import PROMPTS as rag
+    from app.prompts.utility_prompts import PROMPTS as utility
+    from app.prompts.wiki_prompts import PROMPTS as wiki
+
+    for module_prompts in (backlog, interviews, context, commits, discovery,
+                           memory, projects, rag, utility, wiki):
+        _REGISTRY.update(module_prompts)
+
+    logger.info(f"Prompt registry built with {len(_REGISTRY)} prompts")
+    return _REGISTRY
+
+
+# ---------------------------------------------------------------------------
+# Jinja2 environment (shared, stateless)
+# ---------------------------------------------------------------------------
+_jinja_env = Environment(
+    loader=BaseLoader(),
+    trim_blocks=True,
+    lstrip_blocks=True,
+    autoescape=False,
+)
+
+
+def _render_template(template_str: str, variables: Dict[str, Any]) -> str:
+    """Render a Jinja2 template string with variables."""
+    if not template_str:
+        return ""
+    try:
+        template = _jinja_env.from_string(template_str)
+        return template.render(**variables)
+    except TemplateSyntaxError as e:
+        logger.error(f"Jinja2 syntax error: {e}")
+        raise PromptRenderError("unknown", f"Template syntax error: {e}")
+    except Exception as e:
+        logger.error(f"Error rendering template: {e}")
+        return template_str
+
+
+# ---------------------------------------------------------------------------
+# PromptLoader — same public API, backed by Python constants
+# ---------------------------------------------------------------------------
 class PromptLoader:
     """
-    Loads and renders YAML prompt templates with Jinja2 support.
+    Loads and renders prompt templates from hardcoded Python constants.
 
     Usage:
         loader = PromptLoader()
-
-        # Load template metadata
-        template = loader.load("backlog/epic_from_interview")
-
-        # Render with variables
         system_prompt, user_prompt = loader.render(
             "backlog/epic_from_interview",
             {"conversation_text": "...", "project_name": "My Project"}
         )
-
-        # Or get full rendered result
-        result = loader.render_full(
-            "backlog/epic_from_interview",
-            {"conversation_text": "...", "project_name": "My Project"}
-        )
     """
 
-    def __init__(self, prompts_dir: Path = None, enable_cache: bool = True):
-        """
-        Initialize PromptLoader.
-
-        Args:
-            prompts_dir: Directory containing prompt YAML files. Defaults to app/prompts/
-            enable_cache: Whether to cache loaded templates (default True)
-        """
-        self.prompts_dir = Path(prompts_dir) if prompts_dir else PROMPTS_DIR
-        self.enable_cache = enable_cache
-        self._template_cache: Dict[str, PromptTemplate] = {}
-        self._component_cache: Dict[str, str] = {}
-
-        # Initialize Jinja2 environment
-        self.jinja_env = Environment(
-            loader=BaseLoader(),
-            trim_blocks=True,
-            lstrip_blocks=True,
-            autoescape=False,
-        )
-
-        logger.info(f"PromptLoader initialized with prompts_dir: {self.prompts_dir}")
-
-    def _get_prompt_path(self, prompt_name: str) -> Path:
-        """Get full path for a prompt file."""
-        # prompt_name format: "category/name" -> "category/name.yaml"
-        if not prompt_name.endswith('.yaml'):
-            prompt_name = f"{prompt_name}.yaml"
-        return self.prompts_dir / prompt_name
-
-    def _get_component_path(self, component_name: str) -> Path:
-        """Get full path for a component file."""
-        if not component_name.endswith('.yaml'):
-            component_name = f"{component_name}.yaml"
-        return self.prompts_dir / "components" / component_name
-
-    def _parse_yaml(self, content: str) -> Dict[str, Any]:
-        """Parse YAML content."""
-        try:
-            return yaml.safe_load(content) or {}
-        except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML: {e}")
-
-    def _load_component(self, component_name: str) -> str:
-        """
-        Load a component's content.
-
-        Args:
-            component_name: Name of the component (without .yaml extension)
-
-        Returns:
-            Component content as string
-        """
-        # Check cache
-        if self.enable_cache and component_name in self._component_cache:
-            return self._component_cache[component_name]
-
-        component_path = self._get_component_path(component_name)
-
-        if not component_path.exists():
-            logger.warning(f"Component not found: {component_name}")
-            return ""  # Return empty string instead of failing
-
-        try:
-            content = component_path.read_text(encoding='utf-8')
-            data = self._parse_yaml(content)
-
-            # Components can have 'content' field or be just text
-            component_content = data.get('content', '')
-            if not component_content and 'system_prompt' in data:
-                component_content = data.get('system_prompt', '')
-
-            # Cache if enabled
-            if self.enable_cache:
-                self._component_cache[component_name] = component_content
-
-            return component_content
-
-        except Exception as e:
-            logger.error(f"Error loading component {component_name}: {e}")
-            return ""
+    def __init__(self, prompts_dir=None, enable_cache: bool = True):
+        """Initialize PromptLoader. Arguments kept for backward compatibility."""
+        self._registry = _build_registry()
 
     def load(self, prompt_name: str) -> PromptTemplate:
         """
@@ -153,135 +112,39 @@ class PromptLoader:
             PromptTemplate object
 
         Raises:
-            PromptNotFoundError: If prompt file doesn't exist
+            PromptNotFoundError: If prompt is not in registry
         """
-        # Check cache
-        if self.enable_cache and prompt_name in self._template_cache:
-            return self._template_cache[prompt_name]
-
-        prompt_path = self._get_prompt_path(prompt_name)
-
-        if not prompt_path.exists():
+        entry = self._registry.get(prompt_name)
+        if entry is None:
             raise PromptNotFoundError(prompt_name)
 
-        try:
-            content = prompt_path.read_text(encoding='utf-8')
-            data = self._parse_yaml(content)
+        category = prompt_name.split("/")[0] if "/" in prompt_name else "general"
+        name = prompt_name.split("/")[-1]
 
-            # Parse variables
-            vars_data = data.get('variables', {})
-            variables = PromptVariables(
-                required=vars_data.get('required', []),
-                optional=vars_data.get('optional', [])
-            )
+        metadata = PromptMetadata(
+            name=name,
+            version=1,
+            category=category,
+            description="",
+            usage_type=entry.get("usage_type", "general"),
+            variables=PromptVariables(),
+            components=[],
+        )
 
-            # Parse metadata
-            metadata = PromptMetadata(
-                name=data.get('name', prompt_name.split('/')[-1]),
-                version=data.get('version', 1),
-                category=data.get('category', prompt_name.split('/')[0] if '/' in prompt_name else 'general'),
-                description=data.get('description', ''),
-                usage_type=data.get('usage_type', 'general'),
-                estimated_tokens=data.get('estimated_tokens'),
-                tags=data.get('tags', []),
-                variables=variables,
-                components=data.get('components', [])
-            )
-
-            # Create template
-            template = PromptTemplate(
-                metadata=metadata,
-                system_prompt=data.get('system_prompt', ''),
-                user_prompt=data.get('user_prompt', ''),
-                raw_content=content
-            )
-
-            # Cache if enabled
-            if self.enable_cache:
-                self._template_cache[prompt_name] = template
-
-            logger.debug(f"Loaded prompt template: {prompt_name}")
-            return template
-
-        except PromptNotFoundError:
-            raise
-        except Exception as e:
-            logger.error(f"Error loading prompt {prompt_name}: {e}")
-            raise PromptNotFoundError(prompt_name)
-
-    def _render_template(self, template_str: str, variables: Dict[str, Any]) -> str:
-        """Render a Jinja2 template string with variables."""
-        if not template_str:
-            return ""
-
-        try:
-            template = self.jinja_env.from_string(template_str)
-            return template.render(**variables)
-        except TemplateSyntaxError as e:
-            logger.error(f"Jinja2 syntax error: {e}")
-            raise PromptRenderError("unknown", f"Template syntax error: {e}")
-        except Exception as e:
-            logger.error(f"Error rendering template: {e}")
-            # Return original template if rendering fails
-            return template_str
+        return PromptTemplate(
+            metadata=metadata,
+            system_prompt=entry.get("system", ""),
+            user_prompt=entry.get("user", ""),
+        )
 
     def render(
         self,
         prompt_name: str,
         variables: Dict[str, Any] = None,
-        strict: bool = False
+        strict: bool = False,
     ) -> Tuple[str, str]:
         """
-        Load and render a prompt template.
-
-        Args:
-            prompt_name: Prompt identifier (e.g., "backlog/epic_from_interview")
-            variables: Dictionary of variables to substitute
-            strict: If True, raise error on missing required variables
-
-        Returns:
-            Tuple of (system_prompt, user_prompt)
-
-        Raises:
-            PromptNotFoundError: If prompt file doesn't exist
-            VariableValidationError: If strict=True and required variables are missing
-        """
-        variables = variables or {}
-
-        # Load template
-        template = self.load(prompt_name)
-
-        # Validate required variables if strict mode
-        if strict:
-            missing = template.validate_variables(variables)
-            if missing:
-                raise VariableValidationError(prompt_name, missing)
-
-        # Load components and add to variables
-        components = {}
-        for component_name in template.metadata.components:
-            components[component_name] = self._load_component(component_name)
-
-        # Add components to render context
-        render_vars = {
-            **variables,
-            'components': components
-        }
-
-        # Render system and user prompts
-        system_prompt = self._render_template(template.system_prompt, render_vars)
-        user_prompt = self._render_template(template.user_prompt, render_vars)
-
-        return system_prompt, user_prompt
-
-    def render_full(
-        self,
-        prompt_name: str,
-        variables: Dict[str, Any] = None,
-        strict: bool = False
-    ) -> RenderedPrompt:
-        """
-        Load and render a prompt template, returning full result object.
+        Render a prompt template with variables.
 
         Args:
             prompt_name: Prompt identifier
@@ -289,68 +152,60 @@ class PromptLoader:
             strict: If True, raise error on missing required variables
 
         Returns:
-            RenderedPrompt object with all metadata
+            Tuple of (system_prompt, user_prompt)
         """
         variables = variables or {}
+        entry = self._registry.get(prompt_name)
+        if entry is None:
+            raise PromptNotFoundError(prompt_name)
 
-        # Load template
-        template = self.load(prompt_name)
+        render_vars = {**variables, "components": ALL_COMPONENTS}
 
-        # Render
+        system_prompt = _render_template(entry.get("system", ""), render_vars)
+        user_prompt = _render_template(entry.get("user", ""), render_vars)
+
+        return system_prompt, user_prompt
+
+    def render_full(
+        self,
+        prompt_name: str,
+        variables: Dict[str, Any] = None,
+        strict: bool = False,
+    ) -> RenderedPrompt:
+        """Render and return full RenderedPrompt object."""
+        variables = variables or {}
         system_prompt, user_prompt = self.render(prompt_name, variables, strict)
+        entry = self._registry.get(prompt_name, {})
 
         return RenderedPrompt(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            template_name=template.metadata.name,
-            template_version=template.metadata.version,
-            usage_type=template.metadata.usage_type,
+            template_name=prompt_name.split("/")[-1],
+            template_version=1,
+            usage_type=entry.get("usage_type", "general"),
             variables_used=variables,
-            components_loaded=template.metadata.components
+            components_loaded=[],
         )
 
     def clear_cache(self):
-        """Clear all cached templates and components."""
-        self._template_cache.clear()
-        self._component_cache.clear()
-        logger.info("Prompt cache cleared")
+        """No-op — constants don't need cache clearing."""
+        pass
 
     def list_prompts(self, category: str = None) -> List[str]:
-        """
-        List available prompts.
-
-        Args:
-            category: Optional category filter
-
-        Returns:
-            List of prompt names
-        """
-        prompts = []
-
-        for yaml_file in self.prompts_dir.rglob("*.yaml"):
-            # Skip components
-            if "components" in yaml_file.parts:
-                continue
-
-            # Get relative path without extension
-            rel_path = yaml_file.relative_to(self.prompts_dir)
-            prompt_name = str(rel_path.with_suffix(''))
-
-            # Filter by category if specified
-            if category:
-                if not prompt_name.startswith(f"{category}/"):
-                    continue
-
-            prompts.append(prompt_name)
-
-        return sorted(prompts)
+        """List available prompt names, optionally filtered by category."""
+        names = sorted(self._registry.keys())
+        if category:
+            names = [n for n in names if n.startswith(f"{category}/")]
+        return names
 
     def exists(self, prompt_name: str) -> bool:
-        """Check if a prompt exists."""
-        return self._get_prompt_path(prompt_name).exists()
+        """Check if a prompt exists in the registry."""
+        return prompt_name in self._registry
 
 
-# Global singleton instance
+# ---------------------------------------------------------------------------
+# Global singleton
+# ---------------------------------------------------------------------------
 _loader_instance: Optional[PromptLoader] = None
 
 

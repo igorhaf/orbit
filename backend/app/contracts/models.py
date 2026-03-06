@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 
 # Domain types
-DomainType = Literal["business", "interview", "generation", "memory", "component"]
+DomainType = Literal["business", "interview", "interviews", "generation", "memory", "component", "components", "commits", "execution", "validation", "pipeline"]
 StatusType = Literal["draft", "active", "deprecated"]
 ValidatorType = Literal["json_schema", "regex", "semantic_check", "length", "required_fields"]
 
