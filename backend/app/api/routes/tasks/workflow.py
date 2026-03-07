@@ -318,7 +318,7 @@ async def generate_children(
     POST /api/v1/tasks/{task_id}/generate-children
     Body (optional): { "count": 10 }
     """
-    from app.models.async_job import JobType
+    from app.models.async_job import JobType, AsyncJob, JobStatus
     from app.services.job_manager import JobManager
 
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -332,6 +332,18 @@ async def generate_children(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Tarefas são nós folha e não podem ter filhos"
+        )
+
+    # Prevent concurrent generation for the same parent (avoids duplicate children)
+    existing_job = db.query(AsyncJob).filter(
+        AsyncJob.task_id == task_id,
+        AsyncJob.job_type == JobType.CHILDREN_GENERATION,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+    ).first()
+    if existing_job:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Já existe uma geração em andamento para este item (job: {existing_job.id})"
         )
 
     default_counts = {

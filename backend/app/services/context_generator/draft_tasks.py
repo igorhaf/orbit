@@ -234,6 +234,19 @@ class DraftTasksMixin:
             if skipped_count > 0:
                 logger.info(f"Skipped {skipped_count} duplicate tasks (local+RAG dedup)")
 
+            # Final dedup pass: re-check within created batch to catch AI-generated duplicates
+            if created_tasks:
+                parent_id = created_tasks[0].parent_id
+                final_tasks = []
+                for task in created_tasks:
+                    if _is_title_duplicate(task.title, parent_id, self.db, [t.title for t in final_tasks]):
+                        logger.info(f"Final dedup: removing duplicate task '{task.title[:50]}...'")
+                        self.db.expunge(task)
+                        skipped_count += 1
+                    else:
+                        final_tasks.append(task)
+                created_tasks = final_tasks
+
             self.db.commit()
             logger.info(f"Created {len(created_tasks)} tasks with full content")
             return created_tasks

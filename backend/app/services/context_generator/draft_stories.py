@@ -234,6 +234,19 @@ class DraftStoriesMixin:
             if skipped_count > 0:
                 logger.info(f"Skipped {skipped_count} duplicate stories (local+RAG dedup)")
 
+            # Final dedup pass: re-check within created batch to catch AI-generated duplicates
+            # that slipped through (e.g. identical titles returned by the AI)
+            if created_stories:
+                final_stories = []
+                for story in created_stories:
+                    if _is_title_duplicate(story.title, epic.id, self.db, [s.title for s in final_stories]):
+                        logger.info(f"Final dedup: removing duplicate story '{story.title[:50]}...'")
+                        self.db.expunge(story)
+                        skipped_count += 1
+                    else:
+                        final_stories.append(story)
+                created_stories = final_stories
+
             self.db.commit()
             logger.info(f"Created {len(created_stories)} stories with full content")
             return created_stories

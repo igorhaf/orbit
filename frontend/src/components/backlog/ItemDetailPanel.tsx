@@ -455,7 +455,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to generate children:', error);
-      showError(`Falha ao gerar filhos: ${error.message || 'Erro desconhecido'}`);
+      const msg = error.message || 'Erro desconhecido';
+      if (msg.includes('409') || msg.includes('em andamento')) {
+        showError('Já existe uma geração em andamento para este item. Aguarde a conclusão.');
+      } else {
+        showError(`Falha ao gerar filhos: ${msg}`);
+      }
     }
   };
 
