@@ -57,7 +57,20 @@ export default function ProjectDetailsPage() {
     }
     window.history.replaceState({}, '', url.toString());
   };
-  const [overviewSubTab, setOverviewSubTab] = useState<OverviewSubTab>('description');
+  const subtabParam = searchParams.get('subtab') as OverviewSubTab | null;
+  const validSubTabs: OverviewSubTab[] = ['description', 'statistics', 'settings'];
+  const initialSubTab = subtabParam && validSubTabs.includes(subtabParam) ? subtabParam : 'description';
+  const [overviewSubTab, setOverviewSubTabState] = useState<OverviewSubTab>(initialSubTab);
+  const setOverviewSubTab = (subtab: OverviewSubTab) => {
+    setOverviewSubTabState(subtab);
+    const url = new URL(window.location.href);
+    if (subtab === 'description') {
+      url.searchParams.delete('subtab');
+    } else {
+      url.searchParams.set('subtab', subtab);
+    }
+    window.history.replaceState({}, '', url.toString());
+  };
   const [loading, setLoading] = useState(true);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');

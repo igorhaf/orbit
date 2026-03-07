@@ -11,8 +11,8 @@
 
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
 import { projectsApi, knowledgeApi } from '@/lib/api';
@@ -70,11 +70,18 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   integration: { label: 'Integração', color: 'bg-indigo-100 text-indigo-800' },
 };
 
-export default function KnowledgePage() {
+function KnowledgePageContent() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const projectId = params.id as string;
   const { showSuccess, showError, NotificationComponent } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tab state with URL persistence
+  type KnowledgeTab = 'rules' | 'documents' | 'orbit' | 'stats';
+  const validTabs: KnowledgeTab[] = ['rules', 'documents', 'orbit', 'stats'];
+  const tabParam = searchParams.get('tab') as KnowledgeTab | null;
+  const initialTab = tabParam && validTabs.includes(tabParam) ? tabParam : 'rules';
 
   // State
   const [project, setProject] = useState<any>(null);
@@ -82,7 +89,17 @@ export default function KnowledgePage() {
   const [rules, setRules] = useState<BusinessRule[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [stats, setStats] = useState<KnowledgeStats | null>(null);
-  const [activeTab, setActiveTab] = useState<'rules' | 'documents' | 'orbit' | 'stats'>('rules');
+  const [activeTab, setActiveTabState] = useState<KnowledgeTab>(initialTab);
+  const setActiveTab = (tab: KnowledgeTab) => {
+    setActiveTabState(tab);
+    const url = new URL(window.location.href);
+    if (tab === 'rules') {
+      url.searchParams.delete('tab');
+    } else {
+      url.searchParams.set('tab', tab);
+    }
+    window.history.replaceState({}, '', url.toString());
+  };
 
   // Filter state
   const [categoryFilter, setCategoryFilter] = useState<string>('');
@@ -763,5 +780,17 @@ export default function KnowledgePage() {
         </div>
       )}
     </Layout>
+  );
+}
+
+export default function KnowledgePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <KnowledgePageContent />
+    </Suspense>
   );
 }

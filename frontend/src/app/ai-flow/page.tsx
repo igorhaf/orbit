@@ -94,9 +94,19 @@ function AIFlowPageContent() {
   // Tab state (operations | pipeline)
   const tabParam = searchParams.get('tab');
   const projectParam = searchParams.get('project');
-  const [activeTab, setActiveTab] = useState<'models' | 'operations' | 'pipeline'>(
+  const [activeTab, setActiveTabState] = useState<'models' | 'operations' | 'pipeline'>(
     tabParam === 'pipeline' ? 'pipeline' : tabParam === 'operations' ? 'operations' : 'models'
   );
+  const setActiveTab = (tab: 'models' | 'operations' | 'pipeline') => {
+    setActiveTabState(tab);
+    const url = new URL(window.location.href);
+    if (tab === 'models') {
+      url.searchParams.delete('tab');
+    } else {
+      url.searchParams.set('tab', tab);
+    }
+    window.history.replaceState({}, '', url.toString());
+  };
 
   // Data state
   const [allModels, setAllModels] = useState<AIModel[]>([]);

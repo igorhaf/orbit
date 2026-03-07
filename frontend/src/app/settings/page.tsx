@@ -8,7 +8,8 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -70,8 +71,13 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ElementType; d
   { id: 'general', label: 'Avançado', icon: Sliders, description: 'Segurança e configurações personalizadas' },
 ];
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const { showError, showWarning, NotificationComponent } = useNotification();
+  const searchParams = useSearchParams();
+  const validSections: SectionId[] = ['models', 'queue', 'blocklist', 'general'];
+  const sectionParam = searchParams.get('section') as SectionId | null;
+  const initialSection = sectionParam && validSections.includes(sectionParam) ? sectionParam : 'models';
+
   const [settings, setSettings] = useState<SystemSettings[]>([]);
   const [models, setModels] = useState<AIModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,8 +86,19 @@ export default function SettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [settingToDelete, setSettingToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [activeSection, setActiveSection] = useState<SectionId>('models');
+  const [activeSection, setActiveSectionState] = useState<SectionId>(initialSection);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+
+  const setActiveSection = (section: SectionId) => {
+    setActiveSectionState(section);
+    const url = new URL(window.location.href);
+    if (section === 'models') {
+      url.searchParams.delete('section');
+    } else {
+      url.searchParams.set('section', section);
+    }
+    window.history.replaceState({}, '', url.toString());
+  };
 
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
@@ -967,5 +984,17 @@ export default function SettingsPage() {
         isLoading={isDeleting}
       />
     </Layout>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <SettingsPageContent />
+    </Suspense>
   );
 }
