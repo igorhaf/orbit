@@ -4,12 +4,12 @@ New status between PROCESSING and COMPLETED:
 - INDEXED = embedding stored in RAG, awaiting business rule extraction
 
 Revision ID: p252_indexed_status
-Revises: p250_nomic_embed_768
+Revises: p250_nomic_768
 """
 from alembic import op
 
 revision = "p252_indexed_status"
-down_revision = "p250_nomic_embed_768"
+down_revision = "p250_nomic_768"
 branch_labels = None
 depends_on = None
 
