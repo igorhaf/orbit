@@ -454,34 +454,36 @@ Ao completar implementacao:
 
 ---
 
-### 3. ESTRUTURA SATELLITE (BASE DE CONHECIMENTO DO PROJETO)
+### 3. ESTRUTURA .SATELLITE (MARCADOR DE PROJETO)
 
-**A pasta `satellite/` contém todos os artefatos de documentacao que o ORBIT usa para memória e auto-análise:**
+**O ORBIT usa um arquivo `.satellite` como marcador e uma pasta `.orbit/` minima:**
 
 ```
-satellite/
-  memory/              # Logs de execucao IA (auto-salvos pelo AIOrchestrator)
-  docs/                # Documentos externos (PDFs, TXTs, etc.) - vigiado pelo RAG
-  knowledge/           # Base de conhecimento estruturada
-    wiki/              # Wiki pages (.md com YAML front matter)
-    results/           # Resultados do Claude Code (lidos pelos cards)
-    prompts/           # Prompts exportados para execucao no Claude Code
-  README.md            # Descricao auto-gerada do projeto
+{code_path}/
+  .satellite           # Marcador de projeto gerenciado pelo ORBIT (plain text)
+  .orbit/
+    memory/            # Logs de execucao IA (auto-salvos pelo AIOrchestrator)
+    docs/              # Documentos externos (PDFs, TXTs, etc.) - indexados pelo RAG
 ```
+
+**Armazenamento:**
+- **Wiki pages** — PostgreSQL (tabela `wiki_pages`), NAO mais em filesystem
+- **Results/Prompts** — PostgreSQL (tabelas `task_results`, `tasks.generated_prompt`)
+- **Docs uploads** — Filesystem em `.orbit/docs/` (binarios/PDFs indexados pelo RAG)
+- **Memory logs** — Filesystem em `.orbit/memory/` (logs de execucao IA)
 
 **Regras:**
 - ✅ Todos os reports de PROMPT vao em `docs/`
-- ✅ Upload de documentos externos vai para `satellite/docs/` (vigiado pelo RAG)
-- ✅ Wiki pages ficam em `docs/wiki/`
-- ✅ CLAUDE.md e README.md permanecem na raiz (sao arquivos especiais)
+- ✅ Upload de documentos externos vai para `.orbit/docs/` (indexado pelo RAG)
+- ✅ Wiki pages ficam no banco de dados PostgreSQL
+- ✅ CLAUDE.md e README.md permanecem na raiz
 - ❌ NUNCA criar .md de documentacao na raiz do projeto
+- ❌ A pasta `satellite/` foi ELIMINADA — usar `.satellite` + `.orbit/`
 
-**Auto-Análise do ORBIT:**
-O ORBIT pode analisar seu PROPRIO codebase como um projeto. Para isso:
-- Criar um projeto com `code_path` apontando para a raiz do ORBIT (ex: `/home/igorhaf/orbit`)
-- A pasta `satellite/` e criada automaticamente ao instanciar o projeto (PROMPT #235)
-- A pasta `satellite/` e excluida do scan de tech stack mas indexada pelo RAG scanner
-- O scanner respeita `.gitignore`, `IGNORE_DIRECTORIES` e padroes detectados por IA (PROMPT #223)
+**Criacao automatica:**
+- O arquivo `.satellite` e a pasta `.orbit/` sao criados automaticamente ao instanciar o projeto
+- `.orbit/` e `.satellite` sao excluidos do scan de tech stack
+- O scanner respeita `.gitignore`, `IGNORE_DIRECTORIES` e padroes detectados por IA
 
 ---
 

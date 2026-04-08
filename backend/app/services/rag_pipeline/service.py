@@ -209,11 +209,9 @@ class RagPipelineService(Phase1Mixin, Phase2Mixin, Phase3Mixin, Phase4Mixin):
 
         # Phase 4: Check if wiki exists
         from app.services import wiki_fs
-        project = self.db.query(Project).filter(Project.id == project_id).first()
-        if project and project.code_path:
-            pages = wiki_fs.list_pages(project.code_path)
-            if pages and len(pages) > 0:
-                state["phase_4_status"] = "completed"
+        pages = wiki_fs.list_pages(self.db, project_id)
+        if pages and len(pages) > 0:
+            state["phase_4_status"] = "completed"
 
         # Check for running jobs (raw SQL to avoid .astext ORM issue)
         for phase_num, job_input_phase in [(1, "index_files"), (2, "extract_rules"),

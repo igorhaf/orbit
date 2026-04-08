@@ -273,7 +273,7 @@ function KnowledgePageContent() {
     setUploadingOrbit(true);
     try {
       const res = await knowledgeApi.uploadOrbitKnowledge(projectId, file);
-      showSuccess(`"${res.filename}" salvo em satellite/docs/ (${res.chunks_indexed} chunks indexados)`);
+      showSuccess(`"${res.filename}" salvo em .orbit/docs/ (${res.chunks_indexed} chunks indexados)`);
       loadOrbitFiles();
       loadStats();
     } catch (error: any) {
@@ -287,7 +287,7 @@ function KnowledgePageContent() {
   };
 
   const handleDeleteOrbitFile = async (filename: string) => {
-    if (!confirm(`Deletar "${filename}" de satellite/docs/?`)) return;
+    if (!confirm(`Deletar "${filename}" de .orbit/docs/?`)) return;
 
     try {
       const res = await knowledgeApi.deleteOrbitFile(projectId, filename);
@@ -569,7 +569,7 @@ function KnowledgePageContent() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Arquivos salvos em <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">satellite/docs/</code> no disco do projeto e indexados no RAG.
+                Arquivos salvos em <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">.orbit/docs/</code> no disco do projeto e indexados no RAG.
               </p>
               <div>
                 <Button
@@ -608,7 +608,7 @@ function KnowledgePageContent() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum arquivo em satellite/docs/</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum arquivo em .orbit/docs/</h3>
                 <p className="text-gray-500 mb-4">
                   Envie arquivos de conhecimento (.md, .txt, .yaml, .json) para o disco do projeto e RAG.
                 </p>

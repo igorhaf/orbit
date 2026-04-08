@@ -93,10 +93,12 @@ IGNORE_DIRECTORIES = {
     ".terraform", ".serverless",
     ".aws-sam", ".amplify",
 
-    # PROMPT #241 - ORBIT bridge folder (prompts/results/knowledge)
+    # PROMPT #241 - ORBIT bridge folder
     "orbit",
-    # PROMPT #235 - satellite/ KB folder
-    "satellite",
+    # PROMPT #235 - .orbit/ minimal folder structure
+    ".orbit",
+    # .satellite marker file is not a directory, but include for safety
+    ".satellite",
 }
 
 # PROMPT #166 - File patterns to ALWAYS ignore (not business logic)

@@ -25,7 +25,7 @@ ESTRUTURA DE CADA REGRA:
 - priority: high | normal | low
 
 PASTAS/ARQUIVOS A IGNORAR:
-- satellite/ (pasta de documentacao do ORBIT)
+- .orbit/ (pasta de dados do ORBIT)
 - node_modules/, vendor/, .git/, __pycache__/
 - Arquivos de configuracao pura (webpack, eslint, etc.)
 {{ ignore_paths }}

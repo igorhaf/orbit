@@ -72,23 +72,22 @@ async def _enrich_rules_background(
         from app.services.job_manager import JobManager
         from app.services.ai_orchestrator import AIOrchestrator
         from app.prompts.loader import PromptLoader
-        from app.services.wiki_pages import _apply_semantic_links_to_project_fs
+        from app.services.wiki_pages import _apply_semantic_links_to_project
 
         job_manager = JobManager(db)
         job_manager.start_job(job_id)
 
         # Get project info
         project = db.query(Project).filter(Project.id == project_id).first()
-        if not project or not project.code_path:
-            job_manager.complete_job(job_id, {"enriched": 0, "error": "No project/code_path"})
+        if not project:
+            job_manager.complete_job(job_id, {"enriched": 0, "error": "No project"})
             return
 
-        code_path = project.code_path
         project_name = project.name or ""
         project_context = (project.context_human or "")[:1000]
 
-        # Get rule pages from filesystem
-        all_pages = wiki_fs.list_pages(code_path)
+        # Get rule pages from database
+        all_pages = wiki_fs.list_pages(db, project_id)
         if force:
             rule_pages = [p for p in all_pages if p.slug.startswith("regra-")]
         else:
@@ -175,7 +174,7 @@ async def _enrich_rules_background(
 
                     # Get domain from parent page title
                     if page.parent_slug:
-                        parent_page = wiki_fs.read_page(code_path, page.parent_slug)
+                        parent_page = wiki_fs.read_page(db, project_id, page.parent_slug)
                         if parent_page:
                             domain_name = (parent_page.title
                                 .replace("Business Rules - ", "")
@@ -211,7 +210,7 @@ async def _enrich_rules_background(
                 enriched_content = response.get("content", "")
                 if enriched_content and len(enriched_content) > 100:
                     wiki_fs.write_page(
-                        code_path=code_path,
+                        db=db,
                         project_id=project_id,
                         slug=page.slug,
                         title=page.title,
@@ -233,7 +232,7 @@ async def _enrich_rules_background(
             await asyncio.sleep(0.1)
 
         # Re-apply semantic links after enrichment
-        linked_count = _apply_semantic_links_to_project_fs(code_path, project_id)
+        linked_count = _apply_semantic_links_to_project(db, project_id)
 
         job_manager.complete_job(job_id, {
             "enriched": enriched_count,
@@ -314,9 +313,9 @@ async def _process_wiki_page_ai_async(
             variables["current_content"] = current_content
 
         # List existing pages for context (generate action)
-        if action == "generate" and project.code_path:
+        if action == "generate":
             try:
-                pages = wiki_fs.list_pages(project.code_path)
+                pages = wiki_fs.list_pages(db, pid)
                 other_titles = [p.title for p in pages if p.slug != slug]
                 if other_titles:
                     variables["existing_pages"] = "\n".join(f"- {t}" for t in other_titles[:20])
@@ -359,11 +358,11 @@ async def _process_wiki_page_ai_async(
 
         job_manager.update_progress(job_id, 80.0, "Salvando conteudo...")
 
-        # Save to wiki page via filesystem
-        if content and project.code_path:
+        # Save to wiki page in database
+        if content:
             try:
                 wiki_fs.write_page(
-                    code_path=project.code_path,
+                    db=db,
                     project_id=pid,
                     slug=slug,
                     title=page_title,

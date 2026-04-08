@@ -288,7 +288,7 @@ async def create_and_process_project(
         )
 
     # Validate code_path - only reject if it exists but is a file
-    # (PROMPT #235: if it doesn't exist, it will be created with satellite/ KB structure)
+    # (PROMPT #235: if it doesn't exist, it will be created with .satellite + .orbit/ structure)
     path = Path(code_path)
     if path.exists() and not path.is_dir():
         raise HTTPException(
@@ -300,7 +300,7 @@ async def create_and_process_project(
     folder_name = path.name
     temp_name = name.strip() if name and name.strip() else folder_name.replace("-", " ").replace("_", " ").title()
 
-    # PROMPT #235 - Initialize satellite/ KB structure (creates code_path if needed)
+    # PROMPT #235 - Initialize .satellite + .orbit/ structure (creates code_path if needed)
     from app.services.project_service import initialize_project_knowledge_base
     initialize_project_knowledge_base(code_path, temp_name)
 

@@ -331,8 +331,8 @@ class Phase4to7Mixin:
     ) -> Dict:
         """Generate comprehensive wiki documentation."""
 
-        wiki_dir = os.path.join(project.code_path, "satellite", "knowledge", "wiki")
-        os.makedirs(wiki_dir, exist_ok=True)
+        # Wiki pages are stored in the database only (no filesystem).
+        wiki_dir = None  # kept as variable for _write_wiki_page signature compat
 
         stats = {"total_pages": 0, "total_words": 0}
 
@@ -486,35 +486,16 @@ class Phase4to7Mixin:
         return stats
 
     def _write_wiki_page(self, wiki_dir: str, page_data: Dict, project_id: UUID = None, run_id: UUID = None):
-        """Write a wiki page to filesystem + database with YAML front matter."""
+        """Write a wiki page to the database (DB-only, no filesystem).
+
+        The wiki_dir parameter is kept for call-site compatibility but is ignored.
+        Wiki pages are stored exclusively in the wiki_pages table.
+        """
         slug = page_data.get("slug", "unknown")
         title = page_data.get("title", "Sem titulo")
         content = page_data.get("content", "")
 
-        front_matter = (
-            f"---\n"
-            f"title: \"{title}\"\n"
-            f"slug: \"{slug}\"\n"
-            f"source: ai_generated\n"
-            f"pipeline_version: v2\n"
-            f"created_at: \"{datetime.utcnow().isoformat()}\"\n"
-            f"---\n\n"
-        )
-
-        filepath = os.path.join(wiki_dir, f"{slug}.md")
-
         # REGRA #0: Don't overwrite human-edited pages
-        if os.path.isfile(filepath):
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    existing = f.read()
-                if "source: manual" in existing or "source: enrichment" in existing:
-                    logger.info(f"Skipping wiki page '{slug}' - human-edited (source: manual/enrichment)")
-                    return
-            except Exception:
-                pass
-
-        # Also check DB for human-edited page (REGRA #0)
         if project_id:
             existing_db = self.db.query(WikiPage).filter(
                 WikiPage.project_id == project_id,
@@ -524,9 +505,6 @@ class Phase4to7Mixin:
             if existing_db:
                 logger.info(f"Skipping wiki page '{slug}' - human-edited in DB (source: {existing_db.source})")
                 return
-
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(front_matter + content)
 
         # Create/update WikiPage record in database
         if project_id:

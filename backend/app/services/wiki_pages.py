@@ -473,7 +473,7 @@ def _classify_domain(source_file: str) -> Tuple[str, str]:
 
 
 def _build_business_rules_wiki_pages(
-    db: "Session", code_path: str, project_id: UUID
+    db: "Session", project_id: UUID
 ) -> List[dict]:
     """
     PROMPT #269/#237 - Build hierarchical wiki pages for business rules on disk.
@@ -523,9 +523,9 @@ def _build_business_rules_wiki_pages(
 
     # Ensure parent page exists
     parent_slug = "regras-de-negocio"
-    if not wiki_fs.page_exists(code_path, parent_slug):
+    if not wiki_fs.page_exists(db, project_id, parent_slug):
         created_pages.append(_upsert_wiki_page(
-            code_path, project_id, parent_slug,
+            db, project_id, parent_slug,
             "Regras de Negocio",
             "## Regras de Negócio\n\nPágina principal das regras de negócio do projeto.\n",
             2, "ai_generated"
@@ -583,7 +583,7 @@ def _build_business_rules_wiki_pages(
         )
 
     index_page = _upsert_wiki_page(
-        code_path, project_id, "regras-índice",
+        db, project_id, "regras-índice",
         "Regras de Negocio - Índice",
         "\n".join(index_lines),
         20, "ai_generated",
@@ -621,7 +621,7 @@ def _build_business_rules_wiki_pages(
                 domain_lines.append(f"- [{title}](wiki:{rule_slug})")
 
         domain_page = _upsert_wiki_page(
-            code_path, project_id, page_slug,
+            db, project_id, page_slug,
             f"Regras de Negocio - {domain_name}",
             "\n".join(domain_lines),
             domain_order, "ai_generated",
@@ -659,7 +659,7 @@ def _build_business_rules_wiki_pages(
             )
 
             rule_page = _upsert_wiki_page(
-                code_path, project_id, rule_slug,
+                db, project_id, rule_slug,
                 title, rule_content,
                 rule_order, "ai_generated",
                 parent_slug=page_slug,
@@ -773,10 +773,10 @@ def _add_semantic_links_to_content(
     return "\n".join(result_lines)
 
 
-def _apply_semantic_links_to_project_fs(code_path: str, project_id) -> int:
-    """Apply semantic hypertext linking to all wiki pages on disk."""
+def _apply_semantic_links_to_project(db: "Session", project_id) -> int:
+    """Apply semantic hypertext linking to all wiki pages in database."""
     return wiki_fs.apply_semantic_links(
-        code_path, project_id, _add_semantic_links_to_content
+        db, project_id, _add_semantic_links_to_content
     )
 
 

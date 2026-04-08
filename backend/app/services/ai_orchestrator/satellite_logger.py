@@ -61,7 +61,7 @@ def _safe_broadcast(event_type: str, data: dict):
         logger.debug(f"No event loop for broadcast '{event_type}', skipping")
 
 
-# PROMPT #235 - usage_types whose executions are saved to satellite/memory/
+# PROMPT #235 - usage_types whose executions are saved to .orbit/memory/
 # (interview excluded - too verbose; general excluded - too broad)
 _SAVE_USAGE_TYPES = {
     "prompt_generation", "task_execution",
@@ -71,10 +71,10 @@ _SAVE_USAGE_TYPES = {
 
 def _save_prompt_to_satellite(db: Session, prompt_log) -> None:
     """
-    PROMPT #235 - Save a successful AI execution as markdown in satellite/memory/.
+    PROMPT #235 - Save a successful AI execution as markdown in .orbit/memory/.
 
     Only writes for usage_types in _SAVE_USAGE_TYPES.
-    Only writes if project has code_path and satellite/memory/ already exists.
+    Only writes if project has code_path and .orbit/memory/ already exists.
     REGRA #0: never overwrites an existing file.
     """
     try:
@@ -92,8 +92,7 @@ def _save_prompt_to_satellite(db: Session, prompt_log) -> None:
         if not project or not project.code_path:
             return
 
-        from app.services.orbit_folder import SATELLITE_DIR
-        memory_dir = _Path(project.code_path) / SATELLITE_DIR / "memory"
+        memory_dir = _Path(project.code_path) / ".orbit" / "memory"
         if not memory_dir.exists():
             return  # KB not initialized yet - skip silently
 
@@ -120,10 +119,10 @@ def _save_prompt_to_satellite(db: Session, prompt_log) -> None:
         )
 
         file_path.write_text(content, encoding="utf-8")
-        logger.debug(f"Saved prompt log to satellite: {filename}")
+        logger.debug(f"Saved prompt log to .orbit/memory: {filename}")
 
     except Exception as e:
-        logger.warning(f"Failed to save prompt to satellite (non-critical): {e}")
+        logger.warning(f"Failed to save prompt to .orbit/memory (non-critical): {e}")
 
 
 UsageType = Literal[

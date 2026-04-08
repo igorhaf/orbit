@@ -294,49 +294,25 @@ async def delete_project(
     except Exception as e:
         logger.warning(f"Failed to delete prompt_templates: {e}")
 
-    # Step 5: Clean up AI-generated wiki .md files from filesystem.
-    # REGRA #0: Preserve human-edited pages (source: manual/enrichment).
-    if project.code_path:
-        wiki_dir = os.path.join(project.code_path, "satellite", "knowledge", "wiki")
-        if os.path.isdir(wiki_dir):
-            cleaned_files = 0
-            preserved_files = 0
-            for fname in os.listdir(wiki_dir):
-                if not fname.endswith(".md"):
-                    continue
-                fpath = os.path.join(wiki_dir, fname)
-                try:
-                    with open(fpath, "r", encoding="utf-8") as f:
-                        header = f.read(500)
-                    if "source: manual" in header or "source: enrichment" in header:
-                        preserved_files += 1
-                        continue
-                    os.remove(fpath)
-                    cleaned_files += 1
-                except Exception:
-                    pass
-            if cleaned_files or preserved_files:
-                logger.info(
-                    f"Wiki cleanup: {cleaned_files} ai_generated files removed, "
-                    f"{preserved_files} human-edited files preserved (REGRA #0)"
-                )
+    # Step 5: Wiki pages are DB-only now — no filesystem cleanup needed.
+    # The CASCADE delete on project handles wiki_pages table.
 
-    # Step 5b: Clean up satellite/memory/ files (pipeline execution logs)
+    # Step 5b: Clean up .orbit/memory/ and .orbit/docs/ files
     if project.code_path:
         import shutil
-        for subdir in ["memory", os.path.join("knowledge", "results")]:
-            sat_dir = os.path.join(project.code_path, "satellite", subdir)
-            if os.path.isdir(sat_dir):
+        for subdir in ["memory", "docs"]:
+            orbit_dir = os.path.join(project.code_path, ".orbit", subdir)
+            if os.path.isdir(orbit_dir):
                 try:
-                    file_count = sum(1 for f in os.listdir(sat_dir) if os.path.isfile(os.path.join(sat_dir, f)))
-                    shutil.rmtree(sat_dir)
-                    os.makedirs(sat_dir, exist_ok=True)  # Recreate empty dir
-                    logger.info(f"Cleaned satellite/{subdir}/: {file_count} files removed")
+                    file_count = sum(1 for f in os.listdir(orbit_dir) if os.path.isfile(os.path.join(orbit_dir, f)))
+                    shutil.rmtree(orbit_dir)
+                    os.makedirs(orbit_dir, exist_ok=True)  # Recreate empty dir
+                    logger.info(f"Cleaned .orbit/{subdir}/: {file_count} files removed")
                 except Exception as e:
-                    logger.warning(f"Failed to clean satellite/{subdir}/: {e}")
+                    logger.warning(f"Failed to clean .orbit/{subdir}/: {e}")
 
     logger.info(
-        f"Project '{project_name}' disk cleanup complete "
+        f"Project '{project_name}' .orbit/ cleanup complete "
         f"(code_path={project.code_path})"
     )
 

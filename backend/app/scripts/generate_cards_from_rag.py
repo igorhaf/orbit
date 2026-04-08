@@ -194,13 +194,13 @@ HIERARCHY = [
                     "Projeto requer code_path obrigatorio apontando para pasta existente",
                     "Wizard de criacao: Nome → Entrevista → Review → Confirmar",
                     "code_path e imutavel apos criacao",
-                    "Projeto cria estrutura satellite/ automaticamente",
+                    "Projeto cria estrutura .orbit/ automaticamente",
                     "Scan de memoria analisa 30/100/todos arquivos conforme nivel",
                 ],
                 "tasks": [
                     {"title": "Validacao de code_path", "rules": ["Verificar existencia da pasta", "Rejeitar caminhos invalidos", "Impedir alteracao apos criacao"]},
                     {"title": "Wizard de criacao de projeto", "rules": ["4 passos sequenciais", "Navegacao entre passos", "Cancelamento limpa projeto abandonado"]},
-                    {"title": "Estrutura satellite/ automatica", "rules": ["Criar memory/, docs/, knowledge/", "Criar subpastas wiki/, results/, prompts/", "Idempotente - seguro chamar multiplas vezes"]},
+                    {"title": "Estrutura .orbit/ automatica", "rules": ["Criar .satellite marker + .orbit/", "Criar subpastas memory/, docs/", "Idempotente - seguro chamar multiplas vezes"]},
                     {"title": "Scan de memoria do codigo", "rules": ["3 niveis de profundidade", "Identificar stack tecnologica", "Extrair regras de negocio do codigo", "Detectar padroes arquiteturais"]},
                 ]
             },
@@ -413,12 +413,12 @@ HIERARCHY = [
                 "tasks": [
                     {"title": "Scanner de mudancas", "rules": ["Hash SHA-256 por arquivo", "Detectar arquivos novos/modificados/removidos", "Respeitar .gitignore e blocklist"]},
                     {"title": "Pipeline de processamento", "rules": ["Fila: scan → delete → process", "Classificar por semantic layer", "Extrair regras via IA"]},
-                    {"title": "Indexacao de documentos satellite/docs/", "rules": ["Chunking: 500 chars com 50 overlap", "Tipo prompt_doc para documentacao", "Tipo business_rule para regras extraidas"]},
+                    {"title": "Indexacao de documentos .orbit/docs/", "rules": ["Chunking: 500 chars com 50 overlap", "Tipo prompt_doc para documentacao", "Tipo business_rule para regras extraidas"]},
                 ]
             },
             {
                 "title": "Wiki Filesystem com RAG",
-                "context": "Wiki armazenada como .md com YAML front matter em satellite/knowledge/wiki/, integrada ao RAG.",
+                "context": "Wiki armazenada no banco de dados (wiki_pages table), integrada ao RAG.",
                 "rules": [
                     "Paginas .md com front matter YAML",
                     "Hierarquia via sistema de arquivos (pastas = filhos)",
@@ -483,11 +483,11 @@ HIERARCHY = [
     },
     {
         "title": "Satellite - Base de Conhecimento por Projeto",
-        "context": "Estrutura de pastas satellite/ dentro do code_path do projeto para armazenar memoria, documentos, wiki, prompts e resultados.",
+        "context": "Estrutura .satellite marker + .orbit/ dentro do code_path do projeto para armazenar memoria e documentos. Wiki, prompts e resultados ficam no banco de dados.",
         "priority": "medium",
         "story_points": 8,
         "semantic_map": {
-            "N1": "satellite/",
+            "N1": ".orbit/",
             "N2": "OrbitFolderService",
             "P1": "ensure_satellite_dirs()",
             "D1": "Estrutura: memory/, docs/, knowledge/",
@@ -496,23 +496,21 @@ HIERARCHY = [
         "stories": [
             {
                 "title": "Estrutura de Pastas Satellite",
-                "context": "Criacao e gerenciamento da pasta satellite/ com subpastas memory, docs, knowledge (wiki, results, prompts).",
+                "context": "Criacao e gerenciamento da estrutura .satellite + .orbit/ com subpastas memory e docs.",
                 "rules": [
-                    "satellite/memory/ - logs de execucao IA",
-                    "satellite/docs/ - documentos externos vigiados pelo RAG",
-                    "satellite/knowledge/wiki/ - wiki pages .md",
-                    "satellite/knowledge/results/ - resultados do Claude Code",
-                    "satellite/knowledge/prompts/ - prompts exportados",
+                    ".orbit/memory/ - logs de execucao IA",
+                    ".orbit/docs/ - documentos enviados vigiados pelo RAG",
+                    "Wiki, results e prompts armazenados no banco de dados",
                 ],
                 "tasks": [
-                    {"title": "Criacao automatica de estrutura", "rules": ["ensure_satellite_dirs() idempotente", "Criar .gitkeep em cada subpasta", "Chamar na criacao de projeto"]},
-                    {"title": "Export de prompts para satellite", "rules": ["Gerar .md com YAML front matter", "orbit_card_id no front matter", "Resultado esperado: _RESULT.md"]},
+                    {"title": "Criacao automatica de estrutura", "rules": ["ensure_satellite_dirs() idempotente", "Cria .satellite marker + .orbit/", "Chamar na criacao de projeto"]},
+                    {"title": "Export de prompts", "rules": ["Prompts armazenados no banco de dados", "Exportacao opcional via API"]},
                     {"title": "Upload de documentos para docs/", "rules": ["Sanitizar filename contra path traversal", "Indexar automaticamente no RAG", "Listar e deletar via API"]},
                 ]
             },
             {
                 "title": "Deteccao e Processamento de Resultados",
-                "context": "Scan de satellite/knowledge/results/ para detectar arquivos _RESULT.md e vincular ao card correspondente.",
+                "context": "Verificacao de resultados para vincular ao card correspondente.",
                 "rules": [
                     "Scan por padrao *_RESULT.md",
                     "orbit_card_id no front matter YAML",

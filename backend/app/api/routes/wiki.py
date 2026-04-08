@@ -1,10 +1,9 @@
 """
 Wiki API Routes
 PROMPT #261 - Multi-page Wiki System
-PROMPT #237 - Refactored to use filesystem storage (satellite/wiki/)
 
 CRUD endpoints for wiki pages within projects.
-All pages stored as .md files with YAML front matter on disk.
+All pages stored in PostgreSQL database (wiki_pages table).
 """
 
 import logging
@@ -38,7 +37,7 @@ from app.services.wiki_service import (
     _build_git_history_page,
     _build_business_rules_wiki_pages,
     _trigger_rule_enrichment_job,
-    _apply_semantic_links_to_project_fs,
+    _apply_semantic_links_to_project,
     _parse_wiki_sections,
     _parse_wiki_subsections,
     _process_wiki_page_ai_async,
@@ -49,12 +48,10 @@ router = APIRouter()
 
 
 def _get_project_or_404(db: Session, project_id: UUID) -> Project:
-    """Fetch project and validate it exists with a code_path."""
+    """Fetch project and validate it exists."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
-    if not project.code_path:
-        raise HTTPException(status_code=400, detail="Projeto sem code_path definido")
     return project
 
 
@@ -66,11 +63,11 @@ async def list_wiki_pages(
 ):
     """List all wiki pages for a project, optionally filtered by parent."""
     project = _get_project_or_404(db, project_id)
-    pages = wiki_fs.list_pages(project.code_path)
+    pages = wiki_fs.list_pages(db, project_id)
 
     result = []
     for page in pages:
-        resp = wiki_fs.page_to_response(project.code_path, project_id, page)
+        resp = wiki_fs.page_to_response(db, project_id, page)
         # Filter by parent_id if requested
         if parent_id is not None:
             if resp["parent_id"] != str(parent_id):
@@ -89,10 +86,10 @@ async def get_wiki_tree(
 ):
     """Get the full wiki page tree for a project."""
     project = _get_project_or_404(db, project_id)
-    tree = wiki_fs.build_tree(project.code_path, project_id)
+    tree = wiki_fs.build_tree(db, project_id)
 
     # PROMPT #275 - Auto-trigger enrichment for unenriched rule pages
-    all_pages = wiki_fs.list_pages(project.code_path)
+    all_pages = wiki_fs.list_pages(db, project_id)
     unenriched_rules = [
         p for p in all_pages
         if p.slug.startswith("regra-") and p.source == "ai_generated"
@@ -128,14 +125,13 @@ async def generate_wiki_from_context(
 ):
     """Generate wiki pages from project context data."""
     project = _get_project_or_404(db, project_id)
-    code_path = project.code_path
 
     created_slugs = []
 
     # 1. Visao Geral - from project description
     if project.description:
         _upsert_wiki_page(
-            code_path, project_id, "visao-geral", "Visao Geral",
+            db, project_id, "visao-geral", "Visao Geral",
             project.description, 0, "enrichment"
         )
         created_slugs.append("visao-geral")
@@ -147,7 +143,7 @@ async def generate_wiki_from_context(
     if stack_info or project.stack:
         stack_content = _build_stack_page(project, stack_info, scan_summary)
         _upsert_wiki_page(
-            code_path, project_id, "stack-tecnologica", "Stack Tecnologica",
+            db, project_id, "stack-tecnologica", "Stack Tecnologica",
             stack_content, 1, "ai_generated"
         )
         created_slugs.append("stack-tecnologica")
@@ -186,7 +182,7 @@ async def generate_wiki_from_context(
                 rules_parts.append(f"{i}. {rule_text}")
         rules_content = "\n".join(rules_parts)
         _upsert_wiki_page(
-            code_path, project_id, "regras-catálogo-bruto",
+            db, project_id, "regras-catálogo-bruto",
             "Catálogo de Referência - Regras Brutas",
             rules_content, 12, "ai_generated",
             parent_slug="regras-de-negocio",
@@ -198,7 +194,7 @@ async def generate_wiki_from_context(
     if features:
         features_content = _build_features_page(features)
         _upsert_wiki_page(
-            code_path, project_id, "features-principais", "Features Principais",
+            db, project_id, "features-principais", "Features Principais",
             features_content, 3, "ai_generated"
         )
         created_slugs.append("features-principais")
@@ -206,7 +202,7 @@ async def generate_wiki_from_context(
     # 5. Contexto do Projeto
     if project.context_human:
         _upsert_wiki_page(
-            code_path, project_id, "contexto-projeto", "Contexto do Projeto",
+            db, project_id, "contexto-projeto", "Contexto do Projeto",
             project.context_human, 4, "enrichment"
         )
         created_slugs.append("contexto-projeto")
@@ -224,7 +220,7 @@ async def generate_wiki_from_context(
     if scan_summary:
         scan_content = _build_scan_page(scan_summary)
         _upsert_wiki_page(
-            code_path, project_id, "resumo-codebase", "Resumo do Codebase",
+            db, project_id, "resumo-codebase", "Resumo do Codebase",
             scan_content, 5, "ai_generated"
         )
         created_slugs.append("resumo-codebase")
@@ -240,7 +236,7 @@ async def generate_wiki_from_context(
     for slug, title, builder, order in rag_builders:
         content = builder(db, project_id)
         if content:
-            _upsert_wiki_page(code_path, project_id, slug, title, content, order, "ai_generated")
+            _upsert_wiki_page(db, project_id, slug, title, content, order, "ai_generated")
             created_slugs.append(slug)
 
     # Parse enriched description into separate wiki pages
@@ -251,16 +247,16 @@ async def generate_wiki_from_context(
         for slug, (title, content) in sections.items():
             if slug not in created_slugs:
                 _upsert_wiki_page(
-                    code_path, project_id, slug, title, content,
+                    db, project_id, slug, title, content,
                     len(created_slugs), "enrichment"
                 )
                 created_slugs.append(slug)
 
     # Business rule wiki pages (hierarchical)
-    rule_pages = _build_business_rules_wiki_pages(db, code_path, project_id)
+    rule_pages = _build_business_rules_wiki_pages(db, project_id)
 
     # Apply semantic hypertext linking
-    linked_count = _apply_semantic_links_to_project_fs(code_path, project_id)
+    linked_count = _apply_semantic_links_to_project(db, project_id)
 
     # Auto-trigger AI enrichment for individual rule pages
     rule_page_count = len([p for p in rule_pages if p and p.get("slug", "").startswith("regra-")])
@@ -289,7 +285,7 @@ async def relink_wiki_pages(
 ):
     """Re-apply semantic hypertext linking to all wiki pages."""
     project = _get_project_or_404(db, project_id)
-    linked_count = _apply_semantic_links_to_project_fs(project.code_path, project_id)
+    linked_count = _apply_semantic_links_to_project(db, project_id)
     return {"detail": f"{linked_count} páginas atualizadas com links semânticos"}
 
 
@@ -301,22 +297,19 @@ async def create_wiki_page(
 ):
     """Create a new wiki page."""
     project = _get_project_or_404(db, project_id)
-    code_path = project.code_path
 
-    slug = wiki_fs.ensure_unique_slug(code_path, _slugify(data.slug or data.title))
+    slug = wiki_fs.ensure_unique_slug(db, project_id, _slugify(data.slug or data.title))
 
     # Resolve parent_slug from parent_id if provided
     parent_slug = None
     if data.parent_id:
-        all_pages = wiki_fs.list_pages(code_path)
-        for page in all_pages:
-            page_id = wiki_fs._deterministic_id(project_id, page.slug)
-            if page_id == str(data.parent_id):
-                parent_slug = page.slug
-                break
+        from app.models.wiki_page import WikiPage
+        parent_row = db.query(WikiPage.slug).filter(WikiPage.id == data.parent_id).first()
+        if parent_row:
+            parent_slug = parent_row.slug
 
     result = wiki_fs.write_page(
-        code_path=code_path,
+        db=db,
         project_id=project_id,
         slug=slug,
         title=data.title,
@@ -327,7 +320,7 @@ async def create_wiki_page(
     )
 
     # Re-apply semantic links
-    _apply_semantic_links_to_project_fs(code_path, project_id)
+    _apply_semantic_links_to_project(db, project_id)
 
     logger.info(f"Wiki page created: {data.title} ({slug}) for project {project_id}")
     return result
@@ -341,10 +334,10 @@ async def get_wiki_page(
 ):
     """Get a specific wiki page by slug."""
     project = _get_project_or_404(db, project_id)
-    page = wiki_fs.read_page(project.code_path, slug)
+    page = wiki_fs.read_page(db, project_id, slug)
     if not page:
         raise HTTPException(status_code=404, detail="Página wiki não encontrada")
-    return wiki_fs.page_to_response(project.code_path, project_id, page)
+    return wiki_fs.page_to_response(db, project_id, page)
 
 
 @router.put("/{project_id}/wiki/{slug}", response_model=WikiPageResponse)
@@ -356,9 +349,8 @@ async def update_wiki_page(
 ):
     """Update a wiki page."""
     project = _get_project_or_404(db, project_id)
-    code_path = project.code_path
 
-    existing = wiki_fs.read_page(code_path, slug)
+    existing = wiki_fs.read_page(db, project_id, slug)
     if not existing:
         raise HTTPException(status_code=404, detail="Página wiki não encontrada")
 
@@ -375,16 +367,12 @@ async def update_wiki_page(
     # Resolve parent_slug change if parent_id provided
     parent_slug = existing.parent_slug
     if data.parent_id is not None:
-        all_pages = wiki_fs.list_pages(code_path)
-        parent_slug = None
-        for page in all_pages:
-            page_id = wiki_fs._deterministic_id(project_id, page.slug)
-            if page_id == str(data.parent_id):
-                parent_slug = page.slug
-                break
+        from app.models.wiki_page import WikiPage
+        parent_row = db.query(WikiPage.slug).filter(WikiPage.id == data.parent_id).first()
+        parent_slug = parent_row.slug if parent_row else None
 
     result = wiki_fs.write_page(
-        code_path=code_path,
+        db=db,
         project_id=project_id,
         slug=slug,
         title=title,
@@ -397,7 +385,7 @@ async def update_wiki_page(
 
     # Re-apply semantic links on content/title change
     if data.content is not None or data.title is not None:
-        _apply_semantic_links_to_project_fs(code_path, project_id)
+        _apply_semantic_links_to_project(db, project_id)
 
     logger.info(f"Wiki page updated: {title} ({slug})")
     return result
@@ -412,11 +400,11 @@ async def delete_wiki_page(
     """Delete a wiki page."""
     project = _get_project_or_404(db, project_id)
 
-    if not wiki_fs.delete_page(project.code_path, slug):
+    if not wiki_fs.delete_page(db, project_id, slug):
         raise HTTPException(status_code=404, detail="Página wiki não encontrada")
 
     # Clean up orphan links
-    _apply_semantic_links_to_project_fs(project.code_path, project_id)
+    _apply_semantic_links_to_project(db, project_id)
 
     logger.info(f"Wiki page deleted: {slug}")
     return {"detail": "Página wiki excluida", "slug": slug}
@@ -431,8 +419,8 @@ async def enrich_business_rule_pages(
     """Trigger AI enrichment of individual business rule wiki pages."""
     project = _get_project_or_404(db, project_id)
 
-    # Count rule pages from filesystem
-    all_pages = wiki_fs.list_pages(project.code_path)
+    # Count rule pages from database
+    all_pages = wiki_fs.list_pages(db, project_id)
     if force:
         rule_pages = [p for p in all_pages if p.slug.startswith("regra-")]
     else:
@@ -476,7 +464,7 @@ async def generate_wiki_page_content(
 ):
     """Generate content for a wiki page using AI."""
     project = _get_project_or_404(db, project_id)
-    page = wiki_fs.read_page(project.code_path, slug)
+    page = wiki_fs.read_page(db, project_id, slug)
     if not page:
         raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
 
@@ -507,7 +495,7 @@ async def expand_wiki_page_content(
 ):
     """Expand/detail a wiki page's content using AI."""
     project = _get_project_or_404(db, project_id)
-    page = wiki_fs.read_page(project.code_path, slug)
+    page = wiki_fs.read_page(db, project_id, slug)
     if not page:
         raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
     if not page.content or not page.content.strip():
@@ -540,7 +528,7 @@ async def summarize_wiki_page_content(
 ):
     """Summarize/condense a wiki page's content using AI."""
     project = _get_project_or_404(db, project_id)
-    page = wiki_fs.read_page(project.code_path, slug)
+    page = wiki_fs.read_page(db, project_id, slug)
     if not page:
         raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
     if not page.content or not page.content.strip():
@@ -573,7 +561,7 @@ async def rephrase_wiki_page_content(
 ):
     """Rephrase a wiki page's content using AI."""
     project = _get_project_or_404(db, project_id)
-    page = wiki_fs.read_page(project.code_path, slug)
+    page = wiki_fs.read_page(db, project_id, slug)
     if not page:
         raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
     if not page.content or not page.content.strip():

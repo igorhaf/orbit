@@ -60,13 +60,9 @@ def _build_full_hierarchy_text(db: Session, task: Task) -> str:
 
 def _build_wiki_context_text(db: Session, project: Project, search_terms: str, max_pages: int = 3) -> str:
     """Find relevant wiki pages and return their content as context."""
-    code_path = getattr(project, "code_path", None)
-    if not code_path:
-        return ""
-
     try:
         from app.services.wiki_fs import list_pages
-        all_pages = list_pages(code_path)
+        all_pages = list_pages(db, project.id)
     except Exception as e:
         logger.warning(f"Could not list wiki pages: {e}")
         return ""

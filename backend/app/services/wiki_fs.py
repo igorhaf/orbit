@@ -1,40 +1,37 @@
 """
-Wiki Filesystem Storage Layer
+Wiki Database Storage Layer
 
-PROMPT #237 - Wiki pages stored as .md files with YAML front matter
-in satellite/knowledge/wiki/ inside the project code_path.
+Wiki pages are stored exclusively in the PostgreSQL database (table wiki_pages).
+No filesystem operations are performed.
 
-Storage structure:
-    satellite/knowledge/wiki/
-        {slug}.md                    -> root page (no parent)
-        {parent_slug}/
-            {slug}.md                -> child page
-            {slug}/
-                {grandchild}.md      -> grandchild page
-
-Hierarchy is derived from directory structure, not database.
-IDs are deterministic UUIDs from project_id + slug (uuid5).
+Public API:
+    list_pages(db, project_id)      -> List[WikiFileInfo]
+    read_page(db, project_id, slug) -> Optional[WikiFileInfo]
+    write_page(...)                 -> dict
+    delete_page(db, project_id, slug) -> bool
+    page_exists(db, project_id, slug) -> bool
+    ensure_unique_slug(db, project_id, slug) -> str
+    build_tree(db, project_id)      -> List[dict]
+    page_to_response(db, project_id, page) -> dict
+    apply_semantic_links(db, project_id, add_links_fn) -> int
 """
 
 import logging
-import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from uuid import UUID, uuid5, NAMESPACE_URL
 
-import yaml
+from sqlalchemy.orm import Session
+
+from app.models.wiki_page import WikiPage
 
 logger = logging.getLogger(__name__)
-
-SATELLITE_DIR = "satellite"
-WIKI_DIR_NAME = "wiki"
 
 
 @dataclass
 class WikiFileInfo:
-    """In-memory representation of a wiki page read from disk."""
+    """In-memory representation of a wiki page."""
     slug: str
     title: str
     content: str
@@ -43,17 +40,12 @@ class WikiFileInfo:
     created_at: str = ""
     updated_at: str = ""
     parent_slug: Optional[str] = None
-    file_path: Optional[Path] = field(default=None, repr=False)
+    page_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-def _wiki_dir(code_path: str) -> Path:
-    """Return the wiki directory path for a project."""
-    return Path(code_path) / SATELLITE_DIR / "knowledge" / WIKI_DIR_NAME
-
 
 def _deterministic_id(project_id, slug: str) -> str:
     """Generate a stable UUID5 string from project_id and slug."""
@@ -65,66 +57,46 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _parse_front_matter(text: str) -> Tuple[dict, str]:
-    """Parse YAML front matter from markdown text.
-
-    Returns (metadata_dict, body_text).
-    Returns ({}, full_text) if no valid front matter.
-    """
-    if not text.startswith("---"):
-        return {}, text
-
-    end = text.find("---", 3)
-    if end < 0:
-        return {}, text
-
-    yaml_text = text[3:end].strip()
-    body = text[end + 3:].strip()
-
-    try:
-        meta = yaml.safe_load(yaml_text)
-        if not isinstance(meta, dict):
-            return {}, text
-        return meta, body
-    except yaml.YAMLError:
-        return {}, text
+def _dt_to_iso(dt: Optional[datetime]) -> str:
+    """Convert a datetime to ISO string, or empty string if None."""
+    if dt is None:
+        return ""
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _render_front_matter(info: WikiFileInfo) -> str:
-    """Serialize WikiFileInfo to YAML front matter + markdown body."""
-    meta = {
-        "title": info.title,
-        "slug": info.slug,
-        "source": info.source,
-        "order_index": info.order_index,
-        "created_at": info.created_at,
-        "updated_at": info.updated_at,
-    }
-    yaml_str = yaml.dump(
-        meta, default_flow_style=False, allow_unicode=True, sort_keys=False
+def _row_to_info(row: WikiPage, parent_slug: Optional[str] = None) -> WikiFileInfo:
+    """Convert a WikiPage DB row to a WikiFileInfo dataclass."""
+    return WikiFileInfo(
+        slug=row.slug,
+        title=row.title,
+        content=row.content or "",
+        source=row.source or "manual",
+        order_index=row.order_index or 0,
+        created_at=_dt_to_iso(row.created_at),
+        updated_at=_dt_to_iso(row.updated_at),
+        parent_slug=parent_slug,
+        page_id=str(row.id),
     )
-    return f"---\n{yaml_str}---\n\n{info.content}"
 
 
-def _find_page_path(wiki_dir: Path, slug: str) -> Optional[Path]:
-    """Find a page file by slug within the wiki directory."""
-    if not wiki_dir.exists():
+def _resolve_parent_slug(db: Session, parent_id: Optional[UUID]) -> Optional[str]:
+    """Look up the slug for a parent_id, or return None."""
+    if parent_id is None:
         return None
-    target = f"{slug}.md"
-    for path in wiki_dir.rglob(target):
-        if path.is_file():
-            return path
-    return None
+    parent = db.query(WikiPage.slug).filter(WikiPage.id == parent_id).first()
+    return parent.slug if parent else None
 
 
-def _parent_slug_from_path(wiki_dir: Path, file_path: Path) -> Optional[str]:
-    """Derive parent slug from file's position in directory hierarchy."""
-    relative = file_path.relative_to(wiki_dir)
-    parts = relative.parts  # e.g. ("foo", "bar", "baz.md")
-    if len(parts) <= 1:
-        return None  # root page
-    # Parent slug is the last directory name
-    return parts[-2]
+def _resolve_parent_id(db: Session, project_id: UUID, parent_slug: Optional[str]) -> Optional[UUID]:
+    """Look up the id for a parent_slug within the same project, or return None."""
+    if not parent_slug:
+        return None
+    parent = (
+        db.query(WikiPage.id)
+        .filter(WikiPage.project_id == project_id, WikiPage.slug == parent_slug)
+        .first()
+    )
+    return parent.id if parent else None
 
 
 def _page_to_response(
@@ -137,10 +109,11 @@ def _page_to_response(
     parent_slug: Optional[str],
     created_at: str,
     updated_at: str,
+    page_id: Optional[str] = None,
 ) -> dict:
     """Convert page data to API response dict."""
     return {
-        "id": _deterministic_id(project_id, slug),
+        "id": page_id or _deterministic_id(project_id, slug),
         "project_id": str(project_id),
         "slug": slug,
         "title": title,
@@ -161,47 +134,42 @@ def _page_to_response(
 # Public API
 # ---------------------------------------------------------------------------
 
-def page_exists(code_path: str, slug: str) -> bool:
-    """Check if a wiki page exists on disk."""
-    return _find_page_path(_wiki_dir(code_path), slug) is not None
+def page_exists(db: Session, project_id: UUID, slug: str) -> bool:
+    """Check if a wiki page exists in the database."""
+    return (
+        db.query(WikiPage.id)
+        .filter(WikiPage.project_id == project_id, WikiPage.slug == slug)
+        .first()
+    ) is not None
 
 
-def ensure_unique_slug(code_path: str, slug: str) -> str:
+def ensure_unique_slug(db: Session, project_id: UUID, slug: str) -> str:
     """Ensure slug is unique within the project wiki."""
     base_slug = slug
     counter = 1
-    while page_exists(code_path, slug):
+    while page_exists(db, project_id, slug):
         slug = f"{base_slug}-{counter}"
         counter += 1
     return slug
 
 
-def read_page(code_path: str, slug: str) -> Optional[WikiFileInfo]:
-    """Read a wiki page from disk by slug."""
-    wiki = _wiki_dir(code_path)
-    path = _find_page_path(wiki, slug)
-    if not path:
+def read_page(db: Session, project_id: UUID, slug: str) -> Optional[WikiFileInfo]:
+    """Read a single wiki page from database."""
+    row = (
+        db.query(WikiPage)
+        .filter(WikiPage.project_id == project_id, WikiPage.slug == slug)
+        .first()
+    )
+    if not row:
         return None
 
-    text = path.read_text(encoding="utf-8")
-    meta, body = _parse_front_matter(text)
-
-    return WikiFileInfo(
-        slug=meta.get("slug", slug),
-        title=meta.get("title", slug),
-        content=body,
-        source=meta.get("source", "manual"),
-        order_index=meta.get("order_index", 0),
-        created_at=meta.get("created_at", ""),
-        updated_at=meta.get("updated_at", ""),
-        parent_slug=_parent_slug_from_path(wiki, path),
-        file_path=path,
-    )
+    parent_slug = _resolve_parent_slug(db, row.parent_id)
+    return _row_to_info(row, parent_slug)
 
 
 def write_page(
-    code_path: str,
-    project_id,
+    db: Session,
+    project_id: UUID,
     slug: str,
     title: str,
     content: str,
@@ -210,95 +178,74 @@ def write_page(
     parent_slug: Optional[str] = None,
     respect_protected: bool = True,
 ) -> dict:
-    """Write a wiki page to disk as a .md file with YAML front matter.
+    """Write/update a wiki page in the database.
 
     REGRA #0: if existing page has source='manual' or 'enrichment',
     never overwrite with source='ai_generated' or other auto source.
 
-    Args:
-        code_path: Project root directory
-        project_id: Project UUID (for deterministic ID generation)
-        slug: URL-friendly page identifier
-        title: Page title
-        content: Markdown body
-        source: Origin ('manual', 'ai_generated', 'enrichment')
-        order_index: Sort order among siblings
-        parent_slug: Slug of parent page (determines directory placement)
-        respect_protected: If True, enforces REGRA #0 protection
-
     Returns:
         Dict matching WikiPageResponse format.
     """
-    wiki = _wiki_dir(code_path)
-    wiki.mkdir(parents=True, exist_ok=True)
-    now = _now_iso()
+    now = datetime.now(timezone.utc)
+    parent_id = _resolve_parent_id(db, project_id, parent_slug)
 
-    # Check existing page for REGRA #0
-    existing_path = _find_page_path(wiki, slug)
-    existing_meta = None
-    if existing_path:
-        text = existing_path.read_text(encoding="utf-8")
-        existing_meta, existing_body = _parse_front_matter(text)
+    existing = (
+        db.query(WikiPage)
+        .filter(WikiPage.project_id == project_id, WikiPage.slug == slug)
+        .first()
+    )
 
     # REGRA #0 - Protected sources never overwritten by automated content
     protected_sources = {"manual", "enrichment"}
-    if respect_protected and existing_meta:
-        existing_source = existing_meta.get("source", "")
+    if respect_protected and existing:
+        existing_source = existing.source or ""
         if existing_source in protected_sources and source not in protected_sources:
             logger.debug(
-                f"Wiki page '{slug}' is protected (source={existing_source}), "
-                f"skipping content overwrite"
+                "Wiki page '%s' is protected (source=%s), skipping overwrite",
+                slug, existing_source,
             )
-            _, body = _parse_front_matter(
-                existing_path.read_text(encoding="utf-8")
-            )
-            parent = _parent_slug_from_path(wiki, existing_path)
+            ex_parent_slug = _resolve_parent_slug(db, existing.parent_id)
             return _page_to_response(
                 project_id=project_id,
                 slug=slug,
-                title=existing_meta.get("title", title),
-                content=body,
+                title=existing.title,
+                content=existing.content or "",
                 source=existing_source,
-                order_index=existing_meta.get("order_index", order_index),
-                parent_slug=parent,
-                created_at=existing_meta.get("created_at", now),
-                updated_at=existing_meta.get("updated_at", now),
+                order_index=existing.order_index or 0,
+                parent_slug=ex_parent_slug,
+                created_at=_dt_to_iso(existing.created_at),
+                updated_at=_dt_to_iso(existing.updated_at),
+                page_id=str(existing.id),
             )
 
-    # Determine target path based on parent
-    if parent_slug:
-        parent_path = _find_page_path(wiki, parent_slug)
-        if parent_path:
-            child_dir = parent_path.parent / parent_slug
-        else:
-            # Parent doesn't exist as file yet; use flat directory
-            child_dir = wiki / parent_slug
-        child_dir.mkdir(parents=True, exist_ok=True)
-        target = child_dir / f"{slug}.md"
+    if existing:
+        # Update existing page
+        existing.title = title
+        existing.content = content
+        existing.source = source
+        existing.order_index = order_index
+        existing.parent_id = parent_id
+        existing.updated_at = now
+        db.flush()
+        page_id = str(existing.id)
+        created_at_iso = _dt_to_iso(existing.created_at)
     else:
-        target = wiki / f"{slug}.md"
-
-    # If file existed at a different location, remove old one
-    if existing_path and existing_path.resolve() != target.resolve():
-        existing_path.unlink(missing_ok=True)
-
-    # Preserve created_at from existing page
-    created_at = now
-    if existing_meta:
-        created_at = existing_meta.get("created_at", now)
-
-    info = WikiFileInfo(
-        slug=slug,
-        title=title,
-        content=content,
-        source=source,
-        order_index=order_index,
-        created_at=created_at,
-        updated_at=now,
-    )
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(_render_front_matter(info), encoding="utf-8")
+        # Create new page
+        new_page = WikiPage(
+            project_id=project_id,
+            slug=slug,
+            title=title,
+            content=content,
+            source=source,
+            order_index=order_index,
+            parent_id=parent_id,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(new_page)
+        db.flush()
+        page_id = str(new_page.id)
+        created_at_iso = _dt_to_iso(now)
 
     return _page_to_response(
         project_id=project_id,
@@ -308,85 +255,61 @@ def write_page(
         source=source,
         order_index=order_index,
         parent_slug=parent_slug,
-        created_at=created_at,
-        updated_at=now,
+        created_at=created_at_iso,
+        updated_at=_dt_to_iso(now),
+        page_id=page_id,
     )
 
 
-def delete_page(code_path: str, slug: str) -> bool:
-    """Delete a wiki page and its children directory.
+def delete_page(db: Session, project_id: UUID, slug: str) -> bool:
+    """Delete a wiki page from the database.
 
+    Children are handled by the DB foreign key (SET NULL on parent_id).
     Returns True if deleted, False if not found.
     """
-    wiki = _wiki_dir(code_path)
-    path = _find_page_path(wiki, slug)
-    if not path:
+    row = (
+        db.query(WikiPage)
+        .filter(WikiPage.project_id == project_id, WikiPage.slug == slug)
+        .first()
+    )
+    if not row:
         return False
 
-    # Remove the file
-    path.unlink()
-
-    # Remove children directory if it exists
-    children_dir = path.parent / slug
-    if children_dir.exists() and children_dir.is_dir():
-        shutil.rmtree(children_dir)
-
-    # Clean up empty parent directories up to wiki root.
-    # PROMPT #243 - NEVER delete wiki root or any satellite/ ancestor.
-    parent = path.parent
-    while parent != wiki and parent.exists():
-        # Safety: stop if we somehow reach a satellite/ structural dir
-        if parent.name in ("satellite", "knowledge", "wiki"):
-            break
-        try:
-            if not any(parent.iterdir()):
-                parent.rmdir()
-                parent = parent.parent
-            else:
-                break
-        except OSError:
-            break
-
+    db.delete(row)
+    db.flush()
     return True
 
 
-def list_pages(code_path: str) -> List[WikiFileInfo]:
-    """List all wiki pages recursively."""
-    wiki = _wiki_dir(code_path)
-    if not wiki.exists():
-        return []
+def list_pages(db: Session, project_id: UUID) -> List[WikiFileInfo]:
+    """List all wiki pages for a project from database."""
+    rows = (
+        db.query(WikiPage)
+        .filter(WikiPage.project_id == project_id)
+        .order_by(WikiPage.order_index, WikiPage.title)
+        .all()
+    )
+
+    # Build a slug lookup for parent resolution (avoids N+1 queries)
+    id_to_slug: Dict[str, str] = {}
+    for row in rows:
+        id_to_slug[str(row.id)] = row.slug
 
     pages = []
-    for path in sorted(wiki.rglob("*.md")):
-        if not path.is_file() or path.name == ".gitkeep":
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-            meta, body = _parse_front_matter(text)
-            slug = meta.get("slug", path.stem)
-            pages.append(WikiFileInfo(
-                slug=slug,
-                title=meta.get("title", slug),
-                content=body,
-                source=meta.get("source", "manual"),
-                order_index=meta.get("order_index", 0),
-                created_at=meta.get("created_at", ""),
-                updated_at=meta.get("updated_at", ""),
-                parent_slug=_parent_slug_from_path(wiki, path),
-                file_path=path,
-            ))
-        except Exception as e:
-            logger.warning(f"Error reading wiki page {path}: {e}")
+    for row in rows:
+        parent_slug = None
+        if row.parent_id:
+            parent_slug = id_to_slug.get(str(row.parent_id))
+        pages.append(_row_to_info(row, parent_slug))
 
     return pages
 
 
-def build_tree(code_path: str, project_id) -> List[dict]:
-    """Build hierarchical tree structure from wiki files.
+def build_tree(db: Session, project_id: UUID) -> List[dict]:
+    """Build hierarchical tree structure from wiki pages.
 
     Returns list of tree items matching WikiPageTreeItem format.
     """
-    pages = list_pages(code_path)
+    pages = list_pages(db, project_id)
     if not pages:
         return []
 
@@ -407,7 +330,7 @@ def build_tree(code_path: str, project_id) -> List[dict]:
         result = []
         for page in items:
             item = {
-                "id": _deterministic_id(project_id, page.slug),
+                "id": page.page_id or _deterministic_id(project_id, page.slug),
                 "slug": page.slug,
                 "title": page.title,
                 "parent_id": (
@@ -425,7 +348,7 @@ def build_tree(code_path: str, project_id) -> List[dict]:
     return _build(None)
 
 
-def page_to_response(code_path: str, project_id, page: WikiFileInfo) -> dict:
+def page_to_response(db: Session, project_id, page: WikiFileInfo) -> dict:
     """Convert a WikiFileInfo to API response dict."""
     return _page_to_response(
         project_id=project_id,
@@ -437,21 +360,22 @@ def page_to_response(code_path: str, project_id, page: WikiFileInfo) -> dict:
         parent_slug=page.parent_slug,
         created_at=page.created_at,
         updated_at=page.updated_at,
+        page_id=page.page_id,
     )
 
 
-def apply_semantic_links(code_path: str, project_id, add_links_fn) -> int:
-    """Apply semantic hypertext linking to all wiki pages on disk.
+def apply_semantic_links(db: Session, project_id: UUID, add_links_fn) -> int:
+    """Apply semantic hypertext linking to all wiki pages in database.
 
     Args:
-        code_path: Project root directory
+        db: Database session
         project_id: Project UUID
         add_links_fn: Function(content, terms_map, exclude_slug, max_links, valid_slugs) -> str
 
     Returns:
         Number of pages modified.
     """
-    pages = list_pages(code_path)
+    pages = list_pages(db, project_id)
     if not pages:
         return 0
 
@@ -479,7 +403,7 @@ def apply_semantic_links(code_path: str, project_id, add_links_fn) -> int:
         if new_content != page.content:
             # Write back with same source to preserve protection status
             write_page(
-                code_path=code_path,
+                db=db,
                 project_id=project_id,
                 slug=page.slug,
                 title=page.title,
@@ -493,7 +417,7 @@ def apply_semantic_links(code_path: str, project_id, add_links_fn) -> int:
 
     if modified_count > 0:
         logger.info(
-            f"Semantic linking: {modified_count}/{len(pages)} pages updated"
+            "Semantic linking: %d/%d pages updated", modified_count, len(pages)
         )
 
     return modified_count

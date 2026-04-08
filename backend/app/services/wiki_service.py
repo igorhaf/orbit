@@ -1,8 +1,7 @@
 """
 Wiki Service - Business logic for wiki page generation, enrichment, and linking.
 
-PROMPT #237 - Refactored to use filesystem storage (wiki_fs) instead of database.
-All wiki pages are stored as .md files in satellite/wiki/.
+All wiki pages are stored in the PostgreSQL database (wiki_pages table).
 
 Route handlers in wiki.py import from this module.
 
@@ -14,6 +13,8 @@ statements remain unchanged.
 import re
 import logging
 from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 from app.services import wiki_fs
 
@@ -39,13 +40,13 @@ def _slugify(text: str) -> str:
     return text.strip('-')
 
 
-def _ensure_unique_slug(code_path: str, slug: str) -> str:
-    """Ensure slug is unique within project wiki on disk."""
-    return wiki_fs.ensure_unique_slug(code_path, slug)
+def _ensure_unique_slug(db: Session, project_id: UUID, slug: str) -> str:
+    """Ensure slug is unique within project wiki."""
+    return wiki_fs.ensure_unique_slug(db, project_id, slug)
 
 
 def _upsert_wiki_page(
-    code_path: str,
+    db: Session,
     project_id: UUID,
     slug: str,
     title: str,
@@ -54,14 +55,13 @@ def _upsert_wiki_page(
     source: str,
     parent_slug: str = None,
 ) -> dict:
-    """Create or update a wiki page on disk.
+    """Create or update a wiki page in the database.
 
-    PROMPT #237 - Filesystem-based replacement for the DB version.
     PROMPT #285 - Protected sources: pages with source='manual' or 'enrichment'
     are NEVER overwritten by automated re-scan.
     """
     return wiki_fs.write_page(
-        code_path=code_path,
+        db=db,
         project_id=project_id,
         slug=slug,
         title=title,
@@ -92,7 +92,7 @@ from app.services.wiki_pages import (  # noqa: E402, F401
     _classify_domain,
     _build_business_rules_wiki_pages,
     _add_semantic_links_to_content,
-    _apply_semantic_links_to_project_fs,
+    _apply_semantic_links_to_project,
     _parse_wiki_sections,
     _parse_wiki_subsections,
 )

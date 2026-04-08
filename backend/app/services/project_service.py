@@ -32,37 +32,34 @@ MAX_SPECS_PER_PROJECT = 50
 
 def initialize_project_knowledge_base(code_path: str, project_name: str) -> str:
     """
-    PROMPT #235 - Create satellite/ KB structure inside code_path.
+    PROMPT #235 - Create .satellite marker + .orbit/ structure inside code_path.
 
     Creates code_path itself if it doesn't exist.
-    Creates satellite/ and all subfolders (idempotent).
-    Creates satellite/README.md if not present (REGRA #0 - never overwrites).
+    Creates .satellite marker file and .orbit/ folder with memory/ and docs/ (idempotent).
+    Creates .orbit/README.md if not present (REGRA #0 - never overwrites).
 
-    Returns the satellite/ path as string.
+    Returns the .orbit/ path as string.
     """
     from app.services.orbit_folder import ensure_satellite_dirs
 
     path = Path(code_path)
-    satellite_path = ensure_satellite_dirs(path)
+    orbit_path = ensure_satellite_dirs(path)
 
     # Create README.md only if not present (REGRA #0)
-    readme = satellite_path / "README.md"
+    readme = orbit_path / "README.md"
     if not readme.exists():
         readme.write_text(
             f"# {project_name}\n\n"
             "Base de conhecimento gerenciada pelo ORBIT.\n\n"
             "## Estrutura\n\n"
-            "- `prompts/` — Prompts gerados para cards e logs de execucao de IA\n"
-            "- `results/` — Resultados de execucao de tasks pelo Claude Code\n"
-            "- `knowledge/` — Arquivos de contexto e documentacao adicional\n"
-            "- `docs/` — Documentacao publica do projeto\n"
-            "- `rag/internal/` — Reports de implementacao\n"
-            "- `rag/docs/` — Documentacao geral\n",
+            "- `memory/` — Logs de execucao de IA\n"
+            "- `docs/` — Documentos enviados (PDFs, TXTs, etc.)\n\n"
+            "Wiki, prompts e resultados sao armazenados no banco de dados.\n",
             encoding="utf-8"
         )
-        logger.info(f"Created satellite/README.md for project '{project_name}'")
+        logger.info(f"Created .orbit/README.md for project '{project_name}'")
 
-    return str(satellite_path)
+    return str(orbit_path)
 
 
 def _get_max_patterns(db: Session) -> int:
@@ -691,23 +688,19 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                 _build_code_structure_page,
                 _build_git_history_page,
                 _build_business_rules_wiki_pages,
-                _apply_semantic_links_to_project_fs,
+                _apply_semantic_links_to_project,
                 _trigger_rule_enrichment_job,
             )
-
-            code_path = project.code_path
-            if not code_path:
-                raise ValueError("Project has no code_path")
 
             sections = _parse_wiki_sections(enriched)
 
             order = 0
             for slug, (title, content) in sections.items():
-                _upsert_wiki_page(code_path, project_id, slug, title, content, order, "enrichment")
+                _upsert_wiki_page(db, project_id, slug, title, content, order, "enrichment")
                 order += 1
 
             if not sections:
-                _upsert_wiki_page(code_path, project_id, "visao-geral", "Visao Geral", enriched, 0, "enrichment")
+                _upsert_wiki_page(db, project_id, "visao-geral", "Visao Geral", enriched, 0, "enrichment")
 
             if rules:
                 rules_md_parts = [
@@ -721,7 +714,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                     rules_md_parts.append(f"{i}. {rule_text}")
                 rules_md = "\n".join(rules_md_parts)
                 _upsert_wiki_page(
-                    code_path, project_id, "regras-catálogo-bruto",
+                    db, project_id, "regras-catálogo-bruto",
                     "Catálogo de Referência - Regras Brutas", rules_md,
                     12, "ai_generated",
                     parent_slug="regras-de-negocio",
@@ -739,18 +732,18 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             for slug, title, builder, order_idx in page_builders:
                 content = builder(db, project_id)
                 if content:
-                    _upsert_wiki_page(code_path, project_id, slug, title, content, order_idx, "ai_generated")
+                    _upsert_wiki_page(db, project_id, slug, title, content, order_idx, "ai_generated")
                     rag_pages_count += 1
             if rag_pages_count:
                 logger.info(f"Wiki: {rag_pages_count} RAG data pages for project {project_id}")
 
-            rule_pages = _build_business_rules_wiki_pages(db, code_path, project_id)
+            rule_pages = _build_business_rules_wiki_pages(db, project_id)
             if rule_pages:
                 logger.info(f"Wiki: {len(rule_pages)} business rule pages for project {project_id}")
 
             # Apply semantic hypertext linking
             try:
-                _apply_semantic_links_to_project_fs(code_path, project_id)
+                _apply_semantic_links_to_project(db, project_id)
             except Exception as e:
                 logger.warning(f"Failed to apply semantic links: {e}")
 

@@ -179,7 +179,7 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
             _build_code_structure_page,
             _build_git_history_page,
             _build_business_rules_wiki_pages,
-            _apply_semantic_links_to_project_fs,
+            _apply_semantic_links_to_project,
         )
         code_path = project.code_path
 
@@ -242,7 +242,7 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
             try:
                 content = builder(db, project_id)
                 if content:
-                    _upsert_wiki_page(code_path, project_id, slug, title, content, order, "ai_generated")
+                    _upsert_wiki_page(db, project_id, slug, title, content, order, "ai_generated")
                     pages_created += 1
                     jm.complete_child_job(child_ids[i], {"status": "created", "chars": len(content)})
                     logger.info(f"Wiki {i+1}/{total_subjobs}: {title} ({len(content)} chars)")
@@ -259,7 +259,7 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
         idx_rules = len(rag_page_builders)
         jm.start_job(child_ids[idx_rules])
         try:
-            rule_pages = _build_business_rules_wiki_pages(db, code_path, project_id)
+            rule_pages = _build_business_rules_wiki_pages(db, project_id)
             rule_count = len(rule_pages) if rule_pages else 0
             if rule_count > 0:
                 pages_created += rule_count
@@ -278,7 +278,7 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
         idx_links = len(rag_page_builders) + 1
         jm.start_job(child_ids[idx_links])
         try:
-            _apply_semantic_links_to_project_fs(code_path, project_id)
+            _apply_semantic_links_to_project(db, project_id)
             jm.complete_child_job(child_ids[idx_links], {"status": "linked"})
             logger.info(f"Wiki {idx_links+1}/{total_subjobs}: semantic links applied")
         except Exception as e:

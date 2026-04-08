@@ -226,9 +226,8 @@ async def get_enrichment_status(
     has_wiki = False
     try:
         from app.services import wiki_fs
-        if project.code_path:
-            wiki_pages = wiki_fs.list_pages(project.code_path)
-            has_wiki = bool(wiki_pages) and len(wiki_pages) > 0
+        wiki_pages = wiki_fs.list_pages(db, project_id)
+        has_wiki = bool(wiki_pages) and len(wiki_pages) > 0
     except Exception:
         pass
 
