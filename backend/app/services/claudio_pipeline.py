@@ -21,8 +21,9 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Claudio proxy base URL (default: local)
+# Claudio proxy base URL and API key
 CLAUDIO_BASE_URL = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
+CLAUDIO_API_KEY = os.getenv("CLAUDIO_API_KEY", "123456789")
 
 # Model identifiers
 MODEL_HAIKU = "claude-haiku-4-5"
@@ -82,6 +83,7 @@ class ClaudioPipelineService:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
+                headers={"x-api-key": CLAUDIO_API_KEY},
                 timeout=httpx.Timeout(600.0, connect=10.0),
             )
         return self._client
