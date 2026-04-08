@@ -314,6 +314,7 @@ class ProvidersMixin:
         import httpx
 
         claudio_base = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
+        claudio_key = os.getenv("CLAUDIO_API_KEY", "123456789")
         url = f"{claudio_base}/v1/messages"
 
         body: Dict[str, Any] = {
@@ -346,6 +347,7 @@ class ProvidersMixin:
                 headers={
                     "Content-Type": "application/json",
                     "anthropic-version": "2023-06-01",
+                    "x-api-key": claudio_key,
                 },
             )
             resp.raise_for_status()

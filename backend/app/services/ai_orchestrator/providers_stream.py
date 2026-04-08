@@ -157,6 +157,7 @@ class ProvidersStreamMixin:
         import httpx
 
         claudio_base = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
+        claudio_key = os.getenv("CLAUDIO_API_KEY", "123456789")
         url = f"{claudio_base}/v1/messages"
 
         body: Dict[str, Any] = {
@@ -194,6 +195,7 @@ class ProvidersStreamMixin:
                 headers={
                     "Content-Type": "application/json",
                     "anthropic-version": "2023-06-01",
+                    "x-api-key": claudio_key,
                 },
             ) as resp:
                 resp.raise_for_status()
