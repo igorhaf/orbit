@@ -7,11 +7,9 @@ PROMPT #157 - Prompt Doc & Git Commit RAG Sync
 PROMPT #171 - Global RAG Stats
 PROMPT #172 - Per-Project RAG Stats
 PROMPT #238 - Code Files & Rules-by-File
-PROMPT #243 - Orbit Knowledge Upload
-
 Semantic search and management of project knowledge base:
 - Business rules (manual, from code scan, from interviews)
-- Document uploads
+- Document uploads (RAG-indexed)
 - Interview answers
 - Statistics and sync operations
 """

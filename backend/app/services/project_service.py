@@ -32,34 +32,16 @@ MAX_SPECS_PER_PROJECT = 50
 
 def initialize_project_knowledge_base(code_path: str, project_name: str) -> str:
     """
-    PROMPT #235 - Create .satellite marker + .orbit/ structure inside code_path.
+    Ensure code_path directory exists. Returns code_path as string.
 
-    Creates code_path itself if it doesn't exist.
-    Creates .satellite marker file and .orbit/ folder with memory/ and docs/ (idempotent).
-    Creates .orbit/README.md if not present (REGRA #0 - never overwrites).
-
-    Returns the .orbit/ path as string.
+    Previously created .satellite marker + .orbit/ structure, but that
+    filesystem infrastructure has been removed. Knowledge base is now
+    fully database-backed.
     """
-    from app.services.orbit_folder import ensure_satellite_dirs
-
     path = Path(code_path)
-    orbit_path = ensure_satellite_dirs(path)
-
-    # Create README.md only if not present (REGRA #0)
-    readme = orbit_path / "README.md"
-    if not readme.exists():
-        readme.write_text(
-            f"# {project_name}\n\n"
-            "Base de conhecimento gerenciada pelo ORBIT.\n\n"
-            "## Estrutura\n\n"
-            "- `memory/` — Logs de execucao de IA\n"
-            "- `docs/` — Documentos enviados (PDFs, TXTs, etc.)\n\n"
-            "Wiki, prompts e resultados sao armazenados no banco de dados.\n",
-            encoding="utf-8"
-        )
-        logger.info(f"Created .orbit/README.md for project '{project_name}'")
-
-    return str(orbit_path)
+    path.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Ensured code_path exists for project '{project_name}': {code_path}")
+    return str(path)
 
 
 def _get_max_patterns(db: Session) -> int:

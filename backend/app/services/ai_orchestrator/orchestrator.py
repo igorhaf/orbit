@@ -13,9 +13,8 @@ import asyncio  # PROMPT #152 - For rate limit waiting
 from datetime import datetime
 from uuid import UUID
 
-from .satellite_logger import (
-    _get_model_semaphore, _safe_broadcast, _save_prompt_to_satellite,
-    _SAVE_USAGE_TYPES, UsageType, logger,
+from .constants import (
+    _get_model_semaphore, _safe_broadcast, UsageType, logger,
 )
 from .model_selector import ModelSelectorMixin
 from .providers import ProvidersMixin
@@ -649,7 +648,7 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                                 self.db.add(prompt_log)
                                 self.db.commit()
                                 logger.info(f"✅ Logged prompt to audit (chain path): {prompt_log.id}")
-                                _save_prompt_to_satellite(self.db, prompt_log)  # PROMPT #235
+
                             except Exception as prompt_error:
                                 logger.error(f"⚠️  Failed to log prompt (chain path): {prompt_error}")
                                 self.db.rollback()
@@ -1249,7 +1248,6 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                         self.db.add(prompt_log)
                         self.db.commit()
                         logger.info(f"✅ Logged prompt to audit: {prompt_log.id}")
-                        _save_prompt_to_satellite(self.db, prompt_log)  # PROMPT #235
                     except Exception as prompt_error:
                         logger.error(f"⚠️  Failed to log prompt to audit: {prompt_error}")
                         self.db.rollback()

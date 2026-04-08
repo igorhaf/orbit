@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import logging
 import time
 
-from .satellite_logger import (
+from .constants import (
     _model_config_cache, _model_config_cache_ts, _chain_config_cache,
     _chain_config_cache_ts, _MODEL_CACHE_TTL, UsageType,
     logger,

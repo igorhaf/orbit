@@ -58,7 +58,7 @@ DOMAIN_MAP = {
     "backend/app/services/pattern": "Descoberta de Padroes",
     "backend/app/services/task_executor": "Executor de Tarefas",
     "backend/app/services/spec": "Specs e Frameworks",
-    "backend/app/services/orbit_folder": "Estrutura Orbit",
+    # orbit_folder removed
     "backend/app/services": "Servicos Backend",
     "backend/app/api/routes/projects": "API de Projetos",
     "backend/app/api/routes/tasks": "API de Tarefas",
@@ -91,9 +91,6 @@ DOMAIN_MAP = {
     "docs/PROMPT": "Documentacao de Prompts",
     "docs/ORBIT": "Documentacao ORBIT",
     "docs": "Documentacao do Projeto",
-    ".orbit/memory": "Memoria de Execucao IA",
-    ".orbit/docs": "Documentos Enviados",
-    ".orbit": "Orbit KB",
     # External projects
     "projects/suinda/app/Http/Controllers": "Suinda Controllers",
     "projects/suinda/app/Http/Requests": "Suinda Validacoes",

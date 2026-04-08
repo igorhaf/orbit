@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-RAG Document Indexer - .orbit/docs/
+RAG Document Indexer
 
-Indexes all MD files from a project's .orbit/docs/ directory into the RAG
+Indexes all MD files from a project's docs directory into the RAG
 system (rag_documents table). This script is designed to be reusable across
 any ORBIT project.
 
@@ -30,7 +30,7 @@ Usage:
   # Index another project (pass project_id and docs_dir):
   poetry run python -m app.scripts.index_docs_rag \
     --project-id "uuid-here" \
-    --docs-dir "/path/to/project/.orbit/docs"
+    --docs-dir "/path/to/project/docs"
 
   # Dry run (count files without indexing):
   poetry run python -m app.scripts.index_docs_rag --dry-run
@@ -40,7 +40,7 @@ Requirements:
   - sentence-transformers installed (all-MiniLM-L6-v2)
   - Backend .env with DATABASE_URL configured
 
-PROMPT #238 - RAG Document Indexer from .orbit/docs/
+PROMPT #238 - RAG Document Indexer
 """
 
 import argparse
@@ -214,11 +214,11 @@ def run_indexer(project_id: UUID, docs_dir: Path, dry_run: bool = False):
 
     Args:
         project_id: UUID of the project to index for
-        docs_dir: Path to .orbit/docs/ directory
+        docs_dir: Path to docs directory
         dry_run: If True, only count files without indexing
     """
     logger.info("=" * 60)
-    logger.info("RAG Document Indexer - .orbit/docs/")
+    logger.info("RAG Document Indexer")
     logger.info(f"Project: {project_id}")
     logger.info(f"Docs dir: {docs_dir}")
     logger.info("=" * 60)
@@ -317,7 +317,7 @@ def run_indexer(project_id: UUID, docs_dir: Path, dry_run: bool = False):
                         content=rule['content'],
                         project_id=project_id,
                         source="document",
-                        source_file=f".orbit/docs/{rule['source_file']}",
+                        source_file=f"docs/{rule['source_file']}",
                         rule_type=rule['rule_type'],
                         priority=rule['priority'],
                         fully_coded=False,
@@ -382,15 +382,15 @@ def run_indexer(project_id: UUID, docs_dir: Path, dry_run: bool = False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Index .orbit/docs/ into RAG")
+    parser = argparse.ArgumentParser(description="Index docs into RAG")
     parser.add_argument("--project-id", type=str, help="Project UUID")
-    parser.add_argument("--docs-dir", type=str, help="Path to .orbit/docs/")
+    parser.add_argument("--docs-dir", type=str, help="Path to docs directory")
     parser.add_argument("--dry-run", action="store_true", help="Count files without indexing")
     args = parser.parse_args()
 
     # Defaults for ORBIT self-analysis
     project_id = UUID(args.project_id) if args.project_id else UUID("0c9afa06-cda9-489f-85d1-5d6c67407f32")
-    docs_dir = Path(args.docs_dir) if args.docs_dir else Path("/home/igorhaf/orbit/.orbit/docs")
+    docs_dir = Path(args.docs_dir) if args.docs_dir else Path("/home/igorhaf/orbit/docs")
 
     run_indexer(project_id, docs_dir, dry_run=args.dry_run)
 

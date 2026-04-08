@@ -13,7 +13,7 @@ import time
 import json
 import asyncio
 
-from .satellite_logger import (
+from .constants import (
     _get_model_semaphore, UsageType, logger,
 )
 from app.models.system_settings import SystemSettings  # PROMPT #207 - System default timeout

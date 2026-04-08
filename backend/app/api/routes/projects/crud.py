@@ -9,7 +9,6 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from pathlib import Path
-import os
 import logging
 
 from app.database import get_db
@@ -296,25 +295,6 @@ async def delete_project(
 
     # Step 5: Wiki pages are DB-only now — no filesystem cleanup needed.
     # The CASCADE delete on project handles wiki_pages table.
-
-    # Step 5b: Clean up .orbit/memory/ and .orbit/docs/ files
-    if project.code_path:
-        import shutil
-        for subdir in ["memory", "docs"]:
-            orbit_dir = os.path.join(project.code_path, ".orbit", subdir)
-            if os.path.isdir(orbit_dir):
-                try:
-                    file_count = sum(1 for f in os.listdir(orbit_dir) if os.path.isfile(os.path.join(orbit_dir, f)))
-                    shutil.rmtree(orbit_dir)
-                    os.makedirs(orbit_dir, exist_ok=True)  # Recreate empty dir
-                    logger.info(f"Cleaned .orbit/{subdir}/: {file_count} files removed")
-                except Exception as e:
-                    logger.warning(f"Failed to clean .orbit/{subdir}/: {e}")
-
-    logger.info(
-        f"Project '{project_name}' .orbit/ cleanup complete "
-        f"(code_path={project.code_path})"
-    )
 
     # Step 6: Delete the project (CASCADE handles interviews, tasks, wiki, specs, etc.)
     db.delete(project)

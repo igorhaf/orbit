@@ -12,7 +12,7 @@ import time
 import json
 import asyncio
 
-from .satellite_logger import logger
+from .constants import logger
 from app.services.console_logger import get_console_logger  # PROMPT #168 - Real-time Console Logs
 
 

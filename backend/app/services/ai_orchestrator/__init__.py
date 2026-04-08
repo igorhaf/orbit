@@ -6,6 +6,6 @@ still works exactly as before.
 """
 
 from .orchestrator import AIOrchestrator
-from .satellite_logger import UsageType
+from .constants import UsageType
 
 __all__ = ["AIOrchestrator", "UsageType"]

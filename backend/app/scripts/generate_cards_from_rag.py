@@ -194,13 +194,13 @@ HIERARCHY = [
                     "Projeto requer code_path obrigatorio apontando para pasta existente",
                     "Wizard de criacao: Nome → Entrevista → Review → Confirmar",
                     "code_path e imutavel apos criacao",
-                    "Projeto cria estrutura .orbit/ automaticamente",
+                    "Projeto valida code_path na criacao",
                     "Scan de memoria analisa 30/100/todos arquivos conforme nivel",
                 ],
                 "tasks": [
                     {"title": "Validacao de code_path", "rules": ["Verificar existencia da pasta", "Rejeitar caminhos invalidos", "Impedir alteracao apos criacao"]},
                     {"title": "Wizard de criacao de projeto", "rules": ["4 passos sequenciais", "Navegacao entre passos", "Cancelamento limpa projeto abandonado"]},
-                    {"title": "Estrutura .orbit/ automatica", "rules": ["Criar .satellite marker + .orbit/", "Criar subpastas memory/, docs/", "Idempotente - seguro chamar multiplas vezes"]},
+                    {"title": "Inicializacao de projeto", "rules": ["Criar code_path se nao existir", "Inicializar base de conhecimento no banco"]},
                     {"title": "Scan de memoria do codigo", "rules": ["3 niveis de profundidade", "Identificar stack tecnologica", "Extrair regras de negocio do codigo", "Detectar padroes arquiteturais"]},
                 ]
             },
@@ -413,7 +413,7 @@ HIERARCHY = [
                 "tasks": [
                     {"title": "Scanner de mudancas", "rules": ["Hash SHA-256 por arquivo", "Detectar arquivos novos/modificados/removidos", "Respeitar .gitignore e blocklist"]},
                     {"title": "Pipeline de processamento", "rules": ["Fila: scan → delete → process", "Classificar por semantic layer", "Extrair regras via IA"]},
-                    {"title": "Indexacao de documentos .orbit/docs/", "rules": ["Chunking: 500 chars com 50 overlap", "Tipo prompt_doc para documentacao", "Tipo business_rule para regras extraidas"]},
+                    {"title": "Indexacao de documentos", "rules": ["Chunking: 500 chars com 50 overlap", "Tipo prompt_doc para documentacao", "Tipo business_rule para regras extraidas"]},
                 ]
             },
             {
@@ -482,30 +482,29 @@ HIERARCHY = [
         ]
     },
     {
-        "title": "Satellite - Base de Conhecimento por Projeto",
-        "context": "Estrutura .satellite marker + .orbit/ dentro do code_path do projeto para armazenar memoria e documentos. Wiki, prompts e resultados ficam no banco de dados.",
+        "title": "Base de Conhecimento por Projeto",
+        "context": "Base de conhecimento armazenada inteiramente no banco de dados (RAG, wiki, prompts). Sem dependencia de filesystem.",
         "priority": "medium",
         "story_points": 8,
         "semantic_map": {
-            "N1": ".orbit/",
-            "N2": "OrbitFolderService",
-            "P1": "ensure_satellite_dirs()",
-            "D1": "Estrutura: memory/, docs/, knowledge/",
+            "N1": "RAG",
+            "N2": "RAGService",
+            "P1": "store()",
+            "D1": "Estrutura: rag_documents, wiki_pages, prompts",
         },
         "labels": ["backend", "infrastructure"],
         "stories": [
             {
-                "title": "Estrutura de Pastas Satellite",
-                "context": "Criacao e gerenciamento da estrutura .satellite + .orbit/ com subpastas memory e docs.",
+                "title": "Base de Conhecimento DB",
+                "context": "Armazenamento e gerenciamento de conhecimento do projeto via banco de dados.",
                 "rules": [
-                    ".orbit/memory/ - logs de execucao IA",
-                    ".orbit/docs/ - documentos enviados vigiados pelo RAG",
-                    "Wiki, results e prompts armazenados no banco de dados",
+                    "Documentos indexados no RAG via upload API",
+                    "Wiki pages armazenadas em wiki_pages table",
+                    "Prompts e results armazenados no banco de dados",
                 ],
                 "tasks": [
-                    {"title": "Criacao automatica de estrutura", "rules": ["ensure_satellite_dirs() idempotente", "Cria .satellite marker + .orbit/", "Chamar na criacao de projeto"]},
-                    {"title": "Export de prompts", "rules": ["Prompts armazenados no banco de dados", "Exportacao opcional via API"]},
-                    {"title": "Upload de documentos para docs/", "rules": ["Sanitizar filename contra path traversal", "Indexar automaticamente no RAG", "Listar e deletar via API"]},
+                    {"title": "Upload de documentos via API", "rules": ["Sanitizar filename", "Indexar automaticamente no RAG", "Listar e deletar via API"]},
+                    {"title": "Prompts e logs", "rules": ["Prompts armazenados no banco de dados", "Exportacao opcional via API"]},
                 ]
             },
             {
