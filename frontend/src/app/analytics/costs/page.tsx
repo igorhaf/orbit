@@ -40,6 +40,7 @@ const formatShortDate = (dateStr: string) =>
 
 const getProviderColor = (provider: string) => {
   const colors: Record<string, string> = {
+    claudio: 'bg-indigo-100 text-indigo-800',
     anthropic: 'bg-purple-100 text-purple-800',
     openai: 'bg-green-100 text-green-800',
     google: 'bg-blue-100 text-blue-800',

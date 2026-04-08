@@ -135,9 +135,11 @@ export default function AIExecutionsPage() {
 
   const getProviderColor = (provider: string) => {
     const colors: Record<string, string> = {
+      'claudio': 'bg-indigo-100 text-indigo-700',
       'anthropic': 'bg-purple-100 text-purple-700',
       'openai': 'bg-green-100 text-green-700',
-      'google': 'bg-blue-100 text-blue-700'
+      'google': 'bg-blue-100 text-blue-700',
+      'ollama': 'bg-orange-100 text-orange-700'
     };
     return colors[provider] || 'bg-gray-100 text-gray-700';
   };
