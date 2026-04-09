@@ -168,3 +168,5 @@ frontend/node_modules
 # Claude Code (local development assistant)
 CLAUDE.md
 .claude/
+.claude-mcp-config.json
+backend/scripts/claude_full_pipeline.py
