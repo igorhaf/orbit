@@ -7,7 +7,7 @@ enabling comparison between runs and quality trend analysis.
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Column, String, Integer, DateTime, Numeric, ForeignKey
+from sqlalchemy import Column, Text, String, Integer, DateTime, Numeric, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.database import Base
@@ -61,7 +61,7 @@ class PipelineRun(Base):
     checkpoint_state = Column(JSONB, nullable=True)
 
     # Error info (if failed)
-    error = Column(String(1000), nullable=True)
+    error = Column(Text, nullable=True)
 
     # Timestamps
     started_at = Column(DateTime, nullable=True)

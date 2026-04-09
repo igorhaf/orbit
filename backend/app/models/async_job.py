@@ -182,7 +182,7 @@ class AsyncJob(Base):
 
     # Progress tracking
     progress_percent = Column(Float, nullable=True)          # 0-100, optional
-    progress_message = Column(String(500), nullable=True)    # Human-readable progress
+    progress_message = Column(Text, nullable=True)    # Human-readable progress
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -195,15 +195,15 @@ class AsyncJob(Base):
     task_id = Column(UUID(as_uuid=True), nullable=True, index=True)  # PROMPT #133: For card operations
 
     # PROMPT #133: Deep linking for notifications
-    deep_link = Column(String(500), nullable=True)  # URL to navigate when notification clicked
-    notification_title = Column(String(200), nullable=True)  # Title for notification display
+    deep_link = Column(Text, nullable=True)  # URL to navigate when notification clicked
+    notification_title = Column(Text, nullable=True)  # Title for notification display
 
     # PROMPT #299: AI model used by this job
-    ai_model_name = Column(String(200), nullable=True)  # Ex: "Claude Sonnet 4.5"
+    ai_model_name = Column(Text, nullable=True)  # Ex: "Claude Sonnet 4.5"
 
     # PROMPT #298: Sub-job hierarchy
     parent_job_id = Column(UUID(as_uuid=True), ForeignKey('async_jobs.id', ondelete='CASCADE'), nullable=True, index=True)
-    phase_label = Column(String(200), nullable=True)  # Ex: "Fase 3/6: Indexacao RAG"
+    phase_label = Column(Text, nullable=True)  # Ex: "Fase 3/6: Indexacao RAG"
 
     # Relationship: parent ↔ children
     children = relationship("AsyncJob", backref=backref("parent", remote_side="AsyncJob.id"), cascade="all, delete-orphan")

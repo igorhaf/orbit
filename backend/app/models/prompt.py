@@ -82,7 +82,7 @@ class Prompt(Base):
     version = Column(Integer, default=1, nullable=False)
 
     # PROMPT #58 - AI Execution Audit Fields
-    ai_model_used = Column(String(100), nullable=True, index=True)
+    ai_model_used = Column(Text, nullable=True, index=True)
     system_prompt = Column(Text, nullable=True)
     user_prompt = Column(Text, nullable=True)
     response = Column(Text, nullable=True)

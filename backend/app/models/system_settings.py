@@ -29,7 +29,7 @@ class SystemSettings(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
 
     # Basic fields
-    key = Column(String(100), nullable=False, unique=True, index=True)
+    key = Column(Text, nullable=False, unique=True, index=True)
     value = Column(JSON, nullable=True)
     description = Column(Text, nullable=True)
 

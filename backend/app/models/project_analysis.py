@@ -61,10 +61,10 @@ class ProjectAnalysis(Base):
     )
 
     # File information
-    original_filename = Column(String(255), nullable=False)
+    original_filename = Column(Text, nullable=False)
     file_size_bytes = Column(Integer, nullable=False)
-    upload_path = Column(String(500), nullable=True)
-    extraction_path = Column(String(500), nullable=True)
+    upload_path = Column(Text, nullable=True)
+    extraction_path = Column(Text, nullable=True)
 
     # Processing status
     status = Column(
@@ -75,7 +75,7 @@ class ProjectAnalysis(Base):
     )  # uploaded, analyzing, completed, failed
 
     # Detection results
-    detected_stack = Column(String(100), nullable=True)
+    detected_stack = Column(Text, nullable=True)
     confidence_score = Column(Integer, nullable=True)  # 0-100
 
     # Analysis results (JSON)
@@ -86,7 +86,7 @@ class ProjectAnalysis(Base):
 
     # Orchestrator generation
     orchestrator_generated = Column(Boolean, default=False, nullable=False)
-    orchestrator_key = Column(String(100), nullable=True, unique=True, index=True)
+    orchestrator_key = Column(Text, nullable=True, unique=True, index=True)
     orchestrator_code = Column(Text, nullable=True)
 
     # Error handling

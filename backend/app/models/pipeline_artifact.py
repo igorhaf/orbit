@@ -6,7 +6,7 @@ Stores intermediate artifacts from the deep pipeline phases for feedback loops a
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Column, String, Integer, DateTime, Enum, Index
+from sqlalchemy import Column, Text, String, Integer, DateTime, Enum, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy import ForeignKey
 import enum
@@ -45,8 +45,8 @@ class PipelineArtifact(Base):
     phase = Column(Integer, nullable=False)
 
     # Domain or file path this artifact relates to (for Phase 1/2 grouping)
-    domain = Column(String(255), nullable=True, index=True)
-    source_path = Column(String(500), nullable=True)
+    domain = Column(Text, nullable=True, index=True)
+    source_path = Column(Text, nullable=True)
 
     # The actual artifact content (structured JSON)
     content = Column(JSONB, nullable=False)

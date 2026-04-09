@@ -52,7 +52,7 @@ class Project(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
 
     # Basic fields
-    name = Column(String(255), nullable=False, index=True)
+    name = Column(Text, nullable=False, index=True)
     description = Column(Text, nullable=True)
     git_repository_info = Column(JSON, nullable=True)
 
@@ -64,11 +64,11 @@ class Project(Base):
     stack_mobile = Column(String(50), nullable=True)       # 'react-native', 'flutter', 'expo', etc (PROMPT #67)
 
     # Project folder path (stores the sanitized folder name)
-    project_folder = Column(String(255), nullable=True)    # 'my-project-name' (sanitized)
+    project_folder = Column(Text, nullable=True)    # 'my-project-name' (sanitized)
 
     # PROMPT #111 - code_path é OBRIGATÓRIO e IMUTÁVEL
     # ORBIT foca em análise de código existente, não em provisionamento
-    code_path = Column(String(500), nullable=False, index=True)  # Path to project code folder
+    code_path = Column(Text, nullable=False, index=True)  # Path to project code folder
     # Example: "/home/user/my-project"
     # REQUIRED: Project must be tied to an existing code folder
 
@@ -124,7 +124,7 @@ class Project(Base):
 
     # PROMPT #282 - Track which AI model generated the description
     # Stores the model name (e.g. "Qwen3 14B") for tooltip display
-    description_ai_model = Column(String(100), nullable=True)
+    description_ai_model = Column(Text, nullable=True)
 
     # Deep Pipeline fields (7-phase Claudio pipeline)
     # Phase 3 output: architectural map with domains, cross-domain flows, patterns

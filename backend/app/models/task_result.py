@@ -23,10 +23,10 @@ class TaskResult(Base):
 
     # Output
     output_code = Column(Text, nullable=False)  # Código gerado
-    file_path = Column(String(500))  # Onde salvar o arquivo
+    file_path = Column(Text)  # Onde salvar o arquivo
 
     # Execution metadata
-    model_used = Column(String(100))  # "claude-3-haiku-20240307" ou "claude-sonnet-4-20250514"
+    model_used = Column(Text)  # "claude-3-haiku-20240307" ou "claude-sonnet-4-20250514"
     input_tokens = Column(Integer, default=0)
     output_tokens = Column(Integer, default=0)
     cost = Column(Float, default=0.0)  # Custo real da execução

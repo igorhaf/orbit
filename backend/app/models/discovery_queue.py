@@ -9,7 +9,7 @@ the project is added to this queue for manual validation.
 import enum
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Text, String, DateTime, ForeignKey, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -61,7 +61,7 @@ class DiscoveryQueue(Base):
     )
 
     # Fields
-    reason = Column(String(255), nullable=True)
+    reason = Column(Text, nullable=True)
     status = Column(
         SQLEnum(DiscoveryQueueStatus, name="discovery_queue_status", values_callable=lambda x: [e.value for e in x]),
         default=DiscoveryQueueStatus.PENDING,

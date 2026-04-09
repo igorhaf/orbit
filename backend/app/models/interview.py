@@ -5,7 +5,7 @@ Represents a conversational interview session with AI
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Text, String, DateTime, JSON, ForeignKey, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -59,7 +59,7 @@ class Interview(Base):
 
     # Basic fields
     conversation_data = Column(JSON, nullable=False, default=list)
-    ai_model_used = Column(String(100), nullable=False)
+    ai_model_used = Column(Text, nullable=False)
     status = Column(
         SQLEnum(InterviewStatus, name="interview_status", values_callable=lambda x: [e.value for e in x]),
         default=InterviewStatus.ACTIVE,

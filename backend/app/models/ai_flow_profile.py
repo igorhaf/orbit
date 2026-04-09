@@ -7,7 +7,7 @@ Replaces per-usage_type chains with reusable, versionable configurations.
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Column, Boolean, DateTime, Integer, JSON, String
+from sqlalchemy import Column, Text, Boolean, DateTime, Integer, JSON, String
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -27,7 +27,7 @@ class AIFlowProfile(Base):
     __tablename__ = "ai_flow_profiles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
-    name = Column(String(100), nullable=False)
+    name = Column(Text, nullable=False)
     usage_type = Column(
         SQLEnum(
             AIModelUsageType,

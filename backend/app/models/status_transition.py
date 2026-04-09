@@ -42,7 +42,7 @@ class StatusTransition(Base):
     # Transition data
     from_status = Column(String(50), nullable=False)  # TaskStatus enum value
     to_status = Column(String(50), nullable=False)    # TaskStatus enum value
-    transitioned_by = Column(String(100), nullable=True)  # Future: user FK
+    transitioned_by = Column(Text, nullable=True)  # Future: user FK
     transition_reason = Column(Text, nullable=True)
 
     # Timestamp

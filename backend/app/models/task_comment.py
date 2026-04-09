@@ -51,7 +51,7 @@ class TaskComment(Base):
     )
 
     # Comment data
-    author = Column(String(100), nullable=False)  # Future: author_id FK to users
+    author = Column(Text, nullable=False)  # Future: author_id FK to users
     content = Column(Text, nullable=False)
     comment_type = Column(
         SQLEnum(CommentType, name="comment_type", values_callable=lambda x: [e.value for e in x]),

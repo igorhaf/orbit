@@ -43,8 +43,8 @@ class WikiPage(Base):
         index=True
     )
 
-    slug = Column(String(255), nullable=False)
-    title = Column(String(255), nullable=False)
+    slug = Column(Text, nullable=False)
+    title = Column(Text, nullable=False)
     content = Column(Text, nullable=False, default="")
 
     parent_id = Column(

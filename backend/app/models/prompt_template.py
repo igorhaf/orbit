@@ -29,7 +29,7 @@ class PromptTemplate(Base):
 
     # Primary fields
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(100), nullable=False, index=True)
+    name = Column(Text, nullable=False, index=True)
     category = Column(String(50))  # system, user, component
 
     # Template content

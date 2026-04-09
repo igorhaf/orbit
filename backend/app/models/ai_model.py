@@ -5,7 +5,7 @@ Represents an AI model configuration
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, Boolean, DateTime, JSON, Enum as SQLEnum, Integer
+from sqlalchemy import Column, Text, String, Boolean, DateTime, JSON, Enum as SQLEnum, Integer
 from sqlalchemy.dialects.postgresql import UUID
 import enum
 
@@ -48,9 +48,9 @@ class AIModel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
 
     # Basic fields
-    name = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(Text, nullable=False, unique=True, index=True)
     provider = Column(String(50), nullable=False, index=True)
-    api_key = Column(String(255), nullable=False)  # Should be encrypted in production
+    api_key = Column(Text, nullable=False)  # Should be encrypted in production
     usage_type = Column(
         SQLEnum(AIModelUsageType, name="ai_model_usage_type", values_callable=lambda x: [e.value for e in x]),
         default=AIModelUsageType.GENERAL,

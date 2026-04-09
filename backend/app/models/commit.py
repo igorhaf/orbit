@@ -69,8 +69,8 @@ class Commit(Base):
     )
     message = Column(Text, nullable=False)
     changes = Column(JSON, nullable=True, default=dict)
-    created_by_ai_model = Column(String(100), nullable=False)
-    author = Column(String(100), default="AI System", nullable=False)
+    created_by_ai_model = Column(Text, nullable=False)
+    author = Column(Text, default="AI System", nullable=False)
 
     # Timestamp
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

@@ -68,7 +68,7 @@ class AIExecution(Base):
 
     # Model information
     provider = Column(String(50), nullable=False, index=True)
-    model_name = Column(String(100), nullable=False)
+    model_name = Column(Text, nullable=False)
     temperature = Column(String(10), nullable=True)  # Stored as string to handle floats
     max_tokens = Column(Integer, nullable=True)
 

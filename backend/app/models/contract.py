@@ -26,10 +26,10 @@ class Contract(Base):
     __tablename__ = "contracts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
-    name = Column(String(255), unique=True, nullable=False, index=True)  # e.g., "generation/epic_from_interview"
+    name = Column(Text, unique=True, nullable=False, index=True)  # e.g., "generation/epic_from_interview"
     version = Column(Integer, default=1, nullable=False)
     domain = Column(String(50), nullable=False, default="generation", index=True)  # business, interview, generation, memory, component
-    category = Column(String(100), nullable=False, default="")  # subcategory folder
+    category = Column(Text, nullable=False, default="")  # subcategory folder
     usage_type = Column(String(50), nullable=False, default="general", index=True)  # maps to AI Flow chain
     description = Column(Text, default="")
 

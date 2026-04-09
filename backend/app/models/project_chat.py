@@ -8,7 +8,7 @@ and get AI-powered answers based on the project's RAG knowledge base.
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Index
+from sqlalchemy import Column, Text, String, DateTime, JSON, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -27,7 +27,7 @@ class ProjectChat(Base):
         index=True
     )
 
-    title = Column(String(255), nullable=False, default="New Chat")
+    title = Column(Text, nullable=False, default="New Chat")
 
     # JSON array of messages: [{"role": "user"|"assistant", "content": "...", "timestamp": "ISO-8601", "model": "..."}]
     messages = Column(JSON, nullable=False, default=list)

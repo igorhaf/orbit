@@ -117,9 +117,9 @@ class Task(Base):
     comments = Column(JSON, nullable=True, default=list)
 
     # Task execution fields
-    type = Column(String(100), nullable=True)  # "model", "controller", "repository", etc.
-    entity = Column(String(100), nullable=True)  # "Book", "User", etc.
-    file_path = Column(String(500), nullable=True)  # "src/Models/Book.php"
+    type = Column(Text, nullable=True)  # "model", "controller", "repository", etc.
+    entity = Column(Text, nullable=True)  # "Book", "User", etc.
+    file_path = Column(Text, nullable=True)  # "src/Models/Book.php"
     complexity = Column(String(10), default="medium", nullable=False)  # low=haiku, medium=sonnet, high=opus
     depends_on = Column(JSON, nullable=True, default=list)  # List of task IDs this depends on
 
@@ -164,8 +164,8 @@ class Task(Base):
     sprint_id = Column(UUID(as_uuid=True), nullable=True)  # Future feature
 
     # Ownership (strings for now, FK to users later)
-    reporter = Column(String(100), nullable=True, default="system")
-    assignee = Column(String(100), nullable=True)
+    reporter = Column(Text, nullable=True, default="system")
+    assignee = Column(Text, nullable=True)
 
     # Categorization (JSON arrays)
     labels = Column(JSONB, nullable=True, default=list)  # ["frontend", "urgent", "api"]
@@ -206,7 +206,7 @@ class Task(Base):
 
     # PROMPT #127 - Track which AI model generated the content
     # Stores the model ID that generated description/generated_prompt
-    created_by_ai_model = Column(String(100), nullable=True)
+    created_by_ai_model = Column(Text, nullable=True)
 
     # PROMPT #232 - Human Data Supremacy (REGRA #0)
     # Tracks whether description/generated_prompt were manually edited by a human.
@@ -219,7 +219,7 @@ class Task(Base):
     # - Task gets BLOCKED status
     # - Modification saved in pending_modification field
     # - User must approve/reject via UI
-    blocked_reason = Column(String(500), nullable=True)  # Why task is blocked
+    blocked_reason = Column(Text, nullable=True)  # Why task is blocked
     pending_modification = Column(JSON, nullable=True, default=None)  # Proposed changes
 
     # Pipeline run traceability — links task to the pipeline run that created it

@@ -53,17 +53,17 @@ class SpecHistory(Base):
 
     # Snapshot of the spec at this version
     category = Column(String(50), nullable=False)
-    name = Column(String(100), nullable=False)
+    name = Column(Text, nullable=False)
     spec_type = Column(String(50), nullable=False)
-    title = Column(String(255), nullable=False)
+    title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     content = Column(Text, nullable=False)
     language = Column(String(50), nullable=True)
     framework_version = Column(String(20), nullable=True)
 
     # Who/what made the change
-    change_reason = Column(String(255), nullable=True)  # e.g., "manual edit", "pattern discovery sync", "AI inference"
-    changed_by = Column(String(100), nullable=True)  # e.g., "user", "system", "ai_model_name"
+    change_reason = Column(Text, nullable=True)  # e.g., "manual edit", "pattern discovery sync", "AI inference"
+    changed_by = Column(Text, nullable=True)  # e.g., "user", "system", "ai_model_name"
 
     # Git commit reference (PROMPT #117)
     git_commit_hash = Column(String(40), nullable=True)  # SHA-1 hash of the git commit
@@ -110,11 +110,11 @@ class Spec(Base):
 
     # Core fields
     category = Column(String(50), nullable=False, index=True)       # 'backend', 'frontend', 'database', 'css'
-    name = Column(String(100), nullable=False, index=True)          # 'laravel', 'nextjs', 'postgresql', 'tailwind'
+    name = Column(Text, nullable=False, index=True)          # 'laravel', 'nextjs', 'postgresql', 'tailwind'
     spec_type = Column(String(50), nullable=False)                  # 'controller', 'model', 'page', etc
 
     # Content
-    title = Column(String(255), nullable=False)
+    title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     content = Column(Text, nullable=False)
 
