@@ -2,7 +2,7 @@
 
 ## 📋 CONTEXTO DO PROJETO
 
-Você está construindo um sistema SPA completo para criação e orquestração de aplicações usando IA, especificamente focado na API do Claude Code e múltiplos modelos de IA.
+Você está construindo um sistema SPA completo para criação e orquestração de aplicações usando IA, especificamente focado na API do ORBIT AI e múltiplos modelos de IA.
 
 ## 🛠️ STACK TECNOLÓGICA
 
@@ -54,7 +54,7 @@ Você está construindo um sistema SPA completo para criação e orquestração 
 - Possibilidade de editar prompts diretamente no kanban
 - Colunas: Backlog, To Do, In Progress, Review, Done
 
-### 4. Integração Claude Code API
+### 4. Integração ORBIT AI API
 - **Estratégia**: Chat individual por tarefa do kanban
 - Execução manual de cada atividade
 - Sistema de validação/review antes da execução
@@ -95,7 +95,7 @@ Você está construindo um sistema SPA completo para criação e orquestração 
 3. Sistema gera prompts usando arquitetura prompter
 4. Prompts são convertidos em tarefas no kanban
 5. Usuário pode editar tarefas/prompts no kanban
-6. Para cada tarefa: executa via chat individual com Claude Code API
+6. Para cada tarefa: executa via chat individual com ORBIT AI API
 7. IA gera commits automáticos
 8. Versionamento e histórico mantidos
 

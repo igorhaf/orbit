@@ -34,7 +34,7 @@ class PatternRecognizer:
 
         Strategy:
         1. Sample representative files by type (controllers, models, etc.)
-        2. Send to Claude Haiku to extract patterns
+        2. Send to AI model to extract patterns
         3. Return templates with {Placeholders}
 
         Args:

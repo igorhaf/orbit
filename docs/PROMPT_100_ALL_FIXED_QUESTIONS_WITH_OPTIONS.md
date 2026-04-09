@@ -412,4 +412,3 @@ Q19+  ( Radio/✓Checkbox ) AI-Generated Questions (PROMPT #99)
 
 ---
 
-**🤖 Generated with Claude Code**

@@ -462,5 +462,3 @@ Q17: Focus Topics (renumbered from Q16)
 
 ---
 
-**Generated with Claude Code**
-**Co-Authored-By:** Claude Sonnet 4.5 <noreply@anthropic.com>

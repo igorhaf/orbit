@@ -861,7 +861,7 @@ UTILITY_NODE_CATALOG = {
     "prompt_node": {
         "type": "prompt_node",
         "label": "Prompt Node",
-        "description": "Prompt estruturado reutilizável para Claude Code. Armazena referência a arquivo YAML com instruções que podem ser executadas manualmente ou via automação.",
+        "description": "Prompt estruturado reutilizável para ORBIT AI. Armazena referência a arquivo YAML com instruções que podem ser executadas manualmente ou via automação.",
         "icon": "file-text",
         "color": "#6366f1",
         "default_config": {

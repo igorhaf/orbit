@@ -17,7 +17,7 @@ Generate rich, structured semantic prompts and acceptance criteria (Given/When/T
 - Respects REGRA #0: only fills if no human-edited criteria exist
 
 ### 3. Semantic Prompts for All 138 Cards
-All prompts generated directly by Claude Code with consistent structure:
+All prompts generated directly by ORBIT AI with consistent structure:
 
 | Section | Description |
 |---------|-------------|

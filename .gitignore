@@ -164,3 +164,7 @@ frontend/node_modules
 
 # Provisioned projects (test projects only)
 /projects/
+
+# Claude Code (local development assistant)
+CLAUDE.md
+.claude/

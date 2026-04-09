@@ -677,7 +677,6 @@ Once backend is updated to send `message.options`:
 
 ---
 
-**Implementation by:** Claude Code (Sonnet 4.5)
 **Date:** December 28, 2024
 **Issue:** PROMPT #40 - Convert Unicode Checkboxes to Real Interactive Inputs
 **Status:** ✅ CRITICAL BUG FIXED

@@ -335,5 +335,3 @@ Q17+: AI Contextual Questions (clarification, edge cases)
 
 ---
 
-**Generated with Claude Code**
-**Co-Authored-By:** Claude Sonnet 4.5 <noreply@anthropic.com>

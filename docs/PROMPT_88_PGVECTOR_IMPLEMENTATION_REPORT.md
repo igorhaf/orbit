@@ -651,4 +651,3 @@ pgvector + IVFFlat Index successfully implemented and tested.
 
 ---
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)

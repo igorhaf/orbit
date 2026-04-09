@@ -792,7 +792,6 @@ Conventional Commits:
 
 <body>
 
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ```
 
 ### Tipos
@@ -1143,7 +1142,7 @@ satellite/
 ├── docs/                # Documentos externos (vigiado pelo RAG)
 ├── knowledge/           # Base de conhecimento estruturada
 │   ├── wiki/            # Wiki pages (.md com YAML front matter)
-│   ├── results/         # Resultados do Claude Code
+│   ├── results/         # Resultados da IA
 │   ├── prompts/         # Prompts exportados
 │   └── PROMPT_*.md      # Reports de implementação
 └── README.md            # Descrição auto-gerada

@@ -11,7 +11,7 @@
 
 ## Objective
 
-Generate a complete hierarchical card structure (Epics → Stories → Tasks → Subtasks) using business rules already stored in the RAG system. Cards are created directly via Claude Code (not through the system's AI models), with a rigid and consistent structure for every card.
+Generate a complete hierarchical card structure (Epics → Stories → Tasks → Subtasks) using business rules already stored in the RAG system. Cards are created directly via ORBIT AI (not through the system's AI models), with a rigid and consistent structure for every card.
 
 **Key Requirements:**
 1. Use ONLY data from RAG business rules - no AI model calls

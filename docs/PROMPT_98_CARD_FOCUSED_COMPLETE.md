@@ -490,5 +490,3 @@ curl -X POST http://localhost:8000/api/v1/interviews \
 
 All objectives met. System is ready for production use.
 
-🤖 Generated with Claude Code
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>

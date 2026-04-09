@@ -408,7 +408,7 @@ export function TimeoutNode({ data }: { data: any }) {
 }
 
 // ---------------------------------------------------------------------------
-// PROMPT #250 - Prompt Node (Reusable structured prompt for Claude Code)
+// PROMPT #250 - Prompt Node (Reusable structured prompt for ORBIT AI)
 // ---------------------------------------------------------------------------
 
 export function PromptNodeNode({ data }: { data: any }) {

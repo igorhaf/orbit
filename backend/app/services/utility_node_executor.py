@@ -1025,7 +1025,7 @@ class UtilityNodeExecutor:
         Pre-process: inject prompt YAML reference and config into context.
 
         This node stores metadata about a reusable prompt (YAML path, repeat count).
-        Execution is manual via Claude Code — this node just makes the prompt
+        Execution is manual via ORBIT AI — this node just makes the prompt
         visible in the AI Flow diagram and available in context.
         """
         prompt_yaml = config.get("prompt_yaml", "")

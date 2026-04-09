@@ -306,7 +306,6 @@ BUSINESS_RULES = [
     },
     {
         "title": "Git Commit Padrão",
-        "description": "Conventional Commits (feat:, fix:, docs:, refactor:, test:, chore:, perf:). Incluir PROMPT #[N] no body. Footer: Co-Authored-By: Claude Sonnet 4.5.",
         "category": "workflow",
     },
     {
@@ -1001,7 +1000,6 @@ backend/app/api/routes/
 ### Commits
 - Formato: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `perf:`)
 - Body: incluir `PROMPT #[N]`
-- Footer: `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`
 
 ### Documentação
 - Cada prompt: `satellite/knowledge/PROMPT_[N]_[DESCRIÇÃO].md`

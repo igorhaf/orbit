@@ -453,7 +453,7 @@ Result: 60-80% fewer tokens used!
 
 ## 🚀 What's Next (Phase 4)
 
-Phase 4 will integrate specs during **task execution** (when Claude Code API generates actual code).
+Phase 4 will integrate specs during **task execution** (when ORBIT AI API generates actual code).
 
 Instead of just using specs during task *generation*, we'll also:
 1. Include relevant specs when executing each task

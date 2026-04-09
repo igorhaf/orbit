@@ -1,12 +1,12 @@
 """
-ORBIT Full Pipeline via Claude Code - PROMPT #244 (v2)
+ORBIT Full Pipeline via ORBIT AI - PROMPT #244 (v2)
 
 Replicates the same procedures as the ORBIT RAG pipeline:
 1. Scan all source files → rag_file_state
 2. Insert extracted business rules → rag_documents (with embeddings)
 3. Generate hierarchical cards → tasks (Epic > Story > Task > Subtask)
 
-Business rules were extracted by Claude Code reading the entire codebase.
+Business rules were extracted by ORBIT AI reading the entire codebase.
 Uses sentence-transformers for embeddings (same as RAGService).
 
 V2: 261 rules across 33 domains (original 12 + 21 new domains)
@@ -127,7 +127,7 @@ def scan_files(code_path: str):
 
 # ============================================================================
 # BUSINESS RULES - 261 rules across 33 domains
-# Extracted by Claude Code reading the entire ORBIT codebase
+# Extracted by ORBIT AI reading the entire ORBIT codebase
 # ============================================================================
 BUSINESS_RULES = [
     # ========== DOMAIN: AI Orchestration (14 rules) ==========

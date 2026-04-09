@@ -320,5 +320,3 @@ Q19: Quais tipos de notificações você quer implementar?  ✅
 
 ---
 
-**Generated with Claude Code**
-**Co-Authored-By:** Claude Sonnet 4.5 <noreply@anthropic.com>

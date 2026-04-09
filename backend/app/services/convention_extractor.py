@@ -34,7 +34,7 @@ class ConventionExtractor:
 
         Strategy:
         1. Sample ~10 representative files
-        2. Send to Claude Haiku with focused prompt
+        2. Send to AI model with focused prompt
         3. Parse and return conventions
 
         Args:

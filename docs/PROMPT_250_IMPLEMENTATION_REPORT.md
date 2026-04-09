@@ -61,7 +61,7 @@ eliminando ~700 chamadas de IA por projeto e criando um novo tipo de nó visual 
 
 ### 5. Prompts YAML Estruturados
 
-- `backend/app/prompts/rag/extract_rules.yaml`: Instruções para Claude Code extrair regras de negócio
+- `backend/app/prompts/rag/extract_rules.yaml`: Instruções para ORBIT AI extrair regras de negócio
 - `backend/app/prompts/rag/generate_cards.yaml`: Instruções para gerar hierarquia de cards
 
 ### 6. AI Flow Chains Configuradas
@@ -125,11 +125,11 @@ Elimina necessidade de carregar modelo Python em memória.
 
 ### 2. Embedding-only indexação elimina bottleneck
 O pipeline anterior fazia 1 AI call por arquivo (~700 calls). Agora: 0 AI calls para indexação.
-Regras de negócio são extraídas por prompt estruturado (3 execuções) via Claude Code.
+Regras de negócio são extraídas por prompt estruturado (3 execuções) via ORBIT AI.
 
 ### 3. Prompt Nodes como documentação visual
 O prompt_node no AI Flow serve dupla função: documentação visual do pipeline E referência
-para execução manual via Claude Code. O prompt YAML contém instruções completas.
+para execução manual via ORBIT AI. O prompt YAML contém instruções completas.
 
 ---
 

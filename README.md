@@ -1,6 +1,6 @@
 # Orbit - AI Orchestration System
 
-Complete SPA system for creating and orchestrating applications using AI, focused on Claude Code API and multiple AI models.
+Complete SPA system for creating and orchestrating applications using AI, focused on AI Orchestrator API and multiple AI models.
 
 ## Project Description
 
@@ -8,7 +8,7 @@ Orbit is a platform that allows:
 - Conversational interviews with AI to capture requirements
 - Generate composable prompts using Prompter architecture
 - Manage tasks in an interactive Kanban Board
-- Integrate with Claude Code API for task execution
+- Integrate with AI Orchestrator API for task execution
 - Support multiple configurable AI models
 - Automatic versioning with AI-generated commits
 
@@ -229,7 +229,7 @@ cd backend && alembic downgrade -1
 1. **Interview System**: Conversational chat with AI for requirements capture
 2. **Prompt Generation**: Automatic creation using Prompter architecture
 3. **Kanban Board**: Visual task management with drag-and-drop
-4. **Claude Code Integration**: Task execution via API
+4. **AI Integration**: Task execution via API
 5. **Multi-Model Support**: Support for various AI models (Claude, GPT, Gemini)
 6. **Smart Versioning**: Automatic AI-generated commits
 7. **RAG System**: Semantic search with pgvector for context retrieval

@@ -26,7 +26,7 @@ UTILITY_NODE_TYPES = [
     "cost_guard",
     "rate_limiter",
     "prompt_queue",  # PROMPT #215 - Prompt orchestration queue node
-    "prompt_node",   # PROMPT #250 - Reusable structured prompt for Claude Code
+    "prompt_node",   # PROMPT #250 - Reusable structured prompt for ORBIT AI
 ]
 
 

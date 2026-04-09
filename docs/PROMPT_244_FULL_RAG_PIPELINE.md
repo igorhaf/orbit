@@ -1,4 +1,4 @@
-# PROMPT #244 - Full RAG Pipeline via Claude Code (v2)
+# PROMPT #244 - Full RAG Pipeline via ORBIT AI (v2)
 ## Complete Codebase Analysis, Business Rule Extraction & Hierarchical Card Generation
 
 **Date:** February 21, 2026
@@ -11,11 +11,11 @@
 
 ## Objective
 
-Run the complete ORBIT RAG pipeline (scan files, extract business rules, generate hierarchical cards) entirely through Claude Code analysis rather than local Ollama models. V2 performs a comprehensive deep-dive extracting 2.6x more rules than v1.
+Run the complete ORBIT RAG pipeline (scan files, extract business rules, generate hierarchical cards) entirely through ORBIT AI analysis rather than local Ollama models. V2 performs a comprehensive deep-dive extracting 2.6x more rules than v1.
 
 **Key Requirements:**
 1. Follow the same procedures as the ORBIT RAG pipeline
-2. Do NOT use local Ollama models - Claude Code does all analysis
+2. Do NOT use local Ollama models - ORBIT AI does all analysis
 3. Maintain data format compatibility with existing services
 4. Generate proper 384-dim embeddings for semantic search
 5. V2: Comprehensive deep-dive covering ALL backend services, validators, and pipelines
@@ -35,7 +35,7 @@ Run the complete ORBIT RAG pipeline (scan files, extract business rules, generat
 
 ### Phase 2: Business Rule Extraction (rag_documents)
 
-Claude Code analyzed the entire codebase in two passes and extracted **259 business rules** across **40 domains**:
+ORBIT AI analyzed the entire codebase in two passes and extracted **259 business rules** across **40 domains**:
 
 #### Original 12 Domains (98 rules):
 

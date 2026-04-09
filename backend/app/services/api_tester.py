@@ -78,9 +78,9 @@ Be specific and follow PHP best practices.
 
     async def test_anthropic(self) -> Dict:
         """
-        Testa Anthropic Claude Haiku
+        Testa Anthropic API
         """
-        logger.info("🧪 Testing Anthropic Claude Haiku...")
+        logger.info("🧪 Testing Anthropic API...")
 
         result = {
             "provider": "anthropic",
