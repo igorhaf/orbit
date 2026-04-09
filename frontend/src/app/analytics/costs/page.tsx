@@ -90,7 +90,8 @@ export default function CostsPage() {
       trendStart.setDate(trendStart.getDate() - 30);
       const trendParams = { start_date: trendStart.toISOString(), end_date: trendEnd.toISOString() };
 
-      const [analyticsData, trend30d, cacheData, execData] = await Promise.all([
+      // Fetch each independently so a single failure doesn't break the page
+      const results = await Promise.allSettled([
         analyticsApi.getCostAnalytics(costParams),
         analyticsApi.getCostAnalytics(trendParams),
         analyticsApi.getCacheStats(),
@@ -100,10 +101,10 @@ export default function CostsPage() {
           ...(filterUsageType ? { usage_type: filterUsageType } : {}),
         }),
       ]);
-      setAnalytics(analyticsData);
-      setTrendData(trend30d);
-      setCacheStats(cacheData);
-      setExecutions(execData);
+      if (results[0].status === 'fulfilled') setAnalytics(results[0].value);
+      if (results[1].status === 'fulfilled') setTrendData(results[1].value);
+      if (results[2].status === 'fulfilled') setCacheStats(results[2].value);
+      if (results[3].status === 'fulfilled') setExecutions(results[3].value || []);
     } catch (error) {
       console.error('Error fetching cost analytics:', error);
     } finally {

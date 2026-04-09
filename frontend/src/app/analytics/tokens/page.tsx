@@ -97,18 +97,19 @@ export default function TokensPage() {
     setLoading(true);
     try {
       const dateParams = getDateParams();
-      const [analyticsData, cacheData, execData, ragData, projData] = await Promise.all([
+      // Fetch each independently so a single failure doesn't break the page
+      const results = await Promise.allSettled([
         analyticsApi.getCostAnalytics(dateParams),
         analyticsApi.getCacheStats(),
         analyticsApi.getExecutionStats(dateParams),
         analyticsApi.getRagStats(dateParams),
         knowledgeApi.getProjectsStats(),
       ]);
-      setAnalytics(analyticsData);
-      setCacheStats(cacheData);
-      setExecStats(execData);
-      setRagStats(ragData);
-      if (projData.success) setProjectsStats(projData);
+      if (results[0].status === 'fulfilled') setAnalytics(results[0].value);
+      if (results[1].status === 'fulfilled') setCacheStats(results[1].value);
+      if (results[2].status === 'fulfilled') setExecStats(results[2].value);
+      if (results[3].status === 'fulfilled') setRagStats(results[3].value);
+      if (results[4].status === 'fulfilled' && results[4].value?.success) setProjectsStats(results[4].value);
     } catch (error) {
       console.error('Error fetching analytics:', error);
     } finally {

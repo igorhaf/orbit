@@ -54,9 +54,9 @@ class Phase4to7Mixin:
 
         # Phase 4a: Generate epics (batched by domain groups for scalability)
         DOMAIN_BATCH_SIZE = 20
-        p4a_label = self._model_label(self._get_model("phase_4a", MODEL_OPUS))
-        p4a_model = self._get_model("phase_4a", MODEL_OPUS)
-        p4a_max_tokens = self._get_max_tokens("phase_4a", 64000)
+        p4a_label = self._model_label(self._get_model("phase_4a", MODEL_SONNET))
+        p4a_model = self._get_model("phase_4a", MODEL_SONNET)
+        p4a_max_tokens = self._get_max_tokens("phase_4a", 16000)
 
         all_rules_summary = {}
         for domain, data in domain_rules.items():
@@ -78,9 +78,13 @@ class Phase4to7Mixin:
             if "project_summary" in arch_map:
                 batch_arch["project_summary"] = arch_map["project_summary"]
 
+            # Compact JSON (no indent) to save tokens
+            arch_compact = json.dumps(batch_arch, ensure_ascii=False, separators=(",", ":"))
+            rules_compact = json.dumps(batch_rules, ensure_ascii=False, separators=(",", ":"))
+
             system_prompt, _ = self._load_contract("deep_epic_generation", {
-                "architectural_map_json": json.dumps(batch_arch, ensure_ascii=False),
-                "all_rules_summary": json.dumps(batch_rules, ensure_ascii=False),
+                "architectural_map_json": arch_compact,
+                "all_rules_summary": rules_compact,
                 "project_name": project.name,
             })
 
@@ -88,7 +92,7 @@ class Phase4to7Mixin:
             epic_result = await self.claudio.call(
                 model=p4a_model,
                 system_prompt=system_prompt or "Generate project epics. Respond with JSON.",
-                user_prompt=f"Projeto: {project.name}\n\nDominios ({batch_label}):\n{json.dumps(batch_arch, ensure_ascii=False)}\n\nRegras:\n{json.dumps(batch_rules, ensure_ascii=False)}",
+                user_prompt=f"Projeto: {project.name}\n\nDominios ({batch_label}):\n{arch_compact}\n\nRegras:\n{rules_compact}",
                 max_tokens=p4a_max_tokens,
                 **self._ollama_kwargs("phase_4a"),
             )
@@ -158,23 +162,26 @@ class Phase4to7Mixin:
         for epic in epics:
             domain = epic.get("domain", "Geral")
             domain_data = domain_rules.get(domain, {})
-            rules_json = json.dumps(domain_data.get("consolidated_rules", [])[:30], ensure_ascii=False)
+            # Compact JSON and limit rules to 15 (was 30) to save tokens
+            rules_compact = json.dumps(domain_data.get("consolidated_rules", [])[:15], ensure_ascii=False, separators=(",", ":"))
+            epic_compact = json.dumps(epic, ensure_ascii=False, separators=(",", ":"))
+            arch_context = json.dumps(arch_map.get("project_summary", ""), ensure_ascii=False, separators=(",", ":"))
 
             system_prompt, _ = self._load_contract("deep_story_decomposition", {
-                "epic_json": json.dumps(epic, ensure_ascii=False),
-                "domain_rules_json": rules_json,
-                "architectural_context": json.dumps(arch_map.get("project_summary", ""), ensure_ascii=False),
+                "epic_json": epic_compact,
+                "domain_rules_json": rules_compact,
+                "architectural_context": arch_context,
             })
 
             story_requests.append({
-                "model": self._get_model("phase_4b", MODEL_OPUS),
+                "model": self._get_model("phase_4b", MODEL_SONNET),
                 "system_prompt": system_prompt or "Decompose this epic into stories. Respond with JSON.",
-                "user_prompt": f"Epic:\n{json.dumps(epic, ensure_ascii=False, indent=2)}\n\nRegras do dominio:\n{rules_json}",
+                "user_prompt": f"Epic:\n{epic_compact}\n\nRegras do dominio:\n{rules_compact}",
                 "max_tokens": self._get_max_tokens("phase_4b", 32000),
                 **p4b_ollama,
             })
 
-        p4b_model = self._get_model("phase_4b", MODEL_OPUS)
+        p4b_model = self._get_model("phase_4b", MODEL_SONNET)
 
         async def _on_story_done(index: int, result: Any, total: int):
             epic_title = epics[index].get("title", "?")[:80] if index < len(epics) else f"item-{index}"
@@ -232,16 +239,20 @@ class Phase4to7Mixin:
         story_titles_for_tasks = []
         for epic_title, story in all_stories:
             epic_data = next((e for e in epics if e.get("title") == epic_title), {})
+            # Compact context: only send title+domain from epic (not full object)
+            epic_ctx = {"title": epic_title, "domain": epic_data.get("domain", "")}
+            story_compact = json.dumps(story, ensure_ascii=False, separators=(",", ":"))
+            epic_ctx_compact = json.dumps(epic_ctx, ensure_ascii=False, separators=(",", ":"))
 
             system_prompt, _ = self._load_contract("deep_task_decomposition", {
-                "story_json": json.dumps(story, ensure_ascii=False),
-                "epic_context": json.dumps({"title": epic_title, "domain": epic_data.get("domain", "")}, ensure_ascii=False),
+                "story_json": story_compact,
+                "epic_context": epic_ctx_compact,
             })
 
             task_requests.append({
                 "model": self._get_model("phase_4c", MODEL_SONNET),
                 "system_prompt": system_prompt or "Decompose this story into tasks. Respond with JSON.",
-                "user_prompt": f"Story:\n{json.dumps(story, ensure_ascii=False, indent=2)}\n\nContexto do Epic:\n{json.dumps(epic_data, ensure_ascii=False)}",
+                "user_prompt": f"Story:\n{story_compact}\n\nContexto do Epic:\n{epic_ctx_compact}",
                 "max_tokens": self._get_max_tokens("phase_4c", 8000),
                 **p4c_ollama,
             })
@@ -339,9 +350,11 @@ class Phase4to7Mixin:
         # Phase 5a: Plan wiki structure (Sonnet)
         await progress_cb(5, 5, "Planejando estrutura da wiki...")
 
+        arch_compact = json.dumps(arch_map, ensure_ascii=False, separators=(",", ":"))
+        cards_compact = json.dumps(card_stats, ensure_ascii=False, separators=(",", ":"))
         system_prompt, _ = self._load_contract("deep_wiki_structure", {
-            "architectural_map_json": json.dumps(arch_map, ensure_ascii=False),
-            "card_tree_summary": json.dumps(card_stats, ensure_ascii=False),
+            "architectural_map_json": arch_compact,
+            "card_tree_summary": cards_compact,
             "project_name": project.name,
         })
 
@@ -349,7 +362,7 @@ class Phase4to7Mixin:
         structure_result = await self.claudio.call(
             model=p5a_model,
             system_prompt=system_prompt or "Plan wiki structure. Respond with JSON.",
-            user_prompt=f"Projeto: {project.name}\n\nMapa:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}\n\nCards:\n{json.dumps(card_stats, ensure_ascii=False)}",
+            user_prompt=f"Projeto: {project.name}\n\nMapa:\n{arch_compact}\n\nCards:\n{cards_compact}",
             max_tokens=self._get_max_tokens("phase_5a", 8000),
             **self._ollama_kwargs("phase_5a"),
         )
@@ -377,18 +390,20 @@ class Phase4to7Mixin:
         general_pages = wiki_plan.get("general_pages", [])
 
         if general_pages:
+            pages_compact = json.dumps(general_pages, ensure_ascii=False, separators=(",", ":"))
+            stack_compact = json.dumps(project.stack or {}, ensure_ascii=False, separators=(",", ":"))
             system_prompt, _ = self._load_contract("deep_wiki_overview", {
-                "page_plan_json": json.dumps(general_pages, ensure_ascii=False),
-                "architectural_map_json": json.dumps(arch_map, ensure_ascii=False),
+                "page_plan_json": pages_compact,
+                "architectural_map_json": arch_compact,
                 "project_name": project.name,
-                "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
+                "tech_stack": stack_compact,
             })
 
-            p5b_model = self._get_model("phase_5b", MODEL_OPUS)
+            p5b_model = self._get_model("phase_5b", MODEL_SONNET)
             overview_result = await self.claudio.call(
                 model=p5b_model,
                 system_prompt=system_prompt or "Generate wiki overview pages. Respond with JSON.",
-                user_prompt=f"Plano:\n{json.dumps(general_pages, ensure_ascii=False, indent=2)}\n\nMapa:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}",
+                user_prompt=f"Plano:\n{pages_compact}\n\nMapa:\n{arch_compact}",
                 max_tokens=self._get_max_tokens("phase_5b", 64000),
                 **self._ollama_kwargs("phase_5b"),
             )
@@ -414,25 +429,28 @@ class Phase4to7Mixin:
         for group in domain_page_groups:
             domain = group.get("domain", "")
             domain_data = domain_rules.get(domain, {})
+            # Compact JSON and limit rules to 15 (was 30) to save tokens
+            rules_compact = json.dumps(domain_data.get("consolidated_rules", [])[:15], ensure_ascii=False, separators=(",", ":"))
+            plan_compact = json.dumps(group.get("pages", []), ensure_ascii=False, separators=(",", ":"))
 
             system_prompt, _ = self._load_contract("deep_wiki_domain", {
                 "domain_name": domain,
-                "domain_rules_json": json.dumps(domain_data.get("consolidated_rules", [])[:30], ensure_ascii=False),
-                "domain_cards_json": json.dumps({"domain": domain}, ensure_ascii=False),
-                "page_plan_json": json.dumps(group.get("pages", []), ensure_ascii=False),
+                "domain_rules_json": rules_compact,
+                "domain_cards_json": json.dumps({"domain": domain}, ensure_ascii=False, separators=(",", ":")),
+                "page_plan_json": plan_compact,
                 "project_name": project.name,
             })
 
             domain_requests.append({
-                "model": self._get_model("phase_5c", MODEL_OPUS),
+                "model": self._get_model("phase_5c", MODEL_SONNET),
                 "system_prompt": system_prompt or "Generate domain wiki pages. Respond with JSON.",
-                "user_prompt": f"Dominio: {domain}\n\nPlano:\n{json.dumps(group.get('pages', []), ensure_ascii=False, indent=2)}\n\nRegras:\n{json.dumps(domain_data.get('consolidated_rules', [])[:30], ensure_ascii=False, indent=2)}",
+                "user_prompt": f"Dominio: {domain}\n\nPlano:\n{plan_compact}\n\nRegras:\n{rules_compact}",
                 "max_tokens": self._get_max_tokens("phase_5c", 32000),
                 **self._ollama_kwargs("phase_5c"),
             })
 
         if domain_requests:
-            p5c_model = self._get_model("phase_5c", MODEL_OPUS)
+            p5c_model = self._get_model("phase_5c", MODEL_SONNET)
             _p5c_done = [0]
 
             async def _on_domain_done(index: int, result: Any, total: int):

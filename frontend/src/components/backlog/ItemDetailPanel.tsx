@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, Dialog, DialogFooter } from '@/components/ui';
 import { tasksApi, interviewsApi } from '@/lib/api';
+import ReactMarkdown from 'react-markdown';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import WorkflowActions from './WorkflowActions';
@@ -536,30 +537,25 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   };
 
   const handleSuggestTitle = async () => {
-    const currentTitle = editedTitle.trim() || item.title;
-    if (!currentTitle) return;
-    if (isGeneratingTitle) return;
+    if (!item.title || isGeneratingTitle) return;
 
     setIsGeneratingTitle(true);
     try {
       const response = await tasksApi.suggestTitle({
-        user_input: currentTitle,
+        user_input: item.title,
         item_type: item.item_type,
         project_id: item.project_id,
         parent_id: item.parent_id || undefined,
       });
       if (response.suggested_title) {
-        setEditedTitle(response.suggested_title);
-        if (!isEditingTitle) {
-          setIsEditingTitle(true);
-        }
+        await tasksApi.update(item.id, { title: response.suggested_title });
+        if (onUpdate) onUpdate();
       }
     } catch (error: any) {
       console.error('Failed to suggest title:', error);
       showError('Sugestão da IA falhou. Tente novamente.');
     } finally {
       setIsGeneratingTitle(false);
-      titleInputRef.current?.focus();
     }
   };
 
@@ -771,71 +767,30 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </span>
               )}
             </div>
-            {/* PROMPT #254 - Editable title with AI suggest button */}
+            {/* Title (read-only) with AI suggest button */}
             <div className="flex items-center gap-3">
-              {isEditingTitle ? (
-                <div className="flex items-center gap-2 flex-1" data-title-edit>
-                  <input
-                    ref={titleInputRef}
-                    type="text"
-                    value={editedTitle}
-                    onChange={(e) => setEditedTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSaveTitle();
-                      }
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        handleCancelTitleEdit();
-                      }
-                    }}
-                    onBlur={(e) => {
-                      if (isSavingTitle || isGeneratingTitle) return;
-                      const relatedTarget = e.relatedTarget as HTMLElement | null;
-                      if (relatedTarget?.closest('[data-title-edit]')) return;
-                      setTimeout(() => {
-                        if (isSavingTitle || isGeneratingTitle) return;
-                        handleSaveTitle();
-                      }, 200);
-                    }}
-                    className="flex-1 px-3 py-1.5 text-2xl font-bold text-gray-900 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                    disabled={isSavingTitle}
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleSuggestTitle();
-                    }}
-                    disabled={!editedTitle.trim() || isGeneratingTitle}
-                    title="Sugerir um título melhor com IA"
-                    className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {isGeneratingTitle ? (
-                      <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                    ) : (
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                      </svg>
-                    )}
-                    <span>AI</span>
-                  </button>
-                  <span className="text-xs text-gray-400 whitespace-nowrap">Enter para salvar, Esc para cancelar</span>
-                </div>
-              ) : (
-                <h2
-                  className="text-2xl font-bold text-gray-900 cursor-pointer hover:bg-gray-100 rounded px-1 -mx-1 transition-colors"
-                  onClick={handleTitleClick}
-                  title="Clique para editar título"
-                >
-                  {item.title}
-                </h2>
-              )}
+              <h2 className="text-2xl font-bold text-gray-900">
+                {item.title}
+              </h2>
+              <button
+                type="button"
+                onClick={handleSuggestTitle}
+                disabled={isGeneratingTitle}
+                title="Sugerir um título melhor com IA"
+                className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isGeneratingTitle ? (
+                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                )}
+                <span>AI</span>
+              </button>
               <span className="text-sm text-gray-400">{item.id}</span>
             </div>
 
@@ -1048,7 +1003,9 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               </span>
                             )}
                           </div>
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.content}</p>
+                          <div className="text-sm text-gray-700 prose prose-sm max-w-none">
+                            <ReactMarkdown>{comment.content}</ReactMarkdown>
+                          </div>
                         </div>
                       ))
                     )}

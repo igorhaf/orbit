@@ -104,7 +104,7 @@ class Task(Base):
     )
 
     # Basic fields
-    title = Column(String(255), nullable=False)
+    title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     status = Column(
         SQLEnum(TaskStatus, name="task_status", values_callable=lambda x: [e.value for e in x]),

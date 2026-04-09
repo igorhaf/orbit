@@ -313,6 +313,17 @@ async def get_enrichment_status(
         "AND status = 'completed' AND job_type = 'deep_pipeline' LIMIT 1"
     ), {"pid": str(project_id)}).first() is not None
 
+    # Check for interrupted (resumable) pipeline runs
+    from app.models.pipeline_run import PipelineRun
+    interrupted_run = db.query(PipelineRun).filter(
+        PipelineRun.project_id == project_id,
+        PipelineRun.status == "interrupted",
+        PipelineRun.checkpoint_state.isnot(None),
+    ).order_by(PipelineRun.created_at.desc()).first()
+    deep_pipeline_interrupted = interrupted_run is not None
+    deep_pipeline_error = interrupted_run.error if interrupted_run else None
+    deep_pipeline_last_phase = (interrupted_run.checkpoint_state or {}).get("last_completed_phase", -1) if interrupted_run else None
+
     return {
         "is_enriching": is_enriching,
         "active_jobs": [
@@ -348,6 +359,9 @@ async def get_enrichment_status(
         "deep_pipeline_quality_score": project.pipeline_quality_score,
         "deep_pipeline_running": deep_pipeline_active is not None,
         "deep_pipeline_completed": deep_pipeline_done,
+        "deep_pipeline_interrupted": deep_pipeline_interrupted,
+        "deep_pipeline_error": deep_pipeline_error,
+        "deep_pipeline_last_phase": deep_pipeline_last_phase,
         "deep_pipeline_progress": {
             "percent": deep_pipeline_active.progress_percent if deep_pipeline_active else None,
             "message": deep_pipeline_active.progress_message if deep_pipeline_active else None,

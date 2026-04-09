@@ -8,6 +8,7 @@
 'use client';
 
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui';
 import { BacklogItem } from '@/lib/types';
 
@@ -126,11 +127,11 @@ export default function AcceptanceTab({
                 <>
                   <span className="mt-0.5 text-gray-400 text-xs font-mono">{idx + 1}.</span>
                   <span
-                    className="flex-1 text-sm text-gray-900 cursor-pointer"
+                    className="flex-1 text-sm text-gray-900 cursor-pointer prose prose-sm max-w-none"
                     onDoubleClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterionText); }}
                     title="Clique duplo para editar"
                   >
-                    {criterionText}
+                    <ReactMarkdown>{criterionText}</ReactMarkdown>
                   </span>
                   <button
                     onClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterionText); }}

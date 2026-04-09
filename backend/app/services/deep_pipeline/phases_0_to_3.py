@@ -162,7 +162,7 @@ class Phase0to3Mixin:
 
         # Model/tokens/concurrency from profile
         p1_model = self._get_model("phase_1", MODEL_HAIKU)
-        p1_max_tokens = self._get_max_tokens("phase_1", 4000)
+        p1_max_tokens = self._get_max_tokens("phase_1", 2000)
         p1_concurrency = self._get_concurrency("phase_1", 10)
         p1_ollama = self._ollama_kwargs("phase_1")
 
@@ -292,9 +292,9 @@ class Phase0to3Mixin:
             await progress_cb(1, pct,
                 f"Analisados {done_total}/{total_files} arquivos (batch {batch_num}/{total_batches})")
 
-            # Brief pause between batches to let GPU cool slightly
+            # Pause between batches to avoid overloading the provider
             if batch_start + batch_size < len(pending):
-                await asyncio.sleep(3)  # 3s pause
+                await asyncio.sleep(5)  # 5s pause
 
         # Clear checkpoint on successful completion
         if pipeline_run and pipeline_run.checkpoint_state:
@@ -334,7 +334,9 @@ class Phase0to3Mixin:
                 "project_name": project.name,
             })
 
-            user_prompt = f"Dominio: {domain}\n\nAnalises individuais dos arquivos:\n{json.dumps(analyses_summary, ensure_ascii=False, indent=2)}"
+            # Compact JSON (no indent) to save tokens
+            analyses_compact = json.dumps(analyses_summary, ensure_ascii=False, separators=(",", ":"))
+            user_prompt = f"Dominio: {domain}\n\nAnalises individuais dos arquivos:\n{analyses_compact}"
 
             p2_ollama = self._ollama_kwargs("phase_2")
             try:
@@ -422,7 +424,7 @@ class Phase0to3Mixin:
         }
 
         p2_model = self._get_model("phase_2", MODEL_SONNET)
-        p2_max_tokens = self._get_max_tokens("phase_2", 16000)
+        p2_max_tokens = self._get_max_tokens("phase_2", 8000)
         p2_multi_turn_threshold = self._get_phase_config("phase_2", "multi_turn_threshold", 30)
         p2_concurrency = self._get_concurrency("phase_2", 5)
 
@@ -525,7 +527,7 @@ class Phase0to3Mixin:
         )
 
         p3_model = self._get_model("phase_3", MODEL_SONNET)
-        p3_max_tokens = self._get_max_tokens("phase_3", 32000)
+        p3_max_tokens = self._get_max_tokens("phase_3", 16000)
         p3_thinking = self._get_phase_config("phase_3", "thinking_budget", 10000)
 
         result = await self.claudio.call(

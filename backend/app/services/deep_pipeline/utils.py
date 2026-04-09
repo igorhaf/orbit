@@ -184,23 +184,26 @@ class UtilsMixin:
         logger.info(f"Checkpoint saved: phase={phase}, files={len(completed_files)}")
 
     async def _provider_health_check(self, model: str, ollama_kwargs: dict) -> bool:
-        """Test if the AI provider responds before sending a batch."""
+        """Test if the AI provider responds before sending a batch.
+        Uses the lightweight /api/health endpoint instead of a full AI call
+        to avoid wasting tokens and being slow under load.
+        Retries up to 3 times with backoff before declaring offline.
+        """
         import asyncio
-        try:
-            result = await asyncio.wait_for(
-                self.claudio.call(
-                    model=model,
-                    system_prompt="Respond with OK",
-                    user_prompt="Health check",
-                    max_tokens=5,
-                    **ollama_kwargs,
-                ),
-                timeout=30,
-            )
-            return bool(result and result.get("text"))
-        except Exception as e:
-            logger.warning(f"Health check failed for {model}: {e}")
-            return False
+        for attempt in range(3):
+            try:
+                healthy = await asyncio.wait_for(
+                    self.claudio.health_check(),
+                    timeout=15,
+                )
+                if healthy:
+                    return True
+                logger.warning(f"Health check attempt {attempt + 1}/3 returned unhealthy")
+            except Exception as e:
+                logger.warning(f"Health check attempt {attempt + 1}/3 failed: {e}")
+            if attempt < 2:
+                await asyncio.sleep(5 * (attempt + 1))  # 5s, 10s backoff
+        return False
 
     def _gather_enrichment_context(self, project) -> Dict[str, str]:
         """Gather wiki pages, RAG business rules, git commits and done cards for enrichment."""

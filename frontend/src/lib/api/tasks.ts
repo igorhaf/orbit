@@ -239,6 +239,27 @@ export const tasksApi = {
       method: 'POST',
     }),
 
+  // Expand/detail card description via AI
+  expandDescription: (taskId: string) =>
+    request<{ job_id: string; status: string; message: string }>(
+      `/api/v1/tasks/${taskId}/expand-description`,
+      { method: 'POST' }
+    ),
+
+  // Summarize/condense card description via AI
+  summarizeDescription: (taskId: string) =>
+    request<{ job_id: string; status: string; message: string }>(
+      `/api/v1/tasks/${taskId}/summarize-description`,
+      { method: 'POST' }
+    ),
+
+  // Rephrase card description via AI (different wording)
+  rephraseDescription: (taskId: string) =>
+    request<{ job_id: string; status: string; message: string }>(
+      `/api/v1/tasks/${taskId}/rephrase-description`,
+      { method: 'POST' }
+    ),
+
   // PROMPT #248 - Generate semantic prompt from card + RAG/wiki/git context
   // Returns job_id for polling (background execution)
   generateSemanticPrompt: (taskId: string, force?: boolean) =>

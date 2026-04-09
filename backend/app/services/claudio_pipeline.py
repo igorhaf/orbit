@@ -83,7 +83,10 @@ class ClaudioPipelineService:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
-                headers={"x-api-key": CLAUDIO_API_KEY},
+                headers={
+                    "x-api-key": CLAUDIO_API_KEY,
+                    "Accept-Encoding": "gzip",
+                },
                 timeout=httpx.Timeout(600.0, connect=10.0),
             )
         return self._client

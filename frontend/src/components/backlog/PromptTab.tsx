@@ -376,12 +376,6 @@ export default function PromptTab({
               <span className="text-xs font-semibold text-gray-500 uppercase">Tipo de Item</span>
               <p className="text-sm text-gray-900 mt-1">{item.item_type}</p>
             </div>
-            <div>
-              <span className="text-xs font-semibold text-gray-500 uppercase">Modelo de IA Alvo</span>
-              <p className="text-sm text-gray-900 mt-1">
-                {item.target_ai_model_id || 'Seleção automática'}
-              </p>
-            </div>
           </div>
         </div>
       )}

@@ -162,6 +162,9 @@ export default function ProjectDetailsPage() {
   // PROMPT #260 - Deep Pipeline (7-phase via Claudio)
   const [deepPipelineRunning, setDeepPipelineRunning] = useState(false);
   const [deepPipelineCompleted, setDeepPipelineCompleted] = useState(false);
+  const [deepPipelineInterrupted, setDeepPipelineInterrupted] = useState(false);
+  const [deepPipelineError, setDeepPipelineError] = useState<string | null>(null);
+  const [deepPipelineLastPhase, setDeepPipelineLastPhase] = useState<number | null>(null);
   const [deepPipelineProgress, setDeepPipelineProgress] = useState<string | null>(null);
   const [deepPipelineScore, setDeepPipelineScore] = useState<string | null>(null);
   // PROMPT #263 - Pipeline profile selector
@@ -303,6 +306,9 @@ export default function ProjectDetailsPage() {
         // PROMPT #260 - Deep Pipeline state from enrichment status
         setDeepPipelineRunning(status.deep_pipeline_running || false);
         setDeepPipelineCompleted(status.deep_pipeline_completed || false);
+        setDeepPipelineInterrupted(status.deep_pipeline_interrupted || false);
+        setDeepPipelineError(status.deep_pipeline_error || null);
+        setDeepPipelineLastPhase(status.deep_pipeline_last_phase ?? null);
         setDeepPipelineScore(status.deep_pipeline_quality_score || null);
         if (status.deep_pipeline_progress) {
           setDeepPipelineProgress(status.deep_pipeline_progress.message || null);
@@ -370,6 +376,9 @@ export default function ProjectDetailsPage() {
           setIsEnriching(status.is_enriching);
           setDeepPipelineRunning(status.deep_pipeline_running || false);
           setDeepPipelineCompleted(status.deep_pipeline_completed || false);
+          setDeepPipelineInterrupted(status.deep_pipeline_interrupted || false);
+          setDeepPipelineError(status.deep_pipeline_error || null);
+          setDeepPipelineLastPhase(status.deep_pipeline_last_phase ?? null);
           setDeepPipelineScore(status.deep_pipeline_quality_score || null);
           if (status.deep_pipeline_progress) {
             setDeepPipelineProgress(status.deep_pipeline_progress.message || null);
@@ -968,6 +977,32 @@ export default function ProjectDetailsPage() {
                     )}
                     {deepPipelineRunning ? 'Pipeline em execucao...' : deepPipelineCompleted ? 'Re-executar Pipeline' : 'Deep Pipeline'}
                   </button>
+                  {/* Resume button - shown when pipeline was interrupted */}
+                  {deepPipelineInterrupted && !deepPipelineRunning && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          setDeepPipelineRunning(true);
+                          setDeepPipelineProgress('Continuando de onde parou...');
+                          setDeepPipelineInterrupted(false);
+                          await ragApi.deepPipeline(projectId, selectedPipelineProfile || undefined);
+                          showSuccess(`Pipeline retomado a partir da fase ${(deepPipelineLastPhase ?? -1) + 2}`);
+                        } catch (err: any) {
+                          setDeepPipelineRunning(false);
+                          setDeepPipelineProgress(null);
+                          showError(err?.message || 'Erro ao retomar pipeline');
+                        }
+                      }}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-all"
+                      title={`Continuar pipeline da fase ${(deepPipelineLastPhase ?? -1) + 2}${deepPipelineError ? ` (erro: ${deepPipelineError.substring(0, 80)})` : ''}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Continuar Pipeline (fase {(deepPipelineLastPhase ?? -1) + 2})
+                    </button>
+                  )}
                   {pipelineProfiles.length > 0 && (
                     <select
                       value={selectedPipelineProfile}
@@ -985,6 +1020,11 @@ export default function ProjectDetailsPage() {
                   )}
                   {deepPipelineProgress && (
                     <span className="text-xs text-purple-600 max-w-[300px] truncate">{deepPipelineProgress}</span>
+                  )}
+                  {deepPipelineInterrupted && deepPipelineError && !deepPipelineRunning && (
+                    <span className="text-xs text-red-600 max-w-[400px] truncate" title={deepPipelineError}>
+                      Erro: {deepPipelineError.substring(0, 100)}
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">

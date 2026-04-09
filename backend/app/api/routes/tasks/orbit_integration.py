@@ -834,3 +834,186 @@ async def _process_semantic_prompt_async(
             pass
     finally:
         db.close()
+
+
+# ============================================================================
+# Expand / Summarize / Rephrase card description
+# ============================================================================
+
+@router.post("/{task_id}/expand-description")
+async def expand_card_description(task_id: UUID, db: Session = Depends(get_db)):
+    """Expand/detail a card description using AI."""
+    return await _card_description_action(task_id, "expand", db)
+
+
+@router.post("/{task_id}/summarize-description")
+async def summarize_card_description(task_id: UUID, db: Session = Depends(get_db)):
+    """Summarize/condense a card description using AI."""
+    return await _card_description_action(task_id, "summarize", db)
+
+
+@router.post("/{task_id}/rephrase-description")
+async def rephrase_card_description(task_id: UUID, db: Session = Depends(get_db)):
+    """Rephrase a card description using AI (different wording, same meaning)."""
+    return await _card_description_action(task_id, "rephrase", db)
+
+
+async def _card_description_action(task_id: UUID, action: str, db: Session):
+    """Shared handler for expand/summarize/rephrase card description."""
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
+
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Card {task_id} não encontrado")
+
+    if not task.description:
+        raise HTTPException(status_code=400, detail="Card sem descrição para processar")
+
+    action_labels = {
+        "expand": "Detalhando",
+        "summarize": "Resumindo",
+        "rephrase": "Reformulando",
+    }
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.DESCRIPTION_GENERATION,
+        input_data={
+            "action": f"card_{action}",
+            "task_id": str(task_id),
+            "task_title": task.title or "",
+            "current_description": task.description,
+        },
+        project_id=task.project_id,
+        task_id=task_id,
+        notification_title=f"{action_labels[action]} descrição — '{(task.title or '')[:40]}'",
+    )
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_card_description_action_async,
+        job.id, str(task_id), action,
+    )
+
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": f"{action_labels[action]} descrição enfileirada.",
+    }
+
+
+async def _process_card_description_action_async(
+    job_id: UUID, task_id_str: str, action: str
+):
+    """Background task: expand/summarize/rephrase a card description."""
+    import time
+    from uuid import UUID as UUIDType
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.models.project import Project
+    from app.services.ai_orchestrator import AIOrchestrator
+
+    action_prompts = {
+        "expand": {
+            "system": (
+                "Você é um Product Owner sênior. Expanda e detalhe a descrição do card "
+                "abaixo, adicionando mais informações técnicas, requisitos e contexto. "
+                "Mantenha o conteúdo original e adicione detalhes relevantes. "
+                "Escreva em português. Responda APENAS com o texto da descrição."
+            ),
+            "instruction": "Expanda e detalhe esta descrição, adicionando mais informações:",
+            "max_tokens": 3000,
+        },
+        "summarize": {
+            "system": (
+                "Você é um Product Owner sênior. Resuma e condense a descrição do card "
+                "abaixo, mantendo apenas os pontos essenciais e removendo redundâncias. "
+                "Escreva em português. Responda APENAS com o texto da descrição."
+            ),
+            "instruction": "Resuma esta descrição, mantendo apenas o essencial:",
+            "max_tokens": 1000,
+        },
+        "rephrase": {
+            "system": (
+                "Você é um Product Owner sênior. Reformule a descrição do card abaixo "
+                "usando palavras diferentes mas mantendo o mesmo significado e tamanho. "
+                "Escreva em português. Responda APENAS com o texto da descrição."
+            ),
+            "instruction": "Reformule esta descrição com outras palavras:",
+            "max_tokens": 2000,
+        },
+    }
+
+    db = SessionLocal()
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        task_id = UUIDType(task_id_str)
+
+        task = db.query(Task).filter(Task.id == task_id).first()
+        if not task:
+            job_manager.fail_job(job_id, f"Card {task_id} não encontrado")
+            return
+
+        project = db.query(Project).filter(Project.id == task.project_id).first()
+        cfg = action_prompts[action]
+
+        user_prompt = (
+            f"Título: {task.title}\n"
+            f"Projeto: {project.name if project else 'N/A'}\n\n"
+            f"{cfg['instruction']}\n\n"
+            f"{task.description}"
+        )
+
+        job_manager.update_progress(job_id, 30.0, "Chamando IA...")
+
+        start_time = time.time()
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=cfg["system"],
+            max_tokens=cfg["max_tokens"],
+            project_id=str(task.project_id),
+            metadata={"type": f"card_{action}", "skip_context_build": True},
+        )
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        description = response.get("content", "").strip()
+        ai_model = response.get("model_name", "unknown")
+
+        if not description or len(description) < 20:
+            job_manager.fail_job(job_id, "IA gerou descrição muito curta ou vazia")
+            return
+
+        job_manager.update_progress(job_id, 80.0, "Salvando descrição...")
+
+        db.refresh(task)
+        task.description = description
+        task.description_edited_by = "ai"
+        task.created_by_ai_model = ai_model
+        db.commit()
+
+        logger.info(
+            f"{action.capitalize()} description for card {task_id} "
+            f"({len(description)} chars, model={ai_model}, {elapsed_ms}ms)"
+        )
+
+        job_manager.complete_job(job_id, {
+            "description": description,
+            "ai_model": ai_model,
+            "chars": len(description),
+            "action": action,
+        })
+
+    except Exception as e:
+        logger.error(f"Card {action} job {job_id} failed: {e}", exc_info=True)
+        try:
+            job_manager.fail_job(job_id, str(e)[:500])
+        except Exception:
+            pass
+    finally:
+        db.close()

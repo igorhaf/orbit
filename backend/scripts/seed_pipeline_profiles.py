@@ -42,14 +42,14 @@ QUALITY_CONFIGS = {
         "enabled": True,
     },
     "phase_4a": {
-        "model": "claude-opus-4-6",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 64000,
         "concurrency": 1,
         "contract": "deep_epic_generation",
         "enabled": True,
     },
     "phase_4b": {
-        "model": "claude-opus-4-6",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 32000,
         "concurrency": 3,
         "contract": "deep_story_decomposition",
@@ -77,14 +77,14 @@ QUALITY_CONFIGS = {
         "enabled": True,
     },
     "phase_5b": {
-        "model": "claude-opus-4-6",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 64000,
         "concurrency": 1,
         "contract": "deep_wiki_overview",
         "enabled": True,
     },
     "phase_5c": {
-        "model": "claude-opus-4-6",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 32000,
         "concurrency": 3,
         "contract": "deep_wiki_domain",
