@@ -249,42 +249,25 @@ LEMBRE-SE:
         except Exception as e:
             logger.warning(f"⚠️  RAG retrieval failed for epic decomposition: {e}")
 
-        # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
+        # 3. Call AI via AIOrchestrator (PROMPT #164 - PrompterFacade removed)
         logger.info(f"🎯 Decomposing Epic {epic_id} into Stories... (RAG: {rag_story_count} similar stories)")
-
-        if self.prompter:
-            try:
-                result = await self.prompter.execute_prompt(
-                    prompt=user_prompt,
-                    usage_type="prompt_generation",
-                    system_prompt=system_prompt,
-                    project_id=str(project_id),
-                    metadata={
-                        "operation": "decompose_epic_to_stories",
-                        "epic_id": str(epic_id)
-                    }
-                )
-            except (RuntimeError, AttributeError):
-                logger.warning("PrompterFacade failed, using direct AIOrchestrator")
-                self.prompter = None
-                result = None
-        else:
-            result = None
-
-        if result is None:
-            result = await self.orchestrator.execute(
-                usage_type="prompt_generation",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                project_id=project_id,
-                metadata={
-                    "operation": "decompose_epic_to_stories",
-                    "epic_id": str(epic_id)
-                },
-                enable_rag=True
-            )
-            # Normalize result format
-            result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
+        orch_result = await self.orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            project_id=project_id,
+            metadata={
+                "operation": "decompose_epic_to_stories",
+                "epic_id": str(epic_id)
+            },
+            enable_rag=True
+        )
+        result = {
+            "response": orch_result["content"],
+            "input_tokens": orch_result.get("usage", {}).get("input_tokens", 0),
+            "output_tokens": orch_result.get("usage", {}).get("output_tokens", 0),
+            "model": orch_result.get("db_model_name", "unknown"),
+        }
 
         # 4. Parse AI response
         try:

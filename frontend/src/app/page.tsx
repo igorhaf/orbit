@@ -157,7 +157,7 @@ export default function ProjectsPage() {
         {/* Projects List */}
         {loading ? (
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <Spinner size="xl" />
           </div>
         ) : projects.length === 0 ? (
           <Card>
@@ -360,3 +360,4 @@ export default function ProjectsPage() {
     </Layout>
   );
 }
+import { Spinner } from '@/components/ui';

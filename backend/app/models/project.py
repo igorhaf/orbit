@@ -126,7 +126,7 @@ class Project(Base):
     # Stores the model name (e.g. "Qwen3 14B") for tooltip display
     description_ai_model = Column(Text, nullable=True)
 
-    # Deep Pipeline fields (7-phase Claudio pipeline)
+    # Deep Pipeline fields (7-phase Claudius pipeline)
     # Phase 3 output: architectural map with domains, cross-domain flows, patterns
     project_architecture = Column(JSON, nullable=True)
     # Phase 6 output: overall quality score (0-100)

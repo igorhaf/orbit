@@ -6,8 +6,10 @@
  * Shows RAG stats, document storage, continuous RAG, and code indexing panels
  */
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button, ConfirmDialog } from '@/components/ui';
+import { Spinner } from '@/components/ui';
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel, ContinuousRAGPanel } from '@/components/rag';
 import { RagStats, CodeIndexingStats } from '@/lib/types';
 
@@ -39,6 +41,54 @@ export default function RagTab({
   loadRagStats,
 }: RagTabProps) {
   const router = useRouter();
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+  const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
+  const [exportPreview, setExportPreview] = useState<any | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<any | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const openExportPreview = async () => {
+    setExportPreview(null);
+    setExportError(null);
+    setExportResult(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/projects/${projectId}/business-rules/export-as-tasks?dry_run=true`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setExportError(data?.detail || 'Falha ao consultar regras');
+        return;
+      }
+      setExportPreview(data);
+      setExportConfirmOpen(true);
+    } catch (e: any) {
+      setExportError(e?.message || 'erro ao consultar regras');
+    }
+  };
+
+  const confirmExport = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/projects/${projectId}/business-rules/export-as-tasks`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setExportError(data?.detail || 'Falha ao exportar');
+        return;
+      }
+      setExportResult(data);
+      setExportConfirmOpen(false);
+    } catch (e: any) {
+      setExportError(e?.message || 'erro ao exportar');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -138,9 +188,49 @@ export default function RagTab({
                     </div>
                   </div>
                 )}
+
+                {/* Exportar regras → backlog */}
+                <div className="mt-4 pt-4 border-t flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700">Exportar regras para o Backlog</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Cria Epics por dominio e Stories por gap detectado, sem precisar rodar a Fase 4 do Deep Pipeline.
+                    </p>
+                    {exportError && <p className="text-xs text-red-600 mt-1">{exportError}</p>}
+                    {exportResult && (
+                      <p className="text-xs text-green-700 mt-1">
+                        Criados <strong>{exportResult.epics_created}</strong> Epics e <strong>{exportResult.stories_created}</strong> Stories no Backlog.
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openExportPreview}
+                    disabled={exporting}
+                  >
+                    Exportar regras
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
+
+          <ConfirmDialog
+            open={exportConfirmOpen}
+            onClose={() => (exporting ? null : setExportConfirmOpen(false))}
+            onConfirm={confirmExport}
+            type="info"
+            title="Exportar regras de negocio?"
+            message={
+              exportPreview
+                ? `Vou criar ${exportPreview.epics_planned} Epics (1 por dominio) e ${exportPreview.stories_planned} Stories (1 por gap detectado) no Backlog. Itens podem ser editados ou removidos depois.`
+                : 'Calculando...'
+            }
+            confirmLabel="Sim, criar no Backlog"
+            cancelLabel="Cancelar"
+            isLoading={exporting}
+          />
 
           {/* PROMPT #218 - Continuous RAG Evolution Panel */}
           <ContinuousRAGPanel

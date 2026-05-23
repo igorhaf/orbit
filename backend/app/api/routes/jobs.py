@@ -522,7 +522,7 @@ async def cancel_job(
         # Job couldn't be cancelled (already completed/failed/cancelled)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Nao e possivel cancelar job com status '{job.status.value}'. Apenas jobs pendentes ou em execucao podem ser cancelados."
+            detail=f"Nao e possivel cancelar job com status '{job.status.value}'. Apenas jobs pendentes, em execucao ou pausados podem ser cancelados."
         )
 
     logger.info(f"Job {job_id} cancelled successfully (with children)")
@@ -532,6 +532,44 @@ async def cancel_job(
         "status": "cancelled",
         "message": "Job cancelado com sucesso"
     }
+
+
+@router.patch("/{job_id}/pause")
+async def pause_job(job_id: UUID, db: Session = Depends(get_db)):
+    """Pausa um job individual (pending ou running).
+
+    Diferencas:
+      - cancel: termina o job permanentemente
+      - pause: para temporariamente; retomavel via /resume
+      - executor pula jobs PAUSED ao escanear a fila
+    """
+    job_manager = JobManager(db)
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} nao encontrado")
+    ok = job_manager.pause_job(job_id)
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Nao e possivel pausar job com status '{job.status.value}'. Apenas pending/running."
+        )
+    return {"id": str(job_id), "status": "paused", "message": "Job pausado"}
+
+
+@router.patch("/{job_id}/resume")
+async def resume_job(job_id: UUID, db: Session = Depends(get_db)):
+    """Retoma um job pausado. Volta pra pending (executor pega de novo)."""
+    job_manager = JobManager(db)
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} nao encontrado")
+    ok = job_manager.resume_job(job_id)
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Nao e possivel retomar job com status '{job.status.value}'. Apenas paused."
+        )
+    return {"id": str(job_id), "status": "pending", "message": "Job retomado"}
 
 
 @router.get("/cleanup/stats")

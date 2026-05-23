@@ -14,6 +14,7 @@
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { Spinner } from '@/components/ui';
 import { useSearchParams } from 'next/navigation';
 import {
   ReactFlow,
@@ -664,7 +665,7 @@ function AIFlowPageContent() {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
         </div>
       </Layout>
     );
@@ -790,7 +791,7 @@ function AIFlowPageContent() {
               disabled={saving || !hasUnsavedChanges}
             >
               {saving ? (
-                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1" />
+                <Spinner size="xs" />
               ) : (
                 <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1264,7 +1265,7 @@ export default function AIFlowPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <Spinner size="xl" />
       </div>
     }>
       <AIFlowPageContent />

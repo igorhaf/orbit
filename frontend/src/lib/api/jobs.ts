@@ -51,6 +51,18 @@ export const jobsApi = {
       method: 'PATCH',
     }),
 
+  // Pause a running or pending job (retomavel via resume)
+  pause: (jobId: string) =>
+    request<{ id: string; status: string; message: string }>(`/api/v1/jobs/${jobId}/pause`, {
+      method: 'PATCH',
+    }),
+
+  // Resume a paused job
+  resume: (jobId: string) =>
+    request<{ id: string; status: string; message: string }>(`/api/v1/jobs/${jobId}/resume`, {
+      method: 'PATCH',
+    }),
+
   // PROMPT #135 - List all jobs with filtering and pagination
   list: (params?: {
     status?: string;

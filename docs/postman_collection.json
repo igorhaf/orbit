@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Claudio API",
-    "description": "Claudio API - API local usando assinatura via CLI.\n\nBase URL: http://localhost:8001\n\nEndpoint principal: POST /v1/messages\n\nCaracteristicas:\n- Usa assinatura Claude (nao API key)\n- CLI executa com --permission-mode bypassPermissions (sem prompts interativos)\n- Suporta parametro cwd para executar em qualquer diretorio de projeto\n- Suporta thinking (extended thinking) com blocos thinking na resposta\n- Streaming via SSE (Server-Sent Events)\n- Compativel com formato Anthropic Messages API",
+    "name": "Claudius API",
+    "description": "Claudius API - API local usando assinatura via CLI.\n\nBase URL: http://localhost:8001\n\nEndpoint principal: POST /v1/messages\n\nCaracteristicas:\n- Usa assinatura Claude (nao API key)\n- CLI executa com --permission-mode bypassPermissions (sem prompts interativos)\n- Suporta parametro cwd para executar em qualquer diretorio de projeto\n- Suporta thinking (extended thinking) com blocos thinking na resposta\n- Streaming via SSE (Server-Sent Events)\n- Compativel com formato Anthropic Messages API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "poc_chat"
   },
@@ -252,7 +252,7 @@
     },
     {
       "name": "CWD - Diretorio de Trabalho",
-      "description": "O parametro 'cwd' define em qual pasta/diretorio o CLI do Claude sera executado.\n\nIsso permite que o Claudio tenha acesso ao contexto completo de um projeto: ler arquivos, analisar codigo, editar, criar, etc.\n\nSem cwd, o CLI roda no diretorio padrao do backend. Com cwd, voce aponta para qualquer projeto no sistema de arquivos.\n\nExemplo: cwd=/home/igorhaf/meu-projeto faz o Claude rodar como se estivesse dentro dessa pasta.\n\nO CLI roda com --permission-mode bypassPermissions, entao operacoes de leitura/escrita no diretorio sao permitidas sem interacao manual.",
+      "description": "O parametro 'cwd' define em qual pasta/diretorio o CLI do Claude sera executado.\n\nIsso permite que o Claudius tenha acesso ao contexto completo de um projeto: ler arquivos, analisar codigo, editar, criar, etc.\n\nSem cwd, o CLI roda no diretorio padrao do backend. Com cwd, voce aponta para qualquer projeto no sistema de arquivos.\n\nExemplo: cwd=/home/igorhaf/meu-projeto faz o Claude rodar como se estivesse dentro dessa pasta.\n\nO CLI roda com --permission-mode bypassPermissions, entao operacoes de leitura/escrita no diretorio sao permitidas sem interacao manual.",
       "item": [
         {
           "name": "Com cwd (non-streaming)",

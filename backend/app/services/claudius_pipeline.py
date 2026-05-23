@@ -1,9 +1,9 @@
 """
-Claudio Pipeline Service
-Direct HTTP client for the Claudio API proxy (Claude CLI wrapper).
+Claudius Pipeline Service
+Direct HTTP client for the Claudius API proxy (Claude CLI wrapper).
 
 Bypasses AIOrchestrator intentionally:
-- No provider selection needed (all calls go to Claudio)
+- No provider selection needed (all calls go to Claudius)
 - No Redis cache needed (subscription has no per-call cost)
 - Explicit model control per phase (Haiku/Sonnet/Opus)
 - Multi-turn session management via session_key
@@ -14,21 +14,25 @@ import asyncio
 import json
 import logging
 import os
+import re
+import time
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
 import httpx
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# Claudio proxy base URL and API key
-CLAUDIO_BASE_URL = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
-CLAUDIO_API_KEY = os.getenv("CLAUDIO_API_KEY", "123456789")
+# Claudius proxy base URL and API key
+CLAUDIUS_BASE_URL = os.getenv("CLAUDIUS_BASE_URL", "http://localhost:8001")
+CLAUDIUS_API_KEY = os.getenv("CLAUDIUS_API_KEY", "123456789")
 
 # Model identifiers
 MODEL_HAIKU = "claude-haiku-4-5"
 MODEL_SONNET = "claude-sonnet-4-6"
-MODEL_OPUS = "claude-opus-4-6"
+MODEL_OPUS = "claude-opus-4-7"
 
 # Timeouts per model (seconds) - Opus takes longer for deep reasoning
 MODEL_TIMEOUTS = {
@@ -45,17 +49,30 @@ MODEL_RETRIES = {
 }
 
 
-class ClaudioPipelineError(Exception):
-    """Raised when a Claudio API call fails after all retries."""
+class ClaudiusPipelineError(Exception):
+    """Raised when a Claudius API call fails after all retries."""
     pass
 
 
-class ClaudioPipelineService:
+class ClaudiusQuotaExhaustedError(ClaudiusPipelineError):
+    """Raised quando Claude CLI responde HTTP 200 mas o texto indica limite de cota."""
+    pass
+
+
+_QUOTA_PATTERNS = re.compile(
+    r"(hit your (usage )?limit|usage limit reached|rate limit|"
+    r"resets? (at|in|on)|quota exceeded|you've reached your|"
+    r"try again (later|in \d))",
+    re.IGNORECASE,
+)
+
+
+class ClaudiusPipelineService:
     """
-    Direct HTTP client for Claudio proxy.
+    Direct HTTP client for Claudius proxy.
 
     Usage:
-        service = ClaudioPipelineService()
+        service = ClaudiusPipelineService()
 
         # Single call
         result = await service.call(
@@ -75,16 +92,86 @@ class ClaudioPipelineService:
         )
     """
 
-    def __init__(self, base_url: str | None = None):
-        self.base_url = (base_url or CLAUDIO_BASE_URL).rstrip("/")
+    def __init__(
+        self,
+        base_url: str | None = None,
+        db: Session | None = None,
+        default_usage_type: str | None = None,
+    ):
+        self.base_url = (base_url or CLAUDIUS_BASE_URL).rstrip("/")
         self._client: httpx.AsyncClient | None = None
+        self.db = db
+        self.default_usage_type = default_usage_type
+
+    def _log_execution(
+        self,
+        *,
+        usage_type: str | None,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        result: dict | None,
+        start_time: float,
+        error: Exception | None = None,
+    ) -> None:
+        if not self.db or not usage_type:
+            return
+        try:
+            from app.models.ai_execution import AIExecution
+            from app.models.ai_model import AIModel
+
+            ai_model_id = None
+            try:
+                am = (
+                    self.db.query(AIModel)
+                    .filter(
+                        AIModel.provider == "claudius",
+                        AIModel.config["model_id"].astext == model,
+                    )
+                    .first()
+                )
+                if am:
+                    ai_model_id = am.id
+            except Exception:
+                pass
+
+            usage = (result or {}).get("usage") or {}
+            total = (
+                (usage.get("input_tokens") or 0) + (usage.get("output_tokens") or 0)
+                if usage
+                else None
+            )
+            log = AIExecution(
+                ai_model_id=ai_model_id,
+                usage_type=usage_type,
+                input_messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                response_content=(result or {}).get("text"),
+                input_tokens=usage.get("input_tokens"),
+                output_tokens=usage.get("output_tokens"),
+                total_tokens=total,
+                provider="claudius",
+                model_name=model,
+                execution_time_ms=int((time.time() - start_time) * 1000),
+                execution_metadata={"source": "claudius_pipeline"},
+                error_message=str(error) if error else None,
+                created_at=datetime.utcnow(),
+            )
+            self.db.add(log)
+            self.db.commit()
+        except Exception as log_err:
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+            logger.warning(f"ai_executions log failed (non-blocking): {log_err}")
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers={
-                    "x-api-key": CLAUDIO_API_KEY,
+                    "x-api-key": CLAUDIUS_API_KEY,
                     "Accept-Encoding": "gzip",
                 },
                 timeout=httpx.Timeout(600.0, connect=10.0),
@@ -107,10 +194,11 @@ class ClaudioPipelineService:
         thinking: dict | None = None,
         max_tokens: int | None = None,
         max_retries: int | None = None,
+        usage_type: str | None = None,
         **kwargs,  # Accept and ignore Ollama params for cross-provider compat
     ) -> dict[str, Any]:
         """
-        Make a single non-streaming call to Claudio.
+        Make a single non-streaming call to Claudius.
 
         Args:
             model: One of MODEL_HAIKU, MODEL_SONNET, MODEL_OPUS
@@ -126,6 +214,8 @@ class ClaudioPipelineService:
         """
         retries = max_retries if max_retries is not None else MODEL_RETRIES.get(model, 2)
         timeout = MODEL_TIMEOUTS.get(model, 300)
+        start_time = time.time()
+        usage_type = usage_type or self.default_usage_type
 
         payload = {
             "model": model,
@@ -155,9 +245,9 @@ class ClaudioPipelineService:
                 if response.status_code != 200:
                     error_text = response.text[:500]
                     logger.warning(
-                        f"Claudio returned {response.status_code} on attempt {attempt + 1}: {error_text}"
+                        f"Claudius returned {response.status_code} on attempt {attempt + 1}: {error_text}"
                     )
-                    last_error = ClaudioPipelineError(
+                    last_error = ClaudiusPipelineError(
                         f"HTTP {response.status_code}: {error_text}"
                     )
                     if attempt < retries:
@@ -165,31 +255,69 @@ class ClaudioPipelineService:
                     continue
 
                 data = response.json()
-                return self._parse_response(data)
+
+                # Deteccao de quota: CLI retorna HTTP 200 com texto de limite e tokens=0
+                text_blocks = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
+                preview_text = "".join(text_blocks)
+                usage_data = data.get("usage") or {}
+                in_tok = usage_data.get("input_tokens", 0) or 0
+                out_tok = usage_data.get("output_tokens", 0) or 0
+                if in_tok == 0 and out_tok == 0 and len(preview_text) < 500 and _QUOTA_PATTERNS.search(preview_text):
+                    quota_err = ClaudiusQuotaExhaustedError(f"Claude CLI quota exhausted: {preview_text[:200]}")
+                    self._log_execution(
+                        usage_type=usage_type, model=model,
+                        system_prompt=system_prompt, user_prompt=user_prompt,
+                        result=None, start_time=start_time, error=quota_err,
+                    )
+                    raise quota_err
+
+                parsed = self._parse_response(data)
+                self._log_execution(
+                    usage_type=usage_type,
+                    model=model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    result=parsed,
+                    start_time=start_time,
+                )
+                return parsed
 
             except httpx.TimeoutException as e:
                 logger.warning(
-                    f"Claudio timeout on attempt {attempt + 1}/{retries + 1} "
+                    f"Claudius timeout on attempt {attempt + 1}/{retries + 1} "
                     f"(model={model}, timeout={timeout}s): {e}"
                 )
-                last_error = ClaudioPipelineError(f"Timeout after {timeout}s: {e}")
+                last_error = ClaudiusPipelineError(f"Timeout after {timeout}s: {e}")
                 if attempt < retries:
                     timeout = int(timeout * 1.5)  # Increase timeout on retry
                     await asyncio.sleep(2 ** attempt)
 
             except httpx.ConnectError as e:
-                logger.error(f"Cannot connect to Claudio at {self.base_url}: {e}")
-                raise ClaudioPipelineError(
-                    f"Cannot connect to Claudio at {self.base_url}. Is it running?"
+                logger.error(f"Cannot connect to Claudius at {self.base_url}: {e}")
+                raise ClaudiusPipelineError(
+                    f"Cannot connect to Claudius at {self.base_url}. Is it running?"
                 ) from e
 
+            except ClaudiusQuotaExhaustedError:
+                # Quota exhausted: sem retry, propaga pra marcar pipeline como interrupted
+                raise
+
             except Exception as e:
-                logger.error(f"Unexpected error calling Claudio: {e}")
-                last_error = ClaudioPipelineError(f"Unexpected error: {e}")
+                logger.error(f"Unexpected error calling Claudius: {e}")
+                last_error = ClaudiusPipelineError(f"Unexpected error: {e}")
                 if attempt < retries:
                     await asyncio.sleep(2 ** attempt)
 
-        raise last_error or ClaudioPipelineError("All retries exhausted")
+        self._log_execution(
+            usage_type=usage_type,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            result=None,
+            start_time=start_time,
+            error=last_error,
+        )
+        raise last_error or ClaudiusPipelineError("All retries exhausted")
 
     # ── Multi-turn Call (resume session) ─────────────────────────────────
 
@@ -222,7 +350,7 @@ class ClaudioPipelineService:
         requests: list[dict[str, Any]],
         max_concurrency: int = 10,
         on_item_complete: Any = None,
-    ) -> list[dict[str, Any] | ClaudioPipelineError]:
+    ) -> list[dict[str, Any] | ClaudiusPipelineError]:
         """
         Execute multiple calls in parallel with concurrency limit.
 
@@ -232,17 +360,27 @@ class ClaudioPipelineService:
         on_item_complete: optional async callback(index, result, total) called
         as each item finishes, enabling real-time progress telemetry.
 
-        Returns list of results (dict) or ClaudioPipelineError for failed calls.
+        Returns list of results (dict) or ClaudiusPipelineError for failed calls.
         """
         semaphore = asyncio.Semaphore(max_concurrency)
-        results: list[dict[str, Any] | ClaudioPipelineError] = [None] * len(requests)
+        results: list[dict[str, Any] | ClaudiusPipelineError] = [None] * len(requests)
+        quota_hit: dict[str, Any] = {"flag": False, "error": None}
 
         async def _process(index: int, req: dict):
             async with semaphore:
+                # Se outro item ja detectou quota, abortar sem chamar
+                if quota_hit["flag"]:
+                    results[index] = quota_hit["error"]
+                    return
                 try:
                     result = await self.call(**req)
                     results[index] = result
-                except ClaudioPipelineError as e:
+                except ClaudiusQuotaExhaustedError as e:
+                    quota_hit["flag"] = True
+                    quota_hit["error"] = e
+                    results[index] = e
+                    logger.warning(f"Batch item {index} hit quota; aborting remaining items")
+                except ClaudiusPipelineError as e:
                     logger.warning(f"Batch item {index} failed: {e}")
                     results[index] = e
                 # Notify caller immediately when each item completes
@@ -255,11 +393,15 @@ class ClaudioPipelineService:
         tasks = [_process(i, req) for i, req in enumerate(requests)]
         await asyncio.gather(*tasks)
 
-        succeeded = sum(1 for r in results if not isinstance(r, ClaudioPipelineError))
+        succeeded = sum(1 for r in results if not isinstance(r, ClaudiusPipelineError))
         failed = len(results) - succeeded
         logger.info(
             f"Batch complete: {succeeded}/{len(requests)} succeeded, {failed} failed"
         )
+
+        # Se qualquer item foi abortado por quota, propaga pra cima (pipeline marca interrupted)
+        if quota_hit["flag"]:
+            raise quota_hit["error"]
 
         return results
 
@@ -288,7 +430,7 @@ class ClaudioPipelineService:
     # ── Health Check ─────────────────────────────────────────────────────
 
     async def health_check(self) -> bool:
-        """Check if Claudio is reachable."""
+        """Check if Claudius is reachable."""
         try:
             client = await self._get_client()
             response = await client.get("/api/health", timeout=5.0)
@@ -301,7 +443,7 @@ class ClaudioPipelineService:
     @staticmethod
     def _parse_response(data: dict) -> dict[str, Any]:
         """
-        Parse Claudio API response into a clean result dict.
+        Parse Claudius API response into a clean result dict.
 
         Returns:
             {

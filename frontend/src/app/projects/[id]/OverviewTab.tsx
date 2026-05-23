@@ -10,6 +10,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, AIModelBadge } from '@/components/ui';
+import { Spinner } from '@/components/ui';
 import { Project, Task } from '@/lib/types';
 import { projectsApi } from '@/lib/api';
 
@@ -448,6 +449,64 @@ export default function OverviewTab({
   const [isSavingIgnorePaths, setIsSavingIgnorePaths] = useState(false);
   const [ignorePathsSaved, setIgnorePathsSaved] = useState(false);
 
+  // File patterns blocklist (custom_ignore_patterns.file_patterns)
+  const initialFilePatterns: string[] = (project.custom_ignore_patterns as any)?.file_patterns || [];
+  const initialCustomDirs: string[] = (project.custom_ignore_patterns as any)?.directories || [];
+  const [ignoreFilePatterns, setIgnoreFilePatterns] = useState<string[]>(initialFilePatterns);
+  const [newIgnorePattern, setNewIgnorePattern] = useState('');
+
+  // AI-detected blocklist (custom_ignore_patterns.ai_*)
+  type AIBlockedItem = { path: string; reason: string };
+  const initialAIDirs: AIBlockedItem[] = (project.custom_ignore_patterns as any)?.ai_directories || [];
+  const initialAIFilePatterns: AIBlockedItem[] = (project.custom_ignore_patterns as any)?.ai_file_patterns || [];
+  const initialAILastRun: string | null = (project.custom_ignore_patterns as any)?.ai_last_run_at || null;
+  const [aiDirsAI, setAIDirsAI] = useState<AIBlockedItem[]>(initialAIDirs);
+  const [aiFilePatternsAI, setAIFilePatternsAI] = useState<AIBlockedItem[]>(initialAIFilePatterns);
+  const [aiLastRunAt, setAILastRunAt] = useState<string | null>(initialAILastRun);
+  const [aiScreening, setAIScreening] = useState(false);
+
+  const runAIScreen = async () => {
+    setAIScreening(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/v1/projects/${project.id}/blocklist/ai/screen`,
+        { method: 'POST' }
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setAIDirsAI(data.directories || []);
+      setAIFilePatternsAI(data.file_patterns || []);
+      setAILastRunAt(data.last_run_at || new Date().toISOString());
+    } catch (err) {
+      console.error('AI screen failed:', err);
+    } finally {
+      setAIScreening(false);
+    }
+  };
+
+  const aiAction = async (kind: 'directory' | 'file_pattern', path: string, action: 'approve' | 'reject') => {
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/v1/projects/${project.id}/blocklist/ai/${action}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, kind }),
+        }
+      );
+      if (!res.ok) throw new Error(await res.text());
+      if (kind === 'directory') {
+        setAIDirsAI((prev) => prev.filter((x) => x.path !== path));
+        if (action === 'approve') setIgnorePaths((prev) => prev.includes(path) ? prev : [...prev, path]);
+      } else {
+        setAIFilePatternsAI((prev) => prev.filter((x) => x.path !== path));
+        if (action === 'approve') setIgnoreFilePatterns((prev) => prev.includes(path) ? prev : [...prev, path]);
+      }
+    } catch (err) {
+      console.error('AI action failed:', err);
+    }
+  };
+
   // AI-detected patterns (read-only)
   const aiPatterns = project.initial_memory_context?.custom_ignore_patterns;
   const aiDirs: string[] = aiPatterns?.directories || [];
@@ -468,10 +527,29 @@ export default function OverviewTab({
     setIgnorePathsSaved(false);
   };
 
+  const handleAddIgnorePattern = () => {
+    const pat = newIgnorePattern.trim();
+    if (!pat || ignoreFilePatterns.includes(pat)) return;
+    setIgnoreFilePatterns([...ignoreFilePatterns, pat]);
+    setNewIgnorePattern('');
+    setIgnorePathsSaved(false);
+  };
+
+  const handleRemoveIgnorePattern = (pat: string) => {
+    setIgnoreFilePatterns(ignoreFilePatterns.filter(p => p !== pat));
+    setIgnorePathsSaved(false);
+  };
+
   const handleSaveIgnorePaths = async () => {
     setIsSavingIgnorePaths(true);
     try {
-      const updated = await projectsApi.update(project.id, { ignore_paths: ignorePaths });
+      const updated = await projectsApi.update(project.id, {
+        ignore_paths: ignorePaths,
+        custom_ignore_patterns: {
+          directories: initialCustomDirs,
+          file_patterns: ignoreFilePatterns,
+        },
+      });
       if (onProjectUpdate) onProjectUpdate(updated);
       setIgnorePathsSaved(true);
       setTimeout(() => setIgnorePathsSaved(false), 3000);
@@ -827,29 +905,35 @@ export default function OverviewTab({
                 Os caminhos são relativos à raiz do projeto.
               </p>
 
-              {/* Current ignore_paths (editable) */}
+              {/* Current ignore_paths (editable) as checkbox grid */}
               {ignorePaths.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-700 uppercase tracking-wide">Configurado pelo usuario</p>
-                  {ignorePaths.map((path) => (
-                    <div key={path} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                        </svg>
-                        <code className="text-sm text-gray-800">{path}</code>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveIgnorePath(path)}
-                        className="text-red-400 hover:text-red-600 p-1"
-                        title="Remover"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-gray-700 uppercase tracking-wide">Pastas bloqueadas ({ignorePaths.length})</p>
+                    <p className="text-xs text-gray-400">Desmarque para remover. Clique em Salvar para confirmar.</p>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg p-3 max-h-[340px] overflow-y-auto bg-white">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                      {ignorePaths.map((path) => (
+                        <label
+                          key={path}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 hover:bg-red-50 hover:border-red-200 cursor-pointer transition-colors group"
+                          title={`Clique para remover ${path}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => handleRemoveIgnorePath(path)}
+                            className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500 cursor-pointer"
+                          />
+                          <svg className="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                          </svg>
+                          <code className="flex-1 text-xs text-gray-800 truncate group-hover:text-red-700">{path}</code>
+                        </label>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
               )}
 
@@ -887,6 +971,163 @@ export default function OverviewTab({
                 <Button variant="ghost" size="sm" onClick={handleAddIgnorePath} disabled={!newIgnorePath.trim()}>
                   Adicionar
                 </Button>
+              </div>
+
+              {/* File patterns blocklist */}
+              <div className="pt-4 border-t border-gray-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-gray-700 uppercase tracking-wide">Arquivos bloqueados ({ignoreFilePatterns.length})</p>
+                  <p className="text-xs text-gray-400">Padrões tipo *.min.js, *.lock. Desmarque para remover.</p>
+                </div>
+                {ignoreFilePatterns.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">Nenhum padrão de arquivo bloqueado.</p>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg p-3 max-h-[280px] overflow-y-auto bg-white">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                      {ignoreFilePatterns.map((pat) => (
+                        <label
+                          key={pat}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 hover:bg-orange-50 hover:border-orange-200 cursor-pointer transition-colors group"
+                          title={`Clique para remover ${pat}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => handleRemoveIgnorePattern(pat)}
+                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500 cursor-pointer"
+                          />
+                          <svg className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          <code className="flex-1 text-xs text-gray-800 truncate group-hover:text-orange-700">{pat}</code>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newIgnorePattern}
+                    onChange={(e) => setNewIgnorePattern(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddIgnorePattern(); } }}
+                    placeholder="Ex: *.min.js, *.lock, *.pyc"
+                    className="flex-1 px-3 py-2 text-sm font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <Button variant="ghost" size="sm" onClick={handleAddIgnorePattern} disabled={!newIgnorePattern.trim()}>
+                    Adicionar
+                  </Button>
+                </div>
+              </div>
+
+              {/* AI-detected blocklist */}
+              <div className="pt-4 border-t border-gray-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-purple-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Bloqueios sugeridos pela IA
+                      <span className="text-gray-500 normal-case font-normal">({aiDirsAI.length} pastas, {aiFilePatternsAI.length} arquivos)</span>
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {aiLastRunAt
+                        ? <>Ultima analise: {new Date(aiLastRunAt).toLocaleString('pt-BR')}</>
+                        : 'Nenhuma analise IA executada ainda'}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={runAIScreen}
+                    disabled={aiScreening}
+                  >
+                    {aiScreening ? 'Analisando...' : 'Analisar com IA'}
+                  </Button>
+                </div>
+
+                {aiDirsAI.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1.5">Pastas sugeridas</p>
+                    <div className="border border-purple-100 rounded-lg p-3 max-h-[260px] overflow-y-auto bg-purple-50/30">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                        {aiDirsAI.map((item) => (
+                          <div
+                            key={item.path}
+                            className="flex items-start gap-2 px-2 py-1.5 rounded border border-purple-100 bg-white hover:border-purple-300 group"
+                            title={item.reason}
+                          >
+                            <input
+                              type="checkbox"
+                              checked
+                              onChange={() => aiAction('directory', item.path, 'reject')}
+                              className="mt-0.5 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 cursor-pointer"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <code className="block text-xs text-gray-800 truncate group-hover:text-purple-700">{item.path}</code>
+                              {item.reason && (
+                                <p className="text-[10px] text-gray-500 truncate mt-0.5">{item.reason}</p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => aiAction('directory', item.path, 'approve')}
+                              className="text-[10px] text-purple-600 hover:underline whitespace-nowrap"
+                              title="Promover para bloqueio manual"
+                            >
+                              Manter
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {aiFilePatternsAI.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1.5">Arquivos sugeridos</p>
+                    <div className="border border-purple-100 rounded-lg p-3 max-h-[260px] overflow-y-auto bg-purple-50/30">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                        {aiFilePatternsAI.map((item) => (
+                          <div
+                            key={item.path}
+                            className="flex items-start gap-2 px-2 py-1.5 rounded border border-purple-100 bg-white hover:border-purple-300 group"
+                            title={item.reason}
+                          >
+                            <input
+                              type="checkbox"
+                              checked
+                              onChange={() => aiAction('file_pattern', item.path, 'reject')}
+                              className="mt-0.5 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 cursor-pointer"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <code className="block text-xs text-gray-800 truncate group-hover:text-purple-700">{item.path}</code>
+                              {item.reason && (
+                                <p className="text-[10px] text-gray-500 truncate mt-0.5">{item.reason}</p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => aiAction('file_pattern', item.path, 'approve')}
+                              className="text-[10px] text-purple-600 hover:underline whitespace-nowrap"
+                              title="Promover para bloqueio manual"
+                            >
+                              Manter
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {aiDirsAI.length === 0 && aiFilePatternsAI.length === 0 && (
+                  <p className="text-xs text-gray-400 italic">
+                    Sem sugestoes da IA. Clique em "Analisar com IA" para varrer o projeto.
+                  </p>
+                )}
               </div>
 
               {/* Save button */}

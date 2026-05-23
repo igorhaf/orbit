@@ -10,7 +10,6 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 import json
 import logging
-import os
 
 from app.models.interview import Interview
 from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
@@ -18,51 +17,17 @@ from app.models.project import Project
 from app.models.spec import Spec, SpecScope
 from app.services.ai_orchestrator import AIOrchestrator
 from app.services.backlog_generator import BacklogGeneratorService
-# PROMPT #103 - External prompts support
 from app.prompts import get_prompt_service
-
-# Prompter Architecture (gradual migration via feature flags)
-try:
-    from app.prompter.facade import PrompterFacade
-    PROMPTER_AVAILABLE = True
-except ImportError:
-    PROMPTER_AVAILABLE = False
-    logger.warning("PrompterFacade not available - using legacy prompt generation")
 
 logger = logging.getLogger(__name__)
 
 
 class PromptGenerator:
-    """
-    Serviço para geração automática de prompts usando AI Orchestrator
-    Supports gradual migration to Prompter Architecture via feature flags
-    """
+    """Geração automática de prompts funcionais a partir de entrevistas."""
 
     def __init__(self, db: Session):
-        """
-        Inicializa o gerador com AI Orchestrator e PrompterFacade (if enabled)
-
-        Args:
-            db: Sessão do banco de dados
-        """
         self.db = db
         self.orchestrator = AIOrchestrator(db)
-
-        # Initialize PrompterFacade if available and enabled
-        self.use_prompter = (
-            PROMPTER_AVAILABLE and
-            os.getenv("PROMPTER_USE_TEMPLATES", "false").lower() == "true"
-        )
-
-        if self.use_prompter:
-            self.prompter = PrompterFacade(db)
-            logger.info("✓ PrompterFacade enabled - using template-based prompts")
-        else:
-            self.prompter = None
-            if PROMPTER_AVAILABLE:
-                logger.info("PrompterFacade available but disabled (PROMPTER_USE_TEMPLATES=false)")
-            else:
-                logger.info("Using legacy hardcoded prompts")
 
     def _fetch_stack_specs(self, project: Project, db: Session) -> Dict[str, Any]:
         """
@@ -519,29 +484,6 @@ class PromptGenerator:
         Returns:
             Functional prompt for task generation (no technical details)
         """
-        # NEW: Use PrompterFacade if enabled (but WITHOUT specs)
-        if self.use_prompter and self.prompter:
-            logger.info("Using PrompterFacade template-based prompt generation (functional only)")
-
-            # PROMPT #54.2 - FIX: NO keywords, NO specs for functional generation
-            # Call facade's internal method directly (already feature-flag checked)
-            # Note: Both new and legacy methods are synchronous
-            if self.prompter.use_templates and self.prompter.composer:
-                return self.prompter._generate_task_prompt_new(
-                    conversation=conversation,
-                    project=project,
-                    specs={},  # Empty specs - functional only
-                    keywords=set()  # Empty keywords - no filtering needed
-                )
-            else:
-                # Fallback within facade
-                return self.prompter._generate_task_prompt_legacy(
-                    conversation=conversation,
-                    project=project,
-                    specs={},  # Empty specs - functional only
-                    keywords=set()  # Empty keywords - no filtering needed
-                )
-
         # LEGACY: Fallback to hardcoded prompt (FUNCTIONAL ONLY)
         logger.info("Using legacy hardcoded prompt generation (functional only)")
 

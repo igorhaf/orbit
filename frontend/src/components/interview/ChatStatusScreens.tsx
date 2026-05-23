@@ -6,7 +6,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui';
+import {  Button , Spinner } from '@/components/ui';
 
 interface LoadingScreenProps {
   initializing: boolean;
@@ -19,7 +19,7 @@ export function LoadingScreen({ initializing }: LoadingScreenProps) {
   return (
     <div className="flex items-center justify-center h-96">
       <div className="flex flex-col items-center gap-3">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <Spinner size="xl" />
         <p className="text-gray-600">
           {initializing ? 'Iniciando entrevista com IA...' : 'Carregando entrevista...'}
         </p>

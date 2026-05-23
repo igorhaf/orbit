@@ -78,7 +78,7 @@ class TestOllamaChainSetup:
             assert ut in usage_types, f"Chain for '{ut}' not found"
 
     def test_chains_point_to_ollama(self, api_url):
-        """All chains should point to Ollama models (not claudio/anthropic/openai/google)."""
+        """All chains should point to Ollama models (not claudius/anthropic/openai/google)."""
         resp = requests.get(f"{api_url}/api/v1/ai-flow/chains", timeout=10)
         chains = resp.json()
 

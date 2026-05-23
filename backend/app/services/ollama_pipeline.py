@@ -2,10 +2,10 @@
 Ollama Pipeline Service
 Direct HTTP client for Ollama local inference.
 
-Same interface as ClaudioPipelineService for plug-and-play compatibility:
+Same interface as ClaudiusPipelineService for plug-and-play compatibility:
 - call(), call_batch(), call_followup(), health_check(), close()
 - Same response format: {"text": ..., "thinking": ..., "usage": ..., "model": ...}
-- Accepts Claudio params (session_key, thinking) as no-op for compatibility
+- Accepts Claudius params (session_key, thinking) as no-op for compatibility
 - Adds Ollama params: temperature, num_ctx, keep_alive
 """
 
@@ -18,12 +18,12 @@ from typing import Any, Optional
 
 import httpx
 
-from app.services.claudio_pipeline import ClaudioPipelineError
+from app.services.claudius_pipeline import ClaudiusPipelineError
 
 logger = logging.getLogger(__name__)
 
-# Re-use ClaudioPipelineError for compatibility with deep_pipeline.py error handlers
-OllamaPipelineError = ClaudioPipelineError
+# Re-use ClaudiusPipelineError for compatibility with deep_pipeline.py error handlers
+OllamaPipelineError = ClaudiusPipelineError
 
 # Ollama defaults — OLLAMA_HOST (set in .env) takes priority, fallback to OLLAMA_BASE_URL
 OLLAMA_BASE_URL = os.getenv("OLLAMA_HOST") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -35,7 +35,7 @@ class OllamaPipelineService:
     """
     Direct HTTP client for Ollama local LLM inference.
 
-    Drop-in replacement for ClaudioPipelineService. Same interface,
+    Drop-in replacement for ClaudiusPipelineService. Same interface,
     different backend. Profile's "provider" field selects which service.
 
     Usage:
@@ -79,7 +79,7 @@ class OllamaPipelineService:
         model: str,
         system_prompt: str,
         user_prompt: str,
-        # Claudio-compatible params (accepted but no-op for Ollama)
+        # Claudius-compatible params (accepted but no-op for Ollama)
         session_key: str | None = None,
         thinking: dict | None = None,
         # Common params
@@ -108,7 +108,7 @@ class OllamaPipelineService:
 
         Returns:
             dict with keys: text, thinking, usage, model, stop_reason
-            (same format as ClaudioPipelineService)
+            (same format as ClaudiusPipelineService)
         """
         retries = max_retries if max_retries is not None else OLLAMA_MAX_RETRIES
 
@@ -231,7 +231,7 @@ class OllamaPipelineService:
         requests: list[dict[str, Any]],
         max_concurrency: int = 1,
         on_item_complete: Any = None,
-    ) -> list[dict[str, Any] | ClaudioPipelineError]:
+    ) -> list[dict[str, Any] | ClaudiusPipelineError]:
         """
         Execute multiple calls with concurrency limit.
         Default concurrency 1 for Ollama (VRAM constraint with 14B models).
@@ -240,14 +240,14 @@ class OllamaPipelineService:
         as each item finishes, enabling real-time progress telemetry.
         """
         semaphore = asyncio.Semaphore(max_concurrency)
-        results: list[dict[str, Any] | ClaudioPipelineError] = [None] * len(requests)
+        results: list[dict[str, Any] | ClaudiusPipelineError] = [None] * len(requests)
 
         async def _process(index: int, req: dict):
             async with semaphore:
                 try:
                     result = await self.call(**req)
                     results[index] = result
-                except ClaudioPipelineError as e:
+                except ClaudiusPipelineError as e:
                     logger.warning(f"Batch item {index} failed: {e}")
                     results[index] = e
                 # Notify caller immediately when each item completes
@@ -260,7 +260,7 @@ class OllamaPipelineService:
         tasks = [_process(i, req) for i, req in enumerate(requests)]
         await asyncio.gather(*tasks)
 
-        succeeded = sum(1 for r in results if not isinstance(r, ClaudioPipelineError))
+        succeeded = sum(1 for r in results if not isinstance(r, ClaudiusPipelineError))
         failed = len(results) - succeeded
         logger.info(
             f"Ollama batch complete: {succeeded}/{len(requests)} succeeded, {failed} failed"
@@ -297,7 +297,7 @@ class OllamaPipelineService:
     @staticmethod
     def _parse_response(data: dict, model: str = "") -> dict[str, Any]:
         """
-        Parse Ollama API response into ClaudioPipelineService-compatible format.
+        Parse Ollama API response into ClaudiusPipelineService-compatible format.
 
         Ollama response: {"message": {"content": "..."}, "prompt_eval_count": N, ...}
         Output format:   {"text": "...", "thinking": "", "usage": {...}, "model": "..."}
@@ -322,7 +322,7 @@ class OllamaPipelineService:
             "raw": data,
         }
 
-    # ── JSON Extraction (reuse from ClaudioPipelineService) ──────────
+    # ── JSON Extraction (reuse from ClaudiusPipelineService) ──────────
 
     @staticmethod
     def extract_json(text: str) -> dict | list | None:

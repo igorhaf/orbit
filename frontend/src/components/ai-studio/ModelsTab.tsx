@@ -6,6 +6,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { Spinner } from '@/components/ui';
 import {
   Card,
   CardHeader,
@@ -282,7 +283,7 @@ export function ModelsTab() {
       {/* Models List */}
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
         </div>
       ) : models.length === 0 ? (
         <Card>
@@ -524,7 +525,7 @@ export function ModelsTab() {
                 }
                 required
               >
-                <option value="claudio">Claudio (Local Proxy)</option>
+                <option value="claudius">Claudius (Local Proxy)</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="openai">OpenAI</option>
                 <option value="google">Google</option>
@@ -536,10 +537,10 @@ export function ModelsTab() {
             </div>
 
             <Input
-              label={['ollama', 'claudio'].includes(createFormData.provider) ? 'Chave API (opcional)' : 'Chave API'}
+              label={['ollama', 'claudius'].includes(createFormData.provider) ? 'Chave API (opcional)' : 'Chave API'}
               type="password"
-              placeholder={['ollama', 'claudio'].includes(createFormData.provider) ? 'Deixe vazio (não necessário)' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
-              required={!['ollama', 'claudio'].includes(createFormData.provider)}
+              placeholder={['ollama', 'claudius'].includes(createFormData.provider) ? 'Deixe vazio (não necessário)' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
+              required={!['ollama', 'claudius'].includes(createFormData.provider)}
               value={createFormData.api_key}
               onChange={(e) =>
                 setCreateFormData({ ...createFormData, api_key: e.target.value })
@@ -756,7 +757,7 @@ export function ModelsTab() {
                   setEditFormData({ ...editFormData, provider: e.target.value })
                 }
               >
-                <option value="claudio">Claudio (Local Proxy)</option>
+                <option value="claudius">Claudius (Local Proxy)</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="openai">OpenAI</option>
                 <option value="google">Google</option>

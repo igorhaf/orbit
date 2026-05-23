@@ -7,7 +7,7 @@
 
 import { RefObject } from 'react';
 import { Interview, ConversationMessage } from '@/lib/types';
-import { JobProgressBar } from '@/components/ui';
+import {  JobProgressBar , Spinner } from '@/components/ui';
 import { MessageBubble } from './MessageBubble';
 import { ProvisioningStatusCard } from './ProvisioningStatusCard';
 
@@ -135,7 +135,7 @@ export default function ChatMessages({
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
           <h4 className="text-sm font-semibold text-green-900 mb-2">Gerando Epic...</h4>
           <div className="flex items-center gap-2">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+            <Spinner size="sm" />
             <span className="text-sm text-green-700">Analisando entrevista e criando Epic...</span>
           </div>
           <p className="text-xs text-green-700 mt-2">

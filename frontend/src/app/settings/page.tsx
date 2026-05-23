@@ -12,6 +12,7 @@ import React, { Suspense, useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/Card';
+import { Spinner } from '@/components/ui';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Label } from '@/components/ui/Label';
@@ -412,7 +413,7 @@ function SettingsPageContent() {
       <Layout>
         <Breadcrumbs />
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
         </div>
       </Layout>
     );
@@ -752,18 +753,29 @@ function SettingsPageContent() {
                     <p className="text-sm">Nenhuma pasta bloqueada</p>
                   </div>
                 ) : (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[220px] overflow-y-auto">
-                    <ul className="divide-y divide-gray-100">
+                  <div className="border border-gray-200 rounded-lg p-3 max-h-[320px] overflow-y-auto bg-white">
+                    <p className="text-xs text-gray-500 mb-2">
+                      Todas as pastas abaixo estão ativas (marcadas). Desmarque para remover da lista de bloqueio.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
                       {blocklist.directories.map((dir) => (
-                        <li key={dir} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 group transition-colors">
-                          <FolderX className="w-4 h-4 text-red-400 flex-shrink-0" />
-                          <span className="flex-1 text-sm text-gray-900">{dir}</span>
-                          <button onClick={() => handleRemoveBlockDir(dir)} className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all" title="Remover">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </li>
+                        <label
+                          key={dir}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 hover:bg-red-50 hover:border-red-200 cursor-pointer transition-colors group"
+                          title={`Clique para remover ${dir} da lista de bloqueio`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => handleRemoveBlockDir(dir)}
+                            disabled={savingBlocklist}
+                            className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500 cursor-pointer"
+                          />
+                          <FolderX className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                          <span className="flex-1 text-xs text-gray-800 truncate group-hover:text-red-700">{dir}</span>
+                        </label>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
 
@@ -838,18 +850,29 @@ function SettingsPageContent() {
                     <p className="text-sm">Nenhum padrão bloqueado</p>
                   </div>
                 ) : (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[220px] overflow-y-auto">
-                    <ul className="divide-y divide-gray-100">
+                  <div className="border border-gray-200 rounded-lg p-3 max-h-[320px] overflow-y-auto bg-white">
+                    <p className="text-xs text-gray-500 mb-2">
+                      Todos os padrões abaixo estão ativos (marcados). Desmarque para remover da lista de bloqueio.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
                       {blocklist.file_patterns.map((pat) => (
-                        <li key={pat} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 group transition-colors">
-                          <FileX className="w-4 h-4 text-orange-400 flex-shrink-0" />
-                          <code className="flex-1 text-sm text-gray-900">{pat}</code>
-                          <button onClick={() => handleRemoveBlockPattern(pat)} className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all" title="Remover">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </li>
+                        <label
+                          key={pat}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-100 bg-gray-50 hover:bg-orange-50 hover:border-orange-200 cursor-pointer transition-colors group"
+                          title={`Clique para remover ${pat} da lista de bloqueio`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => handleRemoveBlockPattern(pat)}
+                            disabled={savingBlocklist}
+                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500 cursor-pointer"
+                          />
+                          <FileX className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
+                          <code className="flex-1 text-xs text-gray-800 truncate group-hover:text-orange-700">{pat}</code>
+                        </label>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
 
@@ -991,7 +1014,7 @@ export default function SettingsPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <Spinner size="xl" />
       </div>
     }>
       <SettingsPageContent />

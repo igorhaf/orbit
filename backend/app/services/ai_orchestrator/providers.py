@@ -1,7 +1,7 @@
 """
 Provider execution mixin for AIOrchestrator.
 Contains _execute_with_config() and non-streaming provider methods:
-_execute_anthropic, _execute_claudio, _execute_openai, _execute_google,
+_execute_anthropic, _execute_claudius, _execute_openai, _execute_google,
 _execute_ollama, _execute_cohere.
 """
 
@@ -55,7 +55,7 @@ class ProvidersMixin:
         _num_ctx = model_config.get("context_length")
         _num_batch = model_config.get("num_batch")
         _keep_alive = model_config.get("keep_alive")
-        # Claudio business_mode from model config
+        # Claudius business_mode from model config
         _business_mode = model_config.get("business_mode", False)
 
         # PROMPT #206 - Apply utility node overrides
@@ -139,23 +139,23 @@ class ProvidersMixin:
             stream_id=_stream_id, model_label=_model_label,
         )
 
-        # PROMPT #253 - Resolve cwd from project_id for Claudio calls
+        # PROMPT #253 - Resolve cwd from project_id for Claudius calls
         # PROMPT #259 - disable_cwd sends /tmp so Claude CLI runs in neutral dir
         # (cwd=None would inherit poc_chat's working dir, causing agent mode)
-        _claudio_cwd = None
-        if provider == "claudio":
+        _claudius_cwd = None
+        if provider == "claudius":
             if disable_cwd:
-                _claudio_cwd = "/tmp"
-                logger.info("📂 Claudio cwd: /tmp (disable_cwd=True, neutral dir)")
+                _claudius_cwd = "/tmp"
+                logger.info("📂 Claudius cwd: /tmp (disable_cwd=True, neutral dir)")
             elif project_id:
                 try:
                     from app.models.project import Project
                     _proj = self.db.query(Project).filter(Project.id == project_id).first()
                     if _proj and _proj.code_path:
-                        _claudio_cwd = _proj.code_path
-                        logger.info(f"📂 Claudio cwd: {_claudio_cwd}")
+                        _claudius_cwd = _proj.code_path
+                        logger.info(f"📂 Claudius cwd: {_claudius_cwd}")
                 except Exception as _cwd_err:
-                    logger.warning(f"Could not resolve cwd for Claudio: {_cwd_err}")
+                    logger.warning(f"Could not resolve cwd for Claudius: {_cwd_err}")
 
         try:
             try:
@@ -169,8 +169,8 @@ class ProvidersMixin:
                     result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k, num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive)
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-                elif provider == "claudio":
-                    result = await self._execute_claudio_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools)
+                elif provider == "claudius":
+                    result = await self._execute_claudius_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudius_cwd, thinking=thinking, disable_tools=disable_tools)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -193,8 +193,8 @@ class ProvidersMixin:
                     result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k, num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive)
                 elif provider == "cohere":
                     result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-                elif provider == "claudio":
-                    result = await self._execute_claudio(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools)
+                elif provider == "claudius":
+                    result = await self._execute_claudius(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudius_cwd, thinking=thinking, disable_tools=disable_tools)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -227,9 +227,9 @@ class ProvidersMixin:
     )
 
     async def _translate_to_business(self, technical_text: str) -> str:
-        """Translate technical AI output to business language using Haiku via Claudio."""
+        """Translate technical AI output to business language using Haiku via Claudius."""
         try:
-            result = await self._execute_claudio(
+            result = await self._execute_claudius(
                 model="haiku",
                 messages=[{"role": "user", "content": technical_text}],
                 system_prompt=self.BUSINESS_TRANSLATE_PROMPT,
@@ -255,17 +255,17 @@ class ProvidersMixin:
         client_key: str = "anthropic",
     ) -> Dict:
         """
-        Executa com Anthropic Claude (ou Claudio proxy) usando configurações do banco
+        Executa com Anthropic Claude (ou Claudius proxy) usando configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
         PROMPT #75 - Async execution with await (non-blocking)
         PROMPT #207 - Configurable timeout
-        PROMPT #246 - client_key param for Claudio support
+        PROMPT #246 - client_key param for Claudius support
         """
         client = self.clients.get(client_key) or self.clients.get("anthropic")
 
         # PROMPT #127 - Use override key if provided (chain execution)
-        # Skip override for claudio (no API key needed)
-        if client_key != "claudio" and api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
+        # Skip override for claudius (no API key needed)
+        if client_key != "claudius" and api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
             from anthropic import AsyncAnthropic
             client = AsyncAnthropic(api_key=api_key_override)
 
@@ -294,7 +294,7 @@ class ProvidersMixin:
             }
         }
 
-    async def _execute_claudio(
+    async def _execute_claudius(
         self,
         model: str,
         messages: List[Dict],
@@ -307,15 +307,15 @@ class ProvidersMixin:
         disable_tools: bool = False,
     ) -> Dict:
         """
-        PROMPT #253 - Execute via Claudio proxy using httpx (not SDK).
+        PROMPT #253 - Execute via Claudius proxy using httpx (not SDK).
         Supports cwd (working directory) and thinking (extended thinking)
-        which are Claudio-specific parameters not available in AsyncAnthropic SDK.
+        which are Claudius-specific parameters not available in AsyncAnthropic SDK.
         """
         import httpx
 
-        claudio_base = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
-        claudio_key = os.getenv("CLAUDIO_API_KEY", "123456789")
-        url = f"{claudio_base}/v1/messages"
+        claudius_base = os.getenv("CLAUDIUS_BASE_URL", "http://localhost:8001")
+        claudius_key = os.getenv("CLAUDIUS_API_KEY", "123456789")
+        url = f"{claudius_base}/v1/messages"
 
         body: Dict[str, Any] = {
             "model": model,
@@ -347,7 +347,7 @@ class ProvidersMixin:
                 headers={
                     "Content-Type": "application/json",
                     "anthropic-version": "2023-06-01",
-                    "x-api-key": claudio_key,
+                    "x-api-key": claudius_key,
                 },
             )
             resp.raise_for_status()
@@ -364,7 +364,7 @@ class ProvidersMixin:
 
         usage = data.get("usage", {})
         result = {
-            "provider": "claudio",
+            "provider": "claudius",
             "model": model,
             "content": content_text,
             "usage": {

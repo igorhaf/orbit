@@ -9,6 +9,7 @@
 import React, { useEffect, useState } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { aiExecutionsApi } from '@/lib/api';
 import { Activity, RefreshCw, TrendingUp, Database, Clock, AlertCircle } from 'lucide-react';
@@ -135,7 +136,7 @@ export default function AIExecutionsPage() {
 
   const getProviderColor = (provider: string) => {
     const colors: Record<string, string> = {
-      'claudio': 'bg-indigo-100 text-indigo-700',
+      'claudius': 'bg-indigo-100 text-indigo-700',
       'anthropic': 'bg-purple-100 text-purple-700',
       'openai': 'bg-green-100 text-green-700',
       'google': 'bg-blue-100 text-blue-700',

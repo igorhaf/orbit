@@ -1,7 +1,7 @@
 """
 Continuous RAG - Deep Pipeline Orchestration Endpoints
 
-PROMPT #260 - Deep Pipeline (7-phase Claudio pipeline).
+PROMPT #260 - Deep Pipeline (7-phase Claudius pipeline).
 Pipeline profiles CRUD and pipeline run history/comparison.
 """
 
@@ -41,7 +41,7 @@ async def trigger_deep_pipeline(
     db: Session = Depends(get_db),
 ):
     """
-    PROMPT #260 - Start the 7-phase deep pipeline via Claudio.
+    PROMPT #260 - Start the 7-phase deep pipeline via Claudius.
     Phases: Scan -> File Analysis (Haiku) -> Rule Synthesis (Sonnet) ->
     Architectural Map (Sonnet+Thinking) -> Cards (Opus/Sonnet/Haiku) ->
     Wiki (Opus) -> QA (Sonnet+Thinking) -> Gap Fill (conditional).
@@ -99,7 +99,7 @@ async def trigger_deep_pipeline(
                 job_record = db_session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
                 if job_record:
                     p1_model = pipeline._get_model("phase_1", "unknown")
-                    provider = pipeline._provider or "claudio"
+                    provider = pipeline._provider or "claudius"
                     label = pipeline._model_label(p1_model)
                     job_record.ai_model_name = f"{label} ({provider})"
                     db_session.commit()
@@ -148,7 +148,7 @@ async def trigger_deep_pipeline(
     background_tasks.add_task(_run_deep_pipeline, job.id, project_id)
 
     return {
-        "message": "Deep Pipeline (7 fases) iniciado via Claudio",
+        "message": "Deep Pipeline (7 fases) iniciado via Claudius",
         "job_id": str(job.id),
         "status": "pending",
         "pipeline_version": "v2",

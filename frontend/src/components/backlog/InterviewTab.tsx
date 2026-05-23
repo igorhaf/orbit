@@ -81,7 +81,7 @@ export default function InterviewTab({
                 >
                   {completingInterview ? (
                     <>
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                      <Spinner size="xs" />
                       Concluindo...
                     </>
                   ) : (
@@ -154,7 +154,7 @@ export default function InterviewTab({
           {/* Interview List - Similar to Criteria */}
           {loadingInterview ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <Spinner size="lg" />
             </div>
           ) : cardInterviews.length === 0 ? (
             /* PROMPT #131 - Empty state with AI Suggestions call-to-action */
@@ -173,7 +173,7 @@ export default function InterviewTab({
               >
                 {creatingCardInterview ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    <Spinner size="sm" />
                     Criando...
                   </>
                 ) : (

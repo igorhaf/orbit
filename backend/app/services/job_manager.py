@@ -190,6 +190,11 @@ class JobManager:
             logger.error(f"Job {job_id} not found")
             return
 
+        # Se foi pausado entre o submit e o start_job, respeitar — nao forcar RUNNING
+        if job.status == JobStatus.PAUSED:
+            logger.info(f"Job {job_id} esta PAUSED — start_job ignorado (sera retomado via resume)")
+            return
+
         job.status = JobStatus.RUNNING
         job.started_at = datetime.utcnow()
 
@@ -416,8 +421,8 @@ class JobManager:
             logger.error(f"Job {job_id} not found")
             return False
 
-        # Can only cancel pending or running jobs
-        if job.status not in [JobStatus.PENDING, JobStatus.RUNNING]:
+        # Pode cancelar pending, running ou paused
+        if job.status not in [JobStatus.PENDING, JobStatus.RUNNING, JobStatus.PAUSED]:
             logger.warning(f"Cannot cancel job {job_id} with status {job.status.value}")
             return False
 
@@ -440,6 +445,73 @@ class JobManager:
         })
 
         return True
+
+    def pause_job(self, job_id: UUID) -> bool:
+        """Pausa um job (pending ou running). Background tasks devem checar `is_paused()` periodicamente."""
+        job = self.db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if not job:
+            logger.error(f"Job {job_id} not found")
+            return False
+        if job.status not in [JobStatus.PENDING, JobStatus.RUNNING]:
+            logger.warning(f"Cannot pause job {job_id} with status {job.status.value}")
+            return False
+        prior = job.status
+        job.status = JobStatus.PAUSED
+        # guarda status anterior em result pra restaurar no resume
+        cur = dict(job.result or {})
+        cur["_paused_from"] = prior.value
+        cur["_paused_at"] = datetime.utcnow().isoformat()
+        job.result = cur
+        self.db.add(JobLogEntry(job_id=job_id, level="info", message=f"Job pausado pelo usuario (estava {prior.value})"))
+        self.db.commit()
+        logger.info(f"Paused job {job_id} (was {prior.value})")
+        _broadcast_job_event("job_paused", {
+            "job_id": str(job_id),
+            "job_type": job.job_type.value,
+            "status": "paused",
+            "previous_status": prior.value,
+            "parent_job_id": str(job.parent_job_id) if job.parent_job_id else None,
+        })
+        return True
+
+    def resume_job(self, job_id: UUID) -> bool:
+        """Retoma um job pausado. Vai pra PENDING (executor pega de novo) ou RUNNING se estava rodando."""
+        job = self.db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if not job:
+            logger.error(f"Job {job_id} not found")
+            return False
+        if job.status != JobStatus.PAUSED:
+            logger.warning(f"Cannot resume job {job_id} (status={job.status.value}, esperado paused)")
+            return False
+        prior_str = (job.result or {}).get("_paused_from", "pending")
+        try:
+            new_status = JobStatus(prior_str)
+        except ValueError:
+            new_status = JobStatus.PENDING
+        # Por seguranca, jobs que estavam RUNNING voltam pra PENDING — o executor decide quem roda
+        if new_status == JobStatus.RUNNING:
+            new_status = JobStatus.PENDING
+        job.status = new_status
+        cur = dict(job.result or {})
+        cur.pop("_paused_from", None)
+        cur.pop("_paused_at", None)
+        cur["_resumed_at"] = datetime.utcnow().isoformat()
+        job.result = cur
+        self.db.add(JobLogEntry(job_id=job_id, level="info", message=f"Job retomado (estado: {new_status.value})"))
+        self.db.commit()
+        logger.info(f"Resumed job {job_id} (-> {new_status.value})")
+        _broadcast_job_event("job_resumed", {
+            "job_id": str(job_id),
+            "job_type": job.job_type.value,
+            "status": new_status.value,
+            "parent_job_id": str(job.parent_job_id) if job.parent_job_id else None,
+        })
+        return True
+
+    def is_paused(self, job_id: UUID) -> bool:
+        """Background tasks usam pra pausar processamento mid-execucao."""
+        job = self.db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        return bool(job and job.status == JobStatus.PAUSED)
 
     def is_cancelled(self, job_id: UUID) -> bool:
         """

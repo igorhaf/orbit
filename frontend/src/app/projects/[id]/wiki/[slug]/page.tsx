@@ -11,7 +11,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, Button } from '@/components/ui';
+import {  Card, Button , Spinner } from '@/components/ui';
 import { projectsApi, wikiApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import ReactMarkdown from 'react-markdown';
@@ -148,7 +148,7 @@ export default function WikiPageView() {
     return (
       <Layout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
         </div>
       </Layout>
     );

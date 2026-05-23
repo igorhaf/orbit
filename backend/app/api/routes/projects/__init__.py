@@ -19,6 +19,8 @@ from app.api.routes.projects.context import router as context_router
 from app.api.routes.projects.crud import router as crud_router
 from app.api.routes.projects.generation import router as generation_router
 from app.api.routes.projects.specs import router as specs_router
+from app.api.routes.projects.blocklist import router as blocklist_router
+from app.api.routes.projects.business_rules_export import router as business_rules_export_router
 
 router = APIRouter()
 
@@ -44,3 +46,9 @@ router.include_router(generation_router)
 
 # 7. Specs (/{project_id}/discover-specs, /specs, /specs/{id}/toggle)
 router.include_router(specs_router)
+
+# 8. AI Blocklist (/{project_id}/blocklist/ai, /screen, /approve, /reject)
+router.include_router(blocklist_router)
+
+# 9. Business rules export (/{project_id}/business-rules/export-as-tasks)
+router.include_router(business_rules_export_router)

@@ -88,21 +88,51 @@ class UtilsMixin:
     """Mixin providing filesystem helpers, ignore patterns, and file classification."""
 
     def _build_ignore_patterns(self, project) -> List[str]:
-        """Build combined ignore patterns from all sources."""
-        patterns = []
+        """Build combined ignore patterns from all sources.
 
-        # User-defined ignore paths
-        if project.ignore_paths:
-            if isinstance(project.ignore_paths, list):
-                patterns.extend(project.ignore_paths)
+        Ordem (todas mescladas, sem duplicar):
+          1. global_blocklist do system_settings (directories + file_patterns)
+          2. project.ignore_paths (lista plana, manuais do usuario)
+          3. project.custom_ignore_patterns.directories + file_patterns (manuais)
+          4. project.custom_ignore_patterns.ai_directories + ai_file_patterns (decisao da IA)
+          5. .gitignore do projeto
+        """
+        patterns: List[str] = []
 
-        # AI-detected patterns
-        if project.custom_ignore_patterns:
+        # 1. Global blocklist (system_settings)
+        try:
+            from app.models.system_settings import SystemSettings
+            db = getattr(self, "db", None)
+            if db is not None:
+                gl = db.query(SystemSettings).filter(SystemSettings.key == "global_blocklist").first()
+                if gl and isinstance(gl.value, dict):
+                    patterns.extend(gl.value.get("directories", []) or [])
+                    patterns.extend(gl.value.get("file_patterns", []) or [])
+        except Exception:
+            pass
+
+        # 2. ignore_paths manuais (lista plana de strings)
+        if project.ignore_paths and isinstance(project.ignore_paths, list):
+            patterns.extend(project.ignore_paths)
+
+        # 3 & 4. custom_ignore_patterns (manuais + AI)
+        if project.custom_ignore_patterns and isinstance(project.custom_ignore_patterns, dict):
             cp = project.custom_ignore_patterns
-            if isinstance(cp, dict) and "directories" in cp:
-                patterns.extend(cp["directories"])
+            patterns.extend(cp.get("directories", []) or [])
+            patterns.extend(cp.get("file_patterns", []) or [])
+            # AI items sao lista de dicts {path, reason}
+            for item in (cp.get("ai_directories") or []):
+                if isinstance(item, dict) and item.get("path"):
+                    patterns.append(item["path"])
+                elif isinstance(item, str):
+                    patterns.append(item)
+            for item in (cp.get("ai_file_patterns") or []):
+                if isinstance(item, dict) and item.get("path"):
+                    patterns.append(item["path"])
+                elif isinstance(item, str):
+                    patterns.append(item)
 
-        # .gitignore
+        # 5. .gitignore
         gitignore = os.path.join(project.code_path, ".gitignore")
         if os.path.isfile(gitignore):
             try:
@@ -114,7 +144,14 @@ class UtilsMixin:
             except Exception:
                 pass
 
-        return patterns
+        # dedup preservando ordem
+        seen = set()
+        unique: List[str] = []
+        for p in patterns:
+            if p and p not in seen:
+                seen.add(p)
+                unique.append(p)
+        return unique
 
     def _is_ignored(self, rel_path: str, patterns: List[str]) -> bool:
         """Check if a relative path matches any ignore pattern."""
@@ -193,7 +230,7 @@ class UtilsMixin:
         for attempt in range(3):
             try:
                 healthy = await asyncio.wait_for(
-                    self.claudio.health_check(),
+                    self.claudius.health_check(),
                     timeout=15,
                 )
                 if healthy:

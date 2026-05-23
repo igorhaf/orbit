@@ -5,7 +5,7 @@
 
 'use client';
 
-import { Badge, Button } from '@/components/ui';
+import {  Badge, Button , Spinner } from '@/components/ui';
 import { Interview } from '@/lib/types';
 
 interface ChatHeaderProps {
@@ -88,7 +88,7 @@ export default function ChatHeader({
             >
               {generatingPrompts ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                  <Spinner size="sm" />
                   Gerando Epic...
                 </>
               ) : (

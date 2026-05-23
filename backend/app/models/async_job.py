@@ -19,6 +19,7 @@ class JobStatus(str, enum.Enum):
     """Status of an async job."""
     PENDING = "pending"      # Job created, not started yet
     RUNNING = "running"      # Job is currently executing
+    PAUSED = "paused"        # Job pausado pelo usuario; nao avanca ate resume
     COMPLETED = "completed"  # Job finished successfully
     FAILED = "failed"        # Job failed with error
     CANCELLED = "cancelled"  # Job was cancelled by user
@@ -75,7 +76,7 @@ class JobType(str, enum.Enum):
     # PROMPT #241: AI description generation (generate/expand/summarize)
     DESCRIPTION_GENERATION = "description_generation"
 
-    # PROMPT #260: Deep Pipeline (7-phase Claudio pipeline)
+    # PROMPT #260: Deep Pipeline (7-phase Claudius pipeline)
     DEEP_PIPELINE = "deep_pipeline"
 
     # PROMPT #282: RAG Chat message (user asks, AI answers from RAG)

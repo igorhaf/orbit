@@ -581,7 +581,7 @@ class ContinuousRAGService:
                     "error": f"Extracao expirou apos {PER_FILE_TIMEOUT}s",
                 }
 
-        # PROMPT #247 - Sequential execution to avoid blocking Claudio proxy
+        # PROMPT #247 - Sequential execution to avoid blocking Claudius proxy
         results = []
         for i, state in enumerate(pending_states):
             result = await _process_one_with_timeout(i, state)

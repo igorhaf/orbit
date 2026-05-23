@@ -12,7 +12,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { interviewsApi, tasksApi } from '@/lib/api';
 import { Interview, BacklogItem, Project, ItemType } from '@/lib/types';
-import { Card, CardContent, Badge, Button, Dialog, DialogFooter } from '@/components/ui';
+import {  Card, CardContent, Badge, Button, Dialog, DialogFooter , Spinner } from '@/components/ui';
 import { ChatInterface } from './ChatInterface';
 import { useNotification } from '@/hooks';
 import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconDocument, IconGlobe, IconLightbulb, IconChat } from '@/components/icons';
@@ -507,7 +507,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
           <p className="text-gray-600">Carregando árvore de entrevistas...</p>
         </div>
       </div>

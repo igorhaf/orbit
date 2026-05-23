@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Spinner } from '@/components/ui';
 import OperationSummaryCard, { PhaseInfo } from './OperationSummaryCard';
 
 interface LogEntry {
@@ -203,7 +204,7 @@ export default function TimelineView({ logs }: TimelineViewProps) {
     <div className="p-4 space-y-3 overflow-auto h-full">
       {loading && operations.length === 0 && (
         <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400" />
+          <Spinner size="lg" />
         </div>
       )}
 

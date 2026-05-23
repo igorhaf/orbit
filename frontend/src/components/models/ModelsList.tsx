@@ -6,6 +6,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Spinner } from '@/components/ui';
 import { ModelCard } from './ModelCard';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -64,7 +65,7 @@ export const ModelsList: React.FC<ModelsListProps> = ({ models, loading = false 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <Spinner size="xl" />
       </div>
     );
   }

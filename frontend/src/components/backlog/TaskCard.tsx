@@ -299,7 +299,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
             >
               {creatingInterview ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <Spinner size="sm" />
                   <span>Criando...</span>
                 </>
               ) : (
@@ -328,7 +328,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
             >
               {activatingEpic ? (
                 <>
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
+                  <Spinner size="xs" />
                   <span>Ativando...</span>
                 </>
               ) : (
@@ -351,7 +351,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
               title="Rejeitar sugestão"
             >
               {rejectingEpic ? (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
+                <Spinner size="xs" />
               ) : (
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

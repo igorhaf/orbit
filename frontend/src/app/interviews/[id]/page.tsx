@@ -9,6 +9,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Spinner } from '@/components/ui';
 import { useParams, useRouter } from 'next/navigation';
 import { interviewsApi } from '@/lib/api';
 import { Layout } from '@/components/layout';
@@ -61,7 +62,7 @@ export default function InterviewLegacyRedirectPage() {
   return (
     <Layout>
       <div className="flex flex-col items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mb-4"></div>
+        <Spinner size="xl" />
         <p className="text-gray-600">Redirecting to interview...</p>
       </div>
     </Layout>

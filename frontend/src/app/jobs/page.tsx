@@ -51,11 +51,13 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Spinner } from '@/components/ui';
 
 // Status badge colors
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   running: 'bg-blue-100 text-blue-800 border-blue-200',
+  paused: 'bg-amber-100 text-amber-800 border-amber-200',
   completed: 'bg-green-100 text-green-800 border-green-200',
   failed: 'bg-red-100 text-red-800 border-red-200',
   cancelled: 'bg-gray-100 text-gray-800 border-gray-200',
@@ -65,6 +67,7 @@ const STATUS_COLORS: Record<string, string> = {
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   pending: <Clock className="w-4 h-4" />,
   running: <PlayCircle className="w-4 h-4 animate-pulse" />,
+  paused: <PauseCircle className="w-4 h-4" />,
   completed: <CheckCircle className="w-4 h-4" />,
   failed: <AlertCircle className="w-4 h-4" />,
   cancelled: <XCircle className="w-4 h-4" />,
@@ -477,6 +480,26 @@ export default function JobsPage() {
           return updated;
         }
 
+        if (event === 'job_paused' && jobIndex !== -1) {
+          const updated = [...prevJobs];
+          updated[jobIndex] = {
+            ...updated[jobIndex],
+            status: 'paused',
+          };
+          fetchStats();
+          return updated;
+        }
+
+        if (event === 'job_resumed' && jobIndex !== -1) {
+          const updated = [...prevJobs];
+          updated[jobIndex] = {
+            ...updated[jobIndex],
+            status: (data.status || 'pending') as any,
+          };
+          fetchStats();
+          return updated;
+        }
+
         return prevJobs;
       });
 
@@ -563,6 +586,26 @@ export default function JobsPage() {
       fetchStats();
     } catch (error) {
       console.error('Error cancelling job:', error);
+    }
+  };
+
+  const handlePauseJob = async (jobId: string) => {
+    try {
+      await jobsApi.pause(jobId);
+      fetchJobs();
+      fetchStats();
+    } catch (error) {
+      console.error('Error pausing job:', error);
+    }
+  };
+
+  const handleResumeJob = async (jobId: string) => {
+    try {
+      await jobsApi.resume(jobId);
+      fetchJobs();
+      fetchStats();
+    } catch (error) {
+      console.error('Error resuming job:', error);
     }
   };
 
@@ -765,9 +808,10 @@ export default function JobsPage() {
     });
   };
 
-  // Split jobs into active (running/pending) vs history
-  const activeJobs = jobs.filter(j => j.status === 'running' || j.status === 'pending');
-  const historyJobs = jobs.filter(j => j.status !== 'running' && j.status !== 'pending');
+  // Split jobs into active (running/pending/paused) vs history
+  // paused entra em active pra usuario poder ver/retomar o job em pausa
+  const activeJobs = jobs.filter(j => j.status === 'running' || j.status === 'pending' || j.status === 'paused');
+  const historyJobs = jobs.filter(j => j.status !== 'running' && j.status !== 'pending' && j.status !== 'paused');
 
   // Calculate pages
   const totalPages = Math.ceil(total / limit);
@@ -1085,14 +1129,35 @@ export default function JobsPage() {
                         {dur !== null ? formatDuration(dur) : '-'}
                       </span>
 
-                      {/* Cancel button */}
-                      <button
-                        onClick={() => handleCancelJob(job.id)}
-                        className="p-1.5 text-gray-400 hover:text-yellow-600 rounded flex-shrink-0"
-                        title="Cancelar job"
-                      >
-                        <PauseCircle className="w-4 h-4" />
-                      </button>
+                      {/* Pause (pending/running) ou Resume (paused) */}
+                      {(job.status === 'pending' || job.status === 'running') && (
+                        <button
+                          onClick={() => handlePauseJob(job.id)}
+                          className="p-1.5 text-gray-400 hover:text-amber-600 rounded flex-shrink-0"
+                          title="Pausar job"
+                        >
+                          <PauseCircle className="w-4 h-4" />
+                        </button>
+                      )}
+                      {job.status === 'paused' && (
+                        <button
+                          onClick={() => handleResumeJob(job.id)}
+                          className="p-1.5 text-gray-400 hover:text-green-600 rounded flex-shrink-0"
+                          title="Retomar job"
+                        >
+                          <PlayCircle className="w-4 h-4" />
+                        </button>
+                      )}
+                      {/* Cancel */}
+                      {(job.status === 'pending' || job.status === 'running' || job.status === 'paused') && (
+                        <button
+                          onClick={() => handleCancelJob(job.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 rounded flex-shrink-0"
+                          title="Cancelar job"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -1204,7 +1269,7 @@ export default function JobsPage() {
               {loadingJobs ? (
                 <div className="flex items-center justify-center h-64">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                    <Spinner size="xl" />
                     <p className="text-gray-600">Carregando jobs...</p>
                   </div>
                 </div>
@@ -1472,15 +1537,35 @@ export default function JobsPage() {
                                     </Link>
                                   )}
 
-                                  {/* Cancel (only for pending/running) */}
-                                  {(job.status === 'pending' ||
-                                    job.status === 'running') && (
+                                  {/* Pause (pending/running) ou Resume (paused) */}
+                                  {(job.status === 'pending' || job.status === 'running') && (
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); handleCancelJob(job.id); }}
-                                      className="p-1.5 text-gray-400 hover:text-yellow-600 rounded"
-                                      title="Cancelar job"
+                                      onClick={(e) => { e.stopPropagation(); handlePauseJob(job.id); }}
+                                      className="p-1.5 text-gray-400 hover:text-amber-600 rounded"
+                                      title="Pausar job"
                                     >
                                       <PauseCircle className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                  {job.status === 'paused' && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleResumeJob(job.id); }}
+                                      className="p-1.5 text-gray-400 hover:text-green-600 rounded"
+                                      title="Retomar job"
+                                    >
+                                      <PlayCircle className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                  {/* Cancel definitivo */}
+                                  {(job.status === 'pending' ||
+                                    job.status === 'running' ||
+                                    job.status === 'paused') && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleCancelJob(job.id); }}
+                                      className="p-1.5 text-gray-400 hover:text-red-600 rounded"
+                                      title="Cancelar job"
+                                    >
+                                      <XCircle className="w-4 h-4" />
                                     </button>
                                   )}
 

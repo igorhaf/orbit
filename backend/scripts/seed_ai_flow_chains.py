@@ -1,5 +1,5 @@
 """
-Seed AI Flow Chains - Preset: Custo Mínimo (Ollama-first) + Claudio Sonnet pipelines
+Seed AI Flow Chains - Preset: Custo Mínimo (Ollama-first) + Claudius Sonnet pipelines
 
 Configure all Ollama models with top_p/top_k and create optimal AI Flow chains
 for all 10 usage types with performance utility nodes.
@@ -8,9 +8,9 @@ Preset: CUSTO MÍNIMO - Prioriza modelos locais (Ollama) para zero custo de API.
 Modelos cloud ficam como fallback final apenas se necessário.
 
 PROMPT #252 additions (PROMPT #255 - switched to Sonnet for richer semantic text):
-- content_generation:  Claudio Sonnet 4.6 (Wiki, Cards, Description, Title)
-- rag_extraction:      Claudio Sonnet 4.6 (Business rules extraction)
-- memory:              Claudio Sonnet 4.6 (PROMPT #256 - all phases Sonnet)
+- content_generation:  Claudius Sonnet 4.6 (Wiki, Cards, Description, Title)
+- rag_extraction:      Claudius Sonnet 4.6 (Business rules extraction)
+- memory:              Claudius Sonnet 4.6 (PROMPT #256 - all phases Sonnet)
 
 Strategy per operation (cost-optimized):
 - interview:           Gemma3 12B → Qwen3 8B
@@ -18,11 +18,11 @@ Strategy per operation (cost-optimized):
 - task_execution:      Qwen3 8B → Gemma3 12B
 - commit_generation:   Gemma3 12B → Qwen3 8B
 - pattern_discovery:   DeepSeek-R1 14B → Gemma3 12B
-- memory:              Claudio Sonnet 4.6
+- memory:              Claudius Sonnet 4.6
 - queue_orchestration: Qwen3 8B → Gemma3 12B → Phi-4 14B
 - general:             Qwen3 8B → Gemma3 12B → DeepSeek-R1 14B
-- content_generation:  Claudio Sonnet 4.6
-- rag_extraction:      Claudio Sonnet 4.6
+- content_generation:  Claudius Sonnet 4.6
+- rag_extraction:      Claudius Sonnet 4.6
 
 Usage:
     python scripts/seed_ai_flow_chains.py
@@ -163,12 +163,12 @@ CHAIN_STRATEGY = {
     # PROMPT #255 - Content generation: Wiki, Cards, Description, Title
     # Sonnet 4.6 for richer semantic text (Opus is too conservative/literal)
     "content_generation": [
-        (None, "Claudio Sonnet 4.6 (Content)"),
+        (None, "Claudius Sonnet 4.6 (Content)"),
     ],
     # PROMPT #255 - RAG extraction: business rules from codebase
     # Sonnet 4.6 for comprehensive rule extraction with richer output
     "rag_extraction": [
-        (None, "Claudio Sonnet 4.6 (RAG Extraction)"),
+        (None, "Claudius Sonnet 4.6 (RAG Extraction)"),
     ],
 }
 
@@ -819,7 +819,7 @@ CHAIN_POSITIONS = {
             "response": {"x": 850, "y": 150},
         },
         "models": [
-            {"x": 400, "y": 130},   # Claudio Sonnet 4.6 (Content)
+            {"x": 400, "y": 130},   # Claudius Sonnet 4.6 (Content)
         ],
     },
     # PROMPT #256 - RAG extraction: Sonnet for comprehensive output
@@ -830,7 +830,7 @@ CHAIN_POSITIONS = {
             "response": {"x": 850, "y": 150},
         },
         "models": [
-            {"x": 400, "y": 130},   # Claudio Sonnet 4.6 (RAG Extraction)
+            {"x": 400, "y": 130},   # Claudius Sonnet 4.6 (RAG Extraction)
         ],
     },
 }
@@ -869,38 +869,38 @@ def seed_ai_flow_chains():
         logger.info(f"  {updated_count} Ollama models updated.")
 
         # ==================================================================
-        # Step 1.5: Ensure Claudio Sonnet 4.6 models exist (PROMPT #255)
+        # Step 1.5: Ensure Claudius Sonnet 4.6 models exist (PROMPT #255)
         # Switched from Opus to Sonnet for richer semantic text generation.
         # Opus is too conservative/literal for Mapa Semantico content.
         # ==================================================================
-        logger.info("\n[1.5/3] Ensuring Claudio Sonnet 4.6 models exist...")
+        logger.info("\n[1.5/3] Ensuring Claudius Sonnet 4.6 models exist...")
 
-        claudio_models = {
-            "Claudio Sonnet 4.6 (Content)": {
+        claudius_models = {
+            "Claudius Sonnet 4.6 (Content)": {
                 "usage_type": AIModelUsageType.CONTENT_GENERATION,
                 "config": {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.7, "business_mode": True},
             },
-            "Claudio Sonnet 4.6 (RAG Extraction)": {
+            "Claudius Sonnet 4.6 (RAG Extraction)": {
                 "usage_type": AIModelUsageType.RAG_EXTRACTION,
                 "config": {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.3, "business_mode": True},
             },
         }
 
         # PROMPT #256 - Deactivate ALL old Opus models (switched to Sonnet for all phases)
-        old_opus_names = ["Claudio Opus 4.6 (Content)", "Claudio Opus 4.6 (RAG Extraction)", "Claudio Opus 4.6 (Memory)"]
+        old_opus_names = ["Claudius Opus 4.7 (Content)", "Claudius Opus 4.7 (RAG Extraction)", "Claudius Opus 4.7 (Memory)"]
         for old_name in old_opus_names:
             old_model = db.query(AIModel).filter(AIModel.name == old_name, AIModel.is_active == True).first()
             if old_model:
                 old_model.is_active = False
                 logger.info(f"  Deactivated old model: {old_name}")
 
-        for model_name, model_cfg in claudio_models.items():
+        for model_name, model_cfg in claudius_models.items():
             existing = db.query(AIModel).filter(AIModel.name == model_name).first()
             if not existing:
                 new_model = AIModel(
                     id=uuid4(),
                     name=model_name,
-                    provider="claudio",
+                    provider="claudius",
                     api_key="not-needed",
                     usage_type=model_cfg["usage_type"],
                     is_active=True,
@@ -919,19 +919,19 @@ def seed_ai_flow_chains():
         # PROMPT #256 - Create/update memory model to Sonnet 4.6
         memory_model = db.query(AIModel).filter(
             AIModel.usage_type == AIModelUsageType.MEMORY,
-            AIModel.provider == "claudio",
+            AIModel.provider == "claudius",
             AIModel.is_active == True,
         ).first()
         if memory_model:
             memory_model.config = {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.5, "business_mode": True}
-            memory_model.name = "Claudio Sonnet 4.6 (Memory)"
+            memory_model.name = "Claudius Sonnet 4.6 (Memory)"
             logger.info(f"  Updated memory model: Sonnet 4.6 (max_tokens=16384)")
         else:
             # Create if doesn't exist
             new_mem = AIModel(
                 id=uuid4(),
-                name="Claudio Sonnet 4.6 (Memory)",
-                provider="claudio",
+                name="Claudius Sonnet 4.6 (Memory)",
+                provider="claudius",
                 api_key="not-needed",
                 usage_type=AIModelUsageType.MEMORY,
                 is_active=True,
@@ -940,7 +940,7 @@ def seed_ai_flow_chains():
                 updated_at=datetime.utcnow(),
             )
             db.add(new_mem)
-            logger.info(f"  Created: Claudio Sonnet 4.6 (Memory)")
+            logger.info(f"  Created: Claudius Sonnet 4.6 (Memory)")
 
         db.commit()
 

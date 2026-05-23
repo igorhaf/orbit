@@ -394,7 +394,7 @@ class ConsoleWSManager:
     Manages WebSocket connections for real-time console log streaming.
 
     PROMPT #247 - Replaces SSE (EventSource) to avoid blocking during
-    long-running AI calls (Claudio proxy).
+    long-running AI calls (Claudius proxy).
     """
 
     @staticmethod

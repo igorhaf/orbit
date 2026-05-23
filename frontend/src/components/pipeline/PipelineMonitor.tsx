@@ -7,7 +7,7 @@
  * Connects via WebSocket (/ws/console) with REST polling fallback.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePipelineTelemetry, PipelineActivity } from '@/hooks/usePipelineTelemetry';
 
 // Phase display config
@@ -73,26 +73,71 @@ function scoreTextColor(score: number): string {
   return 'text-red-600';
 }
 
-// Sparkline SVG: last 60 data points of tokens/second
-function Sparkline({ data }: { data: number[] }) {
-  if (data.length < 2) return null;
-  const max = Math.max(...data, 1);
-  const w = 200;
-  const h = 24;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - (v / max) * h;
-    return `${x},${y}`;
-  }).join(' ');
+// Sparkline tipo cardiograma: scroll continuo da direita pra esquerda.
+// Mantem um buffer interno de tamanho fixo. A cada tick (TICK_MS) shifta o array,
+// removendo o mais antigo a esquerda e empurrando o valor atual a direita —
+// se nao chega dado novo, repete o ultimo valor (linha plana, igual ECG sem onda).
+const BUFFER_SIZE = 180;     // numero de amostras na tela
+const TICK_MS = 80;          // velocidade do scroll (ms entre shifts)
+const VIEW_W = 1800;         // viewBox virtual largo pra esticar no container
+const VIEW_H = 32;
 
+function Sparkline({ data }: { data: number[] }) {
+  // buffer interno em ref pra nao re-criar a cada render
+  const bufferRef = useRef<number[]>(new Array(BUFFER_SIZE).fill(0));
+  const [tick, setTick] = useState(0);
+
+  // O "valor mais atual" a empurrar e o ultimo numero recebido em props
+  const latestRef = useRef(0);
+  useEffect(() => {
+    if (data.length) latestRef.current = data[data.length - 1] || 0;
+  }, [data]);
+
+  // tick periodico: shift + push do valor mais recente
+  useEffect(() => {
+    const id = setInterval(() => {
+      bufferRef.current.shift();
+      bufferRef.current.push(latestRef.current);
+      setTick((t) => (t + 1) % 1_000_000);
+    }, TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Recalcula path a cada tick — buffer em ref + tick em deps
+  const points = useMemo(() => {
+    const buf = bufferRef.current;
+    const m = Math.max(...buf, 1);
+    const step = VIEW_W / (BUFFER_SIZE - 1);
+    return buf
+      .map((v, i) => `${(i * step).toFixed(1)},${(VIEW_H - (v / m) * VIEW_H * 0.85 - 2).toFixed(1)}`)
+      .join(' ');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
   return (
-    <svg width={w} height={h} className="inline-block">
+    <svg
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      preserveAspectRatio="none"
+      className="block w-full h-8 text-blue-500"
+    >
+      {/* baseline */}
+      <line
+        x1="0"
+        y1={VIEW_H - 2}
+        x2={VIEW_W}
+        y2={VIEW_H - 2}
+        stroke="currentColor"
+        strokeOpacity="0.1"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
+      />
       <polyline
         points={points}
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.5"
-        className="text-blue-500"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
       />
     </svg>
   );
@@ -206,12 +251,14 @@ export default function PipelineMonitor({ projectId }: PipelineMonitorProps) {
         </div>
       )}
 
-      {/* Token Throughput Sparkline */}
+      {/* Token Throughput Sparkline (full-width) */}
       {sparkData.length > 2 && (
-        <div className="px-4 py-2 border-b border-gray-200 flex items-center gap-2">
-          <span className="text-xs text-gray-500">Token I/O</span>
+        <div className="px-4 py-2 border-b border-gray-200">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>Token I/O</span>
+            <span className="font-medium text-gray-700">{formatTokens(telemetry.tokensPerSecond)} tok/s</span>
+          </div>
           <Sparkline data={sparkData} />
-          <span className="text-xs font-medium text-gray-700">{formatTokens(telemetry.tokensPerSecond)} tok/s</span>
         </div>
       )}
 

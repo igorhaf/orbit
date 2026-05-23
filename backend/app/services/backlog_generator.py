@@ -21,13 +21,6 @@ from app.models.interview import Interview
 from app.models.spec import Spec, SpecScope
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
-# PROMPT #164 - PrompterFacade is deprecated, graceful fallback to AIOrchestrator
-try:
-    from app.prompter.facade import PrompterFacade
-    PROMPTER_AVAILABLE = True
-except ImportError:
-    PROMPTER_AVAILABLE = False
-    PrompterFacade = None
 from app.contracts.loader import ContractLoader
 from app.prompts import PromptService, get_prompt_service
 from app.services.rag_service import RAGService
@@ -69,13 +62,7 @@ class BacklogGeneratorService(StoryGenerationMixin, TaskGenerationMixin):
 
     def __init__(self, db: Session):
         self.db = db
-        # PROMPT #54.3 - Use PrompterFacade for cache support (if available)
-        # PROMPT #164 - PrompterFacade deprecated, graceful fallback
-        if PROMPTER_AVAILABLE and PrompterFacade:
-            self.prompter = PrompterFacade(db)
-        else:
-            self.prompter = None
-        # Keep orchestrator as fallback (always used when prompter unavailable)
+        # PROMPT #164 - PrompterFacade removed; AIOrchestrator handles caching/RAG/everything
         self.orchestrator = AIOrchestrator(db)
         # PROMPT #103 - Use PromptService for external prompts
         self.prompt_service = get_prompt_service(db)
@@ -156,39 +143,24 @@ class BacklogGeneratorService(StoryGenerationMixin, TaskGenerationMixin):
             }
         )
 
-        # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
+        # 3. Call AI via AIOrchestrator (PROMPT #164 - PrompterFacade removed)
         logger.info(f"🎯 Generating Epic from Interview {interview_id}...")
 
-        if self.prompter:
-            try:
-                result = await self.prompter.execute_prompt(
-                    prompt=user_prompt,
-                    usage_type="prompt_generation",
-                    system_prompt=system_prompt,
-                    project_id=str(project_id),
-                    interview_id=str(interview_id),
-                    metadata={"operation": "generate_epic_from_interview"}
-                )
-            except (RuntimeError, AttributeError):
-                # Fallback to direct orchestrator if PrompterFacade fails
-                logger.warning("PrompterFacade failed, using direct AIOrchestrator")
-                self.prompter = None  # Disable for future calls
-                result = None
-        else:
-            result = None
-
-        if result is None:
-            result = await self.orchestrator.execute(
-                usage_type="prompt_generation",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                project_id=project_id,
-                interview_id=interview_id,
-                metadata={"operation": "generate_epic_from_interview"},
-                enable_rag=True
-            )
-            # Normalize result format
-            result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
+        orch_result = await self.orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            project_id=project_id,
+            interview_id=interview_id,
+            metadata={"operation": "generate_epic_from_interview"},
+            enable_rag=True
+        )
+        result = {
+            "response": orch_result["content"],
+            "input_tokens": orch_result.get("usage", {}).get("input_tokens", 0),
+            "output_tokens": orch_result.get("usage", {}).get("output_tokens", 0),
+            "model": orch_result.get("db_model_name", "unknown"),
+        }
 
         # 4. Parse AI response
         try:

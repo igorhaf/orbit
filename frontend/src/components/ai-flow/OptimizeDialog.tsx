@@ -8,6 +8,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { Spinner } from '@/components/ui';
 import { Button } from '@/components/ui/Button';
 import { USAGE_TYPE_OPTIONS } from './FlowConstants';
 import { ProviderIcon } from './FlowIcons';
@@ -116,7 +117,7 @@ export default function OptimizeDialog({
             >
               {loading ? (
                 <div className="flex items-center justify-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  <Spinner size="sm" />
                   Analisando...
                 </div>
               ) : (

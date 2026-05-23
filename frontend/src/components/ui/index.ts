@@ -51,3 +51,9 @@ export type { MarkdownEditorProps } from './MarkdownEditor';
 export { NotificationBell } from './NotificationBell'; // PROMPT #128 - Background job notifications
 
 export { JobIndicator, JobIndicatorBadge } from './JobIndicator'; // PROMPT #162 - Job indicator badges
+
+export { Spinner } from './Spinner';
+export type { SpinnerProps } from './Spinner';
+
+export { ConfirmDialog } from './ConfirmDialog';
+export type { ConfirmDialogProps } from './ConfirmDialog';

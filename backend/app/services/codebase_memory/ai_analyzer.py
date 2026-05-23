@@ -237,7 +237,7 @@ class AIAnalyzerMixin:
             doc_samples = [s for s in code_samples if s["type"] in ["documentation", "configuration"]]
             domain_samples = [s for s in code_samples if self._is_domain_file(s["filename"])][:25]
 
-            # PROMPT #247 - Sequential execution to avoid blocking Claudio
+            # PROMPT #247 - Sequential execution to avoid blocking Claudius
             logger.info("🔗 Running documentation then domain phases sequentially...")
             doc_result = await self._analyze_phase("documentation", doc_samples, stack_info, project_id)
             await asyncio.sleep(1.0)

@@ -6,7 +6,7 @@
 'use client';
 
 import { RefObject } from 'react';
-import { Button } from '@/components/ui';
+import {  Button , Spinner } from '@/components/ui';
 
 interface ChatInputProps {
   isActive: boolean;
@@ -91,7 +91,7 @@ export default function ChatInput({
           >
             {(sending || isSendingMessage) ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                <Spinner size="sm" />
                 Enviando...
               </>
             ) : selectedOptions.length > 0 ? (

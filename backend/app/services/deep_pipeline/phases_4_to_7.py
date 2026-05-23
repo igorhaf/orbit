@@ -22,8 +22,8 @@ from app.models.pipeline_artifact import PipelineArtifact, ArtifactType
 from app.models.project import Project
 from app.models.task import Task, ItemType, TaskStatus
 from app.models.wiki_page import WikiPage
-from app.services.claudio_pipeline import (
-    ClaudioPipelineError,
+from app.services.claudius_pipeline import (
+    ClaudiusPipelineError,
     MODEL_HAIKU,
     MODEL_SONNET,
     MODEL_OPUS,
@@ -89,7 +89,7 @@ class Phase4to7Mixin:
             })
 
             batch_label = f"batch {batch_idx + 1}/{total_batches}"
-            epic_result = await self.claudio.call(
+            epic_result = await self.claudius.call(
                 model=p4a_model,
                 system_prompt=system_prompt or "Generate project epics. Respond with JSON.",
                 user_prompt=f"Projeto: {project.name}\n\nDominios ({batch_label}):\n{arch_compact}\n\nRegras:\n{rules_compact}",
@@ -104,7 +104,7 @@ class Phase4to7Mixin:
                 batch_idx + 1, total_batches, model_name=p4a_model, result=epic_result,
             )
 
-            batch_epics_data = self.claudio.extract_json(epic_result.get("text", ""))
+            batch_epics_data = self.claudius.extract_json(epic_result.get("text", ""))
             batch_epics = batch_epics_data.get("epics", []) if batch_epics_data else []
             epics.extend(batch_epics)
             logger.info(f"[Phase 4a] {batch_label}: {len(batch_epics)} epics gerados")
@@ -131,6 +131,12 @@ class Phase4to7Mixin:
         if len(unique_epics) < len(epics):
             logger.info(f"[Phase 4a] Deduplicacao: {len(epics)} -> {len(unique_epics)} epics unicos")
         epics = unique_epics
+
+        if len(epics) == 0:
+            raise ClaudiusPipelineError(
+                f"Fase 4a produziu 0 epics de {len(domain_list)} dominios -- "
+                "possivel falha upstream ou cota"
+            )
 
         # Create Epic cards in database
         epic_db_map = {}  # title -> Task object
@@ -191,7 +197,7 @@ class Phase4to7Mixin:
                 index + 1, total, model_name=p4b_model, result=result,
             )
 
-        story_results = await self.claudio.call_batch(
+        story_results = await self.claudius.call_batch(
             story_requests, max_concurrency=self._get_concurrency("phase_4b", 3),
             on_item_complete=_on_story_done,
         )
@@ -199,13 +205,18 @@ class Phase4to7Mixin:
         # Process stories and create Tasks
         all_stories = []  # (epic_title, story_data)
         for i, result in enumerate(story_results):
-            if isinstance(result, ClaudioPipelineError):
+            if isinstance(result, ClaudiusPipelineError):
                 continue
-            parsed = self.claudio.extract_json(result.get("text", ""))
+            parsed = self.claudius.extract_json(result.get("text", ""))
             if parsed and isinstance(parsed, dict):
                 epic_title = epics[i].get("title", "")
                 for story in parsed.get("stories", []):
                     all_stories.append((epic_title, story))
+
+        if len(all_stories) == 0 and len(epics) > 0:
+            raise ClaudiusPipelineError(
+                f"Fase 4b produziu 0 stories de {len(epics)} epics -- possivel falha upstream ou cota"
+            )
 
         # Create Story cards
         story_db_map = {}
@@ -270,20 +281,25 @@ class Phase4to7Mixin:
                 _p4c_done[0], total, model_name=p4c_model, result=result,
             )
 
-        task_results = await self.claudio.call_batch(
+        task_results = await self.claudius.call_batch(
             task_requests, max_concurrency=self._get_concurrency("phase_4c", 5),
             on_item_complete=_on_task_done,
         )
 
         all_tasks = []  # (story_title, task_data)
         for i, result in enumerate(task_results):
-            if isinstance(result, ClaudioPipelineError):
+            if isinstance(result, ClaudiusPipelineError):
                 continue
-            parsed = self.claudio.extract_json(result.get("text", ""))
+            parsed = self.claudius.extract_json(result.get("text", ""))
             if parsed and isinstance(parsed, dict):
                 story_title = story_titles_for_tasks[i]
                 for t in parsed.get("tasks", []):
                     all_tasks.append((story_title, t))
+
+        if len(all_tasks) == 0 and len(all_stories) > 0:
+            raise ClaudiusPipelineError(
+                f"Fase 4c produziu 0 tasks de {len(all_stories)} stories -- possivel falha upstream ou cota"
+            )
 
         # Create Task cards
         task_db_map = {}
@@ -359,7 +375,7 @@ class Phase4to7Mixin:
         })
 
         p5a_model = self._get_model("phase_5a", MODEL_SONNET)
-        structure_result = await self.claudio.call(
+        structure_result = await self.claudius.call(
             model=p5a_model,
             system_prompt=system_prompt or "Plan wiki structure. Respond with JSON.",
             user_prompt=f"Projeto: {project.name}\n\nMapa:\n{arch_compact}\n\nCards:\n{cards_compact}",
@@ -373,7 +389,18 @@ class Phase4to7Mixin:
             1, 1, model_name=p5a_model, result=structure_result,
         )
 
-        wiki_plan = self.claudio.extract_json(structure_result.get("text", "")) or {}
+        wiki_plan = self.claudius.extract_json(structure_result.get("text", "")) or {}
+
+        # Validacao: plano vazio indica falha de parse ou cota
+        _total_planned = (
+            len(wiki_plan.get("general_pages", []) or [])
+            + len(wiki_plan.get("domain_pages", []) or [])
+            + len(wiki_plan.get("flow_pages", []) or [])
+        )
+        if _total_planned == 0:
+            raise ClaudiusPipelineError(
+                "Fase 5a produziu um plano de wiki vazio -- possivel falha upstream ou cota"
+            )
 
         # Store structure artifact
         artifact = PipelineArtifact(
@@ -400,7 +427,7 @@ class Phase4to7Mixin:
             })
 
             p5b_model = self._get_model("phase_5b", MODEL_SONNET)
-            overview_result = await self.claudio.call(
+            overview_result = await self.claudius.call(
                 model=p5b_model,
                 system_prompt=system_prompt or "Generate wiki overview pages. Respond with JSON.",
                 user_prompt=f"Plano:\n{pages_compact}\n\nMapa:\n{arch_compact}",
@@ -414,7 +441,7 @@ class Phase4to7Mixin:
                 1, 1, model_name=p5b_model, result=overview_result,
             )
 
-            pages_data = self.claudio.extract_json(overview_result.get("text", ""))
+            pages_data = self.claudius.extract_json(overview_result.get("text", ""))
             if pages_data and isinstance(pages_data, dict):
                 for page in pages_data.get("pages", []):
                     self._write_wiki_page(wiki_dir, page, project_id=project.id, run_id=run_id)
@@ -462,14 +489,14 @@ class Phase4to7Mixin:
                     _p5c_done[0], total, model_name=p5c_model, result=result,
                 )
 
-            domain_results = await self.claudio.call_batch(
+            domain_results = await self.claudius.call_batch(
                 domain_requests, max_concurrency=self._get_concurrency("phase_5c", 3),
                 on_item_complete=_on_domain_done,
             )
             for dr_i, result in enumerate(domain_results):
-                if isinstance(result, ClaudioPipelineError):
+                if isinstance(result, ClaudiusPipelineError):
                     continue
-                pages_data = self.claudio.extract_json(result.get("text", ""))
+                pages_data = self.claudius.extract_json(result.get("text", ""))
                 if pages_data and isinstance(pages_data, dict):
                     for page in pages_data.get("pages", []):
                         self._write_wiki_page(wiki_dir, page, project_id=project.id, run_id=run_id)
@@ -482,19 +509,19 @@ class Phase4to7Mixin:
             flow_pages = wiki_plan.get("flow_pages", [])
             for flow in flow_pages:
                 try:
-                    result = await self.claudio.call(
+                    result = await self.claudius.call(
                         model=self._get_model("phase_5d", MODEL_SONNET),
                         system_prompt="Gere uma pagina de wiki detalhada para este fluxo cross-domain. Responda com JSON: {\"pages\": [{\"slug\": \"...\", \"title\": \"...\", \"content\": \"markdown...\", \"word_count\": N}]}",
                         user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, indent=2)}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False)}",
                         max_tokens=self._get_max_tokens("phase_5d", 16000),
                         **self._ollama_kwargs("phase_5d"),
                     )
-                    pages_data = self.claudio.extract_json(result.get("text", ""))
+                    pages_data = self.claudius.extract_json(result.get("text", ""))
                     if pages_data and isinstance(pages_data, dict):
                         for page in pages_data.get("pages", []):
                             self._write_wiki_page(wiki_dir, page, project_id=project.id, run_id=run_id)
                             stats["total_pages"] += 1
-                except ClaudioPipelineError as e:
+                except ClaudiusPipelineError as e:
                     logger.warning(f"Phase 5d: Failed to generate flow page: {e}")
         else:
             logger.info("Phase 5d: Flow page generation disabled in profile")
@@ -583,7 +610,7 @@ class Phase4to7Mixin:
         p6_max_tokens = self._get_max_tokens("phase_6", 16000)
         p6_thinking = self._get_phase_config("phase_6", "thinking_budget", 10000)
 
-        result = await self.claudio.call(
+        result = await self.claudius.call(
             model=p6_model,
             system_prompt=system_prompt or "Review the quality of all pipeline artifacts. Respond with JSON.",
             user_prompt=(
@@ -604,7 +631,7 @@ class Phase4to7Mixin:
             1, 1, model_name=p6_model, result=result,
         )
 
-        qa_result = self.claudio.extract_json(result.get("text", "")) or {
+        qa_result = self.claudius.extract_json(result.get("text", "")) or {
             "overall_score": 50,
             "issues": [],
             "summary": "QA parsing failed",
@@ -829,11 +856,11 @@ class Phase4to7Mixin:
             user_prompt += f"\n\nCards Concluidos (trabalho ja realizado):\n{extra['done_cards']}"
 
         # Use the same model as Phase 3 (Sonnet) for enrichment
-        from app.services.claudio_pipeline import MODEL_SONNET
+        from app.services.claudius_pipeline import MODEL_SONNET
         enrich_model = self._get_model("phase_3", MODEL_SONNET)
 
         try:
-            result = await self.claudio.call(
+            result = await self.claudius.call(
                 model=enrich_model,
                 system_prompt=system_prompt or (
                     "Generate a JSON with 'description' and 'context_semantic' for this project. "
@@ -851,7 +878,7 @@ class Phase4to7Mixin:
                 1, 1, model_name=enrich_model, result=result,
             )
 
-            parsed = self.claudio.extract_json(result.get("text", ""))
+            parsed = self.claudius.extract_json(result.get("text", ""))
             if not parsed or not isinstance(parsed, dict):
                 logger.warning("Post-pipeline enrichment: failed to parse JSON response")
                 return
@@ -863,7 +890,7 @@ class Phase4to7Mixin:
             if needs_description and description and len(description) >= 50:
                 project.description = description[:2000]
                 # Track which AI model generated the description
-                provider = self._provider or "claudio"
+                provider = self._provider or "claudius"
                 label = self._model_label(enrich_model)
                 project.description_ai_model = f"{label} ({provider})"
                 logger.info(f"Post-pipeline: Generated description ({len(description)} chars)")

@@ -21,7 +21,7 @@ import { Task, TaskStatus } from '@/lib/types';
 import { DroppableColumn } from './DroppableColumn';
 import { TaskCard } from '@/components/backlog/TaskCard';
 import { TaskForm } from './TaskForm';
-import { Button, Dialog } from '@/components/ui';
+import {  Button, Dialog , Spinner } from '@/components/ui';
 import { useNotification } from '@/hooks';
 import { ModificationApprovalModal } from './ModificationApprovalModal'; // PROMPT #95
 import { ItemDetailPanel } from '@/components/backlog'; // PROMPT #97
@@ -281,7 +281,7 @@ export function KanbanBoard({ projectId }: Props) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
           <p className="text-gray-600">Carregando quadro...</p>
         </div>
       </div>

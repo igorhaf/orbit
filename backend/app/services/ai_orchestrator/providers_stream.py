@@ -1,7 +1,7 @@
 """
 Streaming provider execution mixin for AIOrchestrator.
 Contains _create_stream_callback() and all _execute_*_streaming() methods:
-_execute_anthropic_streaming, _execute_claudio_streaming, _execute_openai_streaming,
+_execute_anthropic_streaming, _execute_claudius_streaming, _execute_openai_streaming,
 _execute_google_streaming, _execute_ollama_streaming, _execute_cohere_streaming.
 """
 
@@ -91,13 +91,13 @@ class ProvidersStreamMixin:
         timeout_seconds: Optional[float] = None,
         client_key: str = "anthropic",
     ) -> Dict:
-        """Anthropic/Claudio streaming using client.messages.stream()
-        PROMPT #246 - client_key param for Claudio support
+        """Anthropic/Claudius streaming using client.messages.stream()
+        PROMPT #246 - client_key param for Claudius support
         """
         client = self.clients.get(client_key) or self.clients.get("anthropic")
 
-        # Skip override for claudio (no API key needed)
-        if client_key != "claudio" and api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
+        # Skip override for claudius (no API key needed)
+        if client_key != "claudius" and api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
             from anthropic import AsyncAnthropic
             client = AsyncAnthropic(api_key=api_key_override)
 
@@ -136,7 +136,7 @@ class ProvidersStreamMixin:
             }
         }
 
-    async def _execute_claudio_streaming(
+    async def _execute_claudius_streaming(
         self,
         model: str,
         messages: List[Dict],
@@ -151,14 +151,14 @@ class ProvidersStreamMixin:
         disable_tools: bool = False,
     ) -> Dict:
         """
-        PROMPT #253 - Claudio streaming via httpx SSE.
+        PROMPT #253 - Claudius streaming via httpx SSE.
         Supports cwd and thinking parameters.
         """
         import httpx
 
-        claudio_base = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
-        claudio_key = os.getenv("CLAUDIO_API_KEY", "123456789")
-        url = f"{claudio_base}/v1/messages"
+        claudius_base = os.getenv("CLAUDIUS_BASE_URL", "http://localhost:8001")
+        claudius_key = os.getenv("CLAUDIUS_API_KEY", "123456789")
+        url = f"{claudius_base}/v1/messages"
 
         body: Dict[str, Any] = {
             "model": model,
@@ -195,7 +195,7 @@ class ProvidersStreamMixin:
                 headers={
                     "Content-Type": "application/json",
                     "anthropic-version": "2023-06-01",
-                    "x-api-key": claudio_key,
+                    "x-api-key": claudius_key,
                 },
             ) as resp:
                 resp.raise_for_status()
@@ -221,7 +221,7 @@ class ProvidersStreamMixin:
                         # SSE error events → raise so non-streaming fallback triggers
                         if event_type == "error":
                             err_msg = parsed.get("error", {}).get("message", str(parsed))
-                            raise RuntimeError(f"Claudio streaming error: {err_msg}")
+                            raise RuntimeError(f"Claudius streaming error: {err_msg}")
 
                         if event_type == "content_block_delta":
                             delta = parsed.get("delta", {})
@@ -243,7 +243,7 @@ class ProvidersStreamMixin:
 
         _streaming_time_ms = int((time.time() - _stream_start) * 1000)
         result = {
-            "provider": "claudio",
+            "provider": "claudius",
             "model": model,
             "content": accumulated,
             "usage": {

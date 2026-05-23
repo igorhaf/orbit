@@ -165,6 +165,22 @@ class CodebaseIndexer:
             custom_dirs = project.custom_ignore_patterns.get("directories", [])
             if custom_dirs:
                 self._effective_ignore_dirs.update(custom_dirs)
+            custom_patterns = project.custom_ignore_patterns.get("file_patterns", [])
+            if custom_patterns:
+                self._effective_ignore_patterns.update(custom_patterns)
+            # AI-detected: mesma estrutura, lista de {path, reason}
+            ai_dirs = project.custom_ignore_patterns.get("ai_directories", [])
+            for item in ai_dirs:
+                if isinstance(item, dict) and item.get("path"):
+                    self._effective_ignore_dirs.add(item["path"])
+                elif isinstance(item, str):
+                    self._effective_ignore_dirs.add(item)
+            ai_patterns = project.custom_ignore_patterns.get("ai_file_patterns", [])
+            for item in ai_patterns:
+                if isinstance(item, dict) and item.get("path"):
+                    self._effective_ignore_patterns.add(item["path"])
+                elif isinstance(item, str):
+                    self._effective_ignore_patterns.add(item)
         if project.ignore_paths and isinstance(project.ignore_paths, list):
             self._effective_ignore_dirs.update(project.ignore_paths)
 

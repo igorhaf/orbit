@@ -19,8 +19,8 @@ from uuid import UUID
 from app.models.pipeline_artifact import PipelineArtifact, ArtifactType
 from app.models.pipeline_run import PipelineRun
 from app.models.project import Project
-from app.services.claudio_pipeline import (
-    ClaudioPipelineError,
+from app.services.claudius_pipeline import (
+    ClaudiusPipelineError,
     MODEL_HAIKU,
     MODEL_SONNET,
 )
@@ -207,7 +207,7 @@ class Phase0to3Mixin:
                 logger.error("Phase 1: Provider not responding -- saving checkpoint")
                 if pipeline_run:
                     self._save_checkpoint(pipeline_run, 1, completed_files)
-                raise ClaudioPipelineError(
+                raise ClaudiusPipelineError(
                     f"Provider offline after {len(completed_files)}/{total_files} files -- checkpoint saved, resume later"
                 )
 
@@ -237,7 +237,7 @@ class Phase0to3Mixin:
             batch_timeout = batch_size * 180  # 3 min max per file
             try:
                 results = await asyncio.wait_for(
-                    self.claudio.call_batch(
+                    self.claudius.call_batch(
                         batch_requests,
                         max_concurrency=p1_concurrency,
                         on_item_complete=_on_file_done,
@@ -248,19 +248,19 @@ class Phase0to3Mixin:
                 logger.error(f"Phase 1: Batch {batch_num}/{total_batches} timed out -- saving checkpoint")
                 if pipeline_run:
                     self._save_checkpoint(pipeline_run, 1, completed_files)
-                raise ClaudioPipelineError(
+                raise ClaudiusPipelineError(
                     f"Batch {batch_num} timeout after {batch_timeout}s -- checkpoint saved"
                 )
 
             # Process results and store artifacts
             for i, result in enumerate(results):
                 file_path = batch[i]["path"]
-                if isinstance(result, ClaudioPipelineError):
+                if isinstance(result, ClaudiusPipelineError):
                     logger.warning(f"Phase 1: Failed {file_path}: {result}")
                     completed_files.add(file_path)
                     continue
 
-                parsed = self.claudio.extract_json(result.get("text", ""))
+                parsed = self.claudius.extract_json(result.get("text", ""))
                 if parsed and isinstance(parsed, dict):
                     parsed["file_path"] = file_path
                     parsed["file_type"] = batch[i]["file_type"]
@@ -340,7 +340,7 @@ class Phase0to3Mixin:
 
             p2_ollama = self._ollama_kwargs("phase_2")
             try:
-                result = await self.claudio.call(
+                result = await self.claudius.call(
                     model=p2_model,
                     system_prompt=system_prompt or "Synthesize business rules from file analyses. Respond with JSON.",
                     user_prompt=user_prompt,
@@ -357,18 +357,18 @@ class Phase0to3Mixin:
                     model_name=p2_model, result=result,
                 )
 
-                parsed = self.claudio.extract_json(result.get("text", ""))
+                parsed = self.claudius.extract_json(result.get("text", ""))
                 if parsed and isinstance(parsed, dict):
                     # Multi-turn follow-up for large domains
                     if len(analyses) > p2_multi_turn_threshold:
-                        followup = await self.claudio.call_followup(
+                        followup = await self.claudius.call_followup(
                             model=p2_model,
                             session_key=session_key,
                             user_prompt="Revise as regras sintetizadas. Ha regras cross-file que voce perdeu? Gaps importantes? Adicione ao resultado anterior.",
                             max_tokens=p2_max_tokens // 2,
                             **p2_ollama,
                         )
-                        followup_parsed = self.claudio.extract_json(followup.get("text", ""))
+                        followup_parsed = self.claudius.extract_json(followup.get("text", ""))
                         if followup_parsed and isinstance(followup_parsed, dict):
                             existing = parsed.get("consolidated_rules", [])
                             new_rules = followup_parsed.get("consolidated_rules", [])
@@ -376,7 +376,7 @@ class Phase0to3Mixin:
                                 existing.extend(new_rules)
                                 parsed["consolidated_rules"] = existing
 
-                    await self.claudio.delete_session(session_key)
+                    await self.claudius.delete_session(session_key)
 
                     # Update shared progress counter
                     progress_state["done"] += 1
@@ -385,12 +385,12 @@ class Phase0to3Mixin:
 
                     return domain, parsed
 
-                await self.claudio.delete_session(session_key)
+                await self.claudius.delete_session(session_key)
 
-            except ClaudioPipelineError as e:
+            except ClaudiusPipelineError as e:
                 logger.error(f"Phase 2: Failed to synthesize domain '{domain}': {e}")
                 try:
-                    await self.claudio.delete_session(session_key)
+                    await self.claudius.delete_session(session_key)
                 except Exception:
                     pass
 
@@ -530,7 +530,7 @@ class Phase0to3Mixin:
         p3_max_tokens = self._get_max_tokens("phase_3", 16000)
         p3_thinking = self._get_phase_config("phase_3", "thinking_budget", 10000)
 
-        result = await self.claudio.call(
+        result = await self.claudius.call(
             model=p3_model,
             system_prompt=system_prompt or "Build an architectural map. Respond with JSON.",
             user_prompt=user_prompt,
@@ -545,7 +545,7 @@ class Phase0to3Mixin:
             1, 1, model_name=p3_model, result=result,
         )
 
-        arch_map = self.claudio.extract_json(result.get("text", "")) or {}
+        arch_map = self.claudius.extract_json(result.get("text", "")) or {}
 
         # Store artifact
         artifact = PipelineArtifact(

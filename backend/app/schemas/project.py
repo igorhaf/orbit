@@ -65,6 +65,9 @@ class ProjectUpdate(BaseModel):
     # PROMPT #241 - User-editable ignore paths per project
     ignore_paths: Optional[list] = Field(None, description="Paths to exclude from scanning")
 
+    # User-editable file/dir blocklist (mirror of global_blocklist shape)
+    custom_ignore_patterns: Optional[dict] = Field(None, description="{directories:[], file_patterns:[]} per-project")
+
     # PROMPT #243 - Pinned fragments (persisted text selections)
     pinned_fragments: Optional[list] = Field(None, description="Text fragments pinned by user for AI preservation")
 
@@ -86,6 +89,9 @@ class ProjectResponse(ProjectBase):
 
     # PROMPT #241 - User-editable ignore paths per project
     ignore_paths: Optional[list] = Field(None, description="Paths to exclude from scanning")
+
+    # User-editable file/dir blocklist (mirror of global_blocklist shape)
+    custom_ignore_patterns: Optional[dict] = Field(None, description="{directories:[], file_patterns:[]} per-project")
 
     # PROMPT #243 - Pinned fragments (persisted text selections)
     pinned_fragments: Optional[list] = Field(None, description="Text fragments pinned by user for AI preservation")

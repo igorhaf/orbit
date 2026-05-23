@@ -14,7 +14,7 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
+import {  Card, CardHeader, CardTitle, CardContent, Button , Spinner } from '@/components/ui';
 import { projectsApi, knowledgeApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 
@@ -303,7 +303,7 @@ function KnowledgePageContent() {
     return (
       <Layout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
         </div>
       </Layout>
     );
@@ -787,7 +787,7 @@ export default function KnowledgePage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <Spinner size="xl" />
       </div>
     }>
       <KnowledgePageContent />

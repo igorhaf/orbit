@@ -246,16 +246,16 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                         logger.info(f"✅ Cohere async HTTP client initialized with API key from: {model.name}")
                         initialized_providers.add("cohere")
 
-                    elif provider_key == "claudio":
-                        # PROMPT #246 - Claudio local proxy (Anthropic-compatible API, no API key)
+                    elif provider_key == "claudius":
+                        # PROMPT #246 - Claudius local proxy (Anthropic-compatible API, no API key)
                         from anthropic import AsyncAnthropic
-                        claudio_base = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
-                        self.clients["claudio"] = AsyncAnthropic(
+                        claudius_base = os.getenv("CLAUDIUS_BASE_URL", "http://localhost:8001")
+                        self.clients["claudius"] = AsyncAnthropic(
                             api_key=model.api_key or "not-needed",
-                            base_url=claudio_base
+                            base_url=claudius_base
                         )
-                        logger.info(f"✅ Claudio (AsyncAnthropic) client initialized: {claudio_base} (from model: {model.name})")
-                        initialized_providers.add("claudio")
+                        logger.info(f"✅ Claudius (AsyncAnthropic) client initialized: {claudius_base} (from model: {model.name})")
+                        initialized_providers.add("claudius")
 
             except Exception as e:
                 logger.error(f"❌ Failed to initialize {model.provider} client: {e}")
@@ -280,7 +280,7 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
         rag_similarity_threshold: float = 0.7,
         # PROMPT #296 - Observability
         trace_id: Optional[str] = None,
-        # PROMPT #253 - Claudio extended thinking
+        # PROMPT #253 - Claudius extended thinking
         thinking: Optional[Dict] = None,
         # PROMPT #259 - Disable CWD for RAG-only calls
         disable_cwd: bool = False,
@@ -1019,17 +1019,17 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
         # PROMPT #207 - Resolve timeout using hierarchy: diagram node → model → settings
         _resolved_timeout = self._resolve_timeout(model_config, _utility_nodes)
 
-        # PROMPT #253 - Resolve cwd for Claudio calls (choose_model path)
-        _claudio_cwd = None
-        if provider == "claudio":
+        # PROMPT #253 - Resolve cwd for Claudius calls (choose_model path)
+        _claudius_cwd = None
+        if provider == "claudius":
             if disable_cwd:
-                _claudio_cwd = "/tmp"
+                _claudius_cwd = "/tmp"
             elif project_id:
                 try:
                     from app.models.project import Project as _CwdProject
                     _cwd_proj = self.db.query(_CwdProject).filter(_CwdProject.id == project_id).first()
                     if _cwd_proj and _cwd_proj.code_path:
-                        _claudio_cwd = _cwd_proj.code_path
+                        _claudius_cwd = _cwd_proj.code_path
                 except Exception:
                     pass
 
@@ -1078,13 +1078,13 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                         stream_callback=_stream_cb, flush_callback=_flush_cb,
                         timeout_seconds=_resolved_timeout
                     )
-                elif provider == "claudio":
-                    # PROMPT #253 - Claudio uses httpx streaming (not SDK) to avoid
+                elif provider == "claudius":
+                    # PROMPT #253 - Claudius uses httpx streaming (not SDK) to avoid
                     # SDK pre-checks that reject high max_tokens
-                    result = await self._execute_claudio_streaming(
+                    result = await self._execute_claudius_streaming(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
                         stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout, cwd=_claudio_cwd,
+                        timeout_seconds=_resolved_timeout, cwd=_claudius_cwd,
                         thinking=thinking, disable_tools=disable_tools
                     )
                 else:
@@ -1131,12 +1131,12 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
                         timeout_seconds=_resolved_timeout
                     )
-                elif provider == "claudio":
-                    # PROMPT #253 - Claudio non-streaming fallback uses httpx (not SDK)
+                elif provider == "claudius":
+                    # PROMPT #253 - Claudius non-streaming fallback uses httpx (not SDK)
                     # to avoid SDK "Streaming is required" pre-check with high max_tokens
-                    result = await self._execute_claudio(
+                    result = await self._execute_claudius(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout, cwd=_claudio_cwd,
+                        timeout_seconds=_resolved_timeout, cwd=_claudius_cwd,
                         thinking=thinking, disable_tools=disable_tools
                     )
                 else:
@@ -1337,10 +1337,10 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                             result = await self._execute_cohere(
                                 model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
                             )
-                        elif provider == "claudio":
+                        elif provider == "claudius":
                             result = await self._execute_anthropic(
                                 model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                                client_key="claudio"
+                                client_key="claudius"
                             )
                         result = self.utility_executor.post_process(
                             _utility_nodes, result, _effective_messages,

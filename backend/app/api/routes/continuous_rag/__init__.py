@@ -3,7 +3,7 @@ Continuous RAG Evolution API Routes (Package)
 
 PROMPT #218 - Endpoints for managing continuous RAG processing per project.
 PROMPT #252 - 4-phase pipeline with progressive button unlocking.
-PROMPT #260 - Deep Pipeline (7-phase Claudio pipeline).
+PROMPT #260 - Deep Pipeline (7-phase Claudius pipeline).
 
 Refactored from a single file into a package with sub-modules:
   - phases.py: Phase trigger endpoints (scan, extract-rules, generate-cards, generate-wiki, run-pipeline)

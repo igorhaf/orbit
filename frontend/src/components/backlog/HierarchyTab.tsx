@@ -111,7 +111,7 @@ export default function HierarchyTab({
               >
                 {isGeneratingChildren ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                    <Spinner size="sm" />
                     Gerando...
                   </>
                 ) : (

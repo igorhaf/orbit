@@ -10,13 +10,6 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 
 from app.database import get_db
-# PROMPT #164 - PrompterFacade is deprecated, graceful fallback to AIOrchestrator
-try:
-    from app.prompter.facade import PrompterFacade
-    PROMPTER_AVAILABLE = True
-except ImportError:
-    PROMPTER_AVAILABLE = False
-    PrompterFacade = None
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,7 +23,6 @@ async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
     Get aggregated cache statistics from all sources
 
     PROMPT #54.3 - Cache Performance Monitoring
-    PROMPT #74 - Aggregate stats from AIOrchestrator and PrompterFacade
 
     Returns:
         - enabled: Whether cache is enabled

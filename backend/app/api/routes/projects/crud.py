@@ -117,6 +117,10 @@ async def create_project(
                 logger.info(f"   - {len(memory_ctx.get('key_features', []))} key features")
 
     # Create new project instance with code_path
+    from app.utils.blocklist import (
+        apply_global_blocklist_to_project_payload,
+        apply_global_blocklist_as_ignore_paths,
+    )
     db_project = Project(
         name=project.name,
         description=project.description,
@@ -124,6 +128,8 @@ async def create_project(
         code_path=project.code_path,  # PROMPT #111 - Obrigatorio e imutavel
         initial_memory_context=project.initial_memory_context,  # PROMPT #118 - Memory scan context
         status=initial_status,  # PROMPT #127 - Active if existing code detected
+        custom_ignore_patterns=apply_global_blocklist_to_project_payload(db),
+        ignore_paths=apply_global_blocklist_as_ignore_paths(db),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -211,85 +217,89 @@ async def delete_project(
     project_name = project.name or str(project_id)[:8]
     logger.info(f"Deleting project '{project_name}' ({project_id}) - full cascade cleanup")
 
+    # Cada step em SAVEPOINT isolado: falha de um nao aborta a transacao do resto.
+    # (Antes: rag_documents inexistente causava InFailedSqlTransaction em cascata e HTTP 500.)
+
     # Step 1: Cancel and delete ALL async_jobs + job_log_entries for this project
     try:
-        # Mark running/pending jobs as cancelled so they won't re-queue
-        active_jobs = db.query(AsyncJob).filter(
-            AsyncJob.project_id == project_id,
-            AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
-        ).all()
-        for job in active_jobs:
-            job.status = JobStatus.FAILED
-            job.error = "Projeto deletado"
-            job.result = {"cancelled": True, "reason": "project_deleted"}
-        if active_jobs:
-            db.flush()
-            logger.info(f"Cancelled {len(active_jobs)} active jobs for project {project_id}")
-            # PROMPT #248 - Broadcast cancellation so frontend bell clears immediately
-            from app.api.websocket import broadcast_job_event
-            import asyncio
+        with db.begin_nested():
+            active_jobs = db.query(AsyncJob).filter(
+                AsyncJob.project_id == project_id,
+                AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+            ).all()
             for job in active_jobs:
-                if not job.parent_job_id:  # Only root jobs notify bell
-                    try:
-                        loop = asyncio.get_running_loop()
-                        loop.create_task(broadcast_job_event("job_failed", {
-                            "job_id": str(job.id),
-                            "job_type": job.job_type.value,
-                            "status": "failed",
-                            "error": "Projeto deletado",
-                            "notification_title": job.notification_title,
-                            "project_id": str(project_id),
-                        }))
-                    except Exception:
-                        pass
+                job.status = JobStatus.FAILED
+                job.error = "Projeto deletado"
+                job.result = {"cancelled": True, "reason": "project_deleted"}
+            if active_jobs:
+                db.flush()
+                logger.info(f"Cancelled {len(active_jobs)} active jobs for project {project_id}")
+                # PROMPT #248 - Broadcast cancellation so frontend bell clears immediately
+                from app.api.websocket import broadcast_job_event
+                import asyncio
+                for job in active_jobs:
+                    if not job.parent_job_id:
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(broadcast_job_event("job_failed", {
+                                "job_id": str(job.id),
+                                "job_type": job.job_type.value,
+                                "status": "failed",
+                                "error": "Projeto deletado",
+                                "notification_title": job.notification_title,
+                                "project_id": str(project_id),
+                            }))
+                        except Exception:
+                            pass
 
-        # Delete job_log_entries explicitly before jobs (async_jobs has no FK to projects)
-        from app.models.job_log_entry import JobLogEntry
-        job_ids = [j.id for j in db.query(AsyncJob.id).filter(
-            AsyncJob.project_id == project_id
-        ).all()]
-        if job_ids:
-            deleted_logs = db.query(JobLogEntry).filter(
-                JobLogEntry.job_id.in_(job_ids)
+            from app.models.job_log_entry import JobLogEntry
+            job_ids = [j.id for j in db.query(AsyncJob.id).filter(
+                AsyncJob.project_id == project_id
+            ).all()]
+            if job_ids:
+                deleted_logs = db.query(JobLogEntry).filter(
+                    JobLogEntry.job_id.in_(job_ids)
+                ).delete(synchronize_session='fetch')
+                if deleted_logs:
+                    logger.info(f"Deleted {deleted_logs} job_log_entries for project {project_id}")
+
+            deleted_jobs = db.query(AsyncJob).filter(
+                AsyncJob.project_id == project_id
             ).delete(synchronize_session='fetch')
-            if deleted_logs:
-                logger.info(f"Deleted {deleted_logs} job_log_entries for project {project_id}")
-
-        # Delete ALL jobs for this project (completed, failed, etc.)
-        deleted_jobs = db.query(AsyncJob).filter(
-            AsyncJob.project_id == project_id
-        ).delete(synchronize_session='fetch')
-        logger.info(f"Deleted {deleted_jobs} total async_jobs for project {project_id}")
+            logger.info(f"Deleted {deleted_jobs} total async_jobs for project {project_id}")
     except Exception as e:
         logger.warning(f"Failed to cleanup async_jobs: {e}")
 
     # Step 2: Delete ALL RAG documents for this project
     try:
-        rag_service = RAGService(db)
-        deleted_rag = rag_service.delete_by_project(project_id)
-        logger.info(f"Deleted {deleted_rag} RAG documents for project {project_id}")
+        with db.begin_nested():
+            rag_service = RAGService(db)
+            deleted_rag = rag_service.delete_by_project(project_id)
+            logger.info(f"Deleted {deleted_rag} RAG documents for project {project_id}")
     except Exception as e:
         logger.warning(f"Failed to delete RAG documents: {e}")
 
     # Step 3: Delete project_analyses linked to this project
     try:
-        from app.models.project_analysis import ProjectAnalysis
-        deleted_analyses = db.query(ProjectAnalysis).filter(
-            ProjectAnalysis.project_id == project_id
-        ).delete(synchronize_session='fetch')
-        if deleted_analyses:
-            logger.info(f"Deleted {deleted_analyses} project_analyses for project {project_id}")
+        with db.begin_nested():
+            from app.models.project_analysis import ProjectAnalysis
+            deleted_analyses = db.query(ProjectAnalysis).filter(
+                ProjectAnalysis.project_id == project_id
+            ).delete(synchronize_session='fetch')
+            if deleted_analyses:
+                logger.info(f"Deleted {deleted_analyses} project_analyses for project {project_id}")
     except Exception as e:
         logger.warning(f"Failed to delete project_analyses: {e}")
 
     # Step 4: Delete prompt_templates linked to this project
     try:
-        from app.models.prompt_template import PromptTemplate
-        deleted_templates = db.query(PromptTemplate).filter(
-            PromptTemplate.project_id == project_id
-        ).delete(synchronize_session='fetch')
-        if deleted_templates:
-            logger.info(f"Deleted {deleted_templates} prompt_templates for project {project_id}")
+        with db.begin_nested():
+            from app.models.prompt_template import PromptTemplate
+            deleted_templates = db.query(PromptTemplate).filter(
+                PromptTemplate.project_id == project_id
+            ).delete(synchronize_session='fetch')
+            if deleted_templates:
+                logger.info(f"Deleted {deleted_templates} prompt_templates for project {project_id}")
     except Exception as e:
         logger.warning(f"Failed to delete prompt_templates: {e}")
 

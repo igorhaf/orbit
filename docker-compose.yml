@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orbit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orbit_password}
+      POSTGRES_DB: ${POSTGRES_DB:-orbit}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orbit} -d ${POSTGRES_DB:-orbit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  orbit-backend:
+    build:
+      context: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-orbit}:${POSTGRES_PASSWORD:-orbit_password}@postgres:5432/${POSTGRES_DB:-orbit}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OLLAMA_HOST: http://host.docker.internal:11434
+      ENVIRONMENT: development
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      PROJECTS_BASE_PATH: ${PROJECTS_BASE_PATH:-/home/igorhaf}
+      CLAUDIUS_BASE_URL: http://claudius-backend:8001
+      CLAUDIUS_API_KEY: ${CLAUDIUS_API_KEY:-123456789}
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./backend:/app
+      - /home:/home
+      - /:/host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  orbit-frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      - orbit-backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_APP_NAME: Orbit
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - orbit_frontend_node_modules:/app/node_modules
+      - orbit_frontend_next:/app/.next
+
+  claudius-backend:
+    build:
+      context: ./claudius/backend
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CLAUDIUS_API_KEY: ${CLAUDIUS_API_KEY:-123456789}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      REDIS_URL: redis://redis:6379/2
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./claudius/backend:/app
+      - /home/igorhaf/.claude:/opt/claudius/.claude
+      - claudius_graphify_out:/data/graphify-out
+      - /home:/home
+      - /:/host:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  claudius-frontend:
+    build:
+      context: ./claudius/frontend
+    depends_on:
+      - claudius-backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8001
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./claudius/frontend:/app
+      - claudius_frontend_node_modules:/app/node_modules
+      - claudius_frontend_next:/app/.next
+
+volumes:
+  postgres_data:
+  redis_data:
+  orbit_frontend_node_modules:
+  orbit_frontend_next:
+  claudius_frontend_node_modules:
+  claudius_frontend_next:
+  claudius_claude_auth:
+  claudius_graphify_out:

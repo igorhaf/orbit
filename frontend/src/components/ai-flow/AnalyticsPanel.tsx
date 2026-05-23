@@ -8,6 +8,7 @@
 'use client';
 
 import React from 'react';
+import { Spinner } from '@/components/ui';
 import { USAGE_TYPE_OPTIONS } from './FlowConstants';
 import type {
   AIFlowChainAnalyticsResponse,
@@ -28,7 +29,7 @@ export default function AnalyticsPanel({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+        <Spinner size="md" />
         <span className="ml-2 text-sm text-gray-500">Carregando analiticos...</span>
       </div>
     );

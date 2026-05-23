@@ -11,7 +11,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Card, Button, Dialog, DialogFooter, MarkdownEditor } from '@/components/ui';
+import {  Card, Button, Dialog, DialogFooter, MarkdownEditor , Spinner } from '@/components/ui';
 import { wikiApi, knowledgeApi, ragApi } from '@/lib/api';
 import { useNotification, useJobPolling } from '@/hooks';
 import ReactMarkdown from 'react-markdown';
@@ -375,7 +375,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -488,7 +488,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
             </div>
           ) : loadingPage ? (
             <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <Spinner size="lg" />
             </div>
           ) : selectedPage ? (
             // Page detail view

@@ -14,13 +14,6 @@ from sqlalchemy.orm import Session
 import logging
 
 from app.services.ai_orchestrator import AIOrchestrator
-# PROMPT #164 - PrompterFacade is deprecated, graceful fallback to AIOrchestrator
-try:
-    from app.prompter.facade import PrompterFacade
-    PROMPTER_AVAILABLE = True
-except ImportError:
-    PROMPTER_AVAILABLE = False
-    PrompterFacade = None
 from app.prompts import get_prompt_service
 
 from .context_interview import ContextInterviewMixin
@@ -46,14 +39,7 @@ class ContextGeneratorService(
 
     def __init__(self, db: Session):
         self.db = db
-        # PROMPT #164 - PrompterFacade deprecated, graceful fallback
-        if PROMPTER_AVAILABLE and PrompterFacade:
-            try:
-                self.prompter = PrompterFacade(db)
-            except RuntimeError:
-                self.prompter = None
-        else:
-            self.prompter = None
+        # PROMPT #164 - PrompterFacade removed; AIOrchestrator handles caching/RAG
         self.orchestrator = AIOrchestrator(db)
         # PROMPT #103 - Use PromptService for external prompts
         self.prompt_service = get_prompt_service(db)

@@ -9,6 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Spinner } from '@/components/ui';
 import { useParams, useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -179,7 +180,7 @@ export default function SetupContextPage() {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
         </div>
       </Layout>
     );
@@ -262,7 +263,7 @@ export default function SetupContextPage() {
             <CardContent>
               {generatingContext ? (
                 <div className="flex flex-col items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                  <Spinner size="xl" />
                   <p className="text-gray-600">Gerando contexto do projeto...</p>
                   <p className="text-sm text-gray-500 mt-1">Isso pode levar um momento</p>
                 </div>

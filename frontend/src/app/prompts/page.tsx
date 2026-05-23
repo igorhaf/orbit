@@ -9,6 +9,7 @@ import React, { useEffect, useState } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { PromptsList } from '@/components/prompts';
 import { Button } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Dialog } from '@/components/ui/Dialog';
 import { promptsApi } from '@/lib/api';

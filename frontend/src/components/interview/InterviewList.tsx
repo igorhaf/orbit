@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { interviewsApi, projectsApi } from '@/lib/api';
 import { Interview, Project } from '@/lib/types';
-import { Button, Badge, Card, CardHeader, CardTitle, CardContent, Dialog, DialogFooter, Select } from '@/components/ui';
+import {  Button, Badge, Card, CardHeader, CardTitle, CardContent, Dialog, DialogFooter, Select , Spinner } from '@/components/ui';
 import { useNotification } from '@/hooks';
 
 interface InterviewListProps {
@@ -161,7 +161,7 @@ export function InterviewList({
     return (
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
           <p className="text-gray-600">Carregando entrevistas...</p>
         </div>
       </div>

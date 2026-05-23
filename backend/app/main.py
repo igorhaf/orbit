@@ -44,6 +44,7 @@ from app.api.routes import (
     continuous_rag,  # PROMPT #218 - Continuous RAG Evolution
     wiki,  # PROMPT #261 - Multi-page Wiki System
     project_chats,  # PROMPT #282 - RAG Chat Sessions
+    graphify,  # Graphify integration via claudius-backend
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -133,23 +134,42 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Watchdog bootstrap skipped (non-fatal): {e}")
 
-    # Crash recovery: mark jobs that were RUNNING when server crashed/restarted as FAILED
-    # (Graceful shutdown handles this too, but crashes bypass that cleanup)
+    # Crash recovery: re-enfileira jobs RUNNING quando o servidor cai/reinicia.
+    # Tipos com checkpoint nativo (deep_pipeline, rag_pipeline, memory_scan) voltam pra PENDING,
+    # serao retomados pelo JobExecutor. Se passaram do limite de tentativas, falham.
+    # Tipos sem checkpoint (geracao single-shot etc.) ainda marcam FAILED.
     try:
         from app.database import SessionLocal
-        from app.models.async_job import AsyncJob, JobStatus
+        from app.models.async_job import AsyncJob, JobStatus, JobType
+        RESUMABLE_TYPES = {
+            JobType.DEEP_PIPELINE,
+            JobType.MEMORY_SCAN,
+            # JobType.RAG_PIPELINE quando estiver no enum
+        }
+        MAX_AUTO_RESUMES = 3
         startup_db = SessionLocal()
         try:
             stale_jobs = startup_db.query(AsyncJob).filter(
                 AsyncJob.status == JobStatus.RUNNING
             ).all()
+            requeued = 0
+            failed = 0
             for job in stale_jobs:
-                job.status = JobStatus.FAILED
-                job.error = "Backend reiniciou enquanto job estava em execução (crash recovery)"
-                job.result = {"error": job.error}
+                prior = dict(job.result or {})
+                attempts = int(prior.get("auto_resume_attempts", 0)) + 1
+                if job.job_type in RESUMABLE_TYPES and attempts <= MAX_AUTO_RESUMES:
+                    job.status = JobStatus.PENDING
+                    job.error = None
+                    job.result = {**prior, "auto_resume_attempts": attempts, "auto_resumed_at": __import__("datetime").datetime.utcnow().isoformat()}
+                    requeued += 1
+                else:
+                    job.status = JobStatus.FAILED
+                    job.error = f"Backend reiniciou {attempts}x enquanto job estava em execução (crash recovery — tipo {job.job_type.value if hasattr(job.job_type,'value') else job.job_type} não retomavel ou limite atingido)"
+                    job.result = {**prior, "auto_resume_attempts": attempts, "final_failed": True}
+                    failed += 1
             if stale_jobs:
                 startup_db.commit()
-                logger.info(f"Startup: marcou {len(stale_jobs)} job(s) 'running' como 'failed' (crash recovery)")
+                logger.info(f"Startup: {requeued} job(s) re-enfileirado(s), {failed} marcado(s) como failed (crash recovery)")
         finally:
             startup_db.close()
     except Exception as e:
@@ -460,6 +480,13 @@ app.include_router(
     project_chats.router,
     prefix=f"{API_V1_PREFIX}/projects",
     tags=["Project Chats"]
+)
+
+# Graphify (delegado ao claudius-backend)
+app.include_router(
+    graphify.router,
+    prefix=f"{API_V1_PREFIX}/graphify",
+    tags=["Graphify"]
 )
 
 

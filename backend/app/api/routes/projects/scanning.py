@@ -201,11 +201,17 @@ async def quick_create_project(
     # Create project as draft (no context yet)
     from app.models.project import ProjectStatus
 
+    from app.utils.blocklist import (
+        apply_global_blocklist_to_project_payload,
+        apply_global_blocklist_as_ignore_paths,
+    )
     db_project = Project(
         name=temp_name,
         code_path=code_path,
         context_locked=False,  # Draft status - needs Context Interview
         status=ProjectStatus.draft,
+        custom_ignore_patterns=apply_global_blocklist_to_project_payload(db),
+        ignore_paths=apply_global_blocklist_as_ignore_paths(db),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -305,6 +311,10 @@ async def create_and_process_project(
     # PROMPT #232 - IC-5 fix: Start as draft, promote to active on scan success
     from app.models.project import ProjectStatus
 
+    from app.utils.blocklist import (
+        apply_global_blocklist_to_project_payload,
+        apply_global_blocklist_as_ignore_paths,
+    )
     db_project = Project(
         name=temp_name,
         description=description.strip() if description and description.strip() else None,
@@ -312,6 +322,8 @@ async def create_and_process_project(
         context_locked=False,
         status=ProjectStatus.active,
         scan_depth=scan_depth,
+        custom_ignore_patterns=apply_global_blocklist_to_project_payload(db),
+        ignore_paths=apply_global_blocklist_as_ignore_paths(db),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )

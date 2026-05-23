@@ -7,6 +7,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Spinner } from '@/components/ui';
 import { Dialog, DialogFooter } from './Dialog';
 import { Button } from './Button';
 import { projectsApi } from '@/lib/api';
@@ -210,7 +211,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
       <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[400px] overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <Spinner size="lg" />
           </div>
         ) : error ? (
           <div className="p-4 text-center">

@@ -86,7 +86,7 @@ function getProviderFromModel(model: string): string {
   if (model.includes('claude') || model.includes('haiku') || model.includes('sonnet') || model.includes('opus')) return 'anthropic';
   if (model.includes('gpt')) return 'openai';
   if (model.includes('gemini')) return 'google';
-  return 'claudio';
+  return 'claudius';
 }
 
 // ── Custom node & edge types (matching Operations tab) ──────────────────
@@ -288,7 +288,7 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
           description: phase.description,
           model: model,
           modelShort: phase.hasAI ? getModelShort(model) : 'Local',
-          provider: phase.hasAI ? provider : 'claudio',
+          provider: phase.hasAI ? provider : 'claudius',
           maxTokens: cfg.max_tokens || 0,
           concurrency: cfg.concurrency || 1,
           score: lastRunScores[phase.key] ?? null,

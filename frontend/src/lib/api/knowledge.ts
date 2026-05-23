@@ -324,7 +324,7 @@ export const ragApi = {
   enrichmentStatus: (projectId: string) =>
     request<any>(`/api/v1/projects/${projectId}/rag/enrichment-status`),
 
-  // PROMPT #260 - Deep Pipeline (7-phase via Claudio)
+  // PROMPT #260 - Deep Pipeline (7-phase via Claudius)
   deepPipeline: (projectId: string, profile?: string) =>
     request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline${profile ? '?profile=' + encodeURIComponent(profile) : ''}`, {
       method: 'POST',

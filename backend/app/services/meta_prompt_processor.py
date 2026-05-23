@@ -19,13 +19,6 @@ from app.models.task import Task, ItemType, PriorityLevel, TaskStatus
 from app.models.interview import Interview
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
-# PROMPT #164 - PrompterFacade is deprecated, graceful fallback to AIOrchestrator
-try:
-    from app.prompter.facade import PrompterFacade
-    PROMPTER_AVAILABLE = True
-except ImportError:
-    PROMPTER_AVAILABLE = False
-    PrompterFacade = None
 # PROMPT #103 - External prompts support
 from app.prompts import get_prompt_service
 
@@ -45,14 +38,7 @@ class MetaPromptProcessor:
 
     def __init__(self, db: Session):
         self.db = db
-        # PROMPT #164 - PrompterFacade deprecated, graceful fallback
-        if PROMPTER_AVAILABLE and PrompterFacade:
-            try:
-                self.prompter = PrompterFacade(db)
-            except RuntimeError:
-                self.prompter = None
-        else:
-            self.prompter = None
+        # PROMPT #164 - PrompterFacade removed; orchestrator handles caching/RAG
         self.orchestrator = AIOrchestrator(db)
         # PROMPT #103 - Use PromptService for external prompts
         self.prompt_service = get_prompt_service(db)
@@ -339,30 +325,20 @@ class MetaPromptProcessor:
         logger.info("🤖 Calling AI to generate complete hierarchy...")
 
         try:
-            if self.prompter:
-                result = await self.prompter.execute_prompt(
-                    prompt=user_prompt,
-                    usage_type="prompt_generation",
-                    system_prompt=system_prompt,
-                    project_id=str(project.id),
-                    interview_id=str(interview_id),
-                    metadata={"operation": "generate_hierarchy_from_meta_prompt"}
-                )
-            else:
-                result = await self.orchestrator.execute(
-                    usage_type="prompt_generation",
-                    messages=[{"role": "user", "content": user_prompt}],
-                    system_prompt=system_prompt,
-                    project_id=project.id,
-                    interview_id=interview_id,
-                    metadata={"operation": "generate_hierarchy_from_meta_prompt"}
-                )
-                result = {
-                    "response": result["content"],
-                    "model": result.get("db_model_name", "unknown"),
-                    "input_tokens": result.get("usage", {}).get("input_tokens", 0),
-                    "output_tokens": result.get("usage", {}).get("output_tokens", 0)
-                }
+            orch_result = await self.orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                project_id=project.id,
+                interview_id=interview_id,
+                metadata={"operation": "generate_hierarchy_from_meta_prompt"}
+            )
+            result = {
+                "response": orch_result["content"],
+                "model": orch_result.get("db_model_name", "unknown"),
+                "input_tokens": orch_result.get("usage", {}).get("input_tokens", 0),
+                "output_tokens": orch_result.get("usage", {}).get("output_tokens", 0),
+            }
         except Exception as e:
             logger.error(f"❌ AI call failed: {e}", exc_info=True)
             raise ValueError(f"Falha ao gerar hierarquia: {str(e)}")

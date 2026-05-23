@@ -7,6 +7,7 @@
  */
 
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
+import { Spinner } from '@/components/ui';
 import { BlockingAnalytics } from '@/lib/types';
 
 interface AnalyticsTabProps {

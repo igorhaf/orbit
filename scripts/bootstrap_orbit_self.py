@@ -919,7 +919,7 @@ system_prompt, user_prompt = loader.render(
 - Cria wiki pages a partir do conhecimento extraído
 - Enriquece com linking semântico
 
-## Deep Pipeline (7 Fases via Claudio)
+## Deep Pipeline (7 Fases via Claudius)
 
 O Deep Pipeline (PROMPT #260) executa todas as 4 fases básicas mais 3 fases avançadas:
 - Análise arquitetural completa

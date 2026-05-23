@@ -7,7 +7,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Badge } from '@/components/ui';
+import {  Card, CardHeader, CardTitle, CardContent, Button, Input, Badge , Spinner } from '@/components/ui';
 import { Plus, Edit, Trash2, X, FileCode, Database, Layout as LayoutIcon, Palette, RefreshCw } from 'lucide-react';
 import { useNotification } from '@/hooks';
 
@@ -459,7 +459,7 @@ export function ProjectSpecsList({ projectId }: Props) {
       {loading ? (
         <div className="flex items-center justify-center h-48">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3"></div>
+            <Spinner size="lg" />
             <p className="text-gray-600 text-sm">Carregando specs...</p>
           </div>
         </div>

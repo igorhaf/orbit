@@ -1,5 +1,5 @@
 """
-Deep Pipeline Service - 7-Phase Sequential Pipeline via Claudio
+Deep Pipeline Service - 7-Phase Sequential Pipeline via Claudius
 
 Orchestrates the complete deep analysis of a codebase:
   Phase 0: Structural scan (filesystem, no AI)
@@ -26,9 +26,9 @@ from app.models.pipeline_artifact import PipelineArtifact, ArtifactType
 from app.models.pipeline_profile import PipelineProfile
 from app.models.pipeline_run import PipelineRun
 from app.models.project import Project
-from app.services.claudio_pipeline import (
-    ClaudioPipelineService,
-    ClaudioPipelineError,
+from app.services.claudius_pipeline import (
+    ClaudiusPipelineService,
+    ClaudiusPipelineError,
     MODEL_HAIKU,
     MODEL_SONNET,
     MODEL_OPUS,
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsMixin):
-    """Orchestrates the 7-phase deep pipeline using Claudio or Ollama."""
+    """Orchestrates the 7-phase deep pipeline using Claudius or Ollama."""
 
     def __init__(self, db: Session, profile_name: str = None):
         self.db = db
@@ -52,13 +52,13 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
         self._profile = self._load_profile(profile_name)
         self._phase_configs = self._profile.phase_configs if self._profile else {}
 
-        # ── Provider dispatch: profile determines Claudio vs Ollama ────
+        # ── Provider dispatch: profile determines Claudius vs Ollama ────
         self._provider = self._detect_provider()
         if self._provider == "ollama":
             from app.services.ollama_pipeline import OllamaPipelineService
-            self.claudio = OllamaPipelineService()
+            self.claudius = OllamaPipelineService()
         else:
-            self.claudio = ClaudioPipelineService()
+            self.claudius = ClaudiusPipelineService(db=db, default_usage_type="content_generation")
 
         # ── PROMPT #237: Pipeline telemetry ────
         self._console = get_console_logger()
@@ -85,7 +85,7 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
         for phase_key, cfg in self._phase_configs.items():
             if isinstance(cfg, dict) and cfg.get("provider") == "ollama":
                 return "ollama"
-        return "claudio"
+        return "claudius"
 
     def _load_profile(self, profile_name: str = None) -> Optional[PipelineProfile]:
         """Load a named profile or the default one."""
@@ -127,7 +127,7 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
         return self._get_phase_config(phase_key, "enabled", True)
 
     def _ollama_kwargs(self, phase_key: str) -> dict:
-        """Build Ollama-specific kwargs for a phase call. Empty dict for Claudio."""
+        """Build Ollama-specific kwargs for a phase call. Empty dict for Claudius."""
         if self._provider != "ollama":
             return {}
         return {
@@ -233,16 +233,16 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
                 except Exception:
                     pass
 
-        # Check AI service health (Claudio or Ollama)
-        healthy = await self.claudio.health_check()
+        # Check AI service health (Claudius or Ollama)
+        healthy = await self.claudius.health_check()
         if not healthy:
-            svc_name = "Ollama" if self._provider == "ollama" else "Claudio"
+            svc_name = "Ollama" if self._provider == "ollama" else "Claudius"
             pipeline_run.status = "failed"
-            pipeline_run.error = f"{svc_name} not reachable at {self.claudio.base_url}"
+            pipeline_run.error = f"{svc_name} not reachable at {self.claudius.base_url}"
             pipeline_run.completed_at = datetime.utcnow()
             self.db.commit()
-            raise ClaudioPipelineError(
-                f"{svc_name} is not reachable at {self.claudio.base_url}. Start it first."
+            raise ClaudiusPipelineError(
+                f"{svc_name} is not reachable at {self.claudius.base_url}. Start it first."
             )
 
         results = {}
@@ -273,6 +273,23 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
             pipeline_run.estimated_cost_usd = self._run_cost
             self.db.commit()
 
+        def _cleanup_partial_phase(phase_num: int):
+            """Remove escritas parciais da mesma run_id ao retomar uma fase que foi interrompida.
+            Evita duplicatas quando fase parcial (ex: 3 epics de 5) precisa ser re-executada."""
+            from app.models.task import Task
+            from app.models.wiki_page import WikiPage
+            if phase_num in (1, 2):
+                self.db.query(PipelineArtifact).filter(
+                    PipelineArtifact.run_id == run_id,
+                    PipelineArtifact.phase == phase_num,
+                ).delete(synchronize_session=False)
+            elif phase_num == 4:
+                self.db.query(Task).filter(Task.pipeline_run_id == run_id).delete(synchronize_session=False)
+            elif phase_num == 5:
+                self.db.query(WikiPage).filter(WikiPage.pipeline_run_id == run_id).delete(synchronize_session=False)
+            self.db.commit()
+            logger.info(f"Cleanup parcial fase {phase_num} concluido para run {run_id}")
+
         try:
             # Phase 0: Structural Scan (0-5%)
             # Always re-run phase 0 (fast, no AI)
@@ -289,6 +306,8 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
 
             # Phase 1: Per-file Analysis (5-25%)
             if resume_from_phase <= 1:
+                if resume_from_phase == 1:
+                    _cleanup_partial_phase(1)
                 t0 = _phase_timer()
                 model_1 = self._get_model("phase_1", MODEL_HAIKU)
                 await _progress(1, 0, f"Analisando {len(file_inventory)} arquivos com {self._model_label(model_1)}...")
@@ -314,6 +333,8 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
 
             # Phase 2: Cross-file Rule Synthesis (25-40%)
             if resume_from_phase <= 2:
+                if resume_from_phase == 2:
+                    _cleanup_partial_phase(2)
                 t0 = _phase_timer()
                 model_2 = self._get_model("phase_2", MODEL_SONNET)
                 await _progress(2, 0, f"Sintetizando regras cross-file com {self._model_label(model_2)}...")
@@ -371,6 +392,8 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
 
             # Phase 4: Card Generation (45-70%)
             if resume_from_phase <= 4:
+                if resume_from_phase == 4:
+                    _cleanup_partial_phase(4)
                 t0 = _phase_timer()
                 await _progress(4, 0, "Gerando cards hierarquicos...")
                 card_stats = await self._phase4_card_generation(
@@ -389,6 +412,8 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
 
             # Phase 5: Wiki Generation (70-85%)
             if resume_from_phase <= 5:
+                if resume_from_phase == 5:
+                    _cleanup_partial_phase(5)
                 t0 = _phase_timer()
                 await _progress(5, 0, "Gerando wiki...")
                 wiki_stats = await self._phase5_wiki_generation(
@@ -524,7 +549,7 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
                 self.db.rollback()
             raise
         finally:
-            await self.claudio.close()
+            await self.claudius.close()
 
         # Clear checkpoint on successful completion
         pipeline_run.checkpoint_state = None

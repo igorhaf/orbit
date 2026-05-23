@@ -806,7 +806,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 >
                   {isApproving ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      <Spinner size="sm" />
                       Ativando...
                     </>
                   ) : (
@@ -826,7 +826,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 >
                   {isRejecting ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      <Spinner size="sm" />
                       Rejeitando...
                     </>
                   ) : (
@@ -883,7 +883,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         <div className={`${isInInterviewChat ? 'p-4 pt-2 flex-1 flex flex-col overflow-hidden' : 'p-6'}`}>
           {loading && (
             <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <Spinner size="lg" />
             </div>
           )}
 

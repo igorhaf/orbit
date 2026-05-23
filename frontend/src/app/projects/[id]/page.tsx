@@ -10,6 +10,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';  // PRO
 import Link from 'next/link';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Button, Badge, Dialog, DialogFooter } from '@/components/ui';
+import { Spinner } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
@@ -22,13 +23,14 @@ import { ProjectChatPanel } from '@/components/chat/ProjectChatPanel';  // PROMP
 import RagTab from './RagTab';  // PROMPT #232 - Extracted tab sub-component
 import AnalyticsTab from './AnalyticsTab';  // PROMPT #232 - Extracted tab sub-component
 import OverviewTab from './OverviewTab';  // PROMPT #232 - Extracted tab sub-component
+import GraphifyTab from './GraphifyTab';
 import PipelineMonitor from '@/components/pipeline/PipelineMonitor';  // PROMPT #237 - Pipeline telemetry
 import { projectsApi, tasksApi, ragApi, knowledgeApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification, useJobPolling } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 
-type Tab = 'overview' | 'backlog' | 'kanban' | 'queue' | 'wiki' | 'chat' | 'specs' | 'commits' | 'rag' | 'analytics';
+type Tab = 'overview' | 'backlog' | 'kanban' | 'queue' | 'wiki' | 'chat' | 'specs' | 'commits' | 'rag' | 'analytics' | 'graphify';
 type OverviewSubTab = 'description' | 'statistics' | 'settings';
 
 export default function ProjectDetailsPage() {
@@ -39,7 +41,7 @@ export default function ProjectDetailsPage() {
   const { showError, showSuccess, NotificationComponent } = useNotification();
   const { addJob, activeJobs: notifActiveJobs, notifications: notifCompleted } = useNotifications();
 
-  const validTabs: Tab[] = ['overview', 'backlog', 'kanban', 'queue', 'wiki', 'chat', 'specs', 'commits', 'rag', 'analytics'];
+  const validTabs: Tab[] = ['overview', 'backlog', 'kanban', 'queue', 'wiki', 'chat', 'specs', 'commits', 'rag', 'analytics', 'graphify'];
   const tabParam = searchParams.get('tab') as Tab | null;
   const initialTab = tabParam && validTabs.includes(tabParam) ? tabParam : 'overview';
 
@@ -159,8 +161,12 @@ export default function ProjectDetailsPage() {
   // Track when phases are locally triggered to prevent stale poll overrides
   const phaseTriggeredAt = useRef<Record<string, number>>({});
 
-  // PROMPT #260 - Deep Pipeline (7-phase via Claudio)
-  const [deepPipelineRunning, setDeepPipelineRunning] = useState(false);
+  // PROMPT #260 - Deep Pipeline (7-phase via Claudius)
+  // Inicializa a partir de notifActiveJobs (que persiste atraves de navegacao) pra evitar flicker do botao
+  const _hasActiveDeepPipeline = (notifActiveJobs || []).some(
+    (j: any) => j.project_id === projectId && j.job_type === 'deep_pipeline' && (j.status === 'running' || j.status === 'pending')
+  );
+  const [deepPipelineRunning, setDeepPipelineRunning] = useState(_hasActiveDeepPipeline);
   const [deepPipelineCompleted, setDeepPipelineCompleted] = useState(false);
   const [deepPipelineInterrupted, setDeepPipelineInterrupted] = useState(false);
   const [deepPipelineError, setDeepPipelineError] = useState<string | null>(null);
@@ -361,6 +367,21 @@ export default function ProjectDetailsPage() {
     }
     notifCompletedLenRef.current = notifCompleted.length;
   }, [notifCompleted, projectId, loadProjectData]);
+
+  // Sincroniza deepPipelineRunning a partir de notifActiveJobs (cobre navegacao entre paginas)
+  useEffect(() => {
+    const active = (notifActiveJobs || []).some(
+      (j: any) => j.project_id === projectId && j.job_type === 'deep_pipeline' && (j.status === 'running' || j.status === 'pending')
+    );
+    if (active && !deepPipelineRunning) {
+      setDeepPipelineRunning(true);
+    } else if (!active && deepPipelineRunning) {
+      // confirma com o backend antes de desligar (evita race no WebSocket)
+      ragApi.enrichmentStatus(projectId).then((status: any) => {
+        if (!status.deep_pipeline_running) setDeepPipelineRunning(false);
+      }).catch(() => {});
+    }
+  }, [notifActiveJobs, projectId, deepPipelineRunning]);
 
   // Also react to active job progress for this project (WebSocket-driven)
   const prevActiveCountRef = useRef(0);
@@ -791,7 +812,7 @@ export default function ProjectDetailsPage() {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <Spinner size="xl" />
         </div>
       </Layout>
     );
@@ -859,7 +880,7 @@ export default function ProjectDetailsPage() {
                   disabled={isSavingTitle}
                 />
                 {isSavingTitle && (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+                  <Spinner size="md" />
                 )}
               </div>
             ) : (
@@ -937,7 +958,7 @@ export default function ProjectDetailsPage() {
         {/* PROMPT #260/#263 - Deep Pipeline button + AI Studio links */}
         {!loading && (
           <div className="bg-white border border-gray-200 rounded-lg px-6 py-5">
-            {/* PROMPT #260 - Deep Pipeline (7-phase via Claudio) */}
+            {/* PROMPT #260 - Deep Pipeline (7-phase via Claudius) */}
             {/* PROMPT #263 - Profile selector + AI Studio links */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -949,7 +970,7 @@ export default function ProjectDetailsPage() {
                         setDeepPipelineRunning(true);
                         setDeepPipelineProgress('Iniciando...');
                         await ragApi.deepPipeline(projectId, selectedPipelineProfile || undefined);
-                        showSuccess(`Deep Pipeline iniciado (perfil: ${selectedPipelineProfile || 'default'})`);
+                        // sem modal de sucesso — botao + PipelineMonitor ja indicam progresso
                       } catch (err: any) {
                         setDeepPipelineRunning(false);
                         setDeepPipelineProgress(null);
@@ -963,7 +984,7 @@ export default function ProjectDetailsPage() {
                         ? 'bg-purple-50 text-purple-700 border border-purple-300 hover:bg-purple-100'
                         : 'bg-purple-600 text-white hover:bg-purple-700'
                     }`}
-                    title="Executa pipeline completo de 7 fases usando Claudio"
+                    title="Executa pipeline completo de 7 fases usando Claudius"
                   >
                     {deepPipelineRunning ? (
                       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1099,6 +1120,7 @@ export default function ProjectDetailsPage() {
                   { id: 'commits', label: 'Commits', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg> },
                   { id: 'rag', label: 'RAG', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> },
                   { id: 'analytics', label: 'Bloqueio', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
+                  { id: 'graphify', label: 'Graphify', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> },
                 ],
               },
             ].map((group, groupIdx) => (
@@ -1267,6 +1289,10 @@ export default function ProjectDetailsPage() {
             analyticsDays={analyticsDays}
             setAnalyticsDays={setAnalyticsDays}
           />
+        )}
+
+        {activeTab === 'graphify' && project && (
+          <GraphifyTab projectId={projectId} projectCodePath={project.code_path} />
         )}
 
         {/* PROMPT #232 - Extracted to OverviewTab sub-component */}

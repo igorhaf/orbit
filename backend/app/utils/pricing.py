@@ -29,9 +29,9 @@ MODEL_PRICING = {
     "claude-haiku-4": (1.00, 5.00),
     "claude-opus-4": (5.00, 25.00),
 
-    # Claudio local proxy (PROMPT #246 - no cost, local inference)
+    # Claudius local proxy (PROMPT #246 - no cost, local inference)
     "claude-sonnet-4-6": (0.00, 0.00),
-    "claude-opus-4-6": (0.00, 0.00),
+    "claude-opus-4-7": (0.00, 0.00),
     "claude-haiku-4-5": (0.00, 0.00),
 
     # OpenAI models
