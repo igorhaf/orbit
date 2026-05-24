@@ -24,6 +24,7 @@ from app.models.task import Task, ItemType, TaskStatus
 from app.models.wiki_page import WikiPage
 from app.services.claudius_pipeline import (
     ClaudiusPipelineError,
+    ClaudiusQuotaExhaustedError,
     MODEL_HAIKU,
     MODEL_SONNET,
     MODEL_OPUS,
@@ -521,6 +522,8 @@ class Phase4to7Mixin:
                         for page in pages_data.get("pages", []):
                             self._write_wiki_page(wiki_dir, page, project_id=project.id, run_id=run_id)
                             stats["total_pages"] += 1
+                except ClaudiusQuotaExhaustedError:
+                    raise
                 except ClaudiusPipelineError as e:
                     logger.warning(f"Phase 5d: Failed to generate flow page: {e}")
         else:

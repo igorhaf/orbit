@@ -21,6 +21,7 @@ from app.models.pipeline_run import PipelineRun
 from app.models.project import Project
 from app.services.claudius_pipeline import (
     ClaudiusPipelineError,
+    ClaudiusQuotaExhaustedError,
     MODEL_HAIKU,
     MODEL_SONNET,
 )
@@ -320,9 +321,15 @@ class Phase0to3Mixin:
         semaphore: asyncio.Semaphore,
         progress_state: Dict,
         progress_cb: Any,
+        quota_state: Dict | None = None,
     ) -> tuple[str, Dict | None]:
         """Synthesize rules for a single domain. Returns (domain, result_dict | None)."""
         async with semaphore:
+            # Abort early se outro coro ja detectou cota
+            if quota_state and quota_state.get("hit"):
+                raise quota_state.get("error") or ClaudiusQuotaExhaustedError(
+                    "Phase 2: cota detectada em outro dominio, abortando"
+                )
             session_key = f"pipeline:{project.id}:phase2:domain:{domain.lower().replace(' ', '_')}"
 
             # Prepare analyses summary (remove full content to save tokens)
@@ -387,6 +394,16 @@ class Phase0to3Mixin:
 
                 await self.claudius.delete_session(session_key)
 
+            except ClaudiusQuotaExhaustedError as e:
+                # Cota da assinatura Claude esgotada -- sinalizar outros coros e abortar
+                if quota_state is not None:
+                    quota_state["hit"] = True
+                    quota_state["error"] = e
+                try:
+                    await self.claudius.delete_session(session_key)
+                except Exception:
+                    pass
+                raise
             except ClaudiusPipelineError as e:
                 logger.error(f"Phase 2: Failed to synthesize domain '{domain}': {e}")
                 try:
@@ -435,12 +452,17 @@ class Phase0to3Mixin:
 
         semaphore = asyncio.Semaphore(p2_concurrency)
         progress_state = {"done": 0, "total": len(valid_domains)}
+        # Shared flag: se qualquer coro detectar cota, abortar restantes imediatamente
+        quota_state = {"hit": False, "error": None}
 
         tasks = [
-            self._synthesize_domain(
-                domain, analyses, project, run_id,
-                p2_model, p2_max_tokens, p2_multi_turn_threshold,
-                semaphore, progress_state, progress_cb,
+            asyncio.create_task(
+                self._synthesize_domain(
+                    domain, analyses, project, run_id,
+                    p2_model, p2_max_tokens, p2_multi_turn_threshold,
+                    semaphore, progress_state, progress_cb,
+                    quota_state,
+                )
             )
             for domain, analyses in valid_domains.items()
         ]
@@ -449,6 +471,10 @@ class Phase0to3Mixin:
 
         domain_rules = {}
         for item in results:
+            if isinstance(item, ClaudiusQuotaExhaustedError):
+                quota_state["hit"] = True
+                quota_state["error"] = item
+                continue
             if isinstance(item, Exception):
                 logger.error(f"Phase 2: domain task raised exception: {item}")
                 continue
@@ -467,6 +493,13 @@ class Phase0to3Mixin:
 
         self.db.commit()
         logger.info(f"Phase 2: Synthesized rules for {len(domain_rules)}/{len(valid_domains)} domains")
+
+        # Se cota esgotou, abortar pipeline em vez de prosseguir pra Fase 3 com dados parciais
+        if quota_state["hit"]:
+            raise quota_state["error"] or ClaudiusQuotaExhaustedError(
+                f"Phase 2: cota Claude esgotada apos {len(domain_rules)}/{len(valid_domains)} dominios"
+            )
+
         return domain_rules
 
     # =========================================================================
@@ -546,6 +579,12 @@ class Phase0to3Mixin:
         )
 
         arch_map = self.claudius.extract_json(result.get("text", "")) or {}
+
+        # Guarda: arch_map vazio sinaliza cota/falha upstream que escapou detecao
+        if not arch_map or not isinstance(arch_map, dict) or len(arch_map) == 0:
+            raise ClaudiusPipelineError(
+                "Phase 3: architectural_map vazio -- possivel cota Claude esgotada ou JSON invalido na resposta"
+            )
 
         # Store artifact
         artifact = PipelineArtifact(

@@ -24,7 +24,7 @@
 ## Key Features
 
 - **Deep Pipeline**: 7-phase codebase analysis (scan, file analysis, rule synthesis, architecture map, card generation, wiki generation, QA)
-- **Multi-Provider AI**: Anthropic, OpenAI, Google, Ollama, and Claudio proxy with automatic fallback
+- **Multi-Provider AI**: Anthropic, OpenAI, Google, Ollama, and Claudius proxy with automatic fallback
 - **Interview System**: Conversational AI for requirements capture with context-aware questions
 - **Backlog Generation**: Automatic Epic > Story > Task hierarchy from interviews or codebase analysis
 - **RAG Knowledge Base**: Semantic search with pgvector embeddings for context-enriched AI responses

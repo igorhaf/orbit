@@ -10,7 +10,7 @@ ORBIT manages multiple AI providers through a centralized orchestrator that hand
 | OpenAI | GPT-4o, GPT-4 Turbo | Alternative provider |
 | Google | Gemini 1.5 Pro, Flash | Alternative provider |
 | Ollama | Local models | Free, offline usage |
-| Claudio | Proxy to Anthropic | Pipeline operations |
+| Claudius | Proxy to Anthropic | Pipeline operations |
 
 ## Usage Types
 

@@ -8,8 +8,8 @@
 | `SECRET_KEY` | — | Application secret |
 | `REDIS_HOST` | `redis` | Redis hostname |
 | `REDIS_PORT` | `6379` | Redis port |
-| `CLAUDIO_BASE_URL` | `http://localhost:8001` | Claudio proxy URL |
-| `CLAUDIO_API_KEY` | `123456789` | Claudio API key |
+| `CLAUDIUS_BASE_URL` | `http://localhost:8001` | Claudius proxy URL |
+| `CLAUDIUS_API_KEY` | `123456789` | Claudius API key |
 
 **Important**: AI provider API keys are stored in the database (`ai_models` table), never in `.env`.
 
@@ -24,7 +24,7 @@ Configure per-phase settings in the `pipeline_profiles` table:
     "max_tokens": 1500,
     "concurrency": 5,
     "enabled": true,
-    "provider": "claudio"
+    "provider": "claudius"
   },
   "phase_2": {
     "model": "claude-sonnet-4-6",

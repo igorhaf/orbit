@@ -27,7 +27,7 @@ Profiles configure per-phase settings (stored in `pipeline_profiles` table):
 - **concurrency**: Parallel workers
 - **enabled**: Skip phase if false
 - **thinking_budget**: Extended thinking tokens (phases 3, 6)
-- **provider**: "claudio" or "ollama"
+- **provider**: "claudius" or "ollama"
 
 ## Resume on Failure
 
@@ -68,14 +68,14 @@ Stored in `pipeline_runs` table and broadcast via WebSocket for real-time monito
 
 1. Navigate to your project page
 2. Click **"Deep Pipeline"** button
-3. Select a profile (default: "claudio")
+3. Select a profile (default: "claudius")
 4. Monitor progress in the Pipeline Monitor component
 5. If interrupted, click **"Continuar Pipeline"** to resume
 
 ## API Endpoints
 
 ```
-POST /api/v1/projects/{id}/rag/deep-pipeline?profile=claudio
+POST /api/v1/projects/{id}/rag/deep-pipeline?profile=claudius
 GET  /api/v1/projects/{id}/rag/pipeline-live
 GET  /api/v1/projects/{id}/rag/pipeline-runs
 ```

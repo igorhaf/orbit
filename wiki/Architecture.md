@@ -77,7 +77,7 @@ Background processing uses a priority-based async executor:
 | `continuous_rag_service` | Continuous knowledge evolution |
 | `wiki_service` | Wiki page management |
 | `job_executor` | Priority async job execution |
-| `claudio_pipeline` | HTTP client for Claudio AI proxy |
+| `claudius_pipeline` | HTTP client for Claudius AI proxy |
 
 ## Infrastructure
 
@@ -86,4 +86,4 @@ Background processing uses a priority-based async executor:
 | PostgreSQL | Primary database with pgvector extension |
 | Redis | Response caching, pipeline live state |
 | Ollama | Local AI model execution (optional) |
-| Claudio | AI proxy service on port 8001 |
+| Claudius | AI proxy service on port 8001 |
