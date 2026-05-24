@@ -60,3 +60,34 @@ async def quota_set_tier(payload: dict = Body(...)):
         return await client.quota_set_tier(tier)
     finally:
         await client.close()
+
+
+@router.post("/claudius/quota/scan-now")
+async def quota_scan_now():
+    """Force refresh of the JSONL scanner (~/.claude/projects)."""
+    client = ClaudiusPipelineService()
+    try:
+        return await client.quota_scan_now()
+    finally:
+        await client.close()
+
+
+@router.post("/claudius/quota/plan")
+async def quota_plan(payload: dict = Body(...)):
+    """Estimate a Deep Pipeline run's cost against current quota.
+
+    Body: { project_meta: {n_files, n_domains?, n_epics?},
+            mode: 'aggressive'|'balanced'|'conservative',
+            profile?: {...} }
+    """
+    payload = payload or {}
+    mode = (payload.get("mode") or "balanced").lower()
+    if mode not in ("aggressive", "balanced", "conservative"):
+        raise HTTPException(status_code=400, detail="mode must be: aggressive | balanced | conservative")
+    project_meta = payload.get("project_meta") or {}
+    profile = payload.get("profile")
+    client = ClaudiusPipelineService()
+    try:
+        return await client.quota_plan(project_meta, mode=mode, profile=profile)
+    finally:
+        await client.close()

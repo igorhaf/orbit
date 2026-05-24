@@ -481,6 +481,36 @@ class ClaudiusPipelineService:
         except Exception as e:
             return {"error": str(e)[:200]}
 
+    async def quota_scan_now(self) -> dict:
+        """Force refresh: claudius re-scans ~/.claude/projects jsonl files."""
+        try:
+            client = await self._get_client()
+            response = await client.post(
+                "/api/quota/scan-now",
+                timeout=httpx.Timeout(15.0, connect=5.0),
+            )
+            return response.json()
+        except Exception as e:
+            return {"error": str(e)[:200]}
+
+    async def quota_plan(self, project_meta: dict, mode: str = "balanced",
+                         profile: dict | None = None) -> dict:
+        """Ask claudius to estimate a Deep Pipeline cost vs remaining quota."""
+        try:
+            client = await self._get_client()
+            payload = {"project_meta": project_meta, "mode": mode}
+            if profile:
+                payload["profile"] = profile
+            response = await client.post(
+                "/api/quota/plan",
+                json=payload,
+                timeout=httpx.Timeout(15.0, connect=5.0),
+            )
+            return response.json()
+        except Exception as e:
+            logger.warning(f"quota_plan failed: {e}")
+            return {"error": str(e)[:200], "recommendation": "proceed", "fits": True}
+
     async def quota_probe(self) -> dict:
         """Ping Claude com prompt minimo pra detectar se cota esta disponivel.
 

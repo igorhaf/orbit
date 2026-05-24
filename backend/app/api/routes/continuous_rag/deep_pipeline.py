@@ -19,6 +19,40 @@ from app.services.job_manager import JobManager
 router = APIRouter()
 
 
+def _estimate_project_meta(db: Session, project: Project) -> dict:
+    """Quick filesystem scan + existing-artifact lookups to feed quota planner."""
+    import os
+    n_files = 0
+    try:
+        if project.code_path and os.path.isdir(project.code_path):
+            for root, dirs, files in os.walk(project.code_path):
+                # Skip heavy dirs early
+                dirs[:] = [d for d in dirs if d not in (
+                    "node_modules", ".git", "vendor", "venv", ".venv",
+                    "__pycache__", "dist", "build", ".next",
+                )]
+                for f in files:
+                    ext = os.path.splitext(f)[1].lower()
+                    if ext in (".py", ".ts", ".tsx", ".js", ".jsx", ".go",
+                              ".rs", ".rb", ".php", ".java", ".kt", ".swift"):
+                        n_files += 1
+                if n_files > 2000:
+                    break
+    except Exception:
+        n_files = 50  # fallback default
+    # n_domains: use prior pipeline artifact count if exists
+    n_domains = 0
+    try:
+        from app.models.pipeline_artifact import PipelineArtifact
+        n_domains = db.query(PipelineArtifact).filter(
+            PipelineArtifact.project_id == project.id,
+            PipelineArtifact.phase == 2,
+        ).count()
+    except Exception:
+        pass
+    return {"n_files": max(1, n_files), "n_domains": n_domains}
+
+
 def _profile_to_dict(p):
     """Helper to serialize a PipelineProfile to dict."""
     return {
@@ -38,6 +72,8 @@ async def trigger_deep_pipeline(
     project_id: UUID,
     background_tasks: BackgroundTasks,
     profile: Optional[str] = None,
+    mode: Optional[str] = "balanced",
+    force: bool = False,
     db: Session = Depends(get_db),
 ):
     """
@@ -46,14 +82,50 @@ async def trigger_deep_pipeline(
     Architectural Map (Sonnet+Thinking) -> Cards (Opus/Sonnet/Haiku) ->
     Wiki (Opus) -> QA (Sonnet+Thinking) -> Gap Fill (conditional).
 
-    Optional query param `profile`: name of the pipeline profile to use.
-    Default: 'economy' (unico perfil ativo).
+    Optional query params:
+      - profile: name of the pipeline profile to use (default: 'economy')
+      - mode: 'aggressive' | 'balanced' (default) | 'conservative'
+              Drives quota validation; ignored when force=true.
+      - force: skip quota pre-flight check and proceed anyway.
+
+    If mode != 'aggressive' and !force, checks /api/quota/plan first.
+    Returns HTTP 409 with plan body when quota is insufficient.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     if not project.code_path:
         raise HTTPException(status_code=400, detail="Projeto não tem code_path configurado")
+
+    # v2.4: quota pre-flight
+    mode = (mode or "balanced").lower()
+    if mode not in ("aggressive", "balanced", "conservative"):
+        mode = "balanced"
+    plan_result = None
+    if not force and mode != "aggressive":
+        try:
+            from app.services.claudius_pipeline import ClaudiusPipelineService
+            client = ClaudiusPipelineService()
+            try:
+                # Estimate project size from filesystem (cheap)
+                project_meta = _estimate_project_meta(db, project)
+                plan_result = await client.quota_plan(project_meta, mode=mode)
+            finally:
+                await client.close()
+            if plan_result and plan_result.get("recommendation") == "wait":
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "Cota Claude insuficiente pra rodar nesse modo agora",
+                        "plan": plan_result,
+                        "hint": "Use force=true pra disparar mesmo assim, ou aguarde o reset da janela.",
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # Quota check is best-effort. Never block on its failure.
+            pass
 
     # Check for existing running deep pipeline or legacy pipeline
     existing = db.query(AsyncJob).filter(
@@ -167,6 +239,8 @@ async def trigger_deep_pipeline(
         "status": "pending",
         "pipeline_version": "v2",
         "profile": profile_name or "default",
+        "mode": mode,
+        "quota_plan": plan_result,  # null if force=true or aggressive
     }
 
 

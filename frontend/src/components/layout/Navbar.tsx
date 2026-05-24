@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { NavbarQuotaBadge } from '@/components/ui/NavbarQuotaBadge';
+import { QuotaWindowChip } from '@/components/ui/QuotaWindowChip';
 
 const navigation = [
   { name: 'Projetos', href: '/' },
@@ -71,6 +72,7 @@ export const Navbar: React.FC = () => {
 
           {/* Right actions */}
           <div className="flex items-center gap-1 flex-shrink-0">
+            <QuotaWindowChip />
             <NavbarQuotaBadge />
             <NotificationBell />
 

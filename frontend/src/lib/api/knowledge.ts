@@ -325,10 +325,17 @@ export const ragApi = {
     request<any>(`/api/v1/projects/${projectId}/rag/enrichment-status`),
 
   // PROMPT #260 - Deep Pipeline (7-phase via Claudius)
-  deepPipeline: (projectId: string, profile?: string) =>
-    request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline${profile ? '?profile=' + encodeURIComponent(profile) : ''}`, {
+  // v2.4 — accepts mode + force for quota pre-flight
+  deepPipeline: (projectId: string, profile?: string, mode?: string, force?: boolean) => {
+    const params = new URLSearchParams();
+    if (profile) params.set('profile', profile);
+    if (mode) params.set('mode', mode);
+    if (force) params.set('force', 'true');
+    const qs = params.toString();
+    return request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline${qs ? '?' + qs : ''}`, {
       method: 'POST',
-    }),
+    });
+  },
 
   deepPipelineStatus: (projectId: string) =>
     request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline/status`),

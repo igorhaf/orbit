@@ -11,6 +11,8 @@ import Link from 'next/link';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Button, Badge, Dialog, DialogFooter } from '@/components/ui';
 import { Spinner } from '@/components/ui';
+import { PipelinePlanModal } from '@/components/ui/PipelinePlanModal';
+import type { PipelineMode } from '@/lib/api/claudius';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
@@ -174,6 +176,7 @@ export default function ProjectDetailsPage() {
   const [deepPipelineInterruptionReason, setDeepPipelineInterruptionReason] = useState<string | null>(null);
   const [deepPipelineQuotaResetsAt, setDeepPipelineQuotaResetsAt] = useState<string | null>(null);
   const [quotaProbing, setQuotaProbing] = useState(false);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
   const [deepPipelineProgress, setDeepPipelineProgress] = useState<string | null>(null);
   const [deepPipelineScore, setDeepPipelineScore] = useState<string | null>(null);
   // PROMPT #263 - Pipeline profile selector
@@ -970,18 +973,7 @@ export default function ProjectDetailsPage() {
                 <div className="flex items-center gap-3">
                   <button
                     disabled={deepPipelineRunning}
-                    onClick={async () => {
-                      try {
-                        setDeepPipelineRunning(true);
-                        setDeepPipelineProgress('Iniciando...');
-                        await ragApi.deepPipeline(projectId, selectedPipelineProfile || undefined);
-                        // sem modal de sucesso — botao + PipelineMonitor ja indicam progresso
-                      } catch (err: any) {
-                        setDeepPipelineRunning(false);
-                        setDeepPipelineProgress(null);
-                        showError(err?.message || 'Erro ao iniciar Deep Pipeline');
-                      }
-                    }}
+                    onClick={() => setPlanModalOpen(true)}
                     className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
                       deepPipelineRunning
                         ? 'bg-purple-50 text-purple-600 border border-purple-200 cursor-wait'
@@ -1480,6 +1472,29 @@ export default function ProjectDetailsPage() {
       </Dialog>
 
       {NotificationComponent}
+
+      {/* v2.4 — Pipeline plan modal (gates Deep Pipeline triggers) */}
+      <PipelinePlanModal
+        projectId={projectId}
+        projectName={project?.name}
+        projectMeta={{
+          n_files: codeStats?.total_documents || 0,
+          n_domains: 0,  // backend recomputes from existing artifacts
+        }}
+        isOpen={planModalOpen}
+        onClose={() => setPlanModalOpen(false)}
+        onConfirm={async (mode: PipelineMode, force: boolean) => {
+          try {
+            setDeepPipelineRunning(true);
+            setDeepPipelineProgress('Iniciando...');
+            await ragApi.deepPipeline(projectId, selectedPipelineProfile || undefined, mode, force);
+          } catch (err: any) {
+            setDeepPipelineRunning(false);
+            setDeepPipelineProgress(null);
+            showError(err?.message || 'Erro ao iniciar Deep Pipeline');
+          }
+        }}
+      />
     </Layout>
   );
 }

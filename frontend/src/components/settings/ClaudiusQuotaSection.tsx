@@ -160,9 +160,69 @@ export function ClaudiusQuotaSection() {
               </div>
             )}
 
+            {/* Time window progress (v2.4) */}
+            {snap.time_elapsed_pct != null && (
+              <div>
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Tempo decorrido (janela 5h)</span>
+                  <span className="font-medium tabular-nums">
+                    {snap.time_elapsed_pct.toFixed(0)}% · reseta {snap.cycle_resets_at ? new Date(snap.cycle_resets_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '?'}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                  <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.min(100, snap.time_elapsed_pct)}%` }} />
+                </div>
+              </div>
+            )}
+
+            {/* Input tokens (v2.4) */}
+            {snap.tokens_pct?.input != null && (
+              <div>
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Tokens input</span>
+                  <span className="font-medium tabular-nums">
+                    {(snap.tokens?.input ?? snap.tokens_input).toLocaleString()} / {(snap.tokens_limits?.input_5h ?? 0).toLocaleString()} ({snap.tokens_pct.input.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={
+                      snap.tokens_pct.input >= 80 ? 'h-full bg-red-500'
+                        : snap.tokens_pct.input >= 50 ? 'h-full bg-yellow-500'
+                        : 'h-full bg-emerald-500'
+                    }
+                    style={{ width: `${Math.min(100, snap.tokens_pct.input)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Output tokens (v2.4) */}
+            {snap.tokens_pct?.output != null && (
+              <div>
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Tokens output</span>
+                  <span className="font-medium tabular-nums">
+                    {(snap.tokens?.output ?? snap.tokens_output).toLocaleString()} / {(snap.tokens_limits?.output_5h ?? 0).toLocaleString()} ({snap.tokens_pct.output.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={
+                      snap.tokens_pct.output >= 80 ? 'h-full bg-red-500'
+                        : snap.tokens_pct.output >= 50 ? 'h-full bg-yellow-500'
+                        : 'h-full bg-emerald-500'
+                    }
+                    style={{ width: `${Math.min(100, snap.tokens_pct.output)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Prompts (legacy) */}
             <div>
               <div className="flex justify-between text-xs text-gray-600 mb-1">
-                <span>Prompts (janela 5h)</span>
+                <span>Prompts (janela)</span>
                 <span className="font-medium tabular-nums">{snap.prompts_used} / {snap.prompts_max} ({pct.toFixed(1)}%)</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
@@ -170,16 +230,18 @@ export function ClaudiusQuotaSection() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 bg-gray-50 rounded-md">
-                <p className="text-gray-500">Tokens entrada</p>
-                <p className="text-lg font-semibold text-gray-900 tabular-nums">{snap.tokens_input.toLocaleString()}</p>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-md">
-                <p className="text-gray-500">Tokens saída</p>
-                <p className="text-lg font-semibold text-gray-900 tabular-nums">{snap.tokens_output.toLocaleString()}</p>
-              </div>
-            </div>
+            {/* Cache reads (info-only, doesn't count) */}
+            {(snap.tokens?.cache_read ?? 0) > 0 && (
+              <p className="text-[11px] text-gray-400">
+                Cache reads: {(snap.tokens?.cache_read ?? 0).toLocaleString()} tokens (não contam contra o cap)
+              </p>
+            )}
+
+            {/* Source badge */}
+            <p className="text-[11px] text-gray-400">
+              Fonte: <span className="font-mono">{snap.source || 'desconhecida'}</span>
+              {snap.source === 'jsonl' && ' (compartilhado — vê outras sessões CLI)'}
+            </p>
 
             {probeResult && (
               <p className="text-xs px-3 py-2 bg-blue-50 border border-blue-200 rounded text-blue-900">{probeResult}</p>
