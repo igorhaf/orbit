@@ -28,28 +28,20 @@ const USAGE_TYPES = [
   { value: AIModelUsageType.GENERAL, label: 'Geral' },
 ];
 
-const PROVIDERS = [
-  { value: 'all', label: 'Todos os Provedores' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'google', label: 'Google' },
-  { value: 'ollama', label: 'Ollama' },
-];
+// v2.5: provider filter removed (claudius-only lockdown)
 
 export const ModelsList: React.FC<ModelsListProps> = ({ models, loading = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterProvider, setFilterProvider] = useState<string>('all');
   const [filterUsageType, setFilterUsageType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  // Filter models
+  // Filter models (v2.5: provider filter removed)
   const filteredModels = models.filter(model => {
     const matchesSearch = model.name
       .toLowerCase()
       .includes(searchTerm.toLowerCase());
 
-    const matchesProvider =
-      filterProvider === 'all' || model.provider === filterProvider;
+    const matchesProvider = true;
 
     const matchesUsageType =
       filterUsageType === 'all' || model.usage_type === filterUsageType;
@@ -88,14 +80,7 @@ export const ModelsList: React.FC<ModelsListProps> = ({ models, loading = false 
             </div>
           </div>
 
-          {/* Filter by Provider */}
-          <div className="w-full md:w-48">
-            <Select
-              value={filterProvider}
-              onChange={(e) => setFilterProvider(e.target.value)}
-              options={PROVIDERS}
-            />
-          </div>
+          {/* v2.5: provider filter removed (claudius-only lockdown) */}
 
           {/* Filter by Usage Type */}
           <div className="w-full md:w-48">
@@ -149,7 +134,7 @@ export const ModelsList: React.FC<ModelsListProps> = ({ models, loading = false 
             Nenhum modelo encontrado
           </h3>
           <p className="text-gray-600">
-            {searchTerm || filterProvider !== 'all' || filterUsageType !== 'all' || filterStatus !== 'all'
+            {searchTerm || filterUsageType !== 'all' || filterStatus !== 'all'
               ? 'Tente ajustar seus filtros'
               : 'Nenhum modelo de IA foi configurado ainda'}
           </p>

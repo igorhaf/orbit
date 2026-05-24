@@ -33,12 +33,9 @@ const USAGE_TYPE_COLORS: Record<AIModelUsageType, string> = {
   [AIModelUsageType.GENERAL]: 'bg-gray-100 text-gray-800',
 };
 
-// PROMPT #188 - Provider icons as React components
+// v2.5: claudius-only — single icon.
 const PROVIDER_ICON_COMPONENTS: Record<string, React.ReactNode> = {
-  anthropic: <IconCpu className="w-6 h-6" />,
-  openai: <IconBrain className="w-6 h-6" />,
-  google: <IconSearch className="w-6 h-6" />,
-  ollama: <IconCpu className="w-6 h-6" />,
+  claudius: <IconCpu className="w-6 h-6" />,
 };
 
 export const ModelCard: React.FC<ModelCardProps> = ({ model }) => {

@@ -21,11 +21,11 @@ interface ModelFormProps {
   onCancel?: () => void;
 }
 
-const PROVIDERS = [
-  { value: 'anthropic', label: 'Anthropic (Claude)' },
-  { value: 'openai', label: 'OpenAI (GPT)' },
-  { value: 'google', label: 'Google (Gemini)' },
-  { value: 'ollama', label: 'Ollama (Local)' },
+// v2.5: claudius-only lockdown — only Claude via the local Claudius proxy.
+const CLAUDE_MODELS = [
+  { value: 'claude-opus-4-7', label: 'Opus 4.7' },
+  { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { value: 'claude-haiku-4-5', label: 'Haiku 4.5' },
 ];
 
 const USAGE_TYPES = [
@@ -44,11 +44,11 @@ export const ModelForm: React.FC<ModelFormProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: model?.name || '',
-    provider: model?.provider || 'anthropic',
-    api_key: model?.api_key || '',
+    provider: 'claudius',  // v2.5: locked
+    api_key: model?.api_key || 'not-needed',
     usage_type: model?.usage_type || AIModelUsageType.GENERAL,
     is_active: model?.is_active ?? true,
-    config: model?.config || {},
+    config: model?.config || { model_id: 'claude-sonnet-4-6' },
   });
 
   // Update form data when model prop changes (e.g., when data loads)
@@ -157,14 +157,18 @@ export const ModelForm: React.FC<ModelFormProps> = ({
             </div>
 
             <div>
-              <Label htmlFor="provider">Provedor *</Label>
+              <Label htmlFor="model_id">Modelo Claude *</Label>
               <Select
-                id="provider"
-                value={formData.provider}
-                onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-                options={PROVIDERS}
+                id="model_id"
+                value={(formData.config as any)?.model_id || 'claude-sonnet-4-6'}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  config: { ...(formData.config as any || {}), model_id: e.target.value },
+                })}
+                options={CLAUDE_MODELS}
                 className="mt-1"
               />
+              <p className="text-xs text-gray-500 mt-1">v2.5: apenas Claude via Claudius.</p>
             </div>
 
             <div>

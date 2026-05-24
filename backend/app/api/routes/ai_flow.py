@@ -573,41 +573,7 @@ TEMPLATE_UTILITY_NODES = {
             "position": None,
         },
     ],
-    # PROMPT #289 - Nave profile: maximum quality, local-only, unlimited time
-    "nave": [
-        {
-            "id": "rag_context-tmpl-nave-1",
-            "type": "rag_context",
-            "label": "RAG Context",
-            "enabled": True,
-            "config": {"max_results": 5, "similarity_threshold": 0.7, "include_metadata": True},
-            "position": None,
-        },
-        {
-            "id": "timeout-tmpl-nave-1",
-            "type": "timeout",
-            "label": "Timeout",
-            "enabled": True,
-            "config": {"timeout_seconds": 600},
-            "position": None,
-        },
-        {
-            "id": "validator-tmpl-nave-1",
-            "type": "validator",
-            "label": "Validator",
-            "enabled": True,
-            "config": {"validation_type": "not_empty", "schema": {}, "max_length": 0, "required_keywords": [], "retry_on_fail": True},
-            "position": None,
-        },
-        {
-            "id": "retry-tmpl-nave-1",
-            "type": "retry",
-            "label": "Retry",
-            "enabled": True,
-            "config": {"max_retries": 3, "backoff_base_ms": 3000, "backoff_multiplier": 2.0, "retry_on": ["timeout", "server_error"]},
-            "position": None,
-        },
-    ],
+    # v2.5: 'nave' profile (Ollama-only) removed
     "high_quality": [
         {
             "id": "rag_context-tmpl-1",
@@ -694,24 +660,7 @@ async def get_chain_templates(
         ),
     ]
 
-    # PROMPT #289 - Template 4: Nave — Maximum quality, local-only, unlimited time
-    ollama_models = [m for m in models if m.provider == "ollama"]
-    if ollama_models:
-        nave_sorted = sorted(
-            ollama_models,
-            key=lambda m: _get_quality_tier(m.config.get("model_id", m.name)),
-            reverse=True,
-        )
-        templates.append(
-            ChainTemplate(
-                id="nave",
-                name="Nave (Qualidade Máxima)",
-                description="Qualidade máxima, apenas Ollama local, tempo ilimitado, custo zero",
-                chain=[str(m.id) for m in nave_sorted],
-                models=[model_info(m) for m in nave_sorted],
-                utility_nodes=TEMPLATE_UTILITY_NODES["nave"],
-            )
-        )
+    # v2.5: template 'nave' (Ollama-only) removed — claudius-only lockdown.
 
     return ChainTemplatesResponse(templates=templates)
 

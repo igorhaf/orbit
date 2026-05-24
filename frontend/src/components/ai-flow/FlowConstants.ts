@@ -18,21 +18,12 @@ export const USAGE_TYPE_OPTIONS = [
   { value: 'general', label: 'Geral' },
 ];
 
+// v2.5: claudius-only lockdown
 export const PROVIDER_COLORS: Record<string, string> = {
-  anthropic: '#9333ea',
-  openai: '#16a34a',
-  google: '#2563eb',
-  ollama: '#ea580c',
-  cohere: '#e11d48',
   claudius: '#0891b2',
 };
 
 export const PROVIDER_BG: Record<string, string> = {
-  anthropic: 'bg-purple-50 border-purple-200',
-  openai: 'bg-green-50 border-green-200',
-  google: 'bg-blue-50 border-blue-200',
-  ollama: 'bg-orange-50 border-orange-200',
-  cohere: 'bg-rose-50 border-rose-200',
   claudius: 'bg-cyan-50 border-cyan-200',
 };
 

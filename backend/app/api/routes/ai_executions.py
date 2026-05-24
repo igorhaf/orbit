@@ -27,7 +27,6 @@ async def list_ai_executions(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     usage_type: Optional[str] = Query(None, description="Filter by usage type"),
-    provider: Optional[str] = Query(None, description="Filter by provider"),
     has_error: Optional[bool] = Query(None, description="Filter by error status"),
     start_date: Optional[datetime] = Query(None, description="Filter from this date"),
     end_date: Optional[datetime] = Query(None, description="Filter until this date"),
@@ -36,19 +35,17 @@ async def list_ai_executions(
     """
     List all AI executions with filtering options.
 
+    v2.5: provider filter removed (claudius-only lockdown).
+
     - **usage_type**: Filter by usage type (interview, prompt_generation, etc)
-    - **provider**: Filter by provider (anthropic, openai, google)
     - **has_error**: Filter by error status (true = only errors, false = only successful)
     - **start_date**: Filter executions from this date
     - **end_date**: Filter executions until this date
     """
     query = db.query(AIExecution)
 
-    # Apply filters
     if usage_type:
         query = query.filter(AIExecution.usage_type == usage_type)
-    if provider:
-        query = query.filter(AIExecution.provider.ilike(f"%{provider}%"))
     if has_error is not None:
         if has_error:
             query = query.filter(AIExecution.error_message.isnot(None))

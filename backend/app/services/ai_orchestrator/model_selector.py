@@ -122,12 +122,9 @@ class ModelSelectorMixin:
 
         return [n for n in chain.utility_nodes if n.get("enabled", True)]
 
-    # PROMPT #231 - Provider speed profiles (tokens per second estimates)
+    # v2.5: claudius-only. Speed profile estimate for Claude via Claudius.
     PROVIDER_SPEED_PROFILES = {
-        "ollama": 15,
-        "anthropic": 80,
-        "openai": 60,
-        "google": 70,
+        "claudius": 80,
     }
 
     def _resolve_timeout(self, model_config: Dict, utility_nodes: List[Dict],
@@ -381,21 +378,13 @@ class ModelSelectorMixin:
 
     def _get_default_model(self, provider: str) -> str:
         """
-        Retorna modelo padrão caso não esteja configurado no banco
+        v2.5: claudius-only. Returns the default Claude model_id (Sonnet 4.6)
+        when an active model row is missing/invalid.
 
-        Args:
-            provider: Nome do provider (anthropic, openai, google, cohere)
-
-        Returns:
-            Nome do modelo padrão
+        The `provider` arg is accepted for backwards-compat but ignored —
+        only "claudius" is supported.
         """
-        defaults = {
-            "anthropic": "claude-sonnet-4-20250514",
-            "openai": "gpt-4o",
-            "google": "gemini-1.5-flash",
-            "cohere": "command-r-plus-08-2024"  # PROMPT #122 - Cohere AI (note: old command-r deprecated Sept 2025)
-        }
-        return defaults.get(provider, "claude-sonnet-4-20250514")
+        return "claude-sonnet-4-6"
 
     def choose_model_for_task(self, task: Task) -> Dict[str, any]:
         """
@@ -421,7 +410,7 @@ class ModelSelectorMixin:
 
         Example:
             config = orchestrator.choose_model_for_task(task)
-            # Returns: {"provider": "anthropic", "model": "claude-sonnet-4", ...}
+            # Returns: {"provider": "claudius", "model": "claude-sonnet-4-6", ...}
         """
         # 1. Check for explicit override
         if task.target_ai_model_id:

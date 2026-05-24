@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.services.spec_generator import SpecGenerator
 from app.services.task_decomposer import TaskDecomposer
-from app.services.api_tester import APITester
 from app.orchestrators.registry import OrchestratorRegistry
 from app.schemas.orchestrator import (
     GenerateSpecRequest,
@@ -136,36 +135,5 @@ async def get_stack_context(stack_key: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.post("/test-apis")
-async def test_all_apis():
-    """
-    Testa spec generation com todas as APIs disponíveis
-
-    POST /api/v1/orchestrators/test-apis
-
-    Retorna comparação de custo, velocidade e qualidade
-    """
-    try:
-        # Pegar API keys do ambiente
-        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-        openai_key = os.getenv("OPENAI_API_KEY")
-        google_key = os.getenv("GOOGLE_AI_API_KEY")
-
-        if not all([anthropic_key, openai_key, google_key]):
-            raise HTTPException(
-                status_code=500,
-                detail="Chaves de API não configuradas"
-            )
-
-        # Criar tester e executar
-        tester = APITester(anthropic_key, openai_key, google_key)
-        results = await tester.test_all()
-
-        return results
-
-    except Exception as e:
-        logger.error(f"Failed to test APIs: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Falha ao testar APIs: {str(e)}"
-        )
+# v2.5: /test-apis removed (was a side-by-side comparator across providers;
+# claudius-only lockdown makes it obsolete).

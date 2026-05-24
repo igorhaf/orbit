@@ -7,12 +7,10 @@ import { Interview, ConversationMessage } from '@/lib/types';
 import type { AIErrorState } from './ChatBanners';
 
 /**
- * Detect AI provider from error message
+ * v2.5: claudius-only. Errors come from the Claudius proxy → returns its label.
  */
 function detectProvider(errorLower: string): string | undefined {
-  if (errorLower.includes('anthropic')) return 'Anthropic (Claude)';
-  if (errorLower.includes('openai')) return 'OpenAI (GPT)';
-  if (errorLower.includes('google') || errorLower.includes('gemini')) return 'Google (Gemini)';
+  if (errorLower.includes('claudius') || errorLower.includes('claude')) return 'Claudius (Claude)';
   return undefined;
 }
 

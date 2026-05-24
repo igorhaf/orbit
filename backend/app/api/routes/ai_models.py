@@ -16,6 +16,13 @@ from app.api.dependencies import get_ai_model_or_404
 
 router = APIRouter()
 
+# v2.5: claudius-only lockdown. New models must use one of these model_ids.
+ALLOWED_CLAUDIUS_MODELS = frozenset({
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
+})
+
 
 def mask_api_key(api_key: str) -> str:
     """Mask API key showing only last 4 characters."""
@@ -24,36 +31,51 @@ def mask_api_key(api_key: str) -> str:
     return f"{'*' * (len(api_key) - 4)}{api_key[-4:]}"
 
 
+def _enforce_claudius(model_data) -> None:
+    """v2.5: reject any provider other than 'claudius' and any model_id
+    outside the supported Claude trio. Mutates `model_data.provider` to
+    'claudius' so callers don't have to send it."""
+    if getattr(model_data, "provider", None) and model_data.provider != "claudius":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"provider='{model_data.provider}' não suportado. "
+                "v2.5 só aceita 'claudius'."
+            ),
+        )
+    model_data.provider = "claudius"
+    cfg = model_data.config or {}
+    mid = (cfg.get("model_id") or "").strip()
+    if mid and mid not in ALLOWED_CLAUDIUS_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"config.model_id='{mid}' inválido. "
+                f"Permitidos: {sorted(ALLOWED_CLAUDIUS_MODELS)}"
+            ),
+        )
+
+
 @router.get("/", response_model=List[AIModelResponse])
 async def list_ai_models(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     usage_type: Optional[AIModelUsageType] = Query(None, description="Filter by usage type"),
-    provider: Optional[str] = Query(None, description="Filter by provider"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     db: Session = Depends(get_db)
 ):
     """
-    List all AI models with filtering options.
+    List all AI models (v2.5: all rows are claudius).
 
     - **usage_type**: Filter by usage type (interview, prompt_generation, etc)
-    - **provider**: Filter by provider (anthropic, openai, google)
     - **is_active**: Filter by active status
     """
     query = db.query(AIModel)
-
-    # Apply filters
     if usage_type:
         query = query.filter(AIModel.usage_type == usage_type)
-    if provider:
-        query = query.filter(AIModel.provider.ilike(f"%{provider}%"))
     if is_active is not None:
         query = query.filter(AIModel.is_active == is_active)
-
-    # Apply pagination and ordering
-    models = query.order_by(AIModel.created_at.desc()).offset(skip).limit(limit).all()
-
-    return models
+    return query.order_by(AIModel.created_at.desc()).offset(skip).limit(limit).all()
 
 
 @router.post("/", response_model=AIModelResponse, status_code=status.HTTP_201_CREATED)
@@ -64,13 +86,18 @@ async def create_ai_model(
     """
     Create a new AI model configuration.
 
+    v2.5: claudius-only. The `provider` field is ignored/forced to 'claudius'
+    and `config.model_id` must be one of:
+    claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5.
+
     - **name**: Unique model name
-    - **provider**: Provider name (anthropic, openai, google)
-    - **api_key**: API key for the model
+    - **api_key**: Optional (claudius proxy doesn't require one)
     - **usage_type**: Type of usage for this model
     - **is_active**: Whether this model is active
-    - **config**: Additional configuration as JSON
+    - **config**: { model_id, max_tokens?, temperature?, ... }
     """
+    _enforce_claudius(model_data)
+
     # Check if name already exists
     existing = db.query(AIModel).filter(AIModel.name == model_data.name).first()
     if existing:
@@ -119,14 +146,31 @@ async def update_ai_model(
     """
     Update an AI model configuration (partial update).
 
+    v2.5: provider locked to 'claudius', config.model_id must be one of
+    the supported Claude models.
+
     - **name**: New model name (optional)
-    - **provider**: New provider (optional)
-    - **api_key**: New API key (optional)
+    - **api_key**: New API key (optional; claudius doesn't require one)
     - **usage_type**: New usage type (optional)
     - **is_active**: New active status (optional)
-    - **config**: New configuration (optional)
+    - **config**: New configuration (optional; model_id validated)
     """
     update_data = model_update.model_dump(exclude_unset=True)
+
+    # v2.5: reject provider changes; validate model_id whitelist
+    if "provider" in update_data and update_data["provider"] != "claudius":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"provider='{update_data['provider']}' não suportado. Apenas 'claudius'.",
+        )
+    update_data["provider"] = "claudius"
+    new_cfg = update_data.get("config") or {}
+    new_mid = (new_cfg.get("model_id") or "").strip() if isinstance(new_cfg, dict) else ""
+    if new_mid and new_mid not in ALLOWED_CLAUDIUS_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"config.model_id='{new_mid}' inválido. Permitidos: {sorted(ALLOWED_CLAUDIUS_MODELS)}",
+        )
 
     # Check if name is being updated and already exists
     if "name" in update_data and update_data["name"] != model.name:

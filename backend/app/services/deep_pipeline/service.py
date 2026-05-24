@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsMixin):
-    """Orchestrates the 7-phase deep pipeline using Claudius or Ollama."""
+    """Orchestrates the 7-phase deep pipeline via Claudius (v2.5: claudius-only)."""
 
     def __init__(self, db: Session, profile_name: str = None):
         self.db = db
@@ -52,13 +52,9 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
         self._profile = self._load_profile(profile_name)
         self._phase_configs = self._profile.phase_configs if self._profile else {}
 
-        # ── Provider dispatch: profile determines Claudius vs Ollama ────
-        self._provider = self._detect_provider()
-        if self._provider == "ollama":
-            from app.services.ollama_pipeline import OllamaPipelineService
-            self.claudius = OllamaPipelineService()
-        else:
-            self.claudius = ClaudiusPipelineService(db=db, default_usage_type="content_generation")
+        # v2.5: claudius-only lockdown. Ollama path removed.
+        self._provider = "claudius"
+        self.claudius = ClaudiusPipelineService(db=db, default_usage_type="content_generation")
 
         # ── PROMPT #237: Pipeline telemetry ────
         self._console = get_console_logger()
@@ -72,20 +68,12 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
 
     @staticmethod
     def _model_label(model_name: str) -> str:
-        """Extract a human-readable label from model name (works for both Claude and Ollama).
-        'claude-sonnet-4-6' -> 'Sonnet', 'qwen3:14b' -> 'Qwen3', 'gemma2:9b' -> 'Gemma2'
+        """Extract a human-readable label from a Claude model name.
+        'claude-sonnet-4-6' -> 'Sonnet'
         """
         if "-" in model_name and model_name.startswith("claude"):
             return model_name.split("-")[1].title()
-        # Ollama format: "qwen3:14b" -> "qwen3" -> "Qwen3"
-        return model_name.split(":")[0].title()
-
-    def _detect_provider(self) -> str:
-        """Detect provider from phase_configs. If any phase has provider='ollama', use Ollama."""
-        for phase_key, cfg in self._phase_configs.items():
-            if isinstance(cfg, dict) and cfg.get("provider") == "ollama":
-                return "ollama"
-        return "claudius"
+        return model_name.title()
 
     def _load_profile(self, profile_name: str = None) -> Optional[PipelineProfile]:
         """Load a named profile or the default one."""
@@ -127,14 +115,8 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
         return self._get_phase_config(phase_key, "enabled", True)
 
     def _ollama_kwargs(self, phase_key: str) -> dict:
-        """Build Ollama-specific kwargs for a phase call. Empty dict for Claudius."""
-        if self._provider != "ollama":
-            return {}
-        return {
-            "temperature": self._get_phase_config(phase_key, "temperature", 0.1),
-            "num_ctx": self._get_phase_config(phase_key, "num_ctx", 16384),
-            "keep_alive": self._get_phase_config(phase_key, "keep_alive", "5m"),
-        }
+        """v2.5: Ollama removed; preserved for call-site compat returning {}."""
+        return {}
 
     # =========================================================================
     # MAIN ORCHESTRATOR
@@ -233,16 +215,15 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
                 except Exception:
                     pass
 
-        # Check AI service health (Claudius or Ollama)
+        # v2.5: claudius-only health check
         healthy = await self.claudius.health_check()
         if not healthy:
-            svc_name = "Ollama" if self._provider == "ollama" else "Claudius"
             pipeline_run.status = "failed"
-            pipeline_run.error = f"{svc_name} not reachable at {self.claudius.base_url}"
+            pipeline_run.error = f"Claudius not reachable at {self.claudius.base_url}"
             pipeline_run.completed_at = datetime.utcnow()
             self.db.commit()
             raise ClaudiusPipelineError(
-                f"{svc_name} is not reachable at {self.claudius.base_url}. Start it first."
+                f"Claudius is not reachable at {self.claudius.base_url}. Start it first."
             )
 
         results = {}

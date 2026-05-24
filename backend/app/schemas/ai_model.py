@@ -15,10 +15,10 @@ class AIModelBase(BaseModel):
     """Base schema for AIModel"""
     name: str = Field(..., min_length=1, max_length=100, description="Model name")
     provider: str = Field(
-        ...,
+        default="claudius",
         min_length=1,
         max_length=50,
-        description="AI provider (anthropic, openai, etc.)"
+        description="AI provider (v2.5: always 'claudius')"
     )
     usage_type: AIModelUsageType = Field(
         default=AIModelUsageType.GENERAL,
@@ -52,16 +52,15 @@ class AIModelBase(BaseModel):
 
 class AIModelCreate(AIModelBase):
     """Schema for creating a new AIModel"""
-    api_key: str = Field(..., max_length=255, description="API key (can be empty for local providers like Ollama)")
+    api_key: str = Field(default="not-needed", max_length=255, description="API key (claudius proxy doesn't require one)")
 
     @field_validator('provider')
     @classmethod
     def validate_provider(cls, v: str) -> str:
-        """Validate provider is supported"""
-        supported = ['anthropic', 'openai', 'google', 'ollama', 'local', 'custom']
-        if v.lower() not in supported:
-            raise ValueError(f"Provider must be one of: {', '.join(supported)}")
-        return v.lower()
+        """v2.5: claudius-only lockdown. Only 'claudius' accepted."""
+        if v.lower() != 'claudius':
+            raise ValueError("Provider must be 'claudius' (v2.5 claudius-only lockdown)")
+        return 'claudius'
 
 
 class AIModelUpdate(BaseModel):

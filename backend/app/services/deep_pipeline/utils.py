@@ -220,11 +220,12 @@ class UtilsMixin:
         self.db.commit()
         logger.info(f"Checkpoint saved: phase={phase}, files={len(completed_files)}")
 
-    async def _provider_health_check(self, model: str, ollama_kwargs: dict) -> bool:
-        """Test if the AI provider responds before sending a batch.
+    async def _provider_health_check(self, model: str = "", _unused_kwargs: dict | None = None) -> bool:
+        """Test if Claudius responds before sending a batch.
         Uses the lightweight /api/health endpoint instead of a full AI call
         to avoid wasting tokens and being slow under load.
         Retries up to 3 times with backoff before declaring offline.
+        v2.5: previously took ollama_kwargs; now accepts but ignores any 2nd arg.
         """
         import asyncio
         for attempt in range(3):

@@ -33,12 +33,12 @@ export function ModelsTab() {
 
   const [createFormData, setCreateFormData] = useState<AIModelCreate>({
     name: '',
-    provider: 'anthropic',
-    api_key: '',
+    provider: 'claudius',
+    api_key: 'not-needed',
     usage_type: AIModelUsageType.GENERAL,
     is_active: true,
     config: {
-      model: '',
+      model_id: 'claude-sonnet-4-6',
       max_tokens: 4096,
       temperature: 0.7,
     },
@@ -82,12 +82,12 @@ export function ModelsTab() {
       setShowCreateDialog(false);
       setCreateFormData({
         name: '',
-        provider: 'anthropic',
-        api_key: '',
+        provider: 'claudius',
+        api_key: 'not-needed',
         usage_type: AIModelUsageType.GENERAL,
         is_active: true,
         config: {
-          model: '',
+          model_id: 'claude-sonnet-4-6',
           max_tokens: 4096,
           temperature: 0.7,
         },
@@ -165,46 +165,12 @@ export function ModelsTab() {
     (model) => model.usage_type === AIModelUsageType.GENERAL && model.is_active
   );
 
-  const getProviderIcon = (provider: string) => {
-    switch (provider.toLowerCase()) {
-      case 'anthropic':
-        return (
-          <svg className="w-6 h-6 text-purple-600" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
-          </svg>
-        );
-      case 'openai':
-        return (
-          <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" />
-          </svg>
-        );
-      case 'google':
-        return (
-          <svg className="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
-          </svg>
-        );
-      case 'ollama':
-        return (
-          <svg className="w-6 h-6 text-orange-600" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-          </svg>
-        );
-      case 'cohere':
-        return (
-          <svg className="w-6 h-6 text-rose-600" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
-          </svg>
-        );
-      default:
-        return (
-          <svg className="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
-          </svg>
-        );
-    }
-  };
+  // v2.5: claudius-only — single Claude icon regardless of input.
+  const getProviderIcon = (_provider?: string) => (
+    <svg className="w-6 h-6 text-purple-600" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
+    </svg>
+  );
 
   const formatNumber = (num: number): string => {
     if (num >= 1000000) {
@@ -322,19 +288,17 @@ export function ModelsTab() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    {getProviderIcon(model.provider)}
+                    {getProviderIcon()}
                     <div>
                       <CardTitle className="text-lg">{model.name}</CardTitle>
                       <p className="text-xs text-gray-500 mt-1">
-                        {model.provider.charAt(0).toUpperCase() + model.provider.slice(1)}
-                        {model.provider.toLowerCase() === 'claudius' && (
-                          <a
-                            href="/settings?section=quota"
-                            className="ml-2 text-blue-600 hover:underline"
-                          >
-                            · cota & auto-resume
-                          </a>
-                        )}
+                        Claudius · {(model.config as any)?.model_id || '—'}
+                        <a
+                          href="/settings?section=quota"
+                          className="ml-2 text-blue-600 hover:underline"
+                        >
+                          · cota & auto-resume
+                        </a>
                       </p>
                     </div>
                   </div>
@@ -523,37 +487,23 @@ export function ModelsTab() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Provedor
+                Modelo Claude
               </label>
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={createFormData.provider}
-                onChange={(e) =>
-                  setCreateFormData({ ...createFormData, provider: e.target.value })
-                }
+                value={(createFormData.config as any)?.model_id || 'claude-sonnet-4-6'}
+                onChange={(e) => {
+                  const newCfg = { ...(createFormData.config as any || {}), model_id: e.target.value };
+                  setCreateFormData({ ...createFormData, provider: 'claudius', config: newCfg });
+                }}
                 required
               >
-                <option value="claudius">Claudius (Local Proxy)</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="openai">OpenAI</option>
-                <option value="google">Google</option>
-                <option value="cohere">Cohere</option>
-                <option value="ollama">Ollama (Local)</option>
-                <option value="local">Local</option>
-                <option value="custom">Personalizado</option>
+                <option value="claude-opus-4-7">Opus 4.7 (raciocínio profundo)</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6 (equilibrado, padrão)</option>
+                <option value="claude-haiku-4-5">Haiku 4.5 (rápido, leve)</option>
               </select>
+              <p className="mt-1 text-xs text-gray-500">v2.5: apenas Claude via Claudius — sem outras configurações de provider.</p>
             </div>
-
-            <Input
-              label={['ollama', 'claudius'].includes(createFormData.provider) ? 'Chave API (opcional)' : 'Chave API'}
-              type="password"
-              placeholder={['ollama', 'claudius'].includes(createFormData.provider) ? 'Deixe vazio (não necessário)' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
-              required={!['ollama', 'claudius'].includes(createFormData.provider)}
-              value={createFormData.api_key}
-              onChange={(e) =>
-                setCreateFormData({ ...createFormData, api_key: e.target.value })
-              }
-            />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -756,35 +706,22 @@ export function ModelsTab() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Provedor
+                Modelo Claude
               </label>
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={editFormData.provider || 'anthropic'}
-                onChange={(e) =>
-                  setEditFormData({ ...editFormData, provider: e.target.value })
-                }
+                value={(editFormData.config as any)?.model_id || 'claude-sonnet-4-6'}
+                onChange={(e) => {
+                  const newCfg = { ...(editFormData.config as any || {}), model_id: e.target.value };
+                  setEditFormData({ ...editFormData, provider: 'claudius', config: newCfg });
+                }}
               >
-                <option value="claudius">Claudius (Local Proxy)</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="openai">OpenAI</option>
-                <option value="google">Google</option>
-                <option value="cohere">Cohere</option>
-                <option value="ollama">Ollama (Local)</option>
-                <option value="local">Local</option>
-                <option value="custom">Personalizado</option>
+                <option value="claude-opus-4-7">Opus 4.7 (raciocínio profundo)</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6 (equilibrado, padrão)</option>
+                <option value="claude-haiku-4-5">Haiku 4.5 (rápido, leve)</option>
               </select>
+              <p className="mt-1 text-xs text-gray-500">v2.5: apenas Claude via Claudius.</p>
             </div>
-
-            <Input
-              label={editFormData.provider === 'ollama' ? 'Chave API (opcional para Ollama)' : 'Chave API'}
-              type="text"
-              placeholder={editFormData.provider === 'ollama' ? 'Deixe vazio para Ollama local' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
-              value={editFormData.api_key || ''}
-              onChange={(e) =>
-                setEditFormData({ ...editFormData, api_key: e.target.value })
-              }
-            />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

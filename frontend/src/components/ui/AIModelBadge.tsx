@@ -73,13 +73,9 @@ const USAGE_TYPE_ICON_KEYS: Record<string, string> = {
   'discovery': 'sparkle',
 };
 
-// Icon mapping by provider (fallback)
+// v2.5: claudius-only — both 'claudius' and 'system' map to brain icon
 const PROVIDER_ICON_KEYS: Record<string, string> = {
-  'anthropic': 'brain',
-  'openai': 'bolt-cpu',
-  'google': 'globe-brain',
-  'cohere': 'beaker-brain',
-  'ollama': 'blocks-cpu',
+  'claudius': 'brain',
   'system': 'cog',
 };
 
@@ -140,28 +136,24 @@ export function AIModelBadge({
   const iconRef = useRef<HTMLSpanElement>(null);
   const hasPrompt = !!promptText;
 
-  // PROMPT #210 - Parse "provider/model_id" format (e.g. "anthropic/claude-3-5-sonnet-20241022")
+  // Parse "provider/model_id" format (e.g. "claudius/claude-sonnet-4-6")
   let parsedModel = model;
   let parsedProvider = provider;
   if (!provider && model && model.includes('/')) {
     const slashIdx = model.indexOf('/');
     const maybeProv = model.substring(0, slashIdx);
-    // Only split if the prefix looks like a known provider
-    if (['anthropic', 'openai', 'google', 'ollama', 'cohere', 'system'].includes(maybeProv)) {
+    // v2.5: only claudius / system recognized
+    if (['claudius', 'system'].includes(maybeProv)) {
       parsedProvider = maybeProv;
       parsedModel = model.substring(slashIdx + 1);
     }
   }
 
-  // Get friendly model name
   const displayName = MODEL_NAMES[parsedModel] || parsedModel;
 
-  // Detect provider from model name if not provided
+  // v2.5: anything that isn't 'system' falls to 'claudius'
   const detectedProvider = parsedProvider ||
-    (parsedModel.includes('claude') ? 'anthropic' :
-     parsedModel.includes('gpt') ? 'openai' :
-     parsedModel.includes('gemini') ? 'google' :
-     parsedModel.includes('system') ? 'system' : 'unknown');
+    (parsedModel.includes('system') ? 'system' : 'claudius');
 
   // Get icon key based on usage_type first, then provider
   const getIconKey = () => {
@@ -285,18 +277,11 @@ export function AIModelBadge({
             )}
 
             {/* Provider - hidden for decorative or unknown */}
-            {!decorative && detectedProvider !== 'unknown' && (
+            {!decorative && (
               <div className="flex justify-between">
                 <span className="text-gray-400">Provider:</span>
-                <span className={`font-medium ${
-                  detectedProvider === 'anthropic' ? 'text-orange-400' :
-                  detectedProvider === 'openai' ? 'text-green-400' :
-                  detectedProvider === 'google' ? 'text-blue-400' :
-                  detectedProvider === 'cohere' ? 'text-purple-400' :
-                  detectedProvider === 'ollama' ? 'text-teal-400' :
-                  'text-gray-400'
-                }`}>
-                  {detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1)}
+                <span className="font-medium text-cyan-400">
+                  {(detectedProvider || 'claudius').charAt(0).toUpperCase() + (detectedProvider || 'claudius').slice(1)}
                 </span>
               </div>
             )}

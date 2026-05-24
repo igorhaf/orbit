@@ -61,8 +61,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp?: string;
-  provider?: string;  // AI provider used (anthropic, openai, google)
-  model?: string;     // Specific model used (claude-sonnet-4, gpt-4-turbo, etc)
+  provider?: string;  // v2.5: always 'claudius'
+  model?: string;     // Claude model (claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5)
 }
 
 export interface ChatSession {

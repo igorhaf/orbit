@@ -171,94 +171,21 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
             return None
 
     def _initialize_clients(self):
+        """Initialize the single Claudius client (v2.5: claudius-only lockdown).
+
+        Uses any active claudius model row to pull base_url + api_key; if none
+        exist yet (fresh install), falls back to env defaults.
         """
-        Inicializa clientes de TODAS as APIs com modelos ativos no banco
-        PROMPT #51 - Dynamic AI Model Integration
-        PROMPT #75 - Async AI Clients (AsyncAnthropic, AsyncOpenAI, httpx)
-        """
-        # Buscar TODOS os AI Models ativos (não apenas o primeiro de cada provider)
-        models = self.db.query(AIModel).filter(
-            AIModel.is_active == True
-        ).all()
-
-        # Armazenar providers únicos já inicializados
-        initialized_providers = set()
-
-        for model in models:
-            try:
-                provider_key = model.provider.lower()
-
-                # Inicializar cada provider apenas uma vez, mas usando API key do primeiro modelo ativo
-                if provider_key not in initialized_providers:
-                    if provider_key == "anthropic":
-                        # PROMPT #75 - Use AsyncAnthropic for non-blocking async calls
-                        from anthropic import AsyncAnthropic
-                        self.clients["anthropic"] = AsyncAnthropic(api_key=model.api_key)
-                        logger.info(f"✅ AsyncAnthropic client initialized with API key from: {model.name}")
-                        initialized_providers.add("anthropic")
-
-                    elif provider_key == "openai":
-                        # PROMPT #75 - Use AsyncOpenAI for non-blocking async calls
-                        from openai import AsyncOpenAI
-                        self.clients["openai"] = AsyncOpenAI(api_key=model.api_key)
-                        logger.info(f"✅ AsyncOpenAI client initialized with API key from: {model.name}")
-                        initialized_providers.add("openai")
-
-                    elif provider_key == "google":
-                        # PROMPT #75 - Use httpx.AsyncClient for Google Gemini (no native async SDK)
-                        import httpx
-                        self.clients["google"] = {
-                            "api_key": model.api_key,
-                            "http_client": httpx.AsyncClient(
-                                timeout=30.0,
-                                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
-                            )
-                        }
-                        logger.info(f"✅ Google async HTTP client initialized with API key from: {model.name}")
-                        initialized_providers.add("google")
-
-                    elif provider_key == "ollama":
-                        # PROMPT #106 - Ollama local LLM integration
-                        # PROMPT #107 - Increased timeout for CPU inference (can take 2-5 min without GPU)
-                        import httpx
-                        ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-                        ollama_timeout = float(os.getenv("OLLAMA_TIMEOUT", "600"))  # 10 min default (aligned with model timeout)
-                        self.clients["ollama"] = {
-                            "base_url": ollama_host,
-                            "http_client": httpx.AsyncClient(
-                                timeout=ollama_timeout,
-                                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
-                            )
-                        }
-                        logger.info(f"✅ Ollama async HTTP client initialized: {ollama_host} (timeout={ollama_timeout}s, from model: {model.name})")
-                        initialized_providers.add("ollama")
-
-                    elif provider_key == "cohere":
-                        # PROMPT #122 - Cohere AI integration
-                        import httpx
-                        self.clients["cohere"] = {
-                            "api_key": model.api_key,
-                            "http_client": httpx.AsyncClient(
-                                timeout=60.0,
-                                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
-                            )
-                        }
-                        logger.info(f"✅ Cohere async HTTP client initialized with API key from: {model.name}")
-                        initialized_providers.add("cohere")
-
-                    elif provider_key == "claudius":
-                        # PROMPT #246 - Claudius local proxy (Anthropic-compatible API, no API key)
-                        from anthropic import AsyncAnthropic
-                        claudius_base = os.getenv("CLAUDIUS_BASE_URL", "http://localhost:8001")
-                        self.clients["claudius"] = AsyncAnthropic(
-                            api_key=model.api_key or "not-needed",
-                            base_url=claudius_base
-                        )
-                        logger.info(f"✅ Claudius (AsyncAnthropic) client initialized: {claudius_base} (from model: {model.name})")
-                        initialized_providers.add("claudius")
-
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize {model.provider} client: {e}")
+        model = (
+            self.db.query(AIModel)
+            .filter(AIModel.is_active == True, AIModel.provider == "claudius")
+            .first()
+        )
+        api_key = (model.api_key if model else None) or os.getenv("CLAUDIUS_API_KEY", "not-needed")
+        from anthropic import AsyncAnthropic
+        claudius_base = os.getenv("CLAUDIUS_BASE_URL", "http://localhost:8001")
+        self.clients["claudius"] = AsyncAnthropic(api_key=api_key, base_url=claudius_base)
+        logger.info(f"✅ Claudius client initialized: {claudius_base}")
 
         logger.info(f"📊 Initialized async providers: {list(initialized_providers)}")
 
@@ -509,7 +436,6 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
 
         if chains_to_try:
             last_error = None
-            _skip_providers = set()  # PROMPT #229 - Smart fallback: skip providers on OOM
 
             # PROMPT #231 - Apply router start_index to skip cheap models for complex queries
             _router_start_index = _util_context.get("_router_start_index", 0) if _util_context else 0
@@ -523,13 +449,6 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                         logger.info(
                             f"🔀 Router skip [{chain_source}] {chain_idx+1}/{len(chain_model_list)}: "
                             f"{chain_model_config['db_model_name']} (below router start_index)"
-                        )
-                        continue
-                    # PROMPT #229 - Smart fallback: skip providers flagged by previous failures
-                    if chain_model_config.get("provider") in _skip_providers:
-                        logger.warning(
-                            f"🔗 Chain skip [{chain_source}]: {chain_model_config['db_model_name']} "
-                            f"(provider {chain_model_config['provider']} flagged - GPU thrashing prevention)"
                         )
                         continue
                     _chain_ctx = {
@@ -740,13 +659,7 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                         from app.services.error_classifier import classify_error
                         _error_class = classify_error(e)
 
-                        if _error_class == "oom" and chain_model_config.get("provider") == "ollama":
-                            logger.warning(
-                                f"🧠 OOM on Ollama model {chain_model_config['db_model_name']}. "
-                                f"Skipping ALL remaining Ollama models to prevent GPU thrashing."
-                            )
-                            _skip_providers.add("ollama")
-
+                        # v2.5: ollama removed; OOM special-case no longer relevant
                         if _error_class == "permanent":
                             logger.warning(
                                 f"🚫 Permanent error on {chain_model_config['db_model_name']}: "
@@ -1044,51 +957,15 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
         )
 
         try:
-            # PROMPT #217 - Try streaming first, fall back to non-streaming on error
-            _streamed_ok = True  # PROMPT #276 - Track if streaming succeeded to avoid duplicate console log
+            # v2.5: claudius-only lockdown. Streaming first; fallback to non-streaming.
+            _streamed_ok = True
             try:
-                if provider == "anthropic":
-                    result = await self._execute_anthropic_streaming(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout
-                    )
-                elif provider == "openai":
-                    result = await self._execute_openai_streaming(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout
-                    )
-                elif provider == "google":
-                    result = await self._execute_google_streaming(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout
-                    )
-                elif provider == "ollama":
-                    result = await self._execute_ollama_streaming(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout, top_p=_top_p, top_k=_top_k,
-                        num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive
-                    )
-                elif provider == "cohere":
-                    result = await self._execute_cohere_streaming(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout
-                    )
-                elif provider == "claudius":
-                    # PROMPT #253 - Claudius uses httpx streaming (not SDK) to avoid
-                    # SDK pre-checks that reject high max_tokens
-                    result = await self._execute_claudius_streaming(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout, cwd=_claudius_cwd,
-                        thinking=thinking, disable_tools=disable_tools
-                    )
-                else:
-                    raise ValueError(f"Provedor desconhecido: {provider}")
+                result = await self._execute_claudius_streaming(
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                    stream_callback=_stream_cb, flush_callback=_flush_cb,
+                    timeout_seconds=_resolved_timeout, cwd=_claudius_cwd,
+                    thinking=thinking, disable_tools=disable_tools
+                )
 
                 # Emit stream completion event
                 asyncio.create_task(console.log_ai_streaming_chunk(
@@ -1102,45 +979,13 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                 ))
 
             except Exception as stream_err:
-                # Fallback to non-streaming if streaming fails
                 _streamed_ok = False
                 logger.warning(f"⚠️ Streaming failed, falling back to non-streaming: {stream_err}")
-                if provider == "anthropic":
-                    result = await self._execute_anthropic(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout
-                    )
-                elif provider == "openai":
-                    result = await self._execute_openai(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout
-                    )
-                elif provider == "google":
-                    result = await self._execute_google(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout
-                    )
-                elif provider == "ollama":
-                    result = await self._execute_ollama(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout, top_p=_top_p, top_k=_top_k,
-                        num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive
-                    )
-                elif provider == "cohere":
-                    result = await self._execute_cohere(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout
-                    )
-                elif provider == "claudius":
-                    # PROMPT #253 - Claudius non-streaming fallback uses httpx (not SDK)
-                    # to avoid SDK "Streaming is required" pre-check with high max_tokens
-                    result = await self._execute_claudius(
-                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout, cwd=_claudius_cwd,
-                        thinking=thinking, disable_tools=disable_tools
-                    )
-                else:
-                    raise ValueError(f"Provedor desconhecido: {provider}")
+                result = await self._execute_claudius(
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                    timeout_seconds=_resolved_timeout, cwd=_claudius_cwd,
+                    thinking=thinking, disable_tools=disable_tools
+                )
 
             # Adicionar informações do modelo do banco na resposta
             result["db_model_id"] = model_config["db_model_id"]
@@ -1315,33 +1160,10 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
                             f"(waiting {wait:.1f}s, reason: {result.get('validation_error', 'unknown')})"
                         )
                         await asyncio.sleep(wait)
-                        if provider == "anthropic":
-                            result = await self._execute_anthropic(
-                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
-                            )
-                        elif provider == "openai":
-                            result = await self._execute_openai(
-                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
-                            )
-                        elif provider == "google":
-                            result = await self._execute_google(
-                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
-                            )
-                        elif provider == "ollama":
-                            result = await self._execute_ollama(
-                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                                top_p=_top_p, top_k=_top_k,
-                                num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive
-                            )
-                        elif provider == "cohere":
-                            result = await self._execute_cohere(
-                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
-                            )
-                        elif provider == "claudius":
-                            result = await self._execute_anthropic(
-                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                                client_key="claudius"
-                            )
+                        # v2.5: claudius-only
+                        result = await self._execute_claudius(
+                            model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                        )
                         result = self.utility_executor.post_process(
                             _utility_nodes, result, _effective_messages,
                             _effective_system_prompt, _util_context_post

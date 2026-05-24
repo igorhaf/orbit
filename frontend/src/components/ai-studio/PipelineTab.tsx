@@ -36,17 +36,17 @@ import { ProviderIcon } from '@/components/ai-flow';
 // ── Phase definitions (fixed sequence, matches deep_pipeline.py) ────────
 const PIPELINE_PHASES = [
   { key: 'phase_0', label: 'Scan', description: 'Scan Estrutural', defaultModel: '', provider: '', hasAI: false },
-  { key: 'phase_1', label: 'Análise', description: 'Análise de Arquivos', defaultModel: 'claude-haiku-4-5', provider: 'anthropic', hasAI: true },
-  { key: 'phase_2', label: 'Regras', description: 'Síntese de Regras', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_3', label: 'Arquitetura', description: 'Mapa Arquitetural', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_4a', label: 'Epics', description: 'Geração de Epics', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_4b', label: 'Stories', description: 'Decomp. Stories', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_4c', label: 'Tasks', description: 'Decomp. Tasks', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_5a', label: 'Wiki Plan', description: 'Estrutura Wiki', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_5b', label: 'Wiki Geral', description: 'Paginas Gerais', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_5c', label: 'Wiki Dom.', description: 'Paginas Dominio', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_5d', label: 'Wiki Fluxos', description: 'Fluxos Cross-Dom', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_6', label: 'QA', description: 'Quality Assurance', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
+  { key: 'phase_1', label: 'Análise', description: 'Análise de Arquivos', defaultModel: 'claude-haiku-4-5', provider: 'claudius', hasAI: true },
+  { key: 'phase_2', label: 'Regras', description: 'Síntese de Regras', defaultModel: 'claude-sonnet-4-6', provider: 'claudius', hasAI: true },
+  { key: 'phase_3', label: 'Arquitetura', description: 'Mapa Arquitetural', defaultModel: 'claude-sonnet-4-6', provider: 'claudius', hasAI: true },
+  { key: 'phase_4a', label: 'Epics', description: 'Geração de Epics', defaultModel: 'claude-opus-4-7', provider: 'claudius', hasAI: true },
+  { key: 'phase_4b', label: 'Stories', description: 'Decomp. Stories', defaultModel: 'claude-opus-4-7', provider: 'claudius', hasAI: true },
+  { key: 'phase_4c', label: 'Tasks', description: 'Decomp. Tasks', defaultModel: 'claude-sonnet-4-6', provider: 'claudius', hasAI: true },
+  { key: 'phase_5a', label: 'Wiki Plan', description: 'Estrutura Wiki', defaultModel: 'claude-sonnet-4-6', provider: 'claudius', hasAI: true },
+  { key: 'phase_5b', label: 'Wiki Geral', description: 'Paginas Gerais', defaultModel: 'claude-opus-4-7', provider: 'claudius', hasAI: true },
+  { key: 'phase_5c', label: 'Wiki Dom.', description: 'Paginas Dominio', defaultModel: 'claude-opus-4-7', provider: 'claudius', hasAI: true },
+  { key: 'phase_5d', label: 'Wiki Fluxos', description: 'Fluxos Cross-Dom', defaultModel: 'claude-sonnet-4-6', provider: 'claudius', hasAI: true },
+  { key: 'phase_6', label: 'QA', description: 'Quality Assurance', defaultModel: 'claude-sonnet-4-6', provider: 'claudius', hasAI: true },
 ];
 
 // ── Node layout (2 rows, matching Operations tab node sizing) ───────────
@@ -82,10 +82,8 @@ function getModelShort(model: string): string {
   return model.split('-').pop() || model;
 }
 
-function getProviderFromModel(model: string): string {
-  if (model.includes('claude') || model.includes('haiku') || model.includes('sonnet') || model.includes('opus')) return 'anthropic';
-  if (model.includes('gpt')) return 'openai';
-  if (model.includes('gemini')) return 'google';
+// v2.5: claudius-only — always returns 'claudius'.
+function getProviderFromModel(_model: string): string {
   return 'claudius';
 }
 

@@ -372,21 +372,14 @@ class ContinuousRAGService:
             state.status = FileProcessingStatus.PROCESSING
         self.db.commit()
 
-        # PROMPT #224 - Detect provider for parallelism tuning
-        # Ollama processes requests sequentially (FIFO), so parallel > 1 just queues
+        # v2.5: claudius-only. Parallelism tuning per-provider removed.
         try:
             from app.models.ai_model import AIModelUsageType
             _model_cfg = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
-            _is_ollama = _model_cfg.get("provider") == "ollama"
         except Exception:
-            _is_ollama = False
             _model_cfg = {}
-
-        # PROMPT #300 - Respect OLLAMA_NUM_PARALLEL (GPU supports parallel requests)
-        if _is_ollama:
-            _parallel = int(os.getenv("OLLAMA_NUM_PARALLEL", "1"))
-        else:
-            _parallel = MAX_PARALLEL_EXTRACTIONS
+        _is_ollama = False
+        _parallel = MAX_PARALLEL_EXTRACTIONS
         semaphore = asyncio.Semaphore(_parallel)
 
         # PROMPT #298 - Create child jobs per file upfront (pending, not running)
@@ -516,23 +509,20 @@ class ContinuousRAGService:
                     # Detect language
                     language = self.indexer._detect_language(file_full_path) or "unknown"
 
-                    # PROMPT #224 - Use cached provider detection (from batch level)
-                    # PROMPT #228 - Increased from 3000→8000 for Ollama (qwen3:8b has 32K context)
-                    max_content = 8000 if _is_ollama else 15000
+                    # v2.5: claudius-only; previously throttled for Ollama
+                    max_content = 15000
                     if len(content) > max_content:
                         content = content[:max_content]
 
-                    # PROMPT #228 - Increased from 1024→2048 for more detailed extraction
-                    _resp_tokens = 2048 if _is_ollama else 4096
+                    _resp_tokens = 4096
 
-                    # Extract business rules via AI (this is the slow part)
                     rules = await self._extract_rules_from_file(
                         filename=state.file_path,
                         content=content,
                         language=language,
                         project_id=project_id,
                         project_context=project.context_semantic,
-                        is_local=_is_ollama,
+                        is_local=False,
                         max_resp_tokens=_resp_tokens,
                     )
 
