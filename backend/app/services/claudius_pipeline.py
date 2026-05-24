@@ -438,11 +438,55 @@ class ClaudiusPipelineService:
         except Exception:
             return False
 
+    async def quota_status(self) -> dict:
+        """Snapshot da cota do Claude (sem custar tokens).
+
+        Le do quota_tracker do claudius. Use isso pra polling barato.
+        Use quota_probe() so quando precisar validar com chamada real (5 tokens).
+        """
+        try:
+            client = await self._get_client()
+            response = await client.get("/api/quota/status", timeout=httpx.Timeout(10.0, connect=5.0))
+            if response.status_code == 200:
+                return response.json()
+            return {"available": True, "tier": "unknown", "error": f"HTTP {response.status_code}"}
+        except Exception as e:
+            logger.warning(f"quota_status failed: {e}")
+            return {"available": True, "tier": "unknown", "error": f"{type(e).__name__}"}
+
+    async def quota_history(self, limit: int = 50) -> dict:
+        """Recent quota events for charts."""
+        try:
+            client = await self._get_client()
+            response = await client.get(
+                f"/api/quota/history?limit={limit}",
+                timeout=httpx.Timeout(10.0, connect=5.0),
+            )
+            if response.status_code == 200:
+                return response.json()
+            return {"events": [], "error": f"HTTP {response.status_code}"}
+        except Exception as e:
+            return {"events": [], "error": str(e)[:200]}
+
+    async def quota_set_tier(self, tier: str) -> dict:
+        """Change active plan tier in claudius."""
+        try:
+            client = await self._get_client()
+            response = await client.post(
+                "/api/quota/tier",
+                json={"tier": tier},
+                timeout=httpx.Timeout(10.0, connect=5.0),
+            )
+            return response.json()
+        except Exception as e:
+            return {"error": str(e)[:200]}
+
     async def quota_probe(self) -> dict:
         """Ping Claude com prompt minimo pra detectar se cota esta disponivel.
 
         Retorna {"available": bool, "reason": str, "resets_at": str | None, "raw": str}.
         Usado pra UX: usuario clica "Retomar" e verificamos antes de disparar pipeline.
+        Para polling barato, prefira quota_status() (sem custo de tokens).
         """
         try:
             client = await self._get_client()

@@ -175,10 +175,32 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Startup job cleanup error (non-fatal): {e}")
 
+    # Quota watcher: poll Claudius for Claude subscription quota; broadcasts
+    # quota_changed events and auto-resumes opt-in pipelines when quota returns.
+    try:
+        import asyncio
+        from app.services.quota_watcher import quota_watcher_loop
+        app.state.quota_watcher_shutdown = asyncio.Event()
+        app.state.quota_watcher_task = asyncio.create_task(
+            quota_watcher_loop(app.state.quota_watcher_shutdown)
+        )
+        logger.info("Quota watcher started (Claudius subscription tracking)")
+    except Exception as e:
+        logger.warning(f"Quota watcher start failed (non-fatal): {e}")
+
     yield
 
     # PROMPT #226 - Graceful shutdown: clean up background resources
     logger.info("Shutting down Orbit API...")
+    # Signal quota watcher to stop
+    try:
+        import asyncio as _aio
+        if hasattr(app.state, "quota_watcher_shutdown"):
+            app.state.quota_watcher_shutdown.set()
+        if hasattr(app.state, "quota_watcher_task"):
+            await _aio.wait_for(app.state.quota_watcher_task, timeout=5.0)
+    except Exception as e:
+        logger.warning(f"Quota watcher shutdown error (non-fatal): {e}")
     try:
         from app.services.job_executor import PriorityJobExecutor
         executor = PriorityJobExecutor.get_instance()
@@ -323,6 +345,14 @@ app.include_router(
     cache_stats.router,
     prefix=f"{API_V1_PREFIX}",
     tags=["Cache"]
+)
+
+# Claudius Quota (quota-awareness v2.3.0)
+from app.api.routes import claudius_quota
+app.include_router(
+    claudius_quota.router,
+    prefix=f"{API_V1_PREFIX}",
+    tags=["Claudius Quota"]
 )
 
 # AI Format (Text formatting)

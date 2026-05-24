@@ -50,8 +50,10 @@ import {
   Folder,
   FileSearch,
   Shield,
+  Gauge,
 } from 'lucide-react';
 import { useNotification } from '@/hooks';
+import { ClaudiusQuotaSection } from '@/components/settings/ClaudiusQuotaSection';
 
 const MODEL_CONFIGS = [
   { key: 'interview', label: 'Entrevistas', usageType: AIModelUsageType.INTERVIEW, icon: MessageSquare, color: 'text-blue-600 bg-blue-50', description: 'Perguntas de entrevista de contexto e focadas em cards' },
@@ -63,19 +65,20 @@ const MODEL_CONFIGS = [
   { key: 'general', label: 'Geral', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Modelo fallback para todas as outras operações' },
 ];
 
-type SectionId = 'models' | 'queue' | 'blocklist' | 'general';
+type SectionId = 'models' | 'queue' | 'blocklist' | 'quota' | 'general';
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ElementType; description: string }> = [
   { id: 'models', label: 'Modelos IA', icon: Bot, description: 'Modelos padrão por tipo de operação' },
   { id: 'queue', label: 'Fila de Execução', icon: ListOrdered, description: 'Estratégia e concorrência da fila' },
   { id: 'blocklist', label: 'Lista de Bloqueio', icon: ShieldOff, description: 'Pastas e arquivos ignorados' },
+  { id: 'quota', label: 'Cota Claude', icon: Gauge, description: 'Limites e uso da assinatura Claude (Claudius)' },
   { id: 'general', label: 'Avançado', icon: Sliders, description: 'Segurança e configurações personalizadas' },
 ];
 
 function SettingsPageContent() {
   const { showError, showWarning, NotificationComponent } = useNotification();
   const searchParams = useSearchParams();
-  const validSections: SectionId[] = ['models', 'queue', 'blocklist', 'general'];
+  const validSections: SectionId[] = ['models', 'queue', 'blocklist', 'quota', 'general'];
   const sectionParam = searchParams.get('section') as SectionId | null;
   const initialSection = sectionParam && validSections.includes(sectionParam) ? sectionParam : 'models';
 
@@ -885,6 +888,11 @@ function SettingsPageContent() {
                 />
               </div>
             </div>
+          )}
+
+          {/* ── Section: Claudius Quota ── */}
+          {activeSection === 'quota' && (
+            <ClaudiusQuotaSection />
           )}
 
           {/* ── Section: Advanced ── */}

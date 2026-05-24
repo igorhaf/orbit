@@ -298,6 +298,24 @@ async def broadcast_job_event(event_type: str, job_data: dict):
     await NotificationManager.broadcast(message)
 
 
+async def broadcast_quota_event(snapshot: dict, change_kind: str = "updated"):
+    """Broadcast a quota state change to all notification clients.
+
+    Args:
+        snapshot: full quota_status snapshot from claudius (will be sent as-is)
+        change_kind: 'updated' (heartbeat), 'exhausted' (just went out),
+                     'available' (came back from exhausted)
+    """
+    await NotificationManager.broadcast({
+        "event": "quota_changed",
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": {
+            "change_kind": change_kind,
+            "snapshot": snapshot,
+        },
+    })
+
+
 # ============================================================================
 # PROMPT #124 - WebSocket para AI Flow Chain Execution (Global)
 # ============================================================================

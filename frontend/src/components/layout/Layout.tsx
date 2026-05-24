@@ -8,6 +8,7 @@
 
 import React from 'react';
 import { Navbar } from './Navbar';
+import { QuotaBanner } from '@/components/ui/QuotaBanner';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -18,6 +19,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="pt-[45px]">
+        <QuotaBanner />
         <div className="px-4 sm:px-6 lg:px-8 py-8">
           {children}
         </div>

@@ -327,6 +327,14 @@ export function ModelsTab() {
                       <CardTitle className="text-lg">{model.name}</CardTitle>
                       <p className="text-xs text-gray-500 mt-1">
                         {model.provider.charAt(0).toUpperCase() + model.provider.slice(1)}
+                        {model.provider.toLowerCase() === 'claudius' && (
+                          <a
+                            href="/settings?section=quota"
+                            className="ml-2 text-blue-600 hover:underline"
+                          >
+                            · cota & auto-resume
+                          </a>
+                        )}
                       </p>
                     </div>
                   </div>

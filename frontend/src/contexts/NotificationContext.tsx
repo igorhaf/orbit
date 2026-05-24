@@ -76,6 +76,10 @@ interface NotificationContextType {
 
   // PROMPT #134 - WebSocket connection status (replaces polling)
   isConnected: boolean;
+
+  // Quota awareness (v2.3.0) - Claudius subscription snapshot, updated via WS
+  quotaSnapshot: any | null;
+  refreshQuota: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -122,6 +126,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [activeJobs, setActiveJobs] = useState<JobNotification[]>([]);
   const [notifications, setNotifications] = useState<JobNotification[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  // Quota awareness (v2.3.0) - kept in sync via WS quota_changed events
+  const [quotaSnapshot, setQuotaSnapshot] = useState<any>(null);
 
   // PROMPT #141 - Toast notification state
   const [toastNotification, setToastNotification] = useState<JobNotification | null>(null);
@@ -274,6 +280,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   // PROMPT #134 - Handle WebSocket events
   const handleWebSocketEvent = useCallback((message: any) => {
     const { event, data } = message;
+
+    // Quota awareness (v2.3.0) - Claudius subscription state changes
+    if (event === 'quota_changed') {
+      const snapshot = data?.snapshot || null;
+      if (snapshot) {
+        setQuotaSnapshot(snapshot);
+        window.dispatchEvent(new CustomEvent('quotaChanged', { detail: { changeKind: data?.change_kind, snapshot } }));
+      }
+      return;
+    }
 
     // PROMPT #155 - Handle incremental epic generation events
     if (event === 'epics_batch_created') {
@@ -488,12 +504,27 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [WS_URL, handleWebSocketEvent, reconcileActiveJobs]);
 
+  // Quota: initial fetch + heartbeat fallback (in case WS is down)
+  const refreshQuota = useCallback(async () => {
+    try {
+      const { claudiusApi } = await import('@/lib/api/claudius');
+      const snap = await claudiusApi.quotaStatus();
+      setQuotaSnapshot(snap);
+    } catch (e) {
+      // silent — non-critical
+    }
+  }, []);
+
   // PROMPT #134 - Connect WebSocket on mount
   useEffect(() => {
     connect();
 
     // Fetch active jobs on mount
     reconcileActiveJobs();
+
+    // Quota initial fetch + 5min heartbeat fallback
+    refreshQuota();
+    const quotaHeartbeat = setInterval(refreshQuota, 5 * 60 * 1000);
 
     // PROMPT #262 - Periodic ghost job cleanup (every 60s)
     // Removes frontend-only jobs that are stale (no backend match)
@@ -504,6 +535,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Cleanup on unmount
     return () => {
       clearInterval(ghostCleanupInterval);
+      clearInterval(quotaHeartbeat);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -517,7 +549,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         wsRef.current.close();
       }
     };
-  }, [connect, reconcileActiveJobs]);
+  }, [connect, reconcileActiveJobs, refreshQuota]);
 
   return (
     <NotificationContext.Provider
@@ -535,6 +567,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         clearAllNotifications,
         stopWatching, // PROMPT #140
         isConnected,
+        quotaSnapshot,
+        refreshQuota,
       }}
     >
       {children}
