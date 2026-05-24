@@ -129,16 +129,30 @@ async def trigger_deep_pipeline(
             result = await pipeline.run(proj_id, progress_callback=_update_progress)
             jm.complete_job(job_id, result)
         except Exception as e:
+            # Detect quota error pra UX especifica + notification_title clara
+            from app.services.claudius_pipeline import ClaudiusQuotaExhaustedError
+            is_quota = isinstance(e, ClaudiusQuotaExhaustedError)
+            err_msg = ("[QUOTA] " if is_quota else "") + str(e)
             try:
                 db_session.rollback()
-                jm.fail_job(job_id, str(e))
+                jm.fail_job(job_id, err_msg)
+                # Atualizar notification_title pra mensagem amigavel
+                try:
+                    from app.models.async_job import AsyncJob
+                    jr = db_session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+                    if jr:
+                        if is_quota:
+                            jr.notification_title = "Cota Claude esgotada — pipeline pausado, retome quando resetar"
+                        db_session.commit()
+                except Exception:
+                    db_session.rollback()
             except Exception:
                 # Last resort: try with a fresh session
                 try:
                     db_session.rollback()
                     from app.database import get_db as get_db_gen2
                     fresh = next(get_db_gen2())
-                    JobManager(fresh).fail_job(job_id, str(e)[:500])
+                    JobManager(fresh).fail_job(job_id, err_msg[:500])
                     fresh.close()
                 except Exception:
                     pass
@@ -223,6 +237,27 @@ async def get_deep_pipeline_status(
         }
 
     return response
+
+
+@router.get("/claudius/quota-probe")
+async def claudius_quota_probe():
+    """Ping minimo em Claudius pra detectar disponibilidade da cota Claude.
+
+    Usado pelo botao 'Retomar pipeline' na UI: antes de re-disparar, verifica
+    se a cota voltou. Custa ~5-10 tokens.
+
+    Retorna:
+        - available: bool (false se cota esgotada ou claudius unreachable)
+        - reason: "ok" | "quota_exhausted" | "http_error" | "unreachable"
+        - resets_at: string parseado da mensagem (ex: "5:10am (UTC)") ou null
+        - raw: texto bruto da resposta pra debug
+    """
+    from app.services.claudius_pipeline import ClaudiusPipelineService
+    client = ClaudiusPipelineService()
+    try:
+        return await client.quota_probe()
+    finally:
+        await client.close()
 
 
 # =========================================================================

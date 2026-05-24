@@ -198,25 +198,28 @@ async def get_enrichment_status(
     ).scalar() or 0
 
     # PROMPT #251 - Check if project has RAG documents (scan was done)
+    # NOTA: tabela rag_documents pode nao existir em deploys legacy; fallback graceful
     from sqlalchemy import text as sql_text
-    rag_doc_count = db.execute(
-        sql_text("SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid"),
-        {"pid": str(project_id)},
-    ).scalar() or 0
-
-    # PROMPT #252 - Pipeline state: derive from DB (Redis fallback)
-    # Phase 1: has code_file docs in RAG
-    code_file_count = db.execute(sql_text(
-        "SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid "
-        "AND (metadata->>'type' = 'code_file')"
-    ), {"pid": str(project_id)}).scalar() or 0
+    rag_doc_count = 0
+    code_file_count = 0
+    rule_count = 0
+    try:
+        rag_doc_count = db.execute(
+            sql_text("SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid"),
+            {"pid": str(project_id)},
+        ).scalar() or 0
+        code_file_count = db.execute(sql_text(
+            "SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid "
+            "AND (metadata->>'type' = 'code_file')"
+        ), {"pid": str(project_id)}).scalar() or 0
+        rule_count = db.execute(sql_text(
+            "SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid "
+            "AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')"
+        ), {"pid": str(project_id)}).scalar() or 0
+    except Exception:
+        # tabela inexistente ou erro de schema -- continuar com zeros
+        db.rollback()
     has_indexed_files = code_file_count > 0
-
-    # Phase 2: has business_rule docs in RAG
-    rule_count = db.execute(sql_text(
-        "SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid "
-        "AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')"
-    ), {"pid": str(project_id)}).scalar() or 0
     has_business_rules = rule_count > 0
 
     # Phase 3: has cards
@@ -322,7 +325,11 @@ async def get_enrichment_status(
     ).order_by(PipelineRun.created_at.desc()).first()
     deep_pipeline_interrupted = interrupted_run is not None
     deep_pipeline_error = interrupted_run.error if interrupted_run else None
-    deep_pipeline_last_phase = (interrupted_run.checkpoint_state or {}).get("last_completed_phase", -1) if interrupted_run else None
+    _cp = (interrupted_run.checkpoint_state or {}) if interrupted_run else {}
+    deep_pipeline_last_phase = _cp.get("last_completed_phase", -1) if interrupted_run else None
+    deep_pipeline_interruption_reason = _cp.get("interruption_reason") if interrupted_run else None
+    deep_pipeline_quota_resets_at = _cp.get("quota_resets_at") if interrupted_run else None
+    deep_pipeline_interrupted_at = _cp.get("interrupted_at") if interrupted_run else None
 
     return {
         "is_enriching": is_enriching,
@@ -362,6 +369,9 @@ async def get_enrichment_status(
         "deep_pipeline_interrupted": deep_pipeline_interrupted,
         "deep_pipeline_error": deep_pipeline_error,
         "deep_pipeline_last_phase": deep_pipeline_last_phase,
+        "deep_pipeline_interruption_reason": deep_pipeline_interruption_reason,
+        "deep_pipeline_quota_resets_at": deep_pipeline_quota_resets_at,
+        "deep_pipeline_interrupted_at": deep_pipeline_interrupted_at,
         "deep_pipeline_progress": {
             "percent": deep_pipeline_active.progress_percent if deep_pipeline_active else None,
             "message": deep_pipeline_active.progress_message if deep_pipeline_active else None,

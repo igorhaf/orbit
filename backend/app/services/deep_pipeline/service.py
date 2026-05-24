@@ -533,6 +533,15 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
         except Exception as e:
             logger.error(f"Deep pipeline failed at run {run_id}: {e}", exc_info=True)
             results["error"] = str(e)
+            # Detectar tipo do erro pra UX especifica (cota vs erro generico)
+            from app.services.claudius_pipeline import ClaudiusQuotaExhaustedError
+            is_quota_error = isinstance(e, ClaudiusQuotaExhaustedError)
+            quota_resets_at = None
+            if is_quota_error:
+                import re
+                m = re.search(r"resets?\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*[ap]m\s*\([A-Z]+\))", str(e), re.IGNORECASE)
+                if m:
+                    quota_resets_at = m.group(1)
             # Always mark as "interrupted" so user can resume from last completed phase
             try:
                 pipeline_run.status = "interrupted"
@@ -543,8 +552,15 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
                 pipeline_run.total_output_tokens = self._run_tokens_out
                 pipeline_run.estimated_cost_usd = self._run_cost
                 pipeline_run.completed_at = datetime.utcnow()
+                # Marcar tipo de interrupcao no checkpoint_state pra UI distinguir
+                cp = pipeline_run.checkpoint_state or {}
+                cp["interruption_reason"] = "quota_exhausted" if is_quota_error else "error"
+                if quota_resets_at:
+                    cp["quota_resets_at"] = quota_resets_at
+                cp["interrupted_at"] = datetime.utcnow().isoformat()
+                pipeline_run.checkpoint_state = cp
                 self.db.commit()
-                logger.info(f"Pipeline interrupted -- can be resumed from phase {(pipeline_run.checkpoint_state or {}).get('last_completed_phase', -1) + 1}")
+                logger.info(f"Pipeline interrupted ({'quota' if is_quota_error else 'error'}) -- can be resumed from phase {(pipeline_run.checkpoint_state or {}).get('last_completed_phase', -1) + 1}")
             except Exception:
                 self.db.rollback()
             raise

@@ -333,6 +333,12 @@ export const ragApi = {
   deepPipelineStatus: (projectId: string) =>
     request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline/status`),
 
+  // Quota probe - ping rapido em Claudius pra verificar se cota Claude voltou
+  claudiusQuotaProbe: () =>
+    request<{ available: boolean; reason: string; resets_at: string | null; raw: string }>(
+      `/api/v1/projects/claudius/quota-probe`
+    ),
+
   // PROMPT #263 - Pipeline Profiles & Run History
   pipelineProfiles: () =>
     request<any[]>('/api/v1/projects/pipeline/profiles'),

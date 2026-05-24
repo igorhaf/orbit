@@ -578,12 +578,19 @@ class Phase0to3Mixin:
             1, 1, model_name=p3_model, result=result,
         )
 
-        arch_map = self.claudius.extract_json(result.get("text", "")) or {}
+        raw_text = result.get("text", "") or ""
+        arch_map = self.claudius.extract_json(raw_text) or {}
 
         # Guarda: arch_map vazio sinaliza cota/falha upstream que escapou detecao
         if not arch_map or not isinstance(arch_map, dict) or len(arch_map) == 0:
+            # Distinguir cota de JSON invalido: msg curta + match quota patterns
+            from app.services.claudius_pipeline import _QUOTA_PATTERNS
+            if raw_text and len(raw_text) < 500 and _QUOTA_PATTERNS.search(raw_text):
+                raise ClaudiusQuotaExhaustedError(
+                    f"Phase 3: cota Claude esgotada -- {raw_text.strip()[:200]}"
+                )
             raise ClaudiusPipelineError(
-                "Phase 3: architectural_map vazio -- possivel cota Claude esgotada ou JSON invalido na resposta"
+                "Phase 3: architectural_map vazio -- JSON invalido na resposta"
             )
 
         # Store artifact

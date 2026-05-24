@@ -438,6 +438,42 @@ class ClaudiusPipelineService:
         except Exception:
             return False
 
+    async def quota_probe(self) -> dict:
+        """Ping Claude com prompt minimo pra detectar se cota esta disponivel.
+
+        Retorna {"available": bool, "reason": str, "resets_at": str | None, "raw": str}.
+        Usado pra UX: usuario clica "Retomar" e verificamos antes de disparar pipeline.
+        """
+        try:
+            client = await self._get_client()
+            response = await client.post(
+                "/v1/messages",
+                json={
+                    "model": MODEL_SONNET,
+                    "max_tokens": 10,
+                    "messages": [{"role": "user", "content": "ping"}],
+                },
+                timeout=httpx.Timeout(60.0, connect=5.0),
+            )
+            if response.status_code != 200:
+                return {"available": False, "reason": "http_error", "resets_at": None, "raw": f"HTTP {response.status_code}"}
+            data = response.json()
+            text_blocks = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
+            preview = "".join(text_blocks)
+            usage = data.get("usage") or {}
+            in_tok = usage.get("input_tokens", 0) or 0
+            out_tok = usage.get("output_tokens", 0) or 0
+            if in_tok == 0 and out_tok == 0 and len(preview) < 500 and _QUOTA_PATTERNS.search(preview):
+                resets_at = None
+                m = re.search(r"resets?\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*[ap]m\s*\([A-Z]+\))", preview, re.IGNORECASE)
+                if m:
+                    resets_at = m.group(1)
+                return {"available": False, "reason": "quota_exhausted", "resets_at": resets_at, "raw": preview[:200]}
+            return {"available": True, "reason": "ok", "resets_at": None, "raw": preview[:200]}
+        except Exception as e:
+            logger.exception("quota_probe failed")
+            return {"available": False, "reason": "unreachable", "resets_at": None, "raw": f"{type(e).__name__}: {str(e)[:200]}"}
+
     # ── Response Parsing ─────────────────────────────────────────────────
 
     @staticmethod

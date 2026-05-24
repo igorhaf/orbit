@@ -171,6 +171,9 @@ export default function ProjectDetailsPage() {
   const [deepPipelineInterrupted, setDeepPipelineInterrupted] = useState(false);
   const [deepPipelineError, setDeepPipelineError] = useState<string | null>(null);
   const [deepPipelineLastPhase, setDeepPipelineLastPhase] = useState<number | null>(null);
+  const [deepPipelineInterruptionReason, setDeepPipelineInterruptionReason] = useState<string | null>(null);
+  const [deepPipelineQuotaResetsAt, setDeepPipelineQuotaResetsAt] = useState<string | null>(null);
+  const [quotaProbing, setQuotaProbing] = useState(false);
   const [deepPipelineProgress, setDeepPipelineProgress] = useState<string | null>(null);
   const [deepPipelineScore, setDeepPipelineScore] = useState<string | null>(null);
   // PROMPT #263 - Pipeline profile selector
@@ -315,6 +318,8 @@ export default function ProjectDetailsPage() {
         setDeepPipelineInterrupted(status.deep_pipeline_interrupted || false);
         setDeepPipelineError(status.deep_pipeline_error || null);
         setDeepPipelineLastPhase(status.deep_pipeline_last_phase ?? null);
+        setDeepPipelineInterruptionReason(status.deep_pipeline_interruption_reason || null);
+        setDeepPipelineQuotaResetsAt(status.deep_pipeline_quota_resets_at || null);
         setDeepPipelineScore(status.deep_pipeline_quality_score || null);
         if (status.deep_pipeline_progress) {
           setDeepPipelineProgress(status.deep_pipeline_progress.message || null);
@@ -1002,6 +1007,23 @@ export default function ProjectDetailsPage() {
                   {deepPipelineInterrupted && !deepPipelineRunning && (
                     <button
                       onClick={async () => {
+                        // Se foi cota: probe antes pra evitar disparar e bater quota de novo
+                        if (deepPipelineInterruptionReason === 'quota_exhausted') {
+                          try {
+                            setQuotaProbing(true);
+                            const probe = await ragApi.claudiusQuotaProbe();
+                            if (!probe.available) {
+                              const resetsMsg = probe.resets_at ? ` Reset previsto: ${probe.resets_at}.` : '';
+                              showError(`Cota Claude ainda esgotada.${resetsMsg} Tente novamente em alguns minutos.`);
+                              setQuotaProbing(false);
+                              return;
+                            }
+                          } catch {
+                            // se probe falhar, deixa tentar normal (probe e best-effort)
+                          } finally {
+                            setQuotaProbing(false);
+                          }
+                        }
                         try {
                           setDeepPipelineRunning(true);
                           setDeepPipelineProgress('Continuando de onde parou...');
@@ -1014,14 +1036,31 @@ export default function ProjectDetailsPage() {
                           showError(err?.message || 'Erro ao retomar pipeline');
                         }
                       }}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-all"
-                      title={`Continuar pipeline da fase ${(deepPipelineLastPhase ?? -1) + 2}${deepPipelineError ? ` (erro: ${deepPipelineError.substring(0, 80)})` : ''}`}
+                      disabled={quotaProbing}
+                      className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                        deepPipelineInterruptionReason === 'quota_exhausted'
+                          ? 'bg-yellow-500 text-white hover:bg-yellow-600'
+                          : 'bg-amber-500 text-white hover:bg-amber-600'
+                      } ${quotaProbing ? 'opacity-60 cursor-wait' : ''}`}
+                      title={
+                        deepPipelineInterruptionReason === 'quota_exhausted'
+                          ? `Cota Claude esgotada${deepPipelineQuotaResetsAt ? ` (reseta ${deepPipelineQuotaResetsAt})` : ''}. Verifica disponibilidade antes de retomar.`
+                          : `Continuar pipeline da fase ${(deepPipelineLastPhase ?? -1) + 2}${deepPipelineError ? ` (erro: ${deepPipelineError.substring(0, 80)})` : ''}`
+                      }
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Continuar Pipeline (fase {(deepPipelineLastPhase ?? -1) + 2})
+                      {quotaProbing ? (
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" /><path d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" fill="currentColor" className="opacity-75" /></svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      )}
+                      {quotaProbing
+                        ? 'Verificando cota...'
+                        : deepPipelineInterruptionReason === 'quota_exhausted'
+                          ? `Retomar quando cota voltar${deepPipelineQuotaResetsAt ? ` (reseta ${deepPipelineQuotaResetsAt})` : ''}`
+                          : `Continuar Pipeline (fase ${(deepPipelineLastPhase ?? -1) + 2})`}
                     </button>
                   )}
                   {pipelineProfiles.length > 0 && (
@@ -1043,9 +1082,15 @@ export default function ProjectDetailsPage() {
                     <span className="text-xs text-purple-600 max-w-[300px] truncate">{deepPipelineProgress}</span>
                   )}
                   {deepPipelineInterrupted && deepPipelineError && !deepPipelineRunning && (
-                    <span className="text-xs text-red-600 max-w-[400px] truncate" title={deepPipelineError}>
-                      Erro: {deepPipelineError.substring(0, 100)}
-                    </span>
+                    deepPipelineInterruptionReason === 'quota_exhausted' ? (
+                      <span className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded px-2 py-1 max-w-[500px]" title={deepPipelineError}>
+                        ⏸ Cota Claude esgotada{deepPipelineQuotaResetsAt ? ` — reseta em ${deepPipelineQuotaResetsAt}` : ''}. Pipeline pausado na fase {(deepPipelineLastPhase ?? -1) + 2}.
+                      </span>
+                    ) : (
+                      <span className="text-xs text-red-600 max-w-[400px] truncate" title={deepPipelineError}>
+                        Erro: {deepPipelineError.substring(0, 100)}
+                      </span>
+                    )
                   )}
                 </div>
                 <div className="flex items-center gap-2">
