@@ -295,7 +295,7 @@ async def get_deep_pipeline_status(
             AsyncJob.project_id == project_id,
             AsyncJob.job_type == JobType.DEEP_PIPELINE,
             AsyncJob.status == JobStatus.COMPLETED,
-        ).order_by(AsyncJob.updated_at.desc()).first()
+        ).order_by(AsyncJob.completed_at.desc()).first()
 
     # Count artifacts per phase
     from app.models.pipeline_artifact import PipelineArtifact
@@ -330,7 +330,7 @@ async def get_deep_pipeline_status(
     elif last_completed:
         response["last_completed"] = {
             "id": str(last_completed.id),
-            "completed_at": last_completed.updated_at.isoformat() if last_completed.updated_at else None,
+            "completed_at": last_completed.completed_at.isoformat() if last_completed.completed_at else None,
             "result": last_completed.result,
         }
 
