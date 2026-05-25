@@ -1059,25 +1059,33 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
 
             # Layout: clusters em colunas horizontais (X), steps empilhados
             # verticalmente (Y) dentro de cada cluster.
-            COL_WIDTH = 240         # largura de cada cluster
-            COL_GAP = 60            # espaço entre clusters
-            ROW_HEIGHT = 100        # altura de cada step
-            ROW_GAP = 14            # espaço entre steps verticalmente
-            GROUP_HEADER_H = 32     # altura do cabeçalho do GroupNode
-            GROUP_PAD_X = 16        # padding horizontal interno
-            GROUP_PAD_Y = 10        # padding vertical interno (depois do header)
+            # v3.6.5: dimensões ajustadas pra auto-fit profissional.
+            # Medições reais dos nodes (em px após render):
+            #   - utilityNode/modelNode: ~220 wide × ~74 high (sem config), ~100 com 1-2 entries
+            #   - controlFlowNode: ~220 wide × ~110 high (com outputs list)
+            #   - ioNode: ~180 wide × ~60 high (com parent_context: ~88)
+            COL_WIDTH = 252           # largura do cluster = 220 (node) + 2×16 padding
+            COL_GAP = 70              # espaço entre clusters (gap para edges respirarem)
+            ROW_HEIGHT = 86           # altura média de cada step
+            ROW_GAP = 12              # espaço vertical entre steps
+            GROUP_HEADER_H = 28       # cabeçalho do GroupNode (label)
+            GROUP_PAD_X = 16          # padding lateral interno
+            GROUP_PAD_Y = 12          # padding topo/baixo interno (depois do header)
+            CONTROL_FLOW_EXTRA = 32   # control flow nodes são mais altos
 
             # ioNodes ficam ao lado dos clusters (Entrada à esquerda, Saída à direita).
             IO_X = 20
-            IO_W = 180  # largura visual de um ioNode
+            IO_W = 200  # largura visual de um ioNode com parent_context
+            IO_Y_OFFSET = 24  # ioNode centralizado vs CLUSTER_Y_BASE
 
-            # Centro vertical (Y do grupo) base — Y=80 leva em conta o header da tab
-            CLUSTER_Y_BASE = 80
+            # Y baseline do cluster (alinhado com vertical center do canvas tab)
+            CLUSTER_Y_BASE = 60
 
             # Entrada do sub-subflow
+            # v3.6.5: alinhado verticalmente com o primeiro step do primeiro group
             nodes.append({
                 "id": l3_in_id, "type": "ioNode",
-                "position": {"x": IO_X, "y": CLUSTER_Y_BASE + 20},
+                "position": {"x": IO_X, "y": CLUSTER_Y_BASE + GROUP_HEADER_H + GROUP_PAD_Y + IO_Y_OFFSET},
                 "data": {
                     "label": f"Entrada — {sub['label']}",
                     "io_kind": "input",
@@ -1096,8 +1104,20 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             current_x = IO_X + IO_W + COL_GAP
             for cluster in active_clusters:
                 steps_in_cluster = steps_by_cluster[cluster]
-                # Altura do grupo = header + items + padding
-                group_h = GROUP_HEADER_H + GROUP_PAD_Y + len(steps_in_cluster) * (ROW_HEIGHT + ROW_GAP) - ROW_GAP + GROUP_PAD_Y
+                # v3.6.5: altura proporcional (auto-fit). Soma a altura REAL
+                # de cada step com gaps; control flow nodes ganham bônus.
+                # Resultado: groups nunca têm espaço sobrando nem cortando children.
+                total_steps_h = 0
+                for _, (kind_or_model, _opts), _ in steps_in_cluster:
+                    is_cf = (not (isinstance(kind_or_model, str) and kind_or_model.startswith("model:"))) \
+                            and (_KIND_META.get(kind_or_model, (None, ""))[1] == "ControlFlow")
+                    total_steps_h += ROW_HEIGHT + (CONTROL_FLOW_EXTRA if is_cf else 0)
+                # gaps entre N items = (N-1) * ROW_GAP
+                group_h = (GROUP_HEADER_H
+                           + GROUP_PAD_Y
+                           + total_steps_h
+                           + max(0, len(steps_in_cluster) - 1) * ROW_GAP
+                           + GROUP_PAD_Y)
                 group_node_id = f"group-{sub['id']}-{cluster.lower().replace(' ', '-').replace('é','e').replace('ã','a').replace('ç','c').replace('ó','o')}"
                 color = _CLUSTER_COLOR.get(cluster, "#94a3b8")
                 # GroupNode (parent container) — v3.6.4
@@ -1124,12 +1144,19 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 cluster_x_start[cluster] = current_x
 
                 # Steps dentro do GroupNode — coordenadas RELATIVAS ao parent
+                # v3.6.5: acumula altura conforme tipo (control flow é maior)
+                _rel_y_cursor = GROUP_HEADER_H + GROUP_PAD_Y
                 for local_idx, (step_idx, (kind_or_model, opts), step_node_id) in enumerate(steps_in_cluster):
                     is_model = isinstance(kind_or_model, str) and kind_or_model.startswith("model:")
                     planned = bool(opts.get("planned"))
-                    # Posição relativa: x dentro do padding, y abaixo do header
+                    is_cf_step = (not is_model) and \
+                                 (_KIND_META.get(kind_or_model, (None, ""))[1] == "ControlFlow")
                     rel_x = GROUP_PAD_X
-                    rel_y = GROUP_HEADER_H + GROUP_PAD_Y + local_idx * (ROW_HEIGHT + ROW_GAP)
+                    rel_y = _rel_y_cursor
+                    # Avança o cursor pelo tamanho deste step (próxima iteração)
+                    _rel_y_cursor += (ROW_HEIGHT + (CONTROL_FLOW_EXTRA if is_cf_step else 0))
+                    if local_idx < len(steps_in_cluster) - 1:
+                        _rel_y_cursor += ROW_GAP
 
                     if is_model:
                         assigned_model_id = kind_or_model.split(":", 1)[1]
@@ -1195,10 +1222,11 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 current_x += COL_WIDTH + COL_GAP
 
             # Saída do sub-subflow (depois da última coluna)
+            # v3.6.5: mesma altura Y do Entrada (alinha visualmente)
             l3_out_x = current_x
             nodes.append({
                 "id": l3_out_id, "type": "ioNode",
-                "position": {"x": l3_out_x, "y": CLUSTER_Y_BASE + 20},
+                "position": {"x": l3_out_x, "y": CLUSTER_Y_BASE + GROUP_HEADER_H + GROUP_PAD_Y + IO_Y_OFFSET},
                 "data": {
                     "label": f"Saída — {sub['label']}",
                     "io_kind": "output",
@@ -1561,11 +1589,19 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
            description="Inverte booleano de entrada."),
     ]
 
-    # v3.4: if the user previously saved a customized graph via /canvas-save,
-    # use that instead of the default Deep Pipeline scaffold. Persisted under
-    # the reserved key `__canvas_graph__` inside phase_configs.
+    # v3.4: se o usuário previamente salvou um grafo customizado, usa ele.
+    # v3.6.5: versionamento — schema_version garante que o default novo é
+    # gerado quando o backend introduz mudanças estruturais (auto-fit,
+    # control flow nodes, etc). Se o saved_graph tem version < CURRENT,
+    # descartamos e regeramos.
+    SCHEMA_VERSION = 3        # bump quando mudar estrutura/layout/auto-fit
     saved_graph = (profile_phase_configs or {}).get("__canvas_graph__")
-    if isinstance(saved_graph, dict) and saved_graph.get("nodes"):
+    use_saved = (
+        isinstance(saved_graph, dict)
+        and saved_graph.get("nodes")
+        and saved_graph.get("schema_version", 0) >= SCHEMA_VERSION
+    )
+    if use_saved:
         nodes = saved_graph.get("nodes") or []
         edges = saved_graph.get("edges") or []
         subflows = saved_graph.get("subflows") or {}
@@ -1591,7 +1627,8 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             "group_count": len(DEEP_PIPELINE_GROUPS),
             "profile_id": str(profile.id) if profile else None,
             "profile_name": profile.name if profile else None,
-            "graph_source": "custom" if (isinstance(saved_graph, dict) and saved_graph.get("nodes")) else "default",
+            "graph_source": "custom" if use_saved else "default",
+            "schema_version": SCHEMA_VERSION,
             "control_flow_kinds": ["if_else", "switch", "for_each", "while_loop", "logical_and", "logical_or", "logical_not"],
         },
     }
@@ -1682,7 +1719,10 @@ async def canvas_save(payload: dict, db: Session = Depends(get_db)):
         # Force profile update path even if phase_configs_payload is empty
         if not phase_configs_payload:
             phase_configs_payload = {}
+        # v3.6.5: schema_version=3 (auto-fit groups, control flow nodes,
+        # waypoints arrastáveis). Snapshot rejeita grafos com versão menor.
         phase_configs_payload["__canvas_graph__"] = {
+            "schema_version": 3,
             "saved_at": _dt.utcnow().isoformat(),
             "nodes": graph_payload.get("nodes") or [],
             "edges": graph_payload.get("edges") or [],
