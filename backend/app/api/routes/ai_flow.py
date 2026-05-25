@@ -747,12 +747,30 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
     L3_INNER_X_STEP = 200
 
     prev_l1_node_id: str | None = None
+    areas_count = len(DEEP_PIPELINE_HIERARCHY)
     for l1_idx, area in enumerate(DEEP_PIPELINE_HIERARCHY):
         l1_sf_id = f"sf-{area['id']}"
         l1_in_id = f"sf-{area['id']}-in"
         l1_out_id = f"sf-{area['id']}-out"
         l1_inner_ids: list[str] = [l1_in_id]
         l1_child_subflow_ids: list[str] = []
+
+        # v3.5.1: parent_context da área — predecessor/sucessor são áreas
+        # irmãs no ROOT. O Start da área herda de "ROOT_START" (entrada do
+        # pipeline) ou da área anterior; o End vai pra próxima área ou
+        # "ROOT_END" (fim do pipeline).
+        if l1_idx == 0:
+            area_predecessor = {"kind": "root_start", "label": "Pipeline"}
+        else:
+            prev_area = DEEP_PIPELINE_HIERARCHY[l1_idx - 1]
+            area_predecessor = {"kind": "sibling_area", "node_id": f"sf-{prev_area['id']}-out",
+                                "area_id": prev_area["id"], "label": prev_area["label"]}
+        if l1_idx == areas_count - 1:
+            area_successor = {"kind": "root_end", "label": "Pipeline"}
+        else:
+            next_area = DEEP_PIPELINE_HIERARCHY[l1_idx + 1]
+            area_successor = {"kind": "sibling_area", "node_id": f"sf-{next_area['id']}-in",
+                              "area_id": next_area["id"], "label": next_area["label"]}
 
         # Entrada da área (L2)
         nodes.append({
@@ -762,14 +780,37 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 "label": f"Entrada — {area['label']}",
                 "io_kind": "input",
                 "area_id": area["id"],
+                "parent_context": {
+                    "parent_id": "__root__",
+                    "parent_label": "Pipeline",
+                    "comes_from": area_predecessor,
+                },
             },
         })
 
         # Para cada sub-subflow (Nível 2), criar 1 subflowNode + 1 subflow entry
         prev_l2_node_id = l1_in_id
+        children_count = len(area["children"])
         for l2_idx, sub in enumerate(area["children"]):
             sub_sf_id = f"sf-{sub['id']}"
             l2_x = L2_INNER_X_IN + (l2_idx + 1) * L2_INNER_X_STEP
+
+            # v3.5.1: parent_context — quem é o predecessor/sucessor desse
+            # sub-subflow no fluxo do PAI (área L1). O End do sub-subflow
+            # aponta pro Start do próximo node do pai (próximo sub-subflow
+            # ou Saída da área).
+            if l2_idx == 0:
+                parent_predecessor = {"kind": "area_input", "node_id": l1_in_id, "label": area["label"]}
+            else:
+                prev_sub = area["children"][l2_idx - 1]
+                parent_predecessor = {"kind": "sibling_subflow", "node_id": f"sf-{prev_sub['id']}-out",
+                                      "subflow_id": prev_sub["id"], "label": prev_sub["label"]}
+            if l2_idx == children_count - 1:
+                parent_successor = {"kind": "area_output", "node_id": l1_out_id, "label": area["label"]}
+            else:
+                next_sub = area["children"][l2_idx + 1]
+                parent_successor = {"kind": "sibling_subflow", "node_id": f"sf-{next_sub['id']}-in",
+                                    "subflow_id": next_sub["id"], "label": next_sub["label"]}
 
             # SubflowNode visível dentro da área tab (representa o sub-subflow)
             nodes.append({
@@ -783,6 +824,12 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     "step_id": sub["id"],
                     "node_count": len(sub["steps"]) + 2,  # +Entrada/Saída
                     "collapsed": True,
+                    "parent_context": {
+                        "parent_id": area["id"],
+                        "parent_label": area["label"],
+                        "predecessor": parent_predecessor,
+                        "successor": parent_successor,
+                    },
                 },
             })
             l1_inner_ids.append(sub_sf_id)
@@ -803,7 +850,7 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             l3_out_id = f"sf-{sub['id']}-out"
             l3_inner_ids: list[str] = [l3_in_id]
 
-            # Entrada do sub-subflow
+            # Entrada do sub-subflow — exibe de onde "vem" no pai
             nodes.append({
                 "id": l3_in_id, "type": "ioNode",
                 "position": {"x": L3_INNER_X_IN, "y": L3_INNER_Y},
@@ -811,6 +858,11 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     "label": f"Entrada — {sub['label']}",
                     "io_kind": "input",
                     "step_id": sub["id"],
+                    "parent_context": {
+                        "parent_id": area["id"],
+                        "parent_label": area["label"],
+                        "comes_from": parent_predecessor,
+                    },
                 },
             })
 
@@ -879,7 +931,7 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 })
                 prev_step_id = step_node_id
 
-            # Saída do sub-subflow
+            # Saída do sub-subflow — exibe pra onde "vai" no pai
             l3_out_x = L3_INNER_X_IN + (len(sub["steps"]) + 1) * L3_INNER_X_STEP
             nodes.append({
                 "id": l3_out_id, "type": "ioNode",
@@ -888,6 +940,11 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     "label": f"Saída — {sub['label']}",
                     "io_kind": "output",
                     "step_id": sub["id"],
+                    "parent_context": {
+                        "parent_id": area["id"],
+                        "parent_label": area["label"],
+                        "goes_to": parent_successor,
+                    },
                 },
             })
             l3_inner_ids.append(l3_out_id)
@@ -919,6 +976,11 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 "label": f"Saída — {area['label']}",
                 "io_kind": "output",
                 "area_id": area["id"],
+                "parent_context": {
+                    "parent_id": "__root__",
+                    "parent_label": "Pipeline",
+                    "goes_to": area_successor,
+                },
             },
         })
         l1_inner_ids.append(l1_out_id)

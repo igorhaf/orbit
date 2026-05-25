@@ -766,10 +766,19 @@ export function IONode({ data }: { data: any }) {
   const accent = isInput ? '#10b981' : '#f97316'; // green for input, orange for output
   const label = data.label || (isInput ? 'Entrada' : 'Saída');
   const icon = isInput ? '→' : '⇒';
+  // v3.5.1: parent_context exibe de onde "vem" / pra onde "vai" no fluxo pai.
+  const pc = data.parent_context as
+    | { parent_label?: string; comes_from?: { label?: string; kind?: string }; goes_to?: { label?: string; kind?: string } }
+    | undefined;
+  const fromOrTo = isInput ? pc?.comes_from : pc?.goes_to;
+  const arrowSymbol = isInput ? '←' : '→';
+  // Cores especiais para root_start/root_end (sem âncora real)
+  const isRootEdge = fromOrTo?.kind === 'root_start' || fromOrTo?.kind === 'root_end';
+
   return (
     <div
       className="rounded-lg shadow-sm border-2 bg-white cursor-grab active:cursor-grabbing hover:shadow-md transition-all"
-      style={{ borderColor: accent, minWidth: 160 }}
+      style={{ borderColor: accent, minWidth: 180 }}
     >
       {!isInput && (
         <Handle
@@ -780,19 +789,35 @@ export function IONode({ data }: { data: any }) {
           style={{ background: accent }}
         />
       )}
-      <div className="px-3 py-2 flex items-center gap-2">
-        <span
-          className="inline-flex items-center justify-center w-6 h-6 rounded text-sm font-bold"
-          style={{ background: `${accent}22`, color: accent }}
-        >
-          {icon}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: accent }}>
-            {isInput ? 'Entrada' : 'Saída'}
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-flex items-center justify-center w-6 h-6 rounded text-sm font-bold flex-shrink-0"
+            style={{ background: `${accent}22`, color: accent }}
+          >
+            {icon}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: accent }}>
+              {isInput ? 'Entrada' : 'Saída'}
+            </div>
+            <div className="text-xs text-gray-700 truncate">{label.replace(/^(Entrada|Saída)\s*—\s*/, '')}</div>
           </div>
-          <div className="text-xs text-gray-700 truncate">{label.replace(/^(Entrada|Saída)\s*—\s*/, '')}</div>
         </div>
+        {fromOrTo && (
+          <div className="mt-1.5 pt-1.5 border-t border-gray-100 text-[10px] text-gray-500 truncate">
+            <span className="font-mono mr-1">{arrowSymbol}</span>
+            {isRootEdge
+              ? (<span className="italic">{isInput ? 'início do pipeline' : 'fim do pipeline'}</span>)
+              : (<span title={fromOrTo.kind}>{fromOrTo.label}</span>)
+            }
+          </div>
+        )}
+        {pc?.parent_label && !isRootEdge && (
+          <div className="mt-0.5 text-[9px] text-gray-400 truncate" title={`parent: ${pc.parent_label}`}>
+            no {pc.parent_label}
+          </div>
+        )}
       </div>
       {isInput && (
         <Handle

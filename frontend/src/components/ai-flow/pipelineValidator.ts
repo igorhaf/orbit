@@ -207,3 +207,92 @@ export function validatePipeline(
   const errors = allIssues.filter((i) => i.severity === 'error');
   return { ok: errors.length === 0, issues: allIssues };
 }
+
+/**
+ * v3.5.1 — Pre-run validation. Mais estrita que validatePipeline:
+ *   1. Tudo do validatePipeline (subflow sem saída, órfão, etc) — errors
+ *   2. SubflowNodes que aparecem visualmente no pai (área) mas não estão
+ *      conectados ao fluxo dele (Entrada/Saída ou outros sub-subflows)
+ *   3. Áreas (root level) que não estão na cadeia root_start → root_end
+ *
+ * Resultado: rejeita execução quando há subflows ou nodes "soltos" que
+ * o engine não saberia processar.
+ */
+export function validatePipelinePreRun(
+  nodes: Node[],
+  edges: Edge[],
+  subflows: Record<string, Subflow>,
+  typesSchema: Record<string, NodeSchema>,
+): ValidationResult {
+  const base = validatePipeline(nodes, edges, subflows, typesSchema);
+  const issues: ValidationIssue[] = [...base.issues];
+
+  const { forward, reverse } = buildAdjacency(edges);
+
+  // (2) Verificar que cada subflowNode tem entrada+saída dentro do PAI.
+  // Para isso, descobrimos qual subflow CONTÉM esse subflowNode:
+  // procuramos qual subflow tem o subflowNode.id em seus node_ids.
+  const containerOf = new Map<string, string>(); // subflowNode.id → parent subflow id
+  for (const [parentId, sf] of Object.entries(subflows)) {
+    for (const nid of sf.node_ids || []) {
+      const n = nodes.find((x) => x.id === nid);
+      if (n?.type === 'subflowNode') {
+        containerOf.set(nid, parentId);
+      }
+    }
+  }
+
+  for (const n of nodes) {
+    if (n.type !== 'subflowNode') continue;
+    const parentSfId = containerOf.get(n.id);
+    if (!parentSfId) {
+      // Está no ROOT — checagem própria abaixo
+      continue;
+    }
+    const parentSf = subflows[parentSfId];
+    if (!parentSf) continue;
+    const parentMembers = new Set(parentSf.node_ids || []);
+    const incoming = reverse.get(n.id) || new Set();
+    const outgoing = forward.get(n.id) || new Set();
+    const incomingFromParent = Array.from(incoming).some((s) => parentMembers.has(s));
+    const outgoingToParent = Array.from(outgoing).some((t) => parentMembers.has(t));
+    if (!incomingFromParent || !outgoingToParent) {
+      issues.push({
+        severity: 'error',
+        message: `Subflow "${(n.data as any)?.label || n.id}" está solto no pai "${parentSf.label}" (sem entrada ou saída ligada)`,
+        nodeId: n.id,
+        subflowId: parentSfId,
+      });
+    }
+  }
+
+  // (3) Áreas do root: precisam estar encadeadas (root_start → ... → root_end).
+  // No nosso modelo, áreas têm parent_id="__root__". Os subflowNodes correspondentes
+  // (`sf-discovery`, `sf-cards`, etc) ficam no ROOT (não em nenhum subflow).
+  // Checamos se cada um tem incoming OU outgoing (primeiro/último permitidos).
+  const rootSubflowNodes = nodes.filter(
+    (n) => n.type === 'subflowNode' && !containerOf.has(n.id),
+  );
+  if (rootSubflowNodes.length > 1) {
+    for (const n of rootSubflowNodes) {
+      const incoming = (reverse.get(n.id) || new Set());
+      const outgoing = (forward.get(n.id) || new Set());
+      // Filtra incoming/outgoing pra apenas outras áreas do root
+      const rootSiblings = new Set(rootSubflowNodes.map((s) => s.id));
+      const incFromSibling = Array.from(incoming).some((s) => rootSiblings.has(s));
+      const outToSibling = Array.from(outgoing).some((t) => rootSiblings.has(t));
+      // Cada área deve ter ao menos uma conexão pra ou de outra área irmã;
+      // a primeira não precisa ter incoming, a última não precisa ter outgoing.
+      if (!incFromSibling && !outToSibling) {
+        issues.push({
+          severity: 'error',
+          message: `Área "${(n.data as any)?.label || n.id}" está solta no Root (não conectada ao pipeline)`,
+          nodeId: n.id,
+        });
+      }
+    }
+  }
+
+  const errors = issues.filter((i) => i.severity === 'error');
+  return { ok: errors.length === 0, issues };
+}

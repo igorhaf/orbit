@@ -42,7 +42,7 @@ import { SubflowRunDialog } from '@/components/ai-flow/SubflowRunDialog';
 import { useCanvasState, type Subflow } from '@/hooks/useCanvasState';
 import { useConnectionValidator } from '@/hooks/useConnectionValidator';
 import { useDeepPipelineProgress, type PhaseState } from '@/hooks/useDeepPipelineProgress';
-import { validatePipeline } from '@/components/ai-flow/pipelineValidator';
+import { validatePipeline, validatePipelinePreRun } from '@/components/ai-flow/pipelineValidator';
 
 interface CatalogItem {
   id: string;
@@ -403,13 +403,24 @@ function AIFlowPageInner() {
   }, [canvas, showError, showSuccess, typesSchema]);
 
   const onRun = useCallback(async () => {
+    // v3.5.1: pre-run validation — rejeita rodar se houver subflows/nodes
+    // soltos no fluxo. Mais estrito que o save validator.
+    const validation = validatePipelinePreRun(canvas.nodes, canvas.edges, canvas.subflows, typesSchema);
+    const errors = validation.issues.filter((i) => i.severity === 'error');
+    if (errors.length > 0) {
+      const sample = errors.slice(0, 4).map((e) => `• ${e.message}`).join('\n');
+      showError(`Não posso executar — fluxo inválido (${errors.length} erros):\n${sample}${errors.length > 4 ? `\n+${errors.length - 4} mais...` : ''}`);
+      // eslint-disable-next-line no-console
+      console.error('validatePipelinePreRun errors:', errors);
+      return;
+    }
     setRunning(true);
     setLastRunAt(new Date().toISOString());
     // v3.1: Run opens the SubflowRunDialog (project + mode picker).
     // Confirmed dispatch flows back via SubflowRunDialog.onConfirmed.
     setRunDialogOpen(true);
     setRunning(false);
-  }, []);
+  }, [canvas, typesSchema, showError]);
 
   // v3.1 — open subflow tab on canvas open action
   const openSubflowTab = canvas.openSubflowTab;
