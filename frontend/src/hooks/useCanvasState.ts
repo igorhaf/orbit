@@ -87,8 +87,8 @@ interface InitialState {
 }
 
 export function useCanvasState(initial?: InitialState): CanvasState {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initial?.nodes || []);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initial?.edges || []);
+  const [nodes, setNodes, onNodesChangeRaw] = useNodesState(initial?.nodes || []);
+  const [edges, setEdges, onEdgesChangeRaw] = useEdgesState(initial?.edges || []);
   const [subflows, setSubflowsState] = useState<Record<string, Subflow>>(initial?.subflows || {});
   const [subflowStack, setSubflowStack] = useState<string[]>([]);
   const [openTabs, setOpenTabs] = useState<CanvasTab[]>([{ id: 'canvas', label: 'Canvas' }]);
@@ -100,6 +100,24 @@ export function useCanvasState(initial?: InitialState): CanvasState {
   // handlers. A useEffect on [nodes, edges, subflows] caused an infinite render
   // loop because xyflow internally mutates node refs on selection/hover/drag,
   // triggering the effect → setDirty → re-render → effect again.
+  //
+  // v3.6.0: interceptamos onNodesChange/onEdgesChange pra chamar markDirty
+  // quando há mudança REAL (position/remove/add) — não pra eventos puramente
+  // visuais como select/dimensions. Isso fixa o bug do "Save desabilitado
+  // após arrastar nodes" — antes só add/delete via handlers explícitos
+  // disparava markDirty.
+  const onNodesChange: OnNodesChange = useCallback((changes) => {
+    onNodesChangeRaw(changes);
+    if (changes.some((c) => c.type === 'position' || c.type === 'remove' || c.type === 'add')) {
+      setDirty(true);
+    }
+  }, [onNodesChangeRaw]);
+  const onEdgesChange: OnEdgesChange = useCallback((changes) => {
+    onEdgesChangeRaw(changes);
+    if (changes.some((c) => c.type === 'remove' || c.type === 'add')) {
+      setDirty(true);
+    }
+  }, [onEdgesChangeRaw]);
 
   const enterSubflow = useCallback((subflowId: string) => {
     setSubflowStack((s) => [...s, subflowId]);

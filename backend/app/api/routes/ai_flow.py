@@ -787,6 +787,81 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         color, icon = _CAT_DEFAULTS.get(category, ("#94a3b8", "circle"))
         return {"label": label, "category": category, "color": color, "icon": icon}
 
+    # v3.6.0: cluster funcional por kind. Agrupa steps em containers visuais
+    # dentro do sub-subflow. Ordem dos clusters define ordem horizontal.
+    _CLUSTER_ORDER = [
+        "Preparação", "Pré-checks", "Build Prompt", "Decisão", "AI Call",
+        "Pós-processamento", "Validação", "Persistência", "Observabilidade",
+    ]
+    _CLUSTER_COLOR: dict[str, str] = {
+        "Preparação":         "#0891b2",  # cyan (Discovery)
+        "Pré-checks":         "#3b82f6",  # blue (Resilience)
+        "Build Prompt":       "#0ea5e9",  # sky (Specs)
+        "Decisão":            "#dc2626",  # red (ControlFlow)
+        "AI Call":            "#7c3aed",  # purple (AI/model)
+        "Pós-processamento":  "#f59e0b",  # amber (Processing)
+        "Validação":          "#22c55e",  # green (Validation)
+        "Persistência":       "#8b5cf6",  # violet (Storage)
+        "Observabilidade":    "#64748b",  # slate (Observability)
+    }
+    _KIND_CLUSTER: dict[str, str] = {
+        # Preparação (descoberta + grouping)
+        "file_scanner":               "Preparação",
+        "file_type_classifier":       "Preparação",
+        "semantic_layer_classifier":  "Preparação",
+        "change_detector":            "Preparação",
+        "domain_grouper":             "Preparação",
+        "git_commit_fetcher":         "Preparação",
+        "rag_query":                  "Preparação",
+        # Pré-checks
+        "quota_probe":                "Pré-checks",
+        "provider_health_check":      "Pré-checks",
+        "model_selector":             "Pré-checks",
+        # Build Prompt
+        "spec_loader":                "Build Prompt",
+        "spec_relevance_filter":      "Build Prompt",
+        "content_truncator":          "Build Prompt",
+        "json_compactor":             "Build Prompt",
+        "prompt_context_compressor":  "Build Prompt",
+        "contract_renderer":          "Build Prompt",
+        # Decisão (control flow)
+        "if_else":                    "Decisão",
+        "switch":                     "Decisão",
+        "for_each":                   "Decisão",
+        "while_loop":                 "Decisão",
+        "logical_and":                "Decisão",
+        "logical_or":                 "Decisão",
+        "logical_not":                "Decisão",
+        "router":                     "Decisão",
+        # Pós-processamento
+        "json_extractor":             "Pós-processamento",
+        "epic_deduplicator":          "Pós-processamento",
+        "card_hierarchy_builder":     "Pós-processamento",
+        "text_chunker":               "Pós-processamento",
+        # Validação
+        "json_schema_validator":      "Validação",
+        "local_qa":                   "Validação",
+        "phase_score_calculator":     "Validação",
+        "error_classifier":           "Validação",
+        "validator":                  "Validação",
+        # Persistência
+        "business_rule_storer":       "Persistência",
+        "pipeline_artifact_writer":   "Persistência",
+        "wiki_page_writer":           "Persistência",
+        "checkpoint_saver":           "Persistência",
+        "embed_and_store":            "Persistência",
+        # Observabilidade
+        "ai_execution_logger":        "Observabilidade",
+        "token_cost_calculator":      "Observabilidade",
+        "telemetry_emitter":          "Observabilidade",
+        "job_child_creator":          "Observabilidade",
+    }
+    def _cluster_for(kind_or_model: str) -> str:
+        """Resolve cluster. model:* sempre vai pra AI Call."""
+        if isinstance(kind_or_model, str) and kind_or_model.startswith("model:"):
+            return "AI Call"
+        return _KIND_CLUSTER.get(kind_or_model, "Pós-processamento")
+
     # v3.5.3: helper pra gerar edges com o MESMO formato que o frontend
     # produz via addEdge/onConnect — type=smartEdge, markerEnd ArrowClosed,
     # mesma cor que o stroke. Garante que edges nascidas no backend visual-
@@ -954,19 +1029,55 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             ))
             prev_l2_node_id = sub_sf_id
 
-            # ── Nível 3: gerar nodes da cadeia interna do sub-subflow ──
+            # ── Nível 3: layout 2D agrupado por cluster funcional ──
+            #
+            # v3.6.0: em vez de cadeia linear (1 step por coluna), agrupa os
+            # steps em CLUSTERS funcionais (Preparação, Pré-checks, Build
+            # Prompt, Decisão, AI Call, Pós-processamento, Validação,
+            # Persistência, Observabilidade). Cada cluster vira um GroupNode
+            # (container retangular) e seus steps ficam empilhados verticalmente
+            # dentro dele com parentId pra mover juntos.
             l3_in_id = f"sf-{sub['id']}-in"
             l3_out_id = f"sf-{sub['id']}-out"
             l3_inner_ids: list[str] = [l3_in_id]
-            # v3.5.5: rastreia o handle correto do source pra cada step.
-            # Pra ioNode/utilityNode/modelNode = "right"; pra controlFlowNode =
-            # primeiro output do schema.
-            prev_source_handle: str = "right"
 
-            # Entrada do sub-subflow — exibe de onde "vem" no pai
+            # 1ª passada: classifica steps por cluster preservando ordem original
+            sub_steps = sub["steps"]
+            steps_by_cluster: dict[str, list[tuple[int, tuple, str]]] = {}
+            step_ids_in_order: list[str] = []
+            for step_idx, (kind_or_model, opts) in enumerate(sub_steps):
+                cluster = _cluster_for(kind_or_model)
+                step_node_id = f"step-{sub['id']}-{step_idx}-{kind_or_model.replace(':', '-')}"
+                steps_by_cluster.setdefault(cluster, []).append(
+                    (step_idx, (kind_or_model, opts), step_node_id)
+                )
+                step_ids_in_order.append(step_node_id)
+
+            # Ordem das colunas seguindo _CLUSTER_ORDER (só inclui clusters
+            # que têm pelo menos 1 step)
+            active_clusters = [c for c in _CLUSTER_ORDER if c in steps_by_cluster]
+
+            # Layout: clusters em colunas horizontais (X), steps empilhados
+            # verticalmente (Y) dentro de cada cluster.
+            COL_WIDTH = 240         # largura de cada cluster
+            COL_GAP = 60            # espaço entre clusters
+            ROW_HEIGHT = 100        # altura de cada step
+            ROW_GAP = 14            # espaço entre steps verticalmente
+            GROUP_HEADER_H = 32     # altura do cabeçalho do GroupNode
+            GROUP_PAD_X = 16        # padding horizontal interno
+            GROUP_PAD_Y = 10        # padding vertical interno (depois do header)
+
+            # ioNodes ficam ao lado dos clusters (Entrada à esquerda, Saída à direita).
+            IO_X = 20
+            IO_W = 180  # largura visual de um ioNode
+
+            # Centro vertical (Y do grupo) base — Y=80 leva em conta o header da tab
+            CLUSTER_Y_BASE = 80
+
+            # Entrada do sub-subflow
             nodes.append({
                 "id": l3_in_id, "type": "ioNode",
-                "position": {"x": L3_INNER_X_IN, "y": L3_INNER_Y},
+                "position": {"x": IO_X, "y": CLUSTER_Y_BASE + 20},
                 "data": {
                     "label": f"Entrada — {sub['label']}",
                     "io_kind": "input",
@@ -979,108 +1090,110 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 },
             })
 
-            prev_step_id = l3_in_id
-            for step_idx, (kind_or_model, opts) in enumerate(sub["steps"]):
-                step_x = L3_INNER_X_IN + (step_idx + 1) * L3_INNER_X_STEP
-                step_node_id = f"step-{sub['id']}-{step_idx}-{kind_or_model.replace(':', '-')}"
-
-                is_model = isinstance(kind_or_model, str) and kind_or_model.startswith("model:")
-                planned = bool(opts.get("planned"))
-
-                if is_model:
-                    assigned_model_id = kind_or_model.split(":", 1)[1]
-                    ai_model = model_by_id.get(assigned_model_id)
-                    nodes.append({
-                        "id": step_node_id, "type": "modelNode",
-                        "position": {"x": step_x, "y": L3_INNER_Y},
-                        "data": {
-                            "label": ai_model.name if ai_model else assigned_model_id,
-                            "provider": "claudius",
-                            "config": (ai_model.config if ai_model else {"model_id": assigned_model_id}) or {},
-                            "model_id": assigned_model_id,
-                            "ai_model_id": str(ai_model.id) if ai_model else None,
-                            "phase_key": sub.get("phase_key"),
-                            "step_id": sub["id"],
-                            "call_kind": opts.get("call_kind"),
-                            "max_concurrency": opts.get("max_concurrency"),
-                            "thinking_budget": opts.get("thinking_budget"),
-                            "max_tokens": opts.get("max_tokens"),
-                            "optional": opts.get("optional", False),
-                            "planned": planned,
-                            "animation": "idle",
-                        },
-                    })
-                else:
-                    # utility node — usa metadata resolvida do _KIND_META
-                    tpl = _resolve_utility_template(kind_or_model)
-                    # v3.5.2: control flow kinds usam `controlFlowNode` renderer
-                    # (multi-handles nomeados pra true/false, case_X, body/done…)
-                    is_control_flow = tpl["category"] == "ControlFlow"
-                    react_type = "controlFlowNode" if is_control_flow else "utilityNode"
-                    # Resolve inputs/outputs do schema pra control flow renderar handles
-                    schema = _schema_to_dict(_schema_for(kind_or_model)) if is_control_flow else None
-                    node_data = {
-                        "label": tpl["label"],
-                        "kind": kind_or_model,
-                        "category": tpl["category"],
-                        "color": tpl["color"],
-                        "icon": tpl["icon"],
+            # 2ª passada: cria GroupNodes (containers) + step nodes dentro
+            group_id_for_cluster: dict[str, str] = {}
+            cluster_x_start: dict[str, float] = {}
+            current_x = IO_X + IO_W + COL_GAP
+            for cluster in active_clusters:
+                steps_in_cluster = steps_by_cluster[cluster]
+                # Altura do grupo = header + items + padding
+                group_h = GROUP_HEADER_H + GROUP_PAD_Y + len(steps_in_cluster) * (ROW_HEIGHT + ROW_GAP) - ROW_GAP + GROUP_PAD_Y
+                group_node_id = f"group-{sub['id']}-{cluster.lower().replace(' ', '-').replace('é','e').replace('ã','a').replace('ç','c').replace('ó','o')}"
+                color = _CLUSTER_COLOR.get(cluster, "#94a3b8")
+                # GroupNode (parent container)
+                nodes.append({
+                    "id": group_node_id,
+                    "type": "groupNode",
+                    "position": {"x": current_x, "y": CLUSTER_Y_BASE},
+                    "style": {"width": COL_WIDTH, "height": group_h, "zIndex": -1},
+                    "data": {
+                        "label": cluster,
+                        "color": color,
                         "step_id": sub["id"],
-                        "phase_key": sub.get("phase_key"),
-                        "planned": planned,
-                        "config": opts.get("config") or {},
-                        "enabled": not planned,
-                    }
-                    if schema:
-                        node_data["inputs"] = schema["inputs"]
-                        node_data["outputs"] = schema["outputs"]
-                        node_data["dynamic_outputs"] = schema["dynamic_outputs"]
-                        # Switch: cases declarados em config.cases viram outputs extras
-                        if kind_or_model == "switch":
-                            cases = (opts.get("config") or {}).get("cases") or []
-                            extra = [{"name": c, "type": TYPE_ANY} for c in cases]
-                            # default sempre presente; cases vêm antes
-                            node_data["outputs"] = extra + node_data["outputs"]
-                    nodes.append({
-                        "id": step_node_id, "type": react_type,
-                        "position": {"x": step_x, "y": L3_INNER_Y},
-                        "data": node_data,
-                    })
+                        "cluster": cluster,
+                        "description": f"{len(steps_in_cluster)} {'item' if len(steps_in_cluster)==1 else 'itens'}",
+                    },
+                })
+                l3_inner_ids.append(group_node_id)
+                group_id_for_cluster[cluster] = group_node_id
+                cluster_x_start[cluster] = current_x
 
-                l3_inner_ids.append(step_node_id)
-                # v3.5.5: determina o targetHandle correto. Pra controlFlowNode,
-                # usa o primeiro input do schema (input/collection/a). Pros
-                # demais, "left" (handle padrão).
-                target_handle = "left"
-                if (not is_model) and tpl["category"] == "ControlFlow":
-                    inputs = node_data.get("inputs") or []
-                    if inputs:
-                        target_handle = inputs[0]["name"]
-                edges.append(_make_edge(
-                    f"edge-{prev_step_id}-{step_node_id}",
-                    prev_step_id, step_node_id,
-                    stroke="#9ca3af" if planned else "#3b82f6",
-                    stroke_width=1.6,
-                    dashed=planned,
-                    port_type="step_sequence",
-                    planned=planned,
-                    source_handle=prev_source_handle,
-                    target_handle=target_handle,
-                ))
-                # Atualiza prev_source_handle pro próximo edge. Se o atual
-                # node é controlFlow, source_handle = primeiro output do schema.
-                if (not is_model) and tpl["category"] == "ControlFlow":
-                    outputs = node_data.get("outputs") or []
-                    prev_source_handle = outputs[0]["name"] if outputs else "right"
-                else:
-                    prev_source_handle = "right"
-                prev_step_id = step_node_id
+                # Steps dentro do GroupNode — coordenadas RELATIVAS ao parent
+                for local_idx, (step_idx, (kind_or_model, opts), step_node_id) in enumerate(steps_in_cluster):
+                    is_model = isinstance(kind_or_model, str) and kind_or_model.startswith("model:")
+                    planned = bool(opts.get("planned"))
+                    # Posição relativa: x dentro do padding, y abaixo do header
+                    rel_x = GROUP_PAD_X
+                    rel_y = GROUP_HEADER_H + GROUP_PAD_Y + local_idx * (ROW_HEIGHT + ROW_GAP)
 
-            # Saída do sub-subflow — exibe pra onde "vai" no pai
-            l3_out_x = L3_INNER_X_IN + (len(sub["steps"]) + 1) * L3_INNER_X_STEP
+                    if is_model:
+                        assigned_model_id = kind_or_model.split(":", 1)[1]
+                        ai_model = model_by_id.get(assigned_model_id)
+                        nodes.append({
+                            "id": step_node_id, "type": "modelNode",
+                            "position": {"x": rel_x, "y": rel_y},
+                            "parentId": group_node_id,
+                            "extent": "parent",
+                            "data": {
+                                "label": ai_model.name if ai_model else assigned_model_id,
+                                "provider": "claudius",
+                                "config": (ai_model.config if ai_model else {"model_id": assigned_model_id}) or {},
+                                "model_id": assigned_model_id,
+                                "ai_model_id": str(ai_model.id) if ai_model else None,
+                                "phase_key": sub.get("phase_key"),
+                                "step_id": sub["id"],
+                                "cluster": cluster,
+                                "call_kind": opts.get("call_kind"),
+                                "max_concurrency": opts.get("max_concurrency"),
+                                "thinking_budget": opts.get("thinking_budget"),
+                                "max_tokens": opts.get("max_tokens"),
+                                "optional": opts.get("optional", False),
+                                "planned": planned,
+                                "animation": "idle",
+                            },
+                        })
+                    else:
+                        tpl = _resolve_utility_template(kind_or_model)
+                        is_control_flow = tpl["category"] == "ControlFlow"
+                        react_type = "controlFlowNode" if is_control_flow else "utilityNode"
+                        schema = _schema_to_dict(_schema_for(kind_or_model)) if is_control_flow else None
+                        node_data = {
+                            "label": tpl["label"],
+                            "kind": kind_or_model,
+                            "category": tpl["category"],
+                            "color": tpl["color"],
+                            "icon": tpl["icon"],
+                            "step_id": sub["id"],
+                            "cluster": cluster,
+                            "phase_key": sub.get("phase_key"),
+                            "planned": planned,
+                            "config": opts.get("config") or {},
+                            "enabled": not planned,
+                        }
+                        if schema:
+                            node_data["inputs"] = schema["inputs"]
+                            node_data["outputs"] = schema["outputs"]
+                            node_data["dynamic_outputs"] = schema["dynamic_outputs"]
+                            if kind_or_model == "switch":
+                                cases = (opts.get("config") or {}).get("cases") or []
+                                extra = [{"name": c, "type": TYPE_ANY} for c in cases]
+                                node_data["outputs"] = extra + node_data["outputs"]
+                        nodes.append({
+                            "id": step_node_id, "type": react_type,
+                            "position": {"x": rel_x, "y": rel_y},
+                            "parentId": group_node_id,
+                            "extent": "parent",
+                            "data": node_data,
+                        })
+                    l3_inner_ids.append(step_node_id)
+
+                current_x += COL_WIDTH + COL_GAP
+
+            # Saída do sub-subflow (depois da última coluna)
+            l3_out_x = current_x
             nodes.append({
                 "id": l3_out_id, "type": "ioNode",
-                "position": {"x": l3_out_x, "y": L3_INNER_Y},
+                "position": {"x": l3_out_x, "y": CLUSTER_Y_BASE + 20},
                 "data": {
                     "label": f"Saída — {sub['label']}",
                     "io_kind": "output",
@@ -1092,10 +1205,57 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     },
                 },
             })
+
+            # Edges: conecta Entrada → primeiro step da primeira coluna,
+            # depois step → próximo step dentro do mesmo cluster (vertical),
+            # último step de uma coluna → primeiro step da próxima coluna,
+            # último step de tudo → Saída.
+            # Cria a lista LINEAR final dos step_ids na ordem visual.
+            visual_order: list[str] = []
+            for cluster in active_clusters:
+                for (_, _, sid) in steps_by_cluster[cluster]:
+                    visual_order.append(sid)
+
+            prev_source_handle: str = "right"
+            prev_node_id: str = l3_in_id
+            for sid in visual_order:
+                # Look up the node we just added to figure out type/handles
+                n = next((x for x in reversed(nodes) if x["id"] == sid), None)
+                if not n:
+                    continue
+                planned = bool(n["data"].get("planned"))
+                is_control_flow_target = n["type"] == "controlFlowNode"
+
+                target_handle = "left"
+                if is_control_flow_target:
+                    inputs = n["data"].get("inputs") or []
+                    if inputs:
+                        target_handle = inputs[0]["name"]
+
+                edges.append(_make_edge(
+                    f"edge-{prev_node_id}-{sid}",
+                    prev_node_id, sid,
+                    stroke="#9ca3af" if planned else "#3b82f6",
+                    stroke_width=1.6,
+                    dashed=planned,
+                    port_type="step_sequence",
+                    planned=planned,
+                    source_handle=prev_source_handle,
+                    target_handle=target_handle,
+                ))
+
+                if is_control_flow_target:
+                    outputs = n["data"].get("outputs") or []
+                    prev_source_handle = outputs[0]["name"] if outputs else "right"
+                else:
+                    prev_source_handle = "right"
+                prev_node_id = sid
+
+            # Edge final: último step → ioNode Saída
             l3_inner_ids.append(l3_out_id)
             edges.append(_make_edge(
-                f"edge-{prev_step_id}-{l3_out_id}",
-                prev_step_id, l3_out_id,
+                f"edge-{prev_node_id}-{l3_out_id}",
+                prev_node_id, l3_out_id,
                 stroke="#3b82f6", stroke_width=1.6,
                 port_type="step_sequence",
                 source_handle=prev_source_handle,

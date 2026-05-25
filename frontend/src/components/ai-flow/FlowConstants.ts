@@ -84,7 +84,7 @@ export const POST_PROCESS_TYPES = ['retry', 'validator', 'cost_guard'];
 // ---------------------------------------------------------------------------
 
 /** High-level node categories used by the unified canvas. */
-export type CanvasNodeCategory = 'model' | 'utility' | 'pipeline_phase' | 'subflow' | 'io' | 'control_flow';
+export type CanvasNodeCategory = 'model' | 'utility' | 'pipeline_phase' | 'subflow' | 'io' | 'control_flow' | 'group';
 
 /**
  * Allowed connections matrix.
@@ -102,6 +102,8 @@ export const ALLOWED_CONNECTIONS: Record<CanvasNodeCategory, CanvasNodeCategory[
   subflow:        ['model', 'pipeline_phase', 'subflow', 'control_flow'],
   io:             ['model', 'utility', 'io', 'control_flow'],
   control_flow:   ['model', 'utility', 'io', 'control_flow', 'subflow'],
+  // group nodes são puramente visuais — não devem ser fonte/destino de edges
+  group:          [],
 };
 
 /** Edge color per source→destination port type. */
@@ -137,4 +139,6 @@ export const NODE_TYPE_TO_CATEGORY: Record<string, CanvasNodeCategory> = {
   utilityNode: 'utility',
   // v3.5 — control-flow renderer
   controlFlowNode: 'control_flow',
+  // v3.6.0 — container visível
+  groupNode: 'group',
 };

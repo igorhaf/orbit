@@ -911,6 +911,53 @@ export function SubflowNode({ data }: { data: any }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// v3.6.0 — GroupNode (container retangular nomeado pra agrupar steps por
+// categoria/função: Pre-checks, Build Prompt, AI Call, Persistence, etc).
+// Usa parentId do ReactFlow nos filhos pra mover-juntos.
+// ---------------------------------------------------------------------------
+
+export function GroupNode({ data, selected }: { data: any; selected?: boolean }) {
+  const accent: string = data.color || '#94a3b8';
+  const label: string = data.label || 'Grupo';
+  const description: string | undefined = data.description;
+  return (
+    <div
+      className="rounded-lg"
+      style={{
+        width: '100%',
+        height: '100%',
+        border: `2px ${selected ? 'solid' : 'dashed'} ${accent}`,
+        background: `${accent}0d`,  // ~5% opacity tint
+        position: 'relative',
+        padding: 0,
+        boxSizing: 'border-box',
+        pointerEvents: 'all',
+      }}
+    >
+      <div
+        className="px-3 py-1 rounded-t-md"
+        style={{
+          background: `${accent}22`,
+          borderBottom: `1px dashed ${accent}`,
+          color: accent,
+          fontWeight: 700,
+          fontSize: 10,
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+        }}
+      >
+        {label}
+        {description && (
+          <span style={{ marginLeft: 8, fontWeight: 400, opacity: 0.7, textTransform: 'none', fontSize: 10 }}>
+            {description}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const nodeTypes = {
   modelNode: ModelNode,
   cacheNode: CacheNode,
@@ -932,4 +979,6 @@ export const nodeTypes = {
   utilityNode: GenericUtilityNode,
   // v3.5 — multi-handle renderer for control-flow nodes (if/switch/loop/AND/OR/NOT)
   controlFlowNode: ControlFlowNode,
+  // v3.6.0 — container/frame visível pra agrupar steps por categoria
+  groupNode: GroupNode,
 };
