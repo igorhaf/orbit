@@ -10,7 +10,7 @@
 'use client';
 
 import React from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, NodeResizer } from '@xyflow/react';
 import { PROVIDER_COLORS, UTILITY_NODE_COLORS } from './FlowConstants';
 import { ProviderIcon, UtilityNodeIcon } from './FlowIcons';
 import type { AIFlowModelMetrics } from '@/lib/types';
@@ -917,44 +917,78 @@ export function SubflowNode({ data }: { data: any }) {
 // Usa parentId do ReactFlow nos filhos pra mover-juntos.
 // ---------------------------------------------------------------------------
 
+// v3.6.4: GroupNode redimensionável. Usa <NodeResizer /> oficial do
+// ReactFlow + estrutura recomendada pela doc oficial.
+//
+// Pontos críticos pra funcionar BEM (corrige bugs reportados):
+// 1. NodeResizer dentro do componente (não no parent) — ReactFlow rastreia
+//    o tamanho via `style.width/height` do node, que muda ao redimensionar.
+// 2. Children NÃO são deformados porque ReactFlow os renderiza SEPARADAMENTE
+//    fora do DOM do parent (apesar do parentId/parentNode). Eles têm seu
+//    próprio bounding box; o group só é container LÓGICO + visual de fundo.
+// 3. `box-sizing: border-box` + `width/height: 100%` no div interno → preenche
+//    exatamente a área que o ReactFlow alocou pro node (style.width/height).
+// 4. `pointerEvents: 'none'` no header — não bloqueia cliques nos children
+//    desenhados visualmente "por cima" (em z-index maior).
+// 5. NodeResizer só ativa quando o group está `selected` — evita handles
+//    poluindo a UI o tempo todo.
 export function GroupNode({ data, selected }: { data: any; selected?: boolean }) {
   const accent: string = data.color || '#94a3b8';
   const label: string = data.label || 'Grupo';
   const description: string | undefined = data.description;
   return (
-    <div
-      className="rounded-lg"
-      style={{
-        width: '100%',
-        height: '100%',
-        border: `2px ${selected ? 'solid' : 'dashed'} ${accent}`,
-        background: `${accent}0d`,  // ~5% opacity tint
-        position: 'relative',
-        padding: 0,
-        boxSizing: 'border-box',
-        pointerEvents: 'all',
-      }}
-    >
+    <>
+      <NodeResizer
+        isVisible={!!selected}
+        minWidth={180}
+        minHeight={120}
+        lineStyle={{ borderColor: accent, borderWidth: 1, borderStyle: 'dashed' }}
+        handleStyle={{ background: accent, width: 8, height: 8, borderRadius: 2, border: '1px solid white' }}
+      />
       <div
-        className="px-3 py-1 rounded-t-md"
+        className="rounded-lg"
         style={{
-          background: `${accent}22`,
-          borderBottom: `1px dashed ${accent}`,
-          color: accent,
-          fontWeight: 700,
-          fontSize: 10,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
+          width: '100%',
+          height: '100%',
+          border: `2px ${selected ? 'solid' : 'dashed'} ${accent}`,
+          background: `${accent}0d`,  // ~5% opacity tint
+          boxSizing: 'border-box',
+          position: 'relative',
+          padding: 0,
+          // pointerEvents na div externa precisa ser 'all' pra usuário poder
+          // clicar pra selecionar/arrastar o group; o header tem
+          // pointerEvents:'none' pra não roubar cliques de children.
+          pointerEvents: 'all',
         }}
       >
-        {label}
-        {description && (
-          <span style={{ marginLeft: 8, fontWeight: 400, opacity: 0.7, textTransform: 'none', fontSize: 10 }}>
-            {description}
-          </span>
-        )}
+        <div
+          className="px-3 py-1 rounded-t-md"
+          style={{
+            background: `${accent}22`,
+            borderBottom: `1px dashed ${accent}`,
+            color: accent,
+            fontWeight: 700,
+            fontSize: 10,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            pointerEvents: 'none', // header não bloqueia cliques nos children
+            userSelect: 'none',
+          }}
+        >
+          {label}
+          {description && (
+            <span
+              style={{
+                marginLeft: 8, fontWeight: 400, opacity: 0.7,
+                textTransform: 'none', fontSize: 10,
+              }}
+            >
+              {description}
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

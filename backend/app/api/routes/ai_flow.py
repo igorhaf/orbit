@@ -1100,12 +1100,17 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 group_h = GROUP_HEADER_H + GROUP_PAD_Y + len(steps_in_cluster) * (ROW_HEIGHT + ROW_GAP) - ROW_GAP + GROUP_PAD_Y
                 group_node_id = f"group-{sub['id']}-{cluster.lower().replace(' ', '-').replace('é','e').replace('ã','a').replace('ç','c').replace('ó','o')}"
                 color = _CLUSTER_COLOR.get(cluster, "#94a3b8")
-                # GroupNode (parent container)
+                # GroupNode (parent container) — v3.6.4
+                # `style.width/height` é a dimensão INICIAL; o user pode
+                # redimensionar via <NodeResizer/> e o ReactFlow atualiza
+                # esse style. Não usar `zIndex: -1` (faz o group sumir atrás
+                # do canvas); o z-index correto sai do CSS do ReactFlow que
+                # já coloca groups abaixo dos children.
                 nodes.append({
                     "id": group_node_id,
                     "type": "groupNode",
                     "position": {"x": current_x, "y": CLUSTER_Y_BASE},
-                    "style": {"width": COL_WIDTH, "height": group_h, "zIndex": -1},
+                    "style": {"width": COL_WIDTH, "height": group_h},
                     "data": {
                         "label": cluster,
                         "color": color,
