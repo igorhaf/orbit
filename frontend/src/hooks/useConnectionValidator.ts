@@ -101,7 +101,11 @@ export function useConnectionValidator(
         }
       }
 
-      const color = result.edgeColor || '#94a3b8';
+      // v3.5.4: unifica cor das edges criadas pelo usuário com as edges
+      // geradas pelo backend (snapshot) — sempre azul #3b82f6, mesmo estilo.
+      // PORT_TYPE_COLORS continua existindo pra labels/decorações em casos
+      // especiais, mas a cor da seta segue o padrão visual do canvas.
+      const color = '#3b82f6';
       setEdges((eds: Edge[]) =>
         addEdge(
           {
@@ -109,6 +113,7 @@ export function useConnectionValidator(
             type: 'smartEdge',
             style: { stroke: color, strokeWidth: 1.8 },
             markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+            data: { port_type: 'user_connection', planned: false },
           } as Edge,
           eds,
         ),

@@ -20,6 +20,7 @@ import {
   useReactFlow,
   ReactFlowProvider,
   reconnectEdge,
+  MarkerType,
   type Node,
   type Edge,
   type Connection,
@@ -557,7 +558,23 @@ function AIFlowPageInner() {
       const target = canvas.nodes.find((n) => n.id === newConnection.target);
       if (!source || !target) return;
       edgeReconnectSuccessful.current = true;
-      canvas.setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds));
+      // v3.5.4: ao reconectar, normaliza o estilo da edge pro padrão azul
+      // (mesmo que ela viesse marcada como `planned`/cinza no backend), pois
+      // agora é uma conexão real estabelecida pelo usuário.
+      const color = '#3b82f6';
+      canvas.setEdges((eds) => {
+        const next = reconnectEdge(oldEdge, newConnection, eds);
+        return next.map((e) =>
+          e.id === oldEdge.id
+            ? {
+                ...e,
+                style: { ...(e.style || {}), stroke: color, strokeWidth: 1.8, strokeDasharray: undefined },
+                markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+                data: { ...(e.data || {}), planned: false },
+              }
+            : e,
+        );
+      });
       canvas.markDirty();
     },
     [canvas],

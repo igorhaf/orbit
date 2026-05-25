@@ -837,19 +837,23 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
     #   Nível 3 (sub-subflow tab):  cadeia de utilityNodes (+ modelNode) entre
     #     1 ioNode Entrada e 1 ioNode Saída do sub-subflow. ESTE é o nível
     #     executável.
-    ROOT_SUBFLOW_X = 280
+    # v3.5.4: espaçamentos aumentados pra evitar colisão entre edges e nodes.
+    # Nodes do ReactFlow têm largura ~200-240px (utility) e ~240px (subflow);
+    # gap horizontal precisa ser maior que isso pra A* do SmartEdge encontrar
+    # caminho ortogonal sem passar por cima.
+    ROOT_SUBFLOW_X = 320
     ROOT_SUBFLOW_Y_BASE = 80
-    ROOT_SUBFLOW_GAP = 130
+    ROOT_SUBFLOW_GAP = 180  # vertical entre áreas no root tab
 
     # Layout dentro de uma área (nível 2)
-    L2_INNER_Y = 200
-    L2_INNER_X_IN = 80
-    L2_INNER_X_STEP = 260
+    L2_INNER_Y = 240
+    L2_INNER_X_IN = 100
+    L2_INNER_X_STEP = 340  # 260→340 (subflowNodes têm 240px de largura)
 
     # Layout dentro de um sub-subflow (nível 3) — cadeia longa de steps
-    L3_INNER_Y = 200
-    L3_INNER_X_IN = 60
-    L3_INNER_X_STEP = 200
+    L3_INNER_Y = 240
+    L3_INNER_X_IN = 80
+    L3_INNER_X_STEP = 300  # 200→300 (utility/control nodes têm 200-220px)
 
     prev_l1_node_id: str | None = None
     areas_count = len(DEEP_PIPELINE_HIERARCHY)
