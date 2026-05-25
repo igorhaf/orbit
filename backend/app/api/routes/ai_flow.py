@@ -1057,35 +1057,53 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             # que têm pelo menos 1 step)
             active_clusters = [c for c in _CLUSTER_ORDER if c in steps_by_cluster]
 
-            # Layout: clusters em colunas horizontais (X), steps empilhados
-            # verticalmente (Y) dentro de cada cluster.
-            # v3.6.5: dimensões ajustadas pra auto-fit profissional.
-            # Medições reais dos nodes (em px após render):
-            #   - utilityNode/modelNode: ~220 wide × ~74 high (sem config), ~100 com 1-2 entries
-            #   - controlFlowNode: ~220 wide × ~110 high (com outputs list)
-            #   - ioNode: ~180 wide × ~60 high (com parent_context: ~88)
-            COL_WIDTH = 252           # largura do cluster = 220 (node) + 2×16 padding
-            COL_GAP = 70              # espaço entre clusters (gap para edges respirarem)
-            ROW_HEIGHT = 86           # altura média de cada step
-            ROW_GAP = 12              # espaço vertical entre steps
-            GROUP_HEADER_H = 28       # cabeçalho do GroupNode (label)
-            GROUP_PAD_X = 16          # padding lateral interno
-            GROUP_PAD_Y = 12          # padding topo/baixo interno (depois do header)
-            CONTROL_FLOW_EXTRA = 32   # control flow nodes são mais altos
+            # ─────────────────────────────────────────────────────────────
+            # Layout v3.6.7: GRID 2D dentro de cada cluster (não fileira 1xN).
+            #
+            # Inspirado em diagramas AWS/Azure profissionais (referências do
+            # user): items pequenos+médios distribuídos em grid quadrado dentro
+            # de containers nomeados. Para N items, cols = ceil(sqrt(N)) e
+            # rows = ceil(N/cols) — minimiza altura mantendo proporção.
+            #
+            # Medições reais dos cards (visíveis em screenshots):
+            #   - utility/model: 220 × 90 px
+            #   - controlFlowNode: 220 × 130 px (lista de outputs)
+            # ─────────────────────────────────────────────────────────────
+            import math as _math
+            ITEM_W = 220                # largura padrão de item
+            ITEM_H = 92                 # altura padrão (utility/model)
+            CF_ITEM_H = 130             # altura controlFlow
+            ITEM_GAP_X = 18             # gap horizontal entre items no grid
+            ITEM_GAP_Y = 14             # gap vertical entre items no grid
+            GROUP_HEADER_H = 30         # header do GroupNode
+            GROUP_PAD_X = 16            # padding interno lateral
+            GROUP_PAD_Y = 14            # padding interno topo/baixo (debaixo do header)
+            COL_GAP = 80                # gap entre clusters no eixo X
+            CLUSTER_Y_BASE = 60         # Y baseline (topo dos clusters)
 
-            # ioNodes ficam ao lado dos clusters (Entrada à esquerda, Saída à direita).
+            # ioNodes ficam ao lado dos clusters (Entrada à esquerda, Saída à direita)
             IO_X = 20
-            IO_W = 200  # largura visual de um ioNode com parent_context
-            IO_Y_OFFSET = 24  # ioNode centralizado vs CLUSTER_Y_BASE
+            IO_W = 200
 
-            # Y baseline do cluster (alinhado com vertical center do canvas tab)
-            CLUSTER_Y_BASE = 60
+            def _grid_dims(n: int) -> tuple[int, int]:
+                """Pra N items, retorna (cols, rows) minimizando altura.
+                Heurística: cols = ceil(sqrt(N)) preferindo + horizontal.
+                Limites: max 3 cols (grupos muito largos ficam feios)."""
+                if n <= 0:
+                    return (0, 0)
+                if n == 1:
+                    return (1, 1)
+                if n == 2:
+                    return (2, 1)
+                if n <= 4:
+                    return (2, _math.ceil(n / 2))
+                # n >= 5: 3 colunas
+                return (3, _math.ceil(n / 3))
 
             # Entrada do sub-subflow
-            # v3.6.5: alinhado verticalmente com o primeiro step do primeiro group
             nodes.append({
                 "id": l3_in_id, "type": "ioNode",
-                "position": {"x": IO_X, "y": CLUSTER_Y_BASE + GROUP_HEADER_H + GROUP_PAD_Y + IO_Y_OFFSET},
+                "position": {"x": IO_X, "y": CLUSTER_Y_BASE + 60},
                 "data": {
                     "label": f"Entrada — {sub['label']}",
                     "io_kind": "input",
@@ -1098,65 +1116,58 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 },
             })
 
-            # 2ª passada: cria GroupNodes (containers) + step nodes dentro
+            # 2ª passada: cria GroupNodes (containers) + step nodes em grid 2D
             group_id_for_cluster: dict[str, str] = {}
             cluster_x_start: dict[str, float] = {}
             current_x = IO_X + IO_W + COL_GAP
             for cluster in active_clusters:
                 steps_in_cluster = steps_by_cluster[cluster]
-                # v3.6.5: altura proporcional (auto-fit). Soma a altura REAL
-                # de cada step com gaps; control flow nodes ganham bônus.
-                # Resultado: groups nunca têm espaço sobrando nem cortando children.
-                total_steps_h = 0
-                for _, (kind_or_model, _opts), _ in steps_in_cluster:
-                    is_cf = (not (isinstance(kind_or_model, str) and kind_or_model.startswith("model:"))) \
-                            and (_KIND_META.get(kind_or_model, (None, ""))[1] == "ControlFlow")
-                    total_steps_h += ROW_HEIGHT + (CONTROL_FLOW_EXTRA if is_cf else 0)
-                # gaps entre N items = (N-1) * ROW_GAP
-                group_h = (GROUP_HEADER_H
-                           + GROUP_PAD_Y
-                           + total_steps_h
-                           + max(0, len(steps_in_cluster) - 1) * ROW_GAP
+                n_items = len(steps_in_cluster)
+                cols, rows = _grid_dims(n_items)
+                # Detecta se há control flow no cluster pra ajustar row height
+                any_cf = any(
+                    (not (isinstance(km, str) and km.startswith("model:")))
+                    and (_KIND_META.get(km, (None, ""))[1] == "ControlFlow")
+                    for _, (km, _), _ in steps_in_cluster
+                )
+                cell_h = CF_ITEM_H if any_cf else ITEM_H
+
+                # Dimensões do group baseadas no grid
+                group_w = cols * ITEM_W + max(0, cols - 1) * ITEM_GAP_X + 2 * GROUP_PAD_X
+                group_h = (GROUP_HEADER_H + GROUP_PAD_Y
+                           + rows * cell_h + max(0, rows - 1) * ITEM_GAP_Y
                            + GROUP_PAD_Y)
+
                 group_node_id = f"group-{sub['id']}-{cluster.lower().replace(' ', '-').replace('é','e').replace('ã','a').replace('ç','c').replace('ó','o')}"
                 color = _CLUSTER_COLOR.get(cluster, "#94a3b8")
-                # GroupNode (parent container) — v3.6.4
-                # `style.width/height` é a dimensão INICIAL; o user pode
-                # redimensionar via <NodeResizer/> e o ReactFlow atualiza
-                # esse style. Não usar `zIndex: -1` (faz o group sumir atrás
-                # do canvas); o z-index correto sai do CSS do ReactFlow que
-                # já coloca groups abaixo dos children.
                 nodes.append({
                     "id": group_node_id,
                     "type": "groupNode",
                     "position": {"x": current_x, "y": CLUSTER_Y_BASE},
-                    "style": {"width": COL_WIDTH, "height": group_h},
+                    "style": {"width": group_w, "height": group_h},
                     "data": {
                         "label": cluster,
                         "color": color,
                         "step_id": sub["id"],
                         "cluster": cluster,
-                        "description": f"{len(steps_in_cluster)} {'item' if len(steps_in_cluster)==1 else 'itens'}",
+                        "description": f"{n_items} {'item' if n_items==1 else 'itens'}",
                     },
                 })
                 l3_inner_ids.append(group_node_id)
                 group_id_for_cluster[cluster] = group_node_id
                 cluster_x_start[cluster] = current_x
 
-                # Steps dentro do GroupNode — coordenadas RELATIVAS ao parent
-                # v3.6.5: acumula altura conforme tipo (control flow é maior)
-                _rel_y_cursor = GROUP_HEADER_H + GROUP_PAD_Y
+                # Items dentro: grid (col × row). Loop em ordem original.
                 for local_idx, (step_idx, (kind_or_model, opts), step_node_id) in enumerate(steps_in_cluster):
                     is_model = isinstance(kind_or_model, str) and kind_or_model.startswith("model:")
                     planned = bool(opts.get("planned"))
                     is_cf_step = (not is_model) and \
                                  (_KIND_META.get(kind_or_model, (None, ""))[1] == "ControlFlow")
-                    rel_x = GROUP_PAD_X
-                    rel_y = _rel_y_cursor
-                    # Avança o cursor pelo tamanho deste step (próxima iteração)
-                    _rel_y_cursor += (ROW_HEIGHT + (CONTROL_FLOW_EXTRA if is_cf_step else 0))
-                    if local_idx < len(steps_in_cluster) - 1:
-                        _rel_y_cursor += ROW_GAP
+                    # Posição na grid: linha-major (preenche linha 1 inteira, depois linha 2…)
+                    col_idx = local_idx % cols
+                    row_idx = local_idx // cols
+                    rel_x = GROUP_PAD_X + col_idx * (ITEM_W + ITEM_GAP_X)
+                    rel_y = GROUP_HEADER_H + GROUP_PAD_Y + row_idx * (cell_h + ITEM_GAP_Y)
 
                     if is_model:
                         assigned_model_id = kind_or_model.split(":", 1)[1]
@@ -1219,14 +1230,14 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                         })
                     l3_inner_ids.append(step_node_id)
 
-                current_x += COL_WIDTH + COL_GAP
+                # Avança current_x pela LARGURA REAL deste group (não COL_WIDTH fixo)
+                current_x += group_w + COL_GAP
 
             # Saída do sub-subflow (depois da última coluna)
-            # v3.6.5: mesma altura Y do Entrada (alinha visualmente)
             l3_out_x = current_x
             nodes.append({
                 "id": l3_out_id, "type": "ioNode",
-                "position": {"x": l3_out_x, "y": CLUSTER_Y_BASE + GROUP_HEADER_H + GROUP_PAD_Y + IO_Y_OFFSET},
+                "position": {"x": l3_out_x, "y": CLUSTER_Y_BASE + 60},
                 "data": {
                     "label": f"Saída — {sub['label']}",
                     "io_kind": "output",
@@ -1594,7 +1605,7 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
     # gerado quando o backend introduz mudanças estruturais (auto-fit,
     # control flow nodes, etc). Se o saved_graph tem version < CURRENT,
     # descartamos e regeramos.
-    SCHEMA_VERSION = 3        # bump quando mudar estrutura/layout/auto-fit
+    SCHEMA_VERSION = 4        # v3.6.7: items em GRID 2D, group auto-width baseado em cols
     saved_graph = (profile_phase_configs or {}).get("__canvas_graph__")
     use_saved = (
         isinstance(saved_graph, dict)
@@ -1740,7 +1751,7 @@ async def canvas_save(payload: dict, db: Session = Depends(get_db)):
         # v3.6.5: schema_version=3 (auto-fit groups, control flow nodes,
         # waypoints arrastáveis). Snapshot rejeita grafos com versão menor.
         phase_configs_payload["__canvas_graph__"] = {
-            "schema_version": 3,
+            "schema_version": 4,
             "saved_at": _dt.utcnow().isoformat(),
             "nodes": graph_payload.get("nodes") or [],
             "edges": graph_payload.get("edges") or [],
