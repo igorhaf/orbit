@@ -314,17 +314,165 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             },
         })
 
-    # Utility node templates (drag from sidebar to add to canvas)
+    # ────────────────────────────────────────────────────────────────────
+    # v3.4 — full utility-node catalog (66 → 34 essentials for the canvas).
+    #
+    # Each entry is a draggable TEMPLATE. When the user drops it on the
+    # canvas, the frontend creates a real Node with `data.kind=<key>` so
+    # the future GraphExecutor (Entrega B) can dispatch the right backend
+    # executor.
+    #
+    # Pre-existing utility node types kept (cacheNode, etc) for back-compat;
+    # all the new ones use the generic `utilityNode` renderer with metadata
+    # in `data` (kind, category, icon, color) to avoid 30+ near-identical
+    # React components.
+    # ────────────────────────────────────────────────────────────────────
+    def _u(kind: str, label: str, category: str, color: str, icon: str,
+           config: dict | None = None, react_type: str = "utilityNode",
+           description: str | None = None) -> dict:
+        return {
+            "id": f"util-{kind}",
+            "type": react_type,
+            "data": {
+                "label": label,
+                "kind": kind,
+                "category": category,
+                "color": color,
+                "icon": icon,
+                "config": config or {},
+                "enabled": True,
+                "description": description,
+            },
+        }
+
     catalog_utilities = [
-        {"id": "util-cache",              "type": "cacheNode",            "data": {"label": "Cache",         "type": "cache",              "config": {}, "enabled": True}},
-        {"id": "util-rag_context",        "type": "ragContextNode",       "data": {"label": "RAG Context",   "type": "rag_context",        "config": {}, "enabled": True}},
-        {"id": "util-router",             "type": "routerNode",           "data": {"label": "Router",        "type": "router",             "config": {}, "enabled": True}},
-        {"id": "util-retry",              "type": "retryNode",            "data": {"label": "Retry",         "type": "retry",              "config": {"max_retries": 3, "backoff_base_ms": 1000}, "enabled": True}},
-        {"id": "util-validator",          "type": "validatorNode",        "data": {"label": "Validator",     "type": "validator",          "config": {}, "enabled": True}},
-        {"id": "util-cost_guard",         "type": "costGuardNode",        "data": {"label": "Cost Guard",    "type": "cost_guard",         "config": {}, "enabled": True}},
-        {"id": "util-rate_limiter",       "type": "rateLimiterNode",      "data": {"label": "Rate Limiter",  "type": "rate_limiter",       "config": {}, "enabled": True}},
-        {"id": "util-timeout",            "type": "timeoutNode",          "data": {"label": "Timeout",       "type": "timeout",            "config": {"timeout_seconds": 120}, "enabled": True}},
-        {"id": "util-prompt_transformer", "type": "promptTransformerNode","data": {"label": "Prompt Xform",  "type": "prompt_transformer", "config": {}, "enabled": True}},
+        # ── Legacy (v3.0) — kept with their original React components ────
+        {"id": "util-cache",              "type": "cacheNode",            "data": {"label": "Cache",         "kind": "cache",              "category": "Storage",        "color": "#8b5cf6", "icon": "database",   "config": {}, "enabled": True}},
+        {"id": "util-rag_context",        "type": "ragContextNode",       "data": {"label": "RAG Context",   "kind": "rag_context",        "category": "Storage",        "color": "#06b6d4", "icon": "search",     "config": {}, "enabled": True}},
+        {"id": "util-router",             "type": "routerNode",           "data": {"label": "Router",        "kind": "router",             "category": "Routing",        "color": "#10b981", "icon": "git-fork",   "config": {}, "enabled": True}},
+        {"id": "util-retry",              "type": "retryNode",            "data": {"label": "Retry",         "kind": "retry",              "category": "Resilience",     "color": "#3b82f6", "icon": "repeat",     "config": {"max_retries": 3, "backoff_base_ms": 1000}, "enabled": True}},
+        {"id": "util-validator",          "type": "validatorNode",        "data": {"label": "Validator",     "kind": "validator",          "category": "Validation",     "color": "#22c55e", "icon": "check-circle","config": {}, "enabled": True}},
+        {"id": "util-cost_guard",         "type": "costGuardNode",        "data": {"label": "Cost Guard",    "kind": "cost_guard",         "category": "Resilience",     "color": "#ef4444", "icon": "shield-alert","config": {}, "enabled": True}},
+        {"id": "util-rate_limiter",       "type": "rateLimiterNode",      "data": {"label": "Rate Limiter",  "kind": "rate_limiter",       "category": "Resilience",     "color": "#ec4899", "icon": "timer",      "config": {}, "enabled": True}},
+        {"id": "util-timeout",            "type": "timeoutNode",          "data": {"label": "Timeout",       "kind": "timeout",            "category": "Resilience",     "color": "#f97316", "icon": "clock",      "config": {"timeout_seconds": 120}, "enabled": True}},
+        {"id": "util-prompt_transformer", "type": "promptTransformerNode","data": {"label": "Prompt Xform",  "kind": "prompt_transformer", "category": "Processing",     "color": "#f59e0b", "icon": "edit",       "config": {}, "enabled": True}},
+
+        # ── v3.4 wave 1+2 — Discovery / Filesystem ───────────────────────
+        _u("file_scanner",                "File Scanner",            "Discovery",      "#0891b2", "folder-search",
+           {"max_file_size": 100_000, "extensions": [], "follow_symlinks": False, "reuse_cached_paths": True},
+           description="Walk filesystem + apply ignore patterns"),
+        _u("file_type_classifier",        "File Type Classifier",    "Discovery",      "#0891b2", "tag",
+           {"keyword_map": "default"},
+           description="Classify path as model/route/test/migration/ui/config"),
+        _u("semantic_layer_classifier",   "Semantic Layer",          "Discovery",      "#0891b2", "layers",
+           {"layer_order": ["Schema", "Routes", "Logic", "Presentation", "Config"]},
+           description="Schema/Routes/Logic/Presentation/Config classification"),
+        _u("change_detector",             "Change Detector",         "Discovery",      "#0891b2", "git-compare",
+           {"include_deleted": True, "ignore_hash_collisions": False},
+           description="Diff vs last scan: new/modified/deleted files"),
+
+        # ── Processing / Transformation ──────────────────────────────────
+        _u("content_truncator",           "Content Truncator",       "Processing",     "#f59e0b", "scissors",
+           {"max_chars": 8000, "head_ratio": 0.75},
+           description="Truncate text head+tail with marker"),
+        _u("json_compactor",              "JSON Compactor",          "Processing",     "#f59e0b", "minus-square",
+           {"ensure_ascii": False},
+           description="Compact JSON (no indent, tight separators)"),
+        _u("json_extractor",              "JSON Extractor",          "Processing",     "#f59e0b", "braces",
+           {"strict": False, "auto_repair": True},
+           description="Parse JSON from AI response (with repair)"),
+        _u("domain_grouper",              "Domain Grouper",          "Processing",     "#f59e0b", "group",
+           {"min_size": 2, "fold_infra": True},
+           description="Group analyses by domain_classification"),
+        _u("epic_deduplicator",           "Epic Deduplicator",       "Processing",     "#f59e0b", "copy-x",
+           {"similarity_threshold": 0.8, "key_field": "title"},
+           description="Drop epics with >80% overlap"),
+        _u("card_hierarchy_builder",      "Card Hierarchy",          "Processing",     "#f59e0b", "list-tree",
+           {"default_story_points": 3},
+           description="Assemble Epic→Story→Task tree in DB"),
+        _u("text_chunker",                "Text Chunker",            "Processing",     "#f59e0b", "scroll",
+           {"chunk_size": 1500, "overlap": 200},
+           description="Split long text into overlapping chunks"),
+        _u("git_commit_fetcher",          "Git Commit Fetcher",      "Processing",     "#f59e0b", "git-commit",
+           {"max_commits": 50},
+           description="Fetch git log for enrichment"),
+        _u("prompt_context_compressor",   "Context Compressor",      "Processing",     "#f59e0b", "minimize",
+           {"token_budget": 4000},
+           description="Compress hierarchy context for prompt"),
+
+        # ── Storage / RAG ────────────────────────────────────────────────
+        _u("embed_and_store",             "Embed & Store",           "Storage",        "#8b5cf6", "database-zap",
+           {"collection": "default", "embedding_model": "nomic-embed-text"},
+           description="Embed content + persist to vector store"),
+        _u("rag_query",                   "RAG Query",               "Storage",        "#8b5cf6", "search-check",
+           {"top_k": 5, "similarity_threshold": 0.7, "filter": {}},
+           description="Pure vector retrieve (no orchestrator)"),
+        _u("business_rule_storer",        "Business Rule Storer",    "Storage",        "#8b5cf6", "book-marked",
+           {"rule_type": "domain", "priority": "medium"},
+           description="Persist a business rule into RAG"),
+        _u("pipeline_artifact_writer",    "Artifact Writer",         "Storage",        "#8b5cf6", "save",
+           {"artifact_type": "auto"},
+           description="Write a PipelineArtifact row"),
+        _u("wiki_page_writer",            "Wiki Page Writer",        "Storage",        "#8b5cf6", "book-open",
+           {"respect_human_edits": True},
+           description="Write WikiPage (skips human-edited pages)"),
+        _u("checkpoint_saver",            "Checkpoint Saver",        "Storage",        "#8b5cf6", "bookmark",
+           {"scope": "phase", "include_scores": True},
+           description="Save PipelineRun checkpoint for resume"),
+
+        # ── AI / Orchestration ───────────────────────────────────────────
+        _u("claudius_single_call",        "Claudius Call",           "AI",             "#7c3aed", "sparkles",
+           {"model": "claude-sonnet-4-6", "max_tokens": 4000, "thinking_budget": 0},
+           description="Single Claude API call (Haiku/Sonnet/Opus)"),
+        _u("claudius_batch_call",         "Claudius Batch",          "AI",             "#7c3aed", "sparkles",
+           {"max_concurrency": 10, "abort_on_quota": True},
+           description="Parallel Claude calls (e.g. per-file analysis)"),
+        _u("quota_probe",                 "Quota Probe",             "AI",             "#7c3aed", "gauge",
+           {"mode": "status"},
+           description="Check Anthropic quota before running"),
+        _u("provider_health_check",       "Health Check",            "AI",             "#7c3aed", "heart-pulse",
+           {"retries": 3, "backoff": "exponential"},
+           description="Health check Claudius with backoff"),
+        _u("model_selector",              "Model Selector",          "AI",             "#7c3aed", "shuffle",
+           {"usage_type": "general", "prefer_chain": True},
+           description="Choose model by usage_type"),
+        _u("token_cost_calculator",       "Token Cost",              "AI",             "#7c3aed", "calculator",
+           {"pricing": "default"},
+           description="Compute input+output cost"),
+        _u("ai_execution_logger",         "AI Execution Logger",     "AI",             "#7c3aed", "scroll-text",
+           {"include_system_prompt": False},
+           description="Log AI call into ai_executions"),
+
+        # ── Specs / Contracts ────────────────────────────────────────────
+        _u("spec_loader",                 "Spec Loader",             "Specs",          "#0ea5e9", "file-stack",
+           {"active_only": True, "categories": []},
+           description="Load active project specs"),
+        _u("spec_relevance_filter",       "Spec Filter",             "Specs",          "#0ea5e9", "filter",
+           {"max_per_category": 3},
+           description="Filter specs by keywords (90% token cut)"),
+        _u("contract_renderer",           "Contract Renderer",       "Specs",          "#0ea5e9", "file-text",
+           {"contract_name": "", "allow_partial": False},
+           description="Render YAML contract with variables"),
+
+        # ── Validation / Observability ───────────────────────────────────
+        _u("json_schema_validator",       "JSON Schema",             "Validation",     "#22c55e", "shield-check",
+           {"schema": "stories"},
+           description="Validate JSON against expected schema"),
+        _u("local_qa",                    "Local QA",                "Validation",     "#22c55e", "check-square",
+           {"weights": {"rules": 0.4, "cards": 0.3, "wiki": 0.3}},
+           description="Heuristic QA (no AI) — alternative to Phase 6"),
+        _u("error_classifier",            "Error Classifier",        "Validation",     "#22c55e", "alert-triangle",
+           {"rules": "default"},
+           description="Classify exception: permanent/transient/oom/quota"),
+        _u("phase_score_calculator",      "Phase Score",             "Validation",     "#22c55e", "bar-chart",
+           {"weights": "default"},
+           description="Compute 0-100 score for a phase result"),
+        _u("telemetry_emitter",           "Telemetry",               "Observability",  "#64748b", "activity",
+           {"sinks": ["ws", "redis", "db"]},
+           description="Emit telemetry event (WS+Redis+DB)"),
+        _u("job_child_creator",           "Child Job",               "Observability",  "#64748b", "git-branch",
+           {"job_type": "generic", "phase_label": ""},
+           description="Create child AsyncJob + lifecycle (start/complete/fail)"),
     ]
 
     return {

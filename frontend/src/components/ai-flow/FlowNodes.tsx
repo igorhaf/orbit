@@ -540,6 +540,101 @@ export function PipelinePhaseNode({ data }: { data: any }) {
 }
 
 // ---------------------------------------------------------------------------
+// v3.4 — GenericUtilityNode (single component for all new utility nodes)
+//
+// Backend catalog ships ~34 new utility templates that all share the same
+// visual contract (left handle in, right handle out, configurable card with
+// label/category/color/icon). Rendering each as its own component would mean
+// 34 near-identical files. Instead, the backend marks them with
+// `type: "utilityNode"` and `data.{kind, category, color, icon, config, ...}`
+// — this single component renders them all.
+//
+// Pre-existing typed nodes (CacheNode, ValidatorNode, etc) are kept for
+// back-compat; backend still ships them with their original `type` values.
+// ---------------------------------------------------------------------------
+
+export function GenericUtilityNode({ data }: { data: any }) {
+  const accent: string = data.color || '#6b7280';
+  const label: string = data.label || data.kind || 'Utility';
+  const category: string = data.category || 'Utility';
+  const enabled: boolean = data.enabled !== false;
+  const description: string | undefined = data.description;
+  // Config items: render up to 3 key=value pairs to keep the node compact.
+  const cfg = (data.config || {}) as Record<string, any>;
+  const cfgEntries = Object.entries(cfg).slice(0, 3);
+
+  return (
+    <div
+      className="bg-white rounded-lg shadow-md border-2 min-w-[200px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{
+        borderLeftColor: accent,
+        borderLeftWidth: '4px',
+        borderTopColor: '#e5e7eb',
+        borderRightColor: '#e5e7eb',
+        borderBottomColor: '#e5e7eb',
+      }}
+    >
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className="!w-3 !h-3 !border-2 !border-white"
+        style={{ background: accent }}
+      />
+      <div className="px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-flex items-center justify-center w-7 h-7 rounded text-xs font-bold flex-shrink-0"
+            style={{ background: `${accent}1a`, color: accent }}
+            title={category}
+          >
+            {/* Tiny inline svg dot — avoid pulling lucide-react for 34 icons */}
+            <span style={{ fontSize: 14 }}>◆</span>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: accent }}>
+              {category}
+            </div>
+            <div className="text-xs font-semibold text-gray-900 truncate" title={label}>{label}</div>
+          </div>
+          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${enabled ? '' : 'bg-gray-300'}`}
+               style={enabled ? { background: accent } : undefined} />
+        </div>
+        {description && (
+          <div className="mt-1.5 text-[10px] text-gray-500 line-clamp-2" title={description}>{description}</div>
+        )}
+        {cfgEntries.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5">
+            {cfgEntries.map(([k, v]) => (
+              <div key={k} className="text-[10px] text-gray-500 truncate">
+                <span className="font-medium text-gray-600">{k}:</span>{' '}
+                <span className="font-mono">{typeof v === 'object' ? JSON.stringify(v).slice(0, 24) : String(v).slice(0, 32)}</span>
+              </div>
+            ))}
+            {Object.keys(cfg).length > 3 && (
+              <div className="text-[9px] text-gray-400">+{Object.keys(cfg).length - 3} more</div>
+            )}
+          </div>
+        )}
+      </div>
+      {data.onRemove && (
+        <button
+          onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm"
+        >×</button>
+      )}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className="!w-3 !h-3 !border-2 !border-white"
+        style={{ background: accent }}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // v3.3 — IONode (Entrada/Saída of a phase's trio inside a subflow)
 // ---------------------------------------------------------------------------
 
@@ -677,4 +772,6 @@ export const nodeTypes = {
   subflowNode: SubflowNode,
   // v3.3 — phase trio terminals (Entrada / Saída)
   ioNode: IONode,
+  // v3.4 — generic renderer for all new utility nodes from the backend catalog
+  utilityNode: GenericUtilityNode,
 };

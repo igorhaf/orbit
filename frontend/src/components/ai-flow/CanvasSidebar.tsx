@@ -139,33 +139,66 @@ export function CanvasSidebar({
           </ul>
         )}
 
-        {/* Utilities */}
-        <SectionHeader
-          icon={Wrench}
-          label="Utility Nodes"
-          count={catalog.utilities.length}
-          collapsed={collapsed['utilities']}
-          onToggle={() => toggleCollapse('utilities')}
-        />
-        {!collapsed['utilities'] && (
-          <ul className="px-2 py-1">
-            {catalog.utilities.map((u) => (
-              <li
-                key={u.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, u)}
-                className="flex items-center gap-2 px-2 py-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-gray-50"
-                title={`Arraste pro canvas — ${u.data?.label}`}
-              >
-                <Wrench className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium text-gray-800">{u.data?.label}</div>
-                  <div className="truncate text-[10px] font-mono text-gray-400">{u.data?.type}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* v3.4 — Utilities grouped by category (Discovery, Processing, ...) */}
+        {(() => {
+          const byCategory = new Map<string, CatalogItem[]>();
+          for (const u of catalog.utilities) {
+            const cat = (u.data?.category as string) || 'Outras';
+            if (!byCategory.has(cat)) byCategory.set(cat, []);
+            byCategory.get(cat)!.push(u);
+          }
+          // Sort categories alphabetically, but pin the legacy "Resilience"/"Routing"/"Storage"
+          // groups near the top (they were the v3.0 set).
+          const order = ['Discovery', 'Processing', 'AI', 'Storage', 'Validation', 'Observability', 'Specs', 'Routing', 'Resilience'];
+          const cats = Array.from(byCategory.keys()).sort((a, b) => {
+            const ai = order.indexOf(a); const bi = order.indexOf(b);
+            if (ai === -1 && bi === -1) return a.localeCompare(b);
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+          });
+          return cats.map((cat) => {
+            const items = byCategory.get(cat)!;
+            const sectionId = `util-cat-${cat.toLowerCase()}`;
+            const isCollapsed = !!collapsed[sectionId];
+            return (
+              <React.Fragment key={cat}>
+                <SectionHeader
+                  icon={Wrench}
+                  label={cat}
+                  count={items.length}
+                  collapsed={isCollapsed}
+                  onToggle={() => toggleCollapse(sectionId)}
+                />
+                {!isCollapsed && (
+                  <ul className="px-2 py-1">
+                    {items.map((u) => {
+                      const accent = (u.data?.color as string) || '#94a3b8';
+                      return (
+                        <li
+                          key={u.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, u)}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-gray-50"
+                          title={u.data?.description || `Arraste pro canvas — ${u.data?.label}`}
+                        >
+                          <span
+                            className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                            style={{ background: accent }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium text-gray-800">{u.data?.label}</div>
+                            <div className="truncate text-[10px] font-mono text-gray-400">{u.data?.kind || u.data?.type}</div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </React.Fragment>
+            );
+          });
+        })()}
       </div>
 
       {/* ── BOTTOM: objects currently in the canvas ───────────────────── */}
