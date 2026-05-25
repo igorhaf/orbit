@@ -31,6 +31,8 @@ export const aiModelsApi = {
 // AI Flow Chains API (PROMPT #122 - Visual Fallback Chain Configuration)
 export const aiFlowApi = {
   // v3.0 — full project snapshot for the unified AI Studio canvas
+  // v3.6.1: cache-busting via timestamp pra evitar que o navegador sirva
+  // snapshot stale após mudanças no backend.
   canvasSnapshot: () => request<{
     nodes: any[];
     edges: any[];
@@ -48,7 +50,7 @@ export const aiFlowApi = {
       graph_source?: 'default' | 'custom';
       control_flow_kinds?: string[];
     };
-  }>('/api/v1/ai-flow/canvas-snapshot'),
+  }>(`/api/v1/ai-flow/canvas-snapshot?t=${Date.now()}`),
 
   // v3.4 — persist customized canvas state (models, phase_configs, graph)
   canvasSave: (payload: {

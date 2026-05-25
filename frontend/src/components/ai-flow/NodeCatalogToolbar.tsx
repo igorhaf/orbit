@@ -165,13 +165,14 @@ export function NodeCatalogToolbar(props: ToolbarProps) {
       </select>
       <button
         onClick={props.onSave}
-        disabled={!props.dirty}
         className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md ${
-          props.dirty ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'border border-gray-200 text-gray-400 cursor-not-allowed'
+          props.dirty
+            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+            : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
         }`}
-        title={props.dirty ? 'Salvar mudanças' : 'Nada para salvar'}
+        title={props.dirty ? 'Salvar mudanças' : 'Forçar save (re-persiste o canvas atual)'}
       >
-        <Save className="w-3.5 h-3.5" /> {props.dirty ? 'Salvar' : 'Salvo'}
+        <Save className="w-3.5 h-3.5" /> {props.dirty ? 'Salvar' : 'Salvo ✓'}
       </button>
       <button
         onClick={props.onOptimize}
