@@ -107,13 +107,22 @@ DEEP_PIPELINE_HIERARCHY = [
              "steps": [
                  ("file_scanner", {}),
                  ("file_type_classifier", {}),
+                 # v3.5.2: switch por file_type — skip semantic_layer pra test/migration/config
+                 ("switch", {"config": {"selector": "$.file_type",
+                                        "cases": ["test", "migration", "config", "vendor"]},
+                             "planned": True}),
                  ("semantic_layer_classifier", {}),
                  ("change_detector", {"planned": True}),
+                 # v3.5.2: if_else — só gravar artifact se houve mudanças
+                 ("if_else", {"config": {"condition": "$.has_changes"}, "planned": True}),
                  ("pipeline_artifact_writer", {"planned": True}),
              ]},
             {"id": "phase_1_file_analysis", "label": "Phase 1 — File Analysis", "phase_key": "phase_1",
              "steps": [
                  ("file_scanner", {}),
+                 # v3.5.2: for_each por arquivo (já é batched, explicita o loop)
+                 ("for_each", {"config": {"collection_path": "$.files", "item_var": "file"},
+                               "planned": True}),
                  ("content_truncator", {}),
                  ("spec_loader", {"planned": True}),
                  ("spec_relevance_filter", {"planned": True}),
@@ -121,9 +130,15 @@ DEEP_PIPELINE_HIERARCHY = [
                  ("model_selector", {}),
                  ("quota_probe", {}),
                  ("provider_health_check", {}),
+                 # v3.5.2: AND — só chama claudius se quota AND health OK
+                 ("logical_and", {"config": {"inputs": ["quota.available", "health.healthy"]},
+                                  "planned": True}),
                  ("model:claude-haiku-4-5", {"call_kind": "batch"}),
                  ("json_extractor", {}),
                  ("json_schema_validator", {"planned": True}),
+                 # v3.5.2: AND — só persistir se extract OK AND schema valid
+                 ("logical_and", {"config": {"inputs": ["json_extractor.success", "schema_validator.valid"]},
+                                  "planned": True}),
                  ("ai_execution_logger", {}),
                  ("token_cost_calculator", {}),
                  ("pipeline_artifact_writer", {}),
@@ -133,9 +148,15 @@ DEEP_PIPELINE_HIERARCHY = [
             {"id": "phase_2_rule_synthesis", "label": "Phase 2 — Rule Synthesis", "phase_key": "phase_2",
              "steps": [
                  ("domain_grouper", {}),
+                 # v3.5.2: for_each por domain (síntese é per-domain)
+                 ("for_each", {"config": {"collection_path": "$.domains", "item_var": "domain"},
+                               "planned": True}),
                  ("json_compactor", {}),
                  ("spec_loader", {"planned": True}),
                  ("spec_relevance_filter", {"planned": True}),
+                 # v3.5.2: if_else — só inclui specs no prompt se há match relevante
+                 ("if_else", {"config": {"condition": "$.relevant_specs.length > 0"},
+                              "planned": True}),
                  ("contract_renderer", {"config": {"contract_name": "deep_rule_synthesis"}}),
                  ("model_selector", {}),
                  ("quota_probe", {}),
@@ -156,6 +177,8 @@ DEEP_PIPELINE_HIERARCHY = [
                  ("model_selector", {}),
                  ("model:claude-sonnet-4-6", {"call_kind": "single", "thinking_budget": 4000}),
                  ("json_extractor", {}),
+                 # v3.5.2: if_else — se error, vai pro error_classifier; se ok, persiste
+                 ("if_else", {"config": {"condition": "$.error_present"}, "planned": True}),
                  ("json_schema_validator", {"planned": True}),
                  ("error_classifier", {"planned": True}),
                  ("ai_execution_logger", {}),
@@ -172,6 +195,9 @@ DEEP_PIPELINE_HIERARCHY = [
             {"id": "phase_4a_epics", "label": "Phase 4a — Epics", "phase_key": "phase_4a",
              "steps": [
                  ("domain_grouper", {}),
+                 # v3.5.2: for_each por domain
+                 ("for_each", {"config": {"collection_path": "$.domains", "item_var": "domain"},
+                               "planned": True}),
                  ("json_compactor", {}),
                  ("contract_renderer", {"config": {"contract_name": "deep_epic_generation"}}),
                  ("model_selector", {}),
@@ -179,6 +205,9 @@ DEEP_PIPELINE_HIERARCHY = [
                  ("model:claude-opus-4-7", {"call_kind": "batch", "max_concurrency": 20}),
                  ("json_extractor", {}),
                  ("epic_deduplicator", {}),
+                 # v3.5.2: while — retry se epics < min_epics (max 2 iter — Opus é caro)
+                 ("while_loop", {"config": {"condition": "$.epics.length < $.min_epics",
+                                            "max_iter": 2}, "planned": True}),
                  ("card_hierarchy_builder", {"planned": True}),
                  ("ai_execution_logger", {}),
                  ("token_cost_calculator", {}),
@@ -188,6 +217,9 @@ DEEP_PIPELINE_HIERARCHY = [
              ]},
             {"id": "phase_4b_stories", "label": "Phase 4b — Stories", "phase_key": "phase_4b",
              "steps": [
+                 # v3.5.2: for_each por epic (stories são per-epic)
+                 ("for_each", {"config": {"collection_path": "$.epics", "item_var": "epic"},
+                               "planned": True}),
                  ("json_compactor", {}),
                  ("prompt_context_compressor", {"planned": True}),
                  ("contract_renderer", {"config": {"contract_name": "deep_story_generation"}}),
@@ -195,6 +227,8 @@ DEEP_PIPELINE_HIERARCHY = [
                  ("model:claude-opus-4-7", {"call_kind": "batch", "max_concurrency": 3}),
                  ("json_extractor", {}),
                  ("json_schema_validator", {"planned": True}),
+                 # v3.5.2: NOT — respeitar story.human_edited (REGRA #0)
+                 ("logical_not", {"config": {"input": "$.story.human_edited"}, "planned": True}),
                  ("card_hierarchy_builder", {}),
                  ("ai_execution_logger", {}),
                  ("token_cost_calculator", {}),
@@ -204,6 +238,9 @@ DEEP_PIPELINE_HIERARCHY = [
              ]},
             {"id": "phase_4c_tasks", "label": "Phase 4c — Tasks", "phase_key": "phase_4c",
              "steps": [
+                 # v3.5.2: for_each por story
+                 ("for_each", {"config": {"collection_path": "$.stories", "item_var": "story"},
+                               "planned": True}),
                  ("json_compactor", {}),
                  ("prompt_context_compressor", {"planned": True}),
                  ("contract_renderer", {"config": {"contract_name": "deep_task_generation"}}),
@@ -211,6 +248,8 @@ DEEP_PIPELINE_HIERARCHY = [
                  ("model:claude-sonnet-4-6", {"call_kind": "batch", "max_concurrency": 5}),
                  ("json_extractor", {}),
                  ("json_schema_validator", {"planned": True}),
+                 # v3.5.2: NOT — respeitar task.human_edited (REGRA #0)
+                 ("logical_not", {"config": {"input": "$.task.human_edited"}, "planned": True}),
                  ("card_hierarchy_builder", {}),
                  ("ai_execution_logger", {}),
                  ("token_cost_calculator", {}),
@@ -225,6 +264,7 @@ DEEP_PIPELINE_HIERARCHY = [
         "children": [
             {"id": "phase_5a_structure", "label": "Phase 5a — Structure", "phase_key": "phase_5",
              "steps": [
+                 # Sem control flow — single call curto, sem loop nem decisão
                  ("json_compactor", {}),
                  ("contract_renderer", {"config": {"contract_name": "deep_wiki_structure"}}),
                  ("model_selector", {}),
@@ -244,6 +284,9 @@ DEEP_PIPELINE_HIERARCHY = [
                  ("model:claude-sonnet-4-6", {"call_kind": "single", "max_tokens": 64000}),
                  ("json_extractor", {}),
                  ("wiki_page_writer", {}),
+                 # v3.5.2: AND — embed só se página escrita E não-dryrun
+                 ("logical_and", {"config": {"inputs": ["wiki_page_writer.success", "NOT $.is_dryrun"]},
+                                  "planned": True}),
                  ("embed_and_store", {"planned": True}),
                  ("ai_execution_logger", {}),
                  ("token_cost_calculator", {}),
@@ -253,12 +296,18 @@ DEEP_PIPELINE_HIERARCHY = [
             {"id": "phase_5c_domain_pages", "label": "Phase 5c — Domain Pages", "phase_key": "phase_5",
              "steps": [
                  ("domain_grouper", {}),
+                 # v3.5.2: for_each por domain
+                 ("for_each", {"config": {"collection_path": "$.domains", "item_var": "domain"},
+                               "planned": True}),
                  ("json_compactor", {}),
                  ("prompt_context_compressor", {"planned": True}),
                  ("contract_renderer", {"config": {"contract_name": "deep_wiki_domain"}}),
                  ("model_selector", {}),
                  ("model:claude-sonnet-4-6", {"call_kind": "batch", "max_concurrency": 3}),
                  ("json_extractor", {}),
+                 # v3.5.2: if_else — só gravar+chunkar+embed se página tem conteúdo significativo
+                 ("if_else", {"config": {"condition": "$.page.length > min_content_threshold"},
+                              "planned": True}),
                  ("wiki_page_writer", {}),
                  ("text_chunker", {"planned": True}),
                  ("embed_and_store", {"planned": True}),
@@ -269,6 +318,9 @@ DEEP_PIPELINE_HIERARCHY = [
              ]},
             {"id": "phase_5d_flow_pages", "label": "Phase 5d — Flow Pages", "phase_key": "phase_5",
              "steps": [
+                 # v3.5.2: if_else — só executa se há flow candidates (a step já é optional)
+                 ("if_else", {"config": {"condition": "$.has_flow_candidates"},
+                              "planned": True}),
                  ("json_compactor", {}),
                  ("contract_renderer", {"config": {"contract_name": "deep_wiki_flow"}}),
                  ("model_selector", {}),
@@ -295,7 +347,14 @@ DEEP_PIPELINE_HIERARCHY = [
                  ("json_extractor", {}),
                  ("json_schema_validator", {"planned": True}),
                  ("phase_score_calculator", {"planned": True}),
+                 # v3.5.2: while — re-roda se quality_score < threshold (1 retry max)
+                 ("while_loop", {"config": {"condition": "$.quality_score < $.threshold",
+                                            "max_iter": 1}, "planned": True}),
                  ("error_classifier", {"planned": True}),
+                 # v3.5.2: switch — roteia por error_kind (schema vs quota vs default)
+                 ("switch", {"config": {"selector": "$.error_kind",
+                                        "cases": ["schema", "quota", "rate_limit"]},
+                             "planned": True}),
                  ("ai_execution_logger", {}),
                  ("token_cost_calculator", {}),
                  ("pipeline_artifact_writer", {}),
@@ -303,6 +362,7 @@ DEEP_PIPELINE_HIERARCHY = [
              ]},
             {"id": "phase_6_local_qa", "label": "Phase 6 — Local QA", "phase_key": "phase_6",
              "steps": [
+                 # Sem control flow — 4 steps determinísticos
                  ("phase_score_calculator", {}),
                  ("local_qa", {}),
                  ("pipeline_artifact_writer", {}),
@@ -311,6 +371,11 @@ DEEP_PIPELINE_HIERARCHY = [
             {"id": "phase_7_gap_filling", "label": "Phase 7 — Gap Filling", "phase_key": "phase_7",
              "steps": [
                  ("error_classifier", {"planned": True}),
+                 # v3.5.2: switch — roteia por gap_type pro phase certa de retomada
+                 ("switch", {"config": {"selector": "$.gap_type",
+                                        "cases": ["missing_epic", "missing_story",
+                                                  "missing_task", "missing_wiki"]},
+                             "planned": True}),
                  ("router", {"planned": True}),
                  ("job_child_creator", {"planned": True}),
                  ("pipeline_artifact_writer", {}),
@@ -320,6 +385,9 @@ DEEP_PIPELINE_HIERARCHY = [
              "steps": [
                  ("git_commit_fetcher", {}),
                  ("rag_query", {}),
+                 # v3.5.2: OR — só roda enrich se há commits novos OU hits RAG
+                 ("logical_or", {"config": {"inputs": ["git.has_commits", "rag.has_hits"]},
+                                 "planned": True}),
                  ("json_compactor", {}),
                  ("contract_renderer", {"config": {"contract_name": "deep_project_enrichment"}}),
                  ("model_selector", {}),
@@ -900,21 +968,38 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 else:
                     # utility node — usa metadata resolvida do _KIND_META
                     tpl = _resolve_utility_template(kind_or_model)
+                    # v3.5.2: control flow kinds usam `controlFlowNode` renderer
+                    # (multi-handles nomeados pra true/false, case_X, body/done…)
+                    is_control_flow = tpl["category"] == "ControlFlow"
+                    react_type = "controlFlowNode" if is_control_flow else "utilityNode"
+                    # Resolve inputs/outputs do schema pra control flow renderar handles
+                    schema = _schema_to_dict(_schema_for(kind_or_model)) if is_control_flow else None
+                    node_data = {
+                        "label": tpl["label"],
+                        "kind": kind_or_model,
+                        "category": tpl["category"],
+                        "color": tpl["color"],
+                        "icon": tpl["icon"],
+                        "step_id": sub["id"],
+                        "phase_key": sub.get("phase_key"),
+                        "planned": planned,
+                        "config": opts.get("config") or {},
+                        "enabled": not planned,
+                    }
+                    if schema:
+                        node_data["inputs"] = schema["inputs"]
+                        node_data["outputs"] = schema["outputs"]
+                        node_data["dynamic_outputs"] = schema["dynamic_outputs"]
+                        # Switch: cases declarados em config.cases viram outputs extras
+                        if kind_or_model == "switch":
+                            cases = (opts.get("config") or {}).get("cases") or []
+                            extra = [{"name": c, "type": TYPE_ANY} for c in cases]
+                            # default sempre presente; cases vêm antes
+                            node_data["outputs"] = extra + node_data["outputs"]
                     nodes.append({
-                        "id": step_node_id, "type": "utilityNode",
+                        "id": step_node_id, "type": react_type,
                         "position": {"x": step_x, "y": L3_INNER_Y},
-                        "data": {
-                            "label": tpl["label"],
-                            "kind": kind_or_model,
-                            "category": tpl["category"],
-                            "color": tpl["color"],
-                            "icon": tpl["icon"],
-                            "step_id": sub["id"],
-                            "phase_key": sub.get("phase_key"),
-                            "planned": planned,
-                            "config": opts.get("config") or {},
-                            "enabled": not planned,
-                        },
+                        "data": node_data,
                     })
 
                 l3_inner_ids.append(step_node_id)
