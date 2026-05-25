@@ -19,6 +19,7 @@ from .executor import (
 # Import pra registrar os executors (efeito colateral via @registry.register).
 # A ordem importa: pure primeiro (sem deps), depois io, depois control_flow.
 from . import executors_pure  # noqa: F401
+from . import executors_io    # noqa: F401
 
 __all__ = [
     "NodeExecutor",
