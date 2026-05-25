@@ -84,18 +84,23 @@ export const POST_PROCESS_TYPES = ['retry', 'validator', 'cost_guard'];
 // ---------------------------------------------------------------------------
 
 /** High-level node categories used by the unified canvas. */
-export type CanvasNodeCategory = 'model' | 'utility' | 'pipeline_phase' | 'subflow';
+export type CanvasNodeCategory = 'model' | 'utility' | 'pipeline_phase' | 'subflow' | 'io';
 
 /**
  * Allowed connections matrix.
  * For each source category, list which destination categories are accepted.
  * Used by useConnectionValidator on every onConnect to reject invalid wires.
+ *
+ * v3.4: utility and io nodes are now first-class flow members. A utility can
+ * feed any other node (model/utility/io) because they're general-purpose
+ * processing blocks (Discovery scanners, Storage writers, AI callers, etc).
  */
 export const ALLOWED_CONNECTIONS: Record<CanvasNodeCategory, CanvasNodeCategory[]> = {
-  pipeline_phase: ['model'],                // a pipeline phase picks a model
-  model:          ['utility', 'model'],     // a model can feed utilities OR fall back to another model
-  utility:        ['model'],                // utilities loop back into a model
-  subflow:        ['model', 'pipeline_phase'], // a subflow can plug into models or phases at its boundary
+  pipeline_phase: ['model', 'utility'],
+  model:          ['utility', 'model', 'io'],
+  utility:        ['model', 'utility', 'io'],
+  subflow:        ['model', 'pipeline_phase', 'subflow'],
+  io:             ['model', 'utility', 'io'],
 };
 
 /** Edge color per source→destination port type. */
@@ -114,6 +119,7 @@ export const NODE_TYPE_TO_CATEGORY: Record<string, CanvasNodeCategory> = {
   modelNode: 'model',
   pipelinePhaseNode: 'pipeline_phase',
   subflowNode: 'subflow',
+  // legacy utility types
   cacheNode: 'utility',
   ragContextNode: 'utility',
   promptTransformerNode: 'utility',
@@ -125,4 +131,7 @@ export const NODE_TYPE_TO_CATEGORY: Record<string, CanvasNodeCategory> = {
   timeoutNode: 'utility',
   promptNodeNode: 'utility',
   contractNode: 'utility',
+  // v3.3 + v3.4
+  ioNode: 'io',
+  utilityNode: 'utility',
 };
