@@ -787,6 +787,43 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         color, icon = _CAT_DEFAULTS.get(category, ("#94a3b8", "circle"))
         return {"label": label, "category": category, "color": color, "icon": icon}
 
+    # v3.5.3: helper pra gerar edges com o MESMO formato que o frontend
+    # produz via addEdge/onConnect — type=smartEdge, markerEnd ArrowClosed,
+    # mesma cor que o stroke. Garante que edges nascidas no backend visual-
+    # mente correspondam às criadas pelo usuário arrastando.
+    def _make_edge(
+        edge_id: str, source: str, target: str,
+        *, stroke: str = "#3b82f6", stroke_width: float = 1.8,
+        dashed: bool = False, port_type: str = "step_sequence",
+        planned: bool = False, source_handle: str | None = None,
+        target_handle: str | None = None, label: str | None = None,
+    ) -> dict:
+        style: dict = {"stroke": stroke, "strokeWidth": stroke_width}
+        if dashed:
+            style["strokeDasharray"] = "4 4"
+        edge: dict = {
+            "id": edge_id,
+            "source": source,
+            "target": target,
+            "type": "smartEdge",
+            "style": style,
+            "markerEnd": {
+                "type": "arrowclosed",  # ReactFlow MarkerType.ArrowClosed value
+                "color": stroke,
+                "width": 16,
+                "height": 16,
+            },
+            "data": {"port_type": port_type, "planned": planned},
+        }
+        if source_handle:
+            edge["sourceHandle"] = source_handle
+        if target_handle:
+            edge["targetHandle"] = target_handle
+        if label:
+            edge["label"] = label
+            edge["data"]["label"] = label
+        return edge
+
     # ── 1. Hierarquia 3 níveis: Root → Áreas (L1) → Sub-subflows (L2) → Steps (L3)
     #
     # Cada NÍVEL é uma tab/subflow no canvas:
@@ -904,13 +941,12 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             l1_child_subflow_ids.append(sub["id"])
 
             # Sequência L2: predecessor → este subflowNode
-            edges.append({
-                "id": f"edge-{prev_l2_node_id}-{sub_sf_id}",
-                "source": prev_l2_node_id, "target": sub_sf_id,
-                "type": "smartEdge",
-                "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
-                "data": {"port_type": "area_sequence"},
-            })
+            edges.append(_make_edge(
+                f"edge-{prev_l2_node_id}-{sub_sf_id}",
+                prev_l2_node_id, sub_sf_id,
+                stroke="#3b82f6", stroke_width=1.8,
+                port_type="area_sequence",
+            ))
             prev_l2_node_id = sub_sf_id
 
             # ── Nível 3: gerar nodes da cadeia interna do sub-subflow ──
@@ -1003,17 +1039,15 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     })
 
                 l3_inner_ids.append(step_node_id)
-                edges.append({
-                    "id": f"edge-{prev_step_id}-{step_node_id}",
-                    "source": prev_step_id, "target": step_node_id,
-                    "type": "smartEdge",
-                    "style": {
-                        "stroke": "#9ca3af" if planned else "#3b82f6",
-                        "strokeWidth": 1.6,
-                        **({"strokeDasharray": "4 4"} if planned else {}),
-                    },
-                    "data": {"port_type": "step_sequence", "planned": planned},
-                })
+                edges.append(_make_edge(
+                    f"edge-{prev_step_id}-{step_node_id}",
+                    prev_step_id, step_node_id,
+                    stroke="#9ca3af" if planned else "#3b82f6",
+                    stroke_width=1.6,
+                    dashed=planned,
+                    port_type="step_sequence",
+                    planned=planned,
+                ))
                 prev_step_id = step_node_id
 
             # Saída do sub-subflow — exibe pra onde "vai" no pai
@@ -1033,13 +1067,12 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 },
             })
             l3_inner_ids.append(l3_out_id)
-            edges.append({
-                "id": f"edge-{prev_step_id}-{l3_out_id}",
-                "source": prev_step_id, "target": l3_out_id,
-                "type": "smartEdge",
-                "style": {"stroke": "#3b82f6", "strokeWidth": 1.6},
-                "data": {"port_type": "step_sequence"},
-            })
+            edges.append(_make_edge(
+                f"edge-{prev_step_id}-{l3_out_id}",
+                prev_step_id, l3_out_id,
+                stroke="#3b82f6", stroke_width=1.6,
+                port_type="step_sequence",
+            ))
 
             # Persistir o sub-subflow no dict subflows
             subflows[sub["id"]] = {
@@ -1069,13 +1102,12 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             },
         })
         l1_inner_ids.append(l1_out_id)
-        edges.append({
-            "id": f"edge-{prev_l2_node_id}-{l1_out_id}",
-            "source": prev_l2_node_id, "target": l1_out_id,
-            "type": "smartEdge",
-            "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
-            "data": {"port_type": "area_sequence"},
-        })
+        edges.append(_make_edge(
+            f"edge-{prev_l2_node_id}-{l1_out_id}",
+            prev_l2_node_id, l1_out_id,
+            stroke="#3b82f6", stroke_width=1.8,
+            port_type="area_sequence",
+        ))
 
         # Persistir a área (L1)
         subflows[area["id"]] = {
@@ -1103,13 +1135,13 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         })
         # Wire root areas sequentially: Discovery → Cards → Wiki → QA
         if prev_l1_node_id is not None:
-            edges.append({
-                "id": f"edge-{prev_l1_node_id}-{l1_sf_id}",
-                "source": prev_l1_node_id, "target": l1_sf_id,
-                "type": "smartEdge",
-                "style": {"stroke": "#3b82f6", "strokeWidth": 2},
-                "data": {"label": "then", "port_type": "root_sequence"},
-            })
+            edges.append(_make_edge(
+                f"edge-{prev_l1_node_id}-{l1_sf_id}",
+                prev_l1_node_id, l1_sf_id,
+                stroke="#3b82f6", stroke_width=2,
+                port_type="root_sequence",
+                label="then",
+            ))
         prev_l1_node_id = l1_sf_id
 
     # ── 3. Model catalog — sidebar items (NOT on the canvas).
