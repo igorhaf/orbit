@@ -78,3 +78,51 @@ export const UTILITY_TYPE_TO_NODE_TYPE: Record<string, string> = {
 export const PRE_PROCESS_TYPES = ['cache', 'rag_context', 'prompt_transformer', 'router', 'rate_limiter', 'timeout', 'prompt_node'];
 // Utility nodes that execute AFTER the AI model call
 export const POST_PROCESS_TYPES = ['retry', 'validator', 'cost_guard'];
+
+// ---------------------------------------------------------------------------
+// v3.0 — Unified Canvas: typed connections + port colors + node categories
+// ---------------------------------------------------------------------------
+
+/** High-level node categories used by the unified canvas. */
+export type CanvasNodeCategory = 'model' | 'utility' | 'pipeline_phase' | 'subflow';
+
+/**
+ * Allowed connections matrix.
+ * For each source category, list which destination categories are accepted.
+ * Used by useConnectionValidator on every onConnect to reject invalid wires.
+ */
+export const ALLOWED_CONNECTIONS: Record<CanvasNodeCategory, CanvasNodeCategory[]> = {
+  pipeline_phase: ['model'],                // a pipeline phase picks a model
+  model:          ['utility', 'model'],     // a model can feed utilities OR fall back to another model
+  utility:        ['model'],                // utilities loop back into a model
+  subflow:        ['model', 'pipeline_phase'], // a subflow can plug into models or phases at its boundary
+};
+
+/** Edge color per source→destination port type. */
+export const PORT_TYPE_COLORS: Record<string, string> = {
+  'pipeline_phase->model': '#3b82f6',  // blue (configures phase)
+  'model->utility':        '#6b7280',  // gray (pre/post-process)
+  'model->model':          '#f97316',  // orange (fallback chain)
+  'utility->model':        '#6b7280',
+  'subflow->model':        '#0891b2',
+  'subflow->pipeline_phase':'#0891b2',
+  default:                 '#94a3b8',
+};
+
+/** Map ReactFlow node type → canvas category. Single source of truth. */
+export const NODE_TYPE_TO_CATEGORY: Record<string, CanvasNodeCategory> = {
+  modelNode: 'model',
+  pipelinePhaseNode: 'pipeline_phase',
+  subflowNode: 'subflow',
+  cacheNode: 'utility',
+  ragContextNode: 'utility',
+  promptTransformerNode: 'utility',
+  routerNode: 'utility',
+  retryNode: 'utility',
+  validatorNode: 'utility',
+  costGuardNode: 'utility',
+  rateLimiterNode: 'utility',
+  timeoutNode: 'utility',
+  promptNodeNode: 'utility',
+  contractNode: 'utility',
+};

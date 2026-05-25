@@ -1,10 +1,10 @@
 /**
  * AI Flow Components - Barrel Export
  *
- * Re-exports all sub-components extracted from the monolithic ai-flow/page.tsx.
+ * v3.0: unified canvas. Obsolete tabs/dialogs were removed.
  */
 
-// Constants (pure data)
+// Constants
 export {
   USAGE_TYPE_OPTIONS,
   PROVIDER_COLORS,
@@ -14,7 +14,11 @@ export {
   UTILITY_TYPE_TO_NODE_TYPE,
   PRE_PROCESS_TYPES,
   POST_PROCESS_TYPES,
+  ALLOWED_CONNECTIONS,
+  NODE_TYPE_TO_CATEGORY,
+  PORT_TYPE_COLORS,
 } from './FlowConstants';
+export type { CanvasNodeCategory } from './FlowConstants';
 
 // Icons
 export { UtilityNodeIcon, ProviderIcon } from './FlowIcons';
@@ -31,27 +35,31 @@ export {
   CostGuardNode,
   RateLimiterNode,
   TimeoutNode,
+  // v3.0
+  PipelinePhaseNode,
+  SubflowNode,
   nodeTypes,
 } from './FlowNodes';
 export type { NodeAnimationState } from './FlowNodes';
 
-// Dialogs
-export { default as EditUtilityNodeDialog } from './EditUtilityNodeDialog';
-export type { EditUtilityNodeDialogProps } from './EditUtilityNodeDialog';
-
-export { default as EditModelNodeDialog } from './EditModelNodeDialog';
-export type { ModelOverrides, EditModelNodeDialogProps } from './EditModelNodeDialog';
-
-// Panels
+// Panels (kept)
 export { default as AnalyticsPanel } from './AnalyticsPanel';
 export type { AnalyticsPanelProps } from './AnalyticsPanel';
 
 export { default as OptimizeDialog } from './OptimizeDialog';
 export type { OptimizeDialogProps } from './OptimizeDialog';
 
-// Custom edge with collision avoidance
+// Custom edge (default export)
 export { default as SmartEdge } from './SmartEdge';
+export { default as SmartEdgeDefault } from './SmartEdge';
+
+// v3.0 canvas building blocks
+export { NodeCatalogToolbar } from './NodeCatalogToolbar';
+export { NodeInspector } from './NodeInspector';
+export { DebugPanel } from './DebugPanel';
+export type { DebugEvent } from './DebugPanel';
+export { SubflowBreadcrumbs } from './SubflowBreadcrumbs';
 
 // Utility functions
-export { buildFlowFromChain, computeEdgeProps } from './flowUtils';
-export type { EdgeProps } from './flowUtils';
+export { buildFlowFromChain, computeEdgeProps, validateConnection, categoryOf } from './flowUtils';
+export type { EdgeProps, ModelOverrides, ConnectionValidation } from './flowUtils';

@@ -198,12 +198,24 @@ class ChainTemplatesResponse(BaseModel):
 # AI Flow Profiles (Versioned, Named Profiles)
 # ============================================================================
 
+# v3.0: collapsible subflow group definition
+class SubflowDef(BaseModel):
+    label: str = Field(description="Human-readable subflow label")
+    node_ids: List[str] = Field(default_factory=list, description="IDs of nodes inside this subflow")
+    position: Dict[str, float] = Field(
+        default_factory=lambda: {"x": 0.0, "y": 0.0},
+        description="Canvas position when collapsed",
+    )
+    collapsed: bool = Field(default=False, description="Whether the subflow is currently collapsed")
+
+
 class AIFlowProfileCreate(BaseModel):
     name: str = Field(description="Free-form profile name")
     usage_type: AIModelUsageType = Field(description="Usage type tag")
     chain: List[str] = Field(default_factory=list)
     utility_nodes: Optional[List[Dict[str, Any]]] = None
     node_positions: Optional[Dict[str, Any]] = None
+    subflows: Optional[Dict[str, SubflowDef]] = Field(default_factory=dict)
 
 
 class AIFlowProfileUpdate(BaseModel):
@@ -212,6 +224,7 @@ class AIFlowProfileUpdate(BaseModel):
     chain: Optional[List[str]] = None
     utility_nodes: Optional[List[Dict[str, Any]]] = None
     node_positions: Optional[Dict[str, Any]] = None
+    subflows: Optional[Dict[str, SubflowDef]] = None
 
 
 class AIFlowProfileResponse(BaseModel):
@@ -222,6 +235,7 @@ class AIFlowProfileResponse(BaseModel):
     chain: List[str] = Field(default_factory=list)
     utility_nodes: Optional[List[Dict[str, Any]]] = None
     node_positions: Optional[Dict[str, Any]] = None
+    subflows: Optional[Dict[str, SubflowDef]] = Field(default_factory=dict)
     is_active: bool
     created_at: datetime
     updated_at: datetime

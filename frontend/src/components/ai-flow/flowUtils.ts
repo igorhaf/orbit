@@ -12,10 +12,21 @@ import {
   UTILITY_TYPE_TO_NODE_TYPE,
   PRE_PROCESS_TYPES,
   POST_PROCESS_TYPES,
+  ALLOWED_CONNECTIONS,
+  NODE_TYPE_TO_CATEGORY,
+  PORT_TYPE_COLORS,
+  type CanvasNodeCategory,
 } from './FlowConstants';
 import type { NodeAnimationState } from './FlowNodes';
 import type { AIFlowChainModel, AIFlowUtilityNode } from '@/lib/types';
-import type { ModelOverrides } from './EditModelNodeDialog';
+
+// v3.0: ModelOverrides moved inline (was in deleted EditModelNodeDialog)
+export interface ModelOverrides {
+  temperature?: number | null;
+  max_tokens?: number | null;
+  timeout_seconds?: number | null;
+  max_concurrent_requests?: number | null;
+}
 
 // ---------------------------------------------------------------------------
 // PROMPT #225 - Edge property computation
@@ -315,4 +326,52 @@ export function buildFlowFromChain(
   }
 
   return { nodes, edges };
+}
+
+// ---------------------------------------------------------------------------
+// v3.0 — Typed connection validation for the unified canvas
+// ---------------------------------------------------------------------------
+
+/** Resolve a node's canvas category from its ReactFlow type (or fallback). */
+export function categoryOf(node: Node | undefined | null): CanvasNodeCategory | null {
+  if (!node || !node.type) return null;
+  return NODE_TYPE_TO_CATEGORY[node.type] ?? null;
+}
+
+export interface ConnectionValidation {
+  ok: boolean;
+  reason?: string;
+  edgeColor?: string;
+}
+
+/**
+ * Validate a proposed connection against the ALLOWED_CONNECTIONS matrix.
+ *
+ * @param source The source node (where the edge starts)
+ * @param target The target node (where the edge ends)
+ */
+export function validateConnection(
+  source: Node | undefined | null,
+  target: Node | undefined | null,
+): ConnectionValidation {
+  const srcCat = categoryOf(source);
+  const tgtCat = categoryOf(target);
+  if (!srcCat || !tgtCat) {
+    return { ok: false, reason: 'tipo de node desconhecido' };
+  }
+  if (source?.id === target?.id) {
+    return { ok: false, reason: 'não pode conectar um node a ele mesmo' };
+  }
+  const allowed = ALLOWED_CONNECTIONS[srcCat] || [];
+  if (!allowed.includes(tgtCat)) {
+    return {
+      ok: false,
+      reason: `${srcCat} → ${tgtCat} não é permitido`,
+    };
+  }
+  const key = `${srcCat}->${tgtCat}`;
+  return {
+    ok: true,
+    edgeColor: PORT_TYPE_COLORS[key] ?? PORT_TYPE_COLORS.default,
+  };
 }

@@ -42,6 +42,9 @@ class AIFlowProfile(Base):
     chain = Column(JSON, nullable=False, default=list)
     utility_nodes = Column(JSON, nullable=True, default=None)
     node_positions = Column(JSON, nullable=True, default=None)
+    # v3.0: collapsible subflow groups
+    # {subflow_id: {label, node_ids[], position: {x,y}, collapsed: bool}}
+    subflows = Column(JSON, nullable=True, default=dict)
     is_active = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(

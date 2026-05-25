@@ -24,6 +24,14 @@ function formatLocalTime(iso?: string | null): string | null {
   }
 }
 
+function formatDuration(seconds?: number | null): string | null {
+  if (seconds == null || seconds <= 0) return null;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h <= 0) return `${m}min`;
+  return `${h}h ${m}min`;
+}
+
 function chipColor(snapshot: any): { ring: string; text: string; dot: string } {
   if (!snapshot) return { ring: 'ring-gray-200', text: 'text-gray-600', dot: 'bg-gray-300' };
   if (snapshot.exhausted) return { ring: 'ring-red-200', text: 'text-red-700', dot: 'bg-red-500' };
@@ -62,12 +70,15 @@ export function QuotaWindowChip() {
   const color = chipColor(quotaSnapshot);
   const resetsAt = quotaSnapshot.cycle_resets_at || quotaSnapshot.resets_at;
   const resetsAtLabel = formatLocalTime(resetsAt);
+  const remainingLabel = formatDuration(quotaSnapshot.time_remaining_sec);
   const isExhausted = !!quotaSnapshot.exhausted;
   const chipText = isExhausted
     ? `cota esgotada${resetsAtLabel ? ` · ${resetsAtLabel}` : ''}`
-    : resetsAtLabel
-      ? `reseta ${resetsAtLabel}`
-      : 'janela 5h';
+    : remainingLabel
+      ? `reinicia em ${remainingLabel}`
+      : resetsAtLabel
+        ? `reseta ${resetsAtLabel}`
+        : 'janela 5h';
 
   const inputPct = quotaSnapshot.tokens_pct?.input ?? 0;
   const outputPct = quotaSnapshot.tokens_pct?.output ?? 0;
@@ -117,9 +128,9 @@ export function QuotaWindowChip() {
             {/* Time progress */}
             <div>
               <div className="flex justify-between text-xs text-gray-600 mb-1">
-                <span>Tempo decorrido</span>
+                <span>Sessão atual</span>
                 <span className="tabular-nums">
-                  {timePct.toFixed(0)}% · reseta {resetsAtLabel || '?'}
+                  {remainingLabel ? `Reinicia em ${remainingLabel}` : (resetsAtLabel ? `reseta ${resetsAtLabel}` : '—')}
                 </span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">

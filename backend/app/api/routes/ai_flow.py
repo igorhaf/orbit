@@ -856,6 +856,7 @@ async def create_profile(
         chain=data.chain or [],
         utility_nodes=data.utility_nodes,
         node_positions=data.node_positions,
+        subflows={k: v.model_dump() for k, v in (data.subflows or {}).items()},
         is_active=False,
     )
     db.add(profile)
@@ -886,6 +887,8 @@ async def update_profile(
         profile.utility_nodes = data.utility_nodes
     if data.node_positions is not None:
         profile.node_positions = data.node_positions
+    if data.subflows is not None:
+        profile.subflows = {k: v.model_dump() for k, v in data.subflows.items()}
 
     profile.version += 1
     db.commit()

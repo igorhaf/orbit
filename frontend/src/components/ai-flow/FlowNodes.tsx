@@ -453,6 +453,107 @@ export function PromptNodeNode({ data }: { data: any }) {
 // Node Type Registry
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// v3.0 — Unified canvas: PipelinePhase + Subflow nodes
+// ---------------------------------------------------------------------------
+
+export function PipelinePhaseNode({ data }: { data: any }) {
+  const animation: NodeAnimationState = data.animation || 'idle';
+  let borderOverride: Record<string, string> = {};
+  let animationClasses = '';
+  if (animation === 'executing') {
+    animationClasses = 'animate-pulse';
+    borderOverride = { borderColor: '#3b82f6', boxShadow: '0 0 12px rgba(59,130,246,0.5)' };
+  } else if (animation === 'success') {
+    borderOverride = { borderColor: '#22c55e', boxShadow: '0 0 12px rgba(34,197,94,0.5)' };
+  } else if (animation === 'failed') {
+    animationClasses = 'animate-shake';
+    borderOverride = { borderColor: '#ef4444', boxShadow: '0 0 12px rgba(239,68,68,0.5)' };
+  }
+  const phaseLabel = data.label || data.phase_key || 'Fase';
+  const modelCount: number = data.model_count ?? 0;
+  return (
+    <div
+      className={`bg-white rounded-lg shadow-md border-2 min-w-[200px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all ${animationClasses}`}
+      style={{ borderLeftColor: '#3b82f6', borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb', ...borderOverride }}
+    >
+      <Handle type="target" position={Position.Left} id="left" className="!bg-blue-400 !w-3.5 !h-3.5 !border-2 !border-white" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-7 h-7 bg-blue-50 rounded text-blue-600 text-xs font-bold">
+            {data.phase_index ?? '#'}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900 truncate">{phaseLabel}</div>
+            <div className="text-xs text-blue-600">Fase de Pipeline</div>
+          </div>
+        </div>
+        {data.description && (
+          <p className="mt-2 text-[11px] text-gray-500 line-clamp-2">{data.description}</p>
+        )}
+        <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[10px]">
+          <span className="text-gray-500">Modelos: <span className="font-semibold text-gray-700">{modelCount}</span></span>
+          {data.duration_ms != null && (
+            <span className="text-gray-500">{(data.duration_ms / 1000).toFixed(1)}s</span>
+          )}
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">×</button>
+      )}
+      <Handle type="source" position={Position.Right} id="right" className="!bg-blue-400 !w-3.5 !h-3.5 !border-2 !border-white" />
+    </div>
+  );
+}
+
+export function SubflowNode({ data }: { data: any }) {
+  const collapsed: boolean = data.collapsed ?? true;
+  const count: number = data.node_count ?? 0;
+  return (
+    <div
+      className="rounded-lg shadow-md border-2 border-dashed border-cyan-400 bg-cyan-50/60 relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ minWidth: 220 }}
+    >
+      <Handle type="target" position={Position.Left} id="left" className="!bg-cyan-500 !w-3.5 !h-3.5 !border-2 !border-white" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-7 h-7 bg-cyan-100 rounded text-cyan-700 text-base">
+            {collapsed ? '▶' : '▼'}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900 truncate">{data.label || 'Subflow'}</div>
+            <div className="text-xs text-cyan-700">{count} nodes agrupados</div>
+          </div>
+        </div>
+        <div className="mt-2 pt-2 border-t border-cyan-200 flex items-center gap-2">
+          {data.onToggleCollapsed && (
+            <button
+              onClick={(e) => { e.stopPropagation(); data.onToggleCollapsed(); }}
+              className="text-[10px] text-cyan-700 hover:underline"
+            >
+              {collapsed ? 'Expandir' : 'Colapsar'}
+            </button>
+          )}
+          {data.onEnter && (
+            <button
+              onClick={(e) => { e.stopPropagation(); data.onEnter(); }}
+              className="text-[10px] text-cyan-700 hover:underline"
+            >
+              Entrar →
+            </button>
+          )}
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">×</button>
+      )}
+      <Handle type="source" position={Position.Right} id="right" className="!bg-cyan-500 !w-3.5 !h-3.5 !border-2 !border-white" />
+    </div>
+  );
+}
+
 export const nodeTypes = {
   modelNode: ModelNode,
   cacheNode: CacheNode,
@@ -465,4 +566,7 @@ export const nodeTypes = {
   rateLimiterNode: RateLimiterNode,
   timeoutNode: TimeoutNode,
   promptNodeNode: PromptNodeNode,
+  // v3.0
+  pipelinePhaseNode: PipelinePhaseNode,
+  subflowNode: SubflowNode,
 };

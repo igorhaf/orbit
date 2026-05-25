@@ -74,13 +74,13 @@ export const aiFlowApi = {
   // AI Flow Profiles (Named, Versioned)
   listProfiles: () => request<any[]>('/api/v1/ai-flow/profiles'),
 
-  createProfile: (data: { name: string; usage_type: string; chain?: string[]; utility_nodes?: any[]; node_positions?: Record<string, any> }) =>
+  createProfile: (data: { name: string; usage_type: string; chain?: string[]; utility_nodes?: any[]; node_positions?: Record<string, any>; subflows?: Record<string, any> }) =>
     request<any>('/api/v1/ai-flow/profiles', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  updateProfile: (id: string, data: { name?: string; usage_type?: string; chain?: string[]; utility_nodes?: any[]; node_positions?: Record<string, any> }) =>
+  updateProfile: (id: string, data: { name?: string; usage_type?: string; chain?: string[]; utility_nodes?: any[]; node_positions?: Record<string, any>; subflows?: Record<string, any> }) =>
     request<any>(`/api/v1/ai-flow/profiles/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),

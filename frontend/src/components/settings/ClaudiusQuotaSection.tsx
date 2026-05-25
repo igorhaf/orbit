@@ -160,13 +160,23 @@ export function ClaudiusQuotaSection() {
               </div>
             )}
 
-            {/* Time window progress (v2.4) */}
+            {/* Time window progress (v2.5.1) */}
             {snap.time_elapsed_pct != null && (
               <div>
                 <div className="flex justify-between text-xs text-gray-600 mb-1">
-                  <span>Tempo decorrido (janela 5h)</span>
+                  <span>Sessão atual</span>
                   <span className="font-medium tabular-nums">
-                    {snap.time_elapsed_pct.toFixed(0)}% · reseta {snap.cycle_resets_at ? new Date(snap.cycle_resets_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '?'}
+                    {(() => {
+                      const sec = snap.time_remaining_sec ?? 0;
+                      if (sec > 0) {
+                        const h = Math.floor(sec / 3600);
+                        const m = Math.floor((sec % 3600) / 60);
+                        return `Reinicia em ${h > 0 ? `${h}h ${m}min` : `${m}min`}`;
+                      }
+                      return snap.cycle_resets_at
+                        ? `reseta ${new Date(snap.cycle_resets_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        : '—';
+                    })()}
                   </span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
