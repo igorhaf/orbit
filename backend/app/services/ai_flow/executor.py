@@ -83,6 +83,14 @@ class ExecutionContext:
     nodes_executed: int = 0
     nodes_failed: int = 0
 
+    # v3.7.2: backreference ao GraphExecutor pra control-flow nodes
+    # (for_each, while_loop) chamarem run_subgraph internamente.
+    # Setado pelo GraphExecutor.run() antes do loop principal.
+    executor: Optional[Any] = None  # tipo: GraphExecutor (forward ref)
+    # Current loop item — control flow nodes podem ler pra propagar
+    # como input quando rodam sub-grafo. Stack pra loops aninhados.
+    loop_stack: list[dict[str, Any]] = field(default_factory=list)
+
     async def emit(self, event: str, payload: dict) -> None:
         """Send a WS event (no-op if ws_emit not provided)."""
         if self.ws_emit:
@@ -235,6 +243,8 @@ class GraphExecutor:
         `initial_inputs` is propagated as the output of any node with no
         incoming edges (e.g. the first FileScanner gets the project).
         """
+        # v3.7.2: expõe self no ctx pra control-flow loops chamarem run_subgraph
+        self.ctx.executor = self
         # Validation phase
         order = self._topological_order()
         await self.ctx.emit("graph_started", {
@@ -536,3 +546,132 @@ class GraphExecutor:
             any_active = any(p not in self._skipped for p in exec_preds)
             if not any_active:
                 self._skipped.add(succ_id)
+
+    # ── Subgraph execution (v3.7.2 — for_each/while_loop support) ─────────
+
+    def body_subgraph_node_ids(self, loop_node_id: str) -> list[str]:
+        """Descobre os node IDs alcançáveis a partir do handle 'body' do
+        loop node, em ordem topológica. Para o caminho quando encontra:
+          - outro loop node (for_each/while_loop) — nested loop é responsabilidade
+            do node nested, não desse
+          - um node já visitado (ciclo)
+          - um node que NÃO é descendente do loop body
+        Retorna [] se não há body conectado.
+        """
+        # Find direct successors via 'body' handle
+        body_edges = [
+            e for e in self.edges
+            if e.get("source") == loop_node_id and e.get("sourceHandle") == "body"
+        ]
+        if not body_edges:
+            return []
+
+        # BFS forward, stopping at: another loop node OR back to loop_node_id
+        visited: set[str] = set()
+        order: list[str] = []
+        queue: list[str] = [e.get("target") for e in body_edges if e.get("target")]
+
+        # Targets visíveis: forward graph excluindo o loop_node_id
+        forward: dict[str, list[str]] = defaultdict(list)
+        for e in self.edges:
+            src = e.get("source")
+            tgt = e.get("target")
+            if src and tgt and src != loop_node_id:
+                forward[src].append(tgt)
+
+        while queue:
+            nid = queue.pop(0)
+            if nid in visited or nid == loop_node_id:
+                continue
+            visited.add(nid)
+            node = self.nodes_by_id.get(nid)
+            if not node:
+                continue
+            kind = self._kind_of(node)
+            # Não inclui outros loop nodes no body subgraph (eles têm o seu próprio)
+            if kind in ("for_each", "while_loop"):
+                continue
+            if self._is_executable(node):
+                order.append(nid)
+            for nxt in forward.get(nid, []):
+                if nxt not in visited:
+                    queue.append(nxt)
+        return order
+
+    async def run_subgraph(
+        self,
+        node_ids: list[str],
+        initial_outputs: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Executa um subset do grafo em ordem topológica. Usado por
+        for_each/while_loop pra rodar o body por iteração.
+
+        `initial_outputs`: overrides para self.ctx.outputs durante esta sub-run
+        (ex: `loop_var` injetado como output sintético do loop node).
+        Após retornar, os outputs originais são restaurados, mas os outputs
+        gerados durante o sub-run são retornados pra agregação pelo caller.
+
+        NOTA: não emite graph_started/graph_completed (são da run principal).
+        Mas emite node_* normalmente.
+        """
+        if not node_ids:
+            return {}
+
+        # Save existing outputs, overlay initial_outputs (per-iter inputs).
+        saved_outputs = self.ctx.outputs
+        iter_outputs: dict[str, dict[str, Any]] = dict(saved_outputs)
+        if initial_outputs:
+            iter_outputs.update(initial_outputs)
+        self.ctx.outputs = iter_outputs
+
+        produced: dict[str, dict[str, Any]] = {}
+        try:
+            for node_id in node_ids:
+                if node_id in self._skipped:
+                    continue
+                node = self.nodes_by_id.get(node_id)
+                if not node:
+                    continue
+                kind = self._kind_of(node)
+                await self.ctx.emit("node_started", {
+                    "run_id": str(self.ctx.run_id),
+                    "node_id": node_id,
+                    "kind": kind,
+                    "in_loop": True,
+                })
+                executor_cls = self.registry.get(kind)
+                if executor_cls is None:
+                    logger.warning(f"subgraph: no executor for kind={kind}, skipping {node_id}")
+                    continue
+                executor = executor_cls()
+                config = node.get("data", {}).get("config", {}) or {}
+                try:
+                    inputs = self._gather_inputs(node_id, {})
+                    output = await executor.execute(inputs, config, self.ctx)
+                    if not isinstance(output, dict):
+                        output = {"output": output}
+                    self.ctx.outputs[node_id] = output
+                    produced[node_id] = output
+                    await self.ctx.emit("node_completed", {
+                        "run_id": str(self.ctx.run_id),
+                        "node_id": node_id,
+                        "kind": kind,
+                        "in_loop": True,
+                    })
+                except Exception as e:
+                    logger.error(f"subgraph node {node_id} failed: {e}")
+                    await self.ctx.emit("node_failed", {
+                        "run_id": str(self.ctx.run_id),
+                        "node_id": node_id,
+                        "kind": kind,
+                        "error": str(e),
+                        "in_loop": True,
+                    })
+                    # Sub-grafo: erros não param o loop (engine principal vai
+                    # decidir o que fazer com agregado)
+                    continue
+        finally:
+            # Não restaura: outputs podem ser interesse do caller depois.
+            pass
+
+        return produced
