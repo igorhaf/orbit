@@ -35,8 +35,31 @@ export const aiFlowApi = {
     nodes: any[];
     edges: any[];
     subflows: Record<string, any>;
-    meta: { model_count: number; chain_count: number; phase_count: number };
+    catalog?: { models: any[]; utilities: any[] };
+    meta: { model_count: number; chain_count: number; phase_count: number; graph_source?: 'default' | 'custom' };
   }>('/api/v1/ai-flow/canvas-snapshot'),
+
+  // v3.4 — persist customized canvas state (models, phase_configs, graph)
+  canvasSave: (payload: {
+    models?: Array<{ ai_model_id: string; name?: string; config?: any; rate_limit_requests?: number; timeout_seconds?: number }>;
+    phase_configs?: Record<string, any>;
+    chain_overrides?: Record<string, string[]>;
+    graph?: {
+      nodes: any[];
+      edges: any[];
+      subflows: Record<string, any>;
+    };
+  }) =>
+    request<{
+      models_updated: number;
+      profile_updated: boolean;
+      profile_id?: string | null;
+      chains_updated: number;
+      errors: string[];
+    }>('/api/v1/ai-flow/canvas-save', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   listChains: () => request<any>('/api/v1/ai-flow/chains'),
 

@@ -86,14 +86,20 @@ def _merge_phase_configs(profile_phase_configs: dict, fallback_phases: list) -> 
     fallback so the snapshot always renders every phase, even if the profile
     doesn't cover all of them."""
     merged: dict = {}
+    # v3.4: skip reserved keys (e.g. __canvas_graph__) used to piggy-back
+    # arbitrary JSON inside phase_configs JSONB.
+    safe_profile_cfg = {
+        k: v for k, v in (profile_phase_configs or {}).items()
+        if not (isinstance(k, str) and k.startswith("__"))
+    }
     for key, label, default_model, description in fallback_phases:
         entry = {
             "label": label,
             "description": description,
             "model": default_model,
         }
-        if profile_phase_configs and key in profile_phase_configs:
-            user_cfg = profile_phase_configs[key] or {}
+        if safe_profile_cfg and key in safe_profile_cfg:
+            user_cfg = safe_profile_cfg[key] or {}
             if isinstance(user_cfg, dict):
                 entry.update(user_cfg)
                 # If profile sets model, prefer that
@@ -475,6 +481,15 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
            description="Create child AsyncJob + lifecycle (start/complete/fail)"),
     ]
 
+    # v3.4: if the user previously saved a customized graph via /canvas-save,
+    # use that instead of the default Deep Pipeline scaffold. Persisted under
+    # the reserved key `__canvas_graph__` inside phase_configs.
+    saved_graph = (profile_phase_configs or {}).get("__canvas_graph__")
+    if isinstance(saved_graph, dict) and saved_graph.get("nodes"):
+        nodes = saved_graph.get("nodes") or []
+        edges = saved_graph.get("edges") or []
+        subflows = saved_graph.get("subflows") or {}
+
     return {
         "nodes": nodes,
         "edges": edges,
@@ -491,6 +506,7 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             "group_count": len(DEEP_PIPELINE_GROUPS),
             "profile_id": str(profile.id) if profile else None,
             "profile_name": profile.name if profile else None,
+            "graph_source": "custom" if (isinstance(saved_graph, dict) and saved_graph.get("nodes")) else "default",
         },
     }
 
@@ -503,13 +519,22 @@ DEEP_PIPELINE_PHASES_FALLBACK = DEEP_PIPELINE_PHASES
 async def canvas_save(payload: dict, db: Session = Depends(get_db)):
     """Persist the unified canvas state.
 
-    Payload:
+    Payload (all keys optional):
       {
         "models": [ { ai_model_id, name?, config?, rate_limit_requests?, timeout_seconds? } ],
         "phase_configs": { phase_key: { model?, max_tokens?, ... } },
         "chain_overrides": { usage_type: [model_id1, model_id2, ...] }?,
         "subflows": { ... },
-        "node_positions": { node_id: {x, y} }?
+        "node_positions": { node_id: {x, y} }?,
+        // v3.4 — full graph (user-added utility nodes + edges + subflows)
+        // stored in PipelineProfile.metadata.graph as opaque JSON for the
+        // future GraphExecutor (Entrega B) to interpret. Nothing is auto-
+        // applied to chains/phase_configs from this — it's just persisted.
+        "graph": {
+          "nodes": [{ id, type, position, data }],
+          "edges": [{ id, source, target, type, data }],
+          "subflows": { sf_id: { label, node_ids, position, collapsed } }
+        }?
       }
 
     Returns counts of what was applied.
@@ -522,6 +547,7 @@ async def canvas_save(payload: dict, db: Session = Depends(get_db)):
     models_payload = payload.get("models") or []
     phase_configs_payload = payload.get("phase_configs") or {}
     chain_overrides = payload.get("chain_overrides") or {}
+    graph_payload = payload.get("graph") or None
 
     models_updated = 0
     model_errors: list[str] = []
@@ -559,9 +585,23 @@ async def canvas_save(payload: dict, db: Session = Depends(get_db)):
     except Exception:
         db.rollback()
 
-    # 2) UPSERT pipeline profile "Canvas" (default)
+    # 2) UPSERT pipeline profile "Canvas" (default).
+    # v3.4: if `graph` payload is supplied, persist it inside phase_configs
+    # under the reserved key `__canvas_graph__` (avoids alembic migration for
+    # a new column; the snapshot endpoint can read it back). The reserved key
+    # is filtered out of phase_catalog in _merge_phase_configs.
     profile_updated = False
     profile_id = None
+    if graph_payload is not None:
+        # Force profile update path even if phase_configs_payload is empty
+        if not phase_configs_payload:
+            phase_configs_payload = {}
+        phase_configs_payload["__canvas_graph__"] = {
+            "saved_at": _dt.utcnow().isoformat(),
+            "nodes": graph_payload.get("nodes") or [],
+            "edges": graph_payload.get("edges") or [],
+            "subflows": graph_payload.get("subflows") or {},
+        }
     if phase_configs_payload:
         try:
             existing = (

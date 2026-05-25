@@ -307,68 +307,64 @@ function AIFlowPageInner() {
 
   const onSave = useCallback(async () => {
     try {
-      // 1. Persist per-model edits (every modelNode that has ai_model_id)
-      const modelNodes = canvas.nodes.filter((n) => n.type === 'modelNode' && n.data?.ai_model_id);
-      const modelPatches = modelNodes.map(async (n) => {
-        const d: any = n.data || {};
-        try {
-          await aiModelsApi.update(d.ai_model_id, {
-            name: d.label,
+      // v3.4: single round-trip via /api/v1/ai-flow/canvas-save.
+      // Sends model patches + phase_configs + the full custom graph
+      // (nodes + edges + subflows) so reload restores exactly what the user
+      // built. Backend stores the graph in PipelineProfile.phase_configs
+      // under the reserved key __canvas_graph__.
+
+      // 1) per-model patches (only modelNodes that have a backing ai_model_id)
+      const modelEdits = canvas.nodes
+        .filter((n) => n.type === 'modelNode' && n.data?.ai_model_id)
+        .map((n) => {
+          const d: any = n.data || {};
+          return {
+            ai_model_id: d.ai_model_id as string,
+            name: d.label as string | undefined,
             config: d.config,
             rate_limit_requests: d.rate_limit_requests,
             timeout_seconds: d.timeout_seconds,
-          });
-        } catch (err) {
-          // best-effort per model; collect failures below
-          // eslint-disable-next-line no-console
-          console.warn(`PATCH ai-models/${d.ai_model_id} failed`, err);
+          };
+        });
+
+      // 2) phase_configs derived from any modelNode that has a phase_key
+      //    (i.e. the model that sits inside a phase trio)
+      const phase_configs: Record<string, any> = {};
+      canvas.nodes.forEach((n) => {
+        if (n.type === 'modelNode' && typeof n.data?.phase_key === 'string') {
+          const pk = n.data.phase_key as string;
+          const mid = (n.data as any)?.model_id || (n.data as any)?.config?.model_id;
+          if (mid) {
+            phase_configs[pk] = { ...(phase_configs[pk] || {}), model: mid };
+          }
         }
       });
-      await Promise.allSettled(modelPatches);
 
-      // 2. Persist layout + subflows in the active profile (creates one if missing)
-      const node_positions: Record<string, { x: number; y: number }> = {};
-      canvas.nodes.forEach((n) => { node_positions[n.id] = n.position; });
+      // 3) full graph payload (includes positions implicit in node.position)
+      const graph = {
+        nodes: canvas.nodes,
+        edges: canvas.edges,
+        subflows: canvas.subflows,
+      };
 
-      // Build chain from non-subflow model node order (left→right)
-      const chain = canvas.nodes
-        .filter((n) => n.type === 'modelNode')
-        .sort((a, b) => a.position.x - b.position.x)
-        .map((n) => (n.data?.ai_model_id as string) || n.id);
+      const result = await aiFlowApi.canvasSave({
+        models: modelEdits,
+        phase_configs: Object.keys(phase_configs).length ? phase_configs : undefined,
+        graph,
+      });
 
-      const utility_nodes = canvas.nodes
-        .filter((n) => n.type && (n.type as string).endsWith('Node')
-          && n.type !== 'modelNode'
-          && n.type !== 'pipelinePhaseNode'
-          && n.type !== 'subflowNode')
-        .map((n) => ({
-          id: n.id,
-          type: (n.data?.type as string) || (n.type as string).replace('Node', '').toLowerCase(),
-          label: n.data?.label,
-          config: n.data?.config || {},
-          enabled: n.data?.enabled !== false,
-        }));
-
-      if (activeProfileId) {
-        await aiFlowApi.updateProfile(activeProfileId, {
-          chain,
-          utility_nodes,
-          node_positions,
-          subflows: canvas.subflows,
-        });
-      } else {
-        const created = await aiFlowApi.createProfile({
-          name: 'Canvas',
-          usage_type: 'general',
-          chain,
-          utility_nodes,
-          node_positions,
-          subflows: canvas.subflows,
-        });
-        setActiveProfileId((created as any).id);
-      }
       canvas.markClean();
-      showSuccess(`Canvas salvo · ${modelNodes.length} modelos atualizados`);
+      const errCount = (result.errors || []).length;
+      const msg = `Canvas salvo · ${result.models_updated} modelos · ${canvas.nodes.length} nodes` +
+        (result.profile_updated ? ' · profile atualizado' : '') +
+        (errCount ? ` · ${errCount} erros` : '');
+      if (errCount) {
+        showError(msg + ' — veja console');
+        // eslint-disable-next-line no-console
+        console.warn('canvas-save errors:', result.errors);
+      } else {
+        showSuccess(msg);
+      }
       const ps = await aiFlowApi.listProfiles();
       setProfiles(ps as Profile[]);
       const ms = await aiModelsApi.list();
@@ -376,7 +372,7 @@ function AIFlowPageInner() {
     } catch (e: any) {
       showError(`Falha ao salvar: ${e?.message || e}`);
     }
-  }, [activeProfileId, canvas, showError, showSuccess]);
+  }, [canvas, showError, showSuccess]);
 
   const onRun = useCallback(async () => {
     setRunning(true);
