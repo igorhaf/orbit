@@ -188,11 +188,31 @@ class Phase0to3Mixin:
         else:
             file_analyses = []
 
-        pending = [item for item in inventory if item["path"] not in completed_files]
+        # Skip file types unlikely to contain business rules. Their domain
+        # signal in the architectural map (Phase 3) is negligible vs the cost
+        # of sending full content to Haiku. Marked as completed so checkpoint
+        # resume doesn't reprocess them.
+        SKIP_FILE_TYPES = {"test", "migration", "config"}
+        for item in inventory:
+            if item.get("file_type") in SKIP_FILE_TYPES:
+                completed_files.add(item["path"])
+
+        pending = [
+            item for item in inventory
+            if item["path"] not in completed_files
+            and item.get("file_type") not in SKIP_FILE_TYPES
+        ]
 
         if not pending:
             logger.info(f"Phase 1: All {total_files} files already analyzed (checkpoint)")
             return file_analyses
+
+        skipped_by_type = sum(1 for it in inventory if it.get("file_type") in SKIP_FILE_TYPES)
+        if skipped_by_type:
+            logger.info(
+                f"Phase 1: Skipping {skipped_by_type} files of types {SKIP_FILE_TYPES} "
+                f"(no business-rule signal worth Haiku cost)"
+            )
 
         # ── Telemetry counter (tracks across all batches) ──
         _global_done = [len(completed_files)]
@@ -212,10 +232,19 @@ class Phase0to3Mixin:
                     f"Provider offline after {len(completed_files)}/{total_files} files -- checkpoint saved, resume later"
                 )
 
-            # Build batch requests
+            # Build batch requests. Cap content at ~8KB per file: imports,
+            # class/function signatures and the first few bodies fit easily;
+            # tails of long files rarely add new business rules and inflate
+            # cost linearly with size.
+            MAX_PROMPT_CONTENT = 8000
             batch_requests = []
             for item in batch:
-                user_prompt = f"Arquivo: {item['path']}\n\nCodigo:\n{item['content']}"
+                content = item['content']
+                if len(content) > MAX_PROMPT_CONTENT:
+                    head = content[: int(MAX_PROMPT_CONTENT * 0.75)]
+                    tail = content[-int(MAX_PROMPT_CONTENT * 0.25):]
+                    content = f"{head}\n\n# ... [truncated {len(item['content']) - MAX_PROMPT_CONTENT} chars] ...\n\n{tail}"
+                user_prompt = f"Arquivo: {item['path']}\n\nCodigo:\n{content}"
                 batch_requests.append({
                     "model": p1_model,
                     "system_prompt": system_prompt,
@@ -566,7 +595,10 @@ class Phase0to3Mixin:
 
         p3_model = self._get_model("phase_3", MODEL_SONNET)
         p3_max_tokens = self._get_max_tokens("phase_3", 16000)
-        p3_thinking = self._get_phase_config("phase_3", "thinking_budget", 10000)
+        # Phase 3 input is already a digest of Phase 2 (rules synth per domain).
+        # 10K thinking was overkill — the heavy reasoning happened in Phase 2.
+        # 4K keeps the structured-thought benefit at ~60% lower output cost.
+        p3_thinking = self._get_phase_config("phase_3", "thinking_budget", 4000)
 
         result = await self.claudius.call(
             model=p3_model,

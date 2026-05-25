@@ -611,7 +611,11 @@ class Phase4to7Mixin:
 
         p6_model = self._get_model("phase_6", MODEL_SONNET)
         p6_max_tokens = self._get_max_tokens("phase_6", 16000)
-        p6_thinking = self._get_phase_config("phase_6", "thinking_budget", 10000)
+        # Phase 6 QA is essentially a summarization/scoring pass over already-
+        # processed artifacts (rules counts, card stats, wiki summary). Heavy
+        # thinking budget here was disproportionate vs the task complexity.
+        # _phase6_local_qa (lines 692-770) covers the same dimensions if AI is off.
+        p6_thinking = self._get_phase_config("phase_6", "thinking_budget", 3000)
 
         result = await self.claudius.call(
             model=p6_model,
