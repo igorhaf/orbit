@@ -14,6 +14,7 @@ import {
   EdgeLabelRenderer,
   useNodes,
   useReactFlow,
+  Position,
   type EdgeProps,
   type Node,
 } from '@xyflow/react';
@@ -335,6 +336,8 @@ export default function SmartEdge({
   sourceY,
   targetX,
   targetY,
+  sourcePosition,
+  targetPosition,
   style,
   markerEnd,
   markerStart,
@@ -378,15 +381,53 @@ export default function SmartEdge({
     [allNodes],
   );
 
+  // v3.6.8: stub direction = vetor unitário de saída do handle.
+  // Right/Left = horizontal; Top/Bottom = vertical. Usado pra forçar o
+  // último/primeiro segmento da edge ser ortogonal ao handle, garantindo
+  // que a seta (markerEnd) aponte na direção CORRETA (pra dentro do node).
+  const STUB = 22;  // px de distância do stub ao handle (igual padding visual)
+  const sourceStubVec: [number, number] =
+    sourcePosition === Position.Right  ? [ 1,  0] :
+    sourcePosition === Position.Left   ? [-1,  0] :
+    sourcePosition === Position.Bottom ? [ 0,  1] :
+    sourcePosition === Position.Top    ? [ 0, -1] :
+    [1, 0];
+  // targetStub aponta da edge PRA DENTRO do node-alvo (oposto da saída do handle):
+  // handle Left → vem da esquerda (seta vai pra direita)
+  const targetStubVec: [number, number] =
+    targetPosition === Position.Left   ? [-1,  0] :  // edge vem de x menor, segue +x
+    targetPosition === Position.Right  ? [ 1,  0] :
+    targetPosition === Position.Top    ? [ 0, -1] :
+    targetPosition === Position.Bottom ? [ 0,  1] :
+    [-1, 0];
+
+  const sourceStub: [number, number] = [
+    sourceX + sourceStubVec[0] * STUB,
+    sourceY + sourceStubVec[1] * STUB,
+  ];
+  const targetStub: [number, number] = [
+    targetX + targetStubVec[0] * STUB,
+    targetY + targetStubVec[1] * STUB,
+  ];
+
   const { svgPath, labelPoint, pathPoints } = useMemo(() => {
     let pts: [number, number][];
     if (waypoints) {
-      // Caminho manual: source → waypoints → target
-      pts = [[sourceX, sourceY], ...waypoints, [targetX, targetY]];
+      // Caminho manual: source → stub → waypoints → stub → target
+      pts = [
+        [sourceX, sourceY],
+        sourceStub,
+        ...waypoints,
+        targetStub,
+        [targetX, targetY],
+      ];
     } else {
-      // Caminho automático A*
+      // Caminho automático A* — rotear DO sourceStub PRO targetStub, e depois
+      // colar os endpoints reais nos extremos. Garante que os primeiros/últimos
+      // segmentos sejam ortogonais à orientação do handle.
       const obstacles = buildObstacles(allNodes, [source, target]);
-      pts = findPath(sourceX, sourceY, targetX, targetY, obstacles);
+      const inner = findPath(sourceStub[0], sourceStub[1], targetStub[0], targetStub[1], obstacles);
+      pts = [[sourceX, sourceY], ...inner, [targetX, targetY]];
     }
     const path = toSvgPath(pts);
 
@@ -414,7 +455,7 @@ export default function SmartEdge({
 
     return { svgPath: path, labelPoint: { x: lx, y: ly }, pathPoints: pts };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceX, sourceY, targetX, targetY, source, target, nodesKey, waypoints]);
+  }, [sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, source, target, nodesKey, waypoints]);
 
   // ── Waypoint editing helpers (v3.6.5) ─────────────────────────────────
   const updateWaypoints = useCallback(
