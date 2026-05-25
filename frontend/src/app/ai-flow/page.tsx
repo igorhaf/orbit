@@ -559,6 +559,7 @@ function AIFlowPageInner() {
             canvasNodes={canvas.nodes}
             selectedNodeId={canvas.selectedNodeId}
             onSelectCanvasNode={canvas.setSelectedNodeId}
+            onOpenSubflow={canvas.openSubflowTab}
           />
           <div className="flex-1 relative" onDrop={onDrop} onDragOver={onDragOver}>
             <ReactFlow

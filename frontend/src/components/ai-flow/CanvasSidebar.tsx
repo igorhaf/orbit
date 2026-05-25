@@ -29,11 +29,23 @@ interface Props {
   canvasNodes: Node[];
   selectedNodeId: string | null;
   onSelectCanvasNode: (nodeId: string) => void;
+  // Opens a subflow tab. Called when user clicks a subflow entry in the
+  // bottom section (clicking should both select the node AND open its tab).
+  onOpenSubflow?: (subflowId: string, label?: string) => void;
   // Called when user drops a catalog item on the canvas; page handles position calc
   // The drag payload is set on dragstart via dataTransfer.
 }
 
-type SectionId = 'models' | 'utilities' | 'canvas-phases' | 'canvas-models' | 'canvas-utilities' | 'canvas-subflows';
+type SectionId =
+  | 'models'
+  | 'utilities'
+  // Canvas-objects section ids: derived from node type via
+  //   `canvas-${type.replace('Node', '').toLowerCase()}`
+  // so subflowNode → canvas-subflow (singular), pipelinePhaseNode → canvas-pipelinephase.
+  | 'canvas-pipelinephase'
+  | 'canvas-model'
+  | 'canvas-subflow'
+  | string;
 
 const NODE_TYPE_ICON: Record<string, React.ElementType> = {
   modelNode: Cpu,
@@ -50,15 +62,17 @@ export function CanvasSidebar({
   canvasNodes,
   selectedNodeId,
   onSelectCanvasNode,
+  onOpenSubflow,
 }: Props) {
-  // Collapsible sections (defaults expanded)
-  const [collapsed, setCollapsed] = useState<Record<SectionId, boolean>>({
+  // Collapsible sections. Defaults: catalog sections expanded; canvas-objects
+  // sections also expanded so the user can immediately see (and click) subflows
+  // and phases. Missing keys default to "expanded" because we read `!collapsed[id]`.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
     'models': false,
     'utilities': false,
-    'canvas-phases': false,
-    'canvas-models': false,
-    'canvas-utilities': true,
-    'canvas-subflows': true,
+    'canvas-pipelinephase': false,
+    'canvas-model': false,
+    'canvas-subflow': false,
   });
 
   const toggleCollapse = (id: SectionId) =>
@@ -188,10 +202,20 @@ export function CanvasSidebar({
                       (n.data as any)?.phase_key ||
                       (n.data as any)?.type ||
                       n.type;
+                    const isSubflow = n.type === 'subflowNode';
+                    // Subflow node ids look like "sf-<subflowId>"
+                    const subflowId = isSubflow ? n.id.replace(/^sf-/, '') : null;
+                    const handleClick = () => {
+                      onSelectCanvasNode(n.id);
+                      if (isSubflow && subflowId && onOpenSubflow) {
+                        onOpenSubflow(subflowId, label);
+                      }
+                    };
                     return (
                       <li
                         key={n.id}
-                        onClick={() => onSelectCanvasNode(n.id)}
+                        onClick={handleClick}
+                        title={isSubflow ? 'Clique pra abrir aba' : undefined}
                         className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${
                           isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
                         }`}
@@ -208,6 +232,9 @@ export function CanvasSidebar({
                           </div>
                           <div className="truncate text-[10px] font-mono text-gray-400">{subtitle}</div>
                         </div>
+                        {isSubflow && onOpenSubflow && (
+                          <span className="text-[10px] text-cyan-600 flex-shrink-0">↗</span>
+                        )}
                       </li>
                     );
                   })}

@@ -589,8 +589,11 @@ export function SubflowNode({ data }: { data: any }) {
           <div className="mt-2 pt-2 border-t border-cyan-200 flex items-center gap-2">
             {data.onOpen && (
               <button
+                // mousedown stopPropagation prevents ReactFlow from starting
+                // a node-drag, which would swallow the subsequent click.
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); data.onOpen(); }}
-                className="text-[10px] text-cyan-700 hover:underline"
+                className="text-[11px] font-medium px-2 py-1 rounded bg-cyan-600 text-white hover:bg-cyan-700 transition-colors"
               >
                 Abrir aba →
               </button>
