@@ -21,9 +21,9 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-const CELL = 20;        // grid cell size (px)
-const NODE_PAD = 14;    // padding around obstacle nodes (px)
-const MAX_ITER = 8000;  // max A* iterations before fallback
+const CELL = 16;        // grid cell size (px) — menor = mais preciso, mais lento
+const NODE_PAD = 28;    // v3.5.5: padding ↑ pra forçar A* contornar com folga maior
+const MAX_ITER = 12000; // v3.5.5: limite ↑ pra evitar fallback em grafos densos
 const CORNER_R = 8;     // border-radius at path corners (px)
 
 // ---------------------------------------------------------------------------
@@ -81,13 +81,24 @@ function findPath(
     return [[sx, sy], [tx, ty]];
   }
 
-  // Quick check: direct horizontal line clear?
-  if (Math.abs(sy - ty) < CELL) {
+  // v3.5.5: Quick check direto só se TOTALMENTE limpo (passo menor, range maior)
+  // Inclui também checagem vertical.
+  const dxDirect = Math.abs(sx - tx);
+  const dyDirect = Math.abs(sy - ty);
+  if (dyDirect < 4) {
     const minX = Math.min(sx, tx);
     const maxX = Math.max(sx, tx);
     let clear = true;
-    for (let x = minX; x <= maxX; x += CELL / 2) {
+    for (let x = minX; x <= maxX; x += 4) {
       if (isInsideAny(x, sy, obstacles)) { clear = false; break; }
+    }
+    if (clear) return [[sx, sy], [tx, ty]];
+  } else if (dxDirect < 4) {
+    const minY = Math.min(sy, ty);
+    const maxY = Math.max(sy, ty);
+    let clear = true;
+    for (let y = minY; y <= maxY; y += 4) {
+      if (isInsideAny(sx, y, obstacles)) { clear = false; break; }
     }
     if (clear) return [[sx, sy], [tx, ty]];
   }
@@ -207,9 +218,49 @@ function findPath(
     }
   }
 
-  // Fallback: L-shaped path
+  // v3.5.5: Fallback inteligente — tenta 4 caminhos L-shape e escolhe o que
+  // tem MENOS colisões com obstáculos. Se todos colidirem, sobe verticalmente
+  // pra fora do bounding box antes de mover horizontal.
+  const candidates: [number, number][][] = [];
   const mx = (sx + tx) / 2;
-  return [[sx, sy], [mx, sy], [mx, ty], [tx, ty]];
+  const my = (sy + ty) / 2;
+  // 4 variantes L-shape
+  candidates.push([[sx, sy], [mx, sy], [mx, ty], [tx, ty]]);
+  candidates.push([[sx, sy], [tx, sy], [tx, ty]]);
+  candidates.push([[sx, sy], [sx, ty], [tx, ty]]);
+  candidates.push([[sx, sy], [sx, my], [tx, my], [tx, ty]]);
+
+  // Avalia cada candidato — quanto menos cells colididos, melhor
+  const countCollisions = (pts: [number, number][]): number => {
+    let count = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x1, y1] = pts[i];
+      const [x2, y2] = pts[i + 1];
+      const steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)) / 8;
+      for (let k = 0; k <= steps; k++) {
+        const t = steps === 0 ? 0 : k / steps;
+        const px = x1 + (x2 - x1) * t;
+        const py = y1 + (y2 - y1) * t;
+        if (isInsideAny(px, py, obstacles)) count++;
+      }
+    }
+    return count;
+  };
+  let best = candidates[0];
+  let bestScore = countCollisions(best);
+  for (let i = 1; i < candidates.length; i++) {
+    const score = countCollisions(candidates[i]);
+    if (score < bestScore) {
+      best = candidates[i];
+      bestScore = score;
+    }
+  }
+  // Se o melhor ainda tem muita colisão, contorna por CIMA do bounding box
+  if (bestScore > 3 && obstacles.length > 0) {
+    const yMin = Math.min(...obstacles.map((r) => r.y)) - NODE_PAD - 24;
+    return [[sx, sy], [sx, yMin], [tx, yMin], [tx, ty]];
+  }
+  return best;
 }
 
 /** Remove collinear waypoints */
@@ -299,13 +350,18 @@ export default function SmartEdge({
     : style;
   const allNodes = useNodes();
 
-  // Stable key: only recalc when node positions change meaningfully
+  // Stable key: recalc when posição OU dimensão medida mudar (v3.5.5: size
+  // entra no key porque measured.width/height vem só após primeiro render,
+  // e edges precisam refazer pathfinding com a dimensão real).
   const nodesKey = useMemo(
     () =>
       allNodes
         .map(
-          (n) =>
-            `${n.id}:${Math.round(n.position.x / CELL)}:${Math.round(n.position.y / CELL)}`,
+          (n) => {
+            const w = Math.round((n.measured?.width ?? 200) / CELL);
+            const h = Math.round((n.measured?.height ?? 80) / CELL);
+            return `${n.id}:${Math.round(n.position.x / CELL)}:${Math.round(n.position.y / CELL)}:${w}:${h}`;
+          },
         )
         .join('|'),
     [allNodes],

@@ -801,10 +801,15 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         style: dict = {"stroke": stroke, "strokeWidth": stroke_width}
         if dashed:
             style["strokeDasharray"] = "4 4"
+        # v3.5.5: declarar handles explícitos pra evitar ReactFlow adivinhar
+        # qual handle usar. Padrão: source=right, target=left (fluxo
+        # horizontal). Quem precisar outros handles passa explicitamente.
         edge: dict = {
             "id": edge_id,
             "source": source,
             "target": target,
+            "sourceHandle": source_handle or "right",
+            "targetHandle": target_handle or "left",
             "type": "smartEdge",
             "style": style,
             "markerEnd": {
@@ -815,10 +820,6 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             },
             "data": {"port_type": port_type, "planned": planned},
         }
-        if source_handle:
-            edge["sourceHandle"] = source_handle
-        if target_handle:
-            edge["targetHandle"] = target_handle
         if label:
             edge["label"] = label
             edge["data"]["label"] = label
@@ -957,6 +958,10 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             l3_in_id = f"sf-{sub['id']}-in"
             l3_out_id = f"sf-{sub['id']}-out"
             l3_inner_ids: list[str] = [l3_in_id]
+            # v3.5.5: rastreia o handle correto do source pra cada step.
+            # Pra ioNode/utilityNode/modelNode = "right"; pra controlFlowNode =
+            # primeiro output do schema.
+            prev_source_handle: str = "right"
 
             # Entrada do sub-subflow — exibe de onde "vem" no pai
             nodes.append({
@@ -1043,6 +1048,14 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     })
 
                 l3_inner_ids.append(step_node_id)
+                # v3.5.5: determina o targetHandle correto. Pra controlFlowNode,
+                # usa o primeiro input do schema (input/collection/a). Pros
+                # demais, "left" (handle padrão).
+                target_handle = "left"
+                if (not is_model) and tpl["category"] == "ControlFlow":
+                    inputs = node_data.get("inputs") or []
+                    if inputs:
+                        target_handle = inputs[0]["name"]
                 edges.append(_make_edge(
                     f"edge-{prev_step_id}-{step_node_id}",
                     prev_step_id, step_node_id,
@@ -1051,7 +1064,16 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     dashed=planned,
                     port_type="step_sequence",
                     planned=planned,
+                    source_handle=prev_source_handle,
+                    target_handle=target_handle,
                 ))
+                # Atualiza prev_source_handle pro próximo edge. Se o atual
+                # node é controlFlow, source_handle = primeiro output do schema.
+                if (not is_model) and tpl["category"] == "ControlFlow":
+                    outputs = node_data.get("outputs") or []
+                    prev_source_handle = outputs[0]["name"] if outputs else "right"
+                else:
+                    prev_source_handle = "right"
                 prev_step_id = step_node_id
 
             # Saída do sub-subflow — exibe pra onde "vai" no pai
@@ -1076,6 +1098,7 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 prev_step_id, l3_out_id,
                 stroke="#3b82f6", stroke_width=1.6,
                 port_type="step_sequence",
+                source_handle=prev_source_handle,
             ))
 
             # Persistir o sub-subflow no dict subflows

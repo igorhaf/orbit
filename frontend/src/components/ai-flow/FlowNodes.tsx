@@ -837,6 +837,14 @@ export function SubflowNode({ data }: { data: any }) {
   // it in a new tab (via data.onOpen). Animation 'executing' = some inner
   // phase is currently running.
   const count: number = data.node_count ?? 0;
+  // v3.5.5: nomenclatura por kind — área (L1) lista sub-subflows; sub-subflow
+  // (L2) lista passos internos.
+  const kind: string = data.kind || '';
+  const unitSingular =
+    kind === 'deep_pipeline_area' ? 'sub-subflow' :
+    kind === 'deep_pipeline_step' ? 'passo' :
+    'item';
+  const unitPlural = unitSingular + 's';
   const animation: NodeAnimationState = data.animation || 'idle';
   const isRunning = animation === 'executing';
   const isSuccess = animation === 'success';
@@ -875,7 +883,7 @@ export function SubflowNode({ data }: { data: any }) {
             <div className="flex-1 min-w-0">
               <div className="font-semibold text-sm text-gray-900 truncate">{data.label || 'Subflow'}</div>
               <div className="text-xs text-cyan-700">
-                {count} {count === 1 ? 'fase' : 'fases'}{isRunning ? ' · executando' : ''}
+                {count} {count === 1 ? unitSingular : unitPlural}{isRunning ? ' · executando' : ''}
               </div>
             </div>
           </div>
