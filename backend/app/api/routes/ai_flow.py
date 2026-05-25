@@ -338,6 +338,230 @@ DEEP_PIPELINE_HIERARCHY = [
 _UTILITY_CATALOG_BY_KIND: dict[str, dict] = {}
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# v3.5 — Type system + node I/O schemas
+#
+# Cada `kind` declara `inputs[]` e `outputs[]` com (name, type). Tipos são
+# strings simples; o tipo "Any" aceita qualquer coisa (escape hatch).
+# A validação de conexão checa: source.outputs[handle].type matcha
+# target.inputs[handle].type (ou Any em qualquer lado).
+#
+# Control-flow nodes têm múltiplas saídas com handles nomeados:
+#   if_else:    [in: Any] → out: { true: Any, false: Any }
+#   switch:     [in: Any] → out: { case_*: Any, default: Any }
+#   for_each:   [in: List] → out: { body: T, done: Aggregate }
+#   while_loop: [in: Any] → out: { body: Any, done: Any }
+#   logical_and/or: [a: Bool, b: Bool] → out: Bool
+#   logical_not: [in: Bool] → out: Bool
+#
+# Output expostos no snapshot.meta.types_schema pro frontend validar
+# conexões antes mesmo do save.
+# ────────────────────────────────────────────────────────────────────────────
+
+# Tipos canônicos (string). 'Any' = aceita qualquer coisa.
+TYPE_ANY = "Any"
+TYPE_BOOL = "Boolean"
+TYPE_STRING = "String"
+TYPE_NUMBER = "Number"
+TYPE_JSON = "JSON"
+TYPE_FILE_LIST = "FileList"           # [{path, content, ...}]
+TYPE_FILE = "File"                    # {path, content, ...}
+TYPE_RAG_DOCS = "RAGDocs"             # [{content, similarity, ...}]
+TYPE_RAG_DOC = "RAGDoc"
+TYPE_PROMPT = "Prompt"                # {system, user, ...}
+TYPE_AI_RESPONSE = "AIResponse"       # {text, thinking?, usage}
+TYPE_DOMAIN_MAP = "DomainMap"         # {domain: [...]}
+TYPE_EPIC_LIST = "EpicList"
+TYPE_STORY_LIST = "StoryList"
+TYPE_TASK_LIST = "TaskList"
+TYPE_WIKI_PAGE = "WikiPage"
+TYPE_ARTIFACT = "Artifact"            # PipelineArtifact row
+TYPE_QA_RESULT = "QAResult"
+TYPE_ERROR = "Error"
+TYPE_SCORE = "Score"
+TYPE_TOKEN_USAGE = "TokenUsage"
+TYPE_QUOTA = "QuotaStatus"
+TYPE_SPEC_LIST = "SpecList"
+TYPE_COLLECTION = "Collection"        # generic List[T] for forEach
+TYPE_PHASE_CONFIG = "PhaseConfig"
+
+
+# Schema dos 44 utility nodes + control flow + model + io.
+# Formato:
+#   kind: {
+#     "inputs":  [(name, type, required?), ...],
+#     "outputs": [(name, type), ...]   ← name é o handle id na ReactFlow
+#   }
+NODE_IO_SCHEMA: dict[str, dict] = {
+    # ── Discovery ────────────────────────────────────────────────────────
+    "file_scanner":               {"inputs": [("project", TYPE_ANY, True)],
+                                   "outputs": [("files", TYPE_FILE_LIST)]},
+    "file_type_classifier":       {"inputs": [("files", TYPE_FILE_LIST, True)],
+                                   "outputs": [("classified", TYPE_FILE_LIST)]},
+    "semantic_layer_classifier":  {"inputs": [("files", TYPE_FILE_LIST, True)],
+                                   "outputs": [("layered", TYPE_FILE_LIST)]},
+    "change_detector":            {"inputs": [("files", TYPE_FILE_LIST, True), ("baseline", TYPE_JSON, False)],
+                                   "outputs": [("diff", TYPE_JSON)]},
+    # ── Processing ───────────────────────────────────────────────────────
+    "content_truncator":          {"inputs": [("text", TYPE_STRING, True)],
+                                   "outputs": [("truncated", TYPE_STRING)]},
+    "json_compactor":             {"inputs": [("data", TYPE_JSON, True)],
+                                   "outputs": [("compact", TYPE_STRING)]},
+    "json_extractor":             {"inputs": [("text", TYPE_STRING, True)],
+                                   "outputs": [("data", TYPE_JSON), ("error", TYPE_ERROR)]},
+    "domain_grouper":             {"inputs": [("items", TYPE_JSON, True)],
+                                   "outputs": [("by_domain", TYPE_DOMAIN_MAP)]},
+    "epic_deduplicator":          {"inputs": [("epics", TYPE_EPIC_LIST, True)],
+                                   "outputs": [("epics", TYPE_EPIC_LIST), ("removed", TYPE_NUMBER)]},
+    "card_hierarchy_builder":     {"inputs": [("cards", TYPE_JSON, True)],
+                                   "outputs": [("hierarchy", TYPE_JSON)]},
+    "text_chunker":               {"inputs": [("text", TYPE_STRING, True)],
+                                   "outputs": [("chunks", TYPE_COLLECTION)]},
+    "git_commit_fetcher":         {"inputs": [("project", TYPE_ANY, True)],
+                                   "outputs": [("commits", TYPE_JSON)]},
+    "prompt_context_compressor":  {"inputs": [("context", TYPE_JSON, True)],
+                                   "outputs": [("compressed", TYPE_JSON)]},
+    # ── Storage / RAG ────────────────────────────────────────────────────
+    "embed_and_store":            {"inputs": [("content", TYPE_STRING, True), ("metadata", TYPE_JSON, False)],
+                                   "outputs": [("doc_id", TYPE_STRING)]},
+    "rag_query":                  {"inputs": [("query", TYPE_STRING, True)],
+                                   "outputs": [("docs", TYPE_RAG_DOCS)]},
+    "business_rule_storer":       {"inputs": [("rule", TYPE_STRING, True), ("metadata", TYPE_JSON, False)],
+                                   "outputs": [("doc_id", TYPE_STRING)]},
+    "pipeline_artifact_writer":   {"inputs": [("content", TYPE_JSON, True)],
+                                   "outputs": [("artifact", TYPE_ARTIFACT)]},
+    "wiki_page_writer":           {"inputs": [("page", TYPE_JSON, True)],
+                                   "outputs": [("page", TYPE_WIKI_PAGE)]},
+    "checkpoint_saver":           {"inputs": [("state", TYPE_JSON, True)],
+                                   "outputs": [("saved", TYPE_BOOL)]},
+    # ── AI ───────────────────────────────────────────────────────────────
+    "claudius_single_call":       {"inputs": [("prompt", TYPE_PROMPT, True)],
+                                   "outputs": [("response", TYPE_AI_RESPONSE), ("error", TYPE_ERROR)]},
+    "claudius_batch_call":        {"inputs": [("prompts", TYPE_COLLECTION, True)],
+                                   "outputs": [("responses", TYPE_COLLECTION), ("errors", TYPE_COLLECTION)]},
+    "quota_probe":                {"inputs": [],
+                                   "outputs": [("status", TYPE_QUOTA), ("available", TYPE_BOOL)]},
+    "provider_health_check":      {"inputs": [],
+                                   "outputs": [("healthy", TYPE_BOOL)]},
+    "model_selector":             {"inputs": [("usage_type", TYPE_STRING, False)],
+                                   "outputs": [("model", TYPE_STRING)]},
+    "token_cost_calculator":      {"inputs": [("usage", TYPE_TOKEN_USAGE, True)],
+                                   "outputs": [("cost", TYPE_NUMBER)]},
+    "ai_execution_logger":        {"inputs": [("call", TYPE_AI_RESPONSE, True)],
+                                   "outputs": [("logged", TYPE_BOOL)]},
+    # ── Specs ────────────────────────────────────────────────────────────
+    "spec_loader":                {"inputs": [("project", TYPE_ANY, True)],
+                                   "outputs": [("specs", TYPE_SPEC_LIST)]},
+    "spec_relevance_filter":      {"inputs": [("specs", TYPE_SPEC_LIST, True), ("keywords", TYPE_COLLECTION, False)],
+                                   "outputs": [("filtered", TYPE_SPEC_LIST)]},
+    "contract_renderer":          {"inputs": [("vars", TYPE_JSON, True)],
+                                   "outputs": [("prompt", TYPE_PROMPT)]},
+    # ── Validation ───────────────────────────────────────────────────────
+    "json_schema_validator":      {"inputs": [("data", TYPE_JSON, True)],
+                                   "outputs": [("valid", TYPE_BOOL), ("errors", TYPE_COLLECTION)]},
+    "local_qa":                   {"inputs": [("artifacts", TYPE_JSON, True)],
+                                   "outputs": [("result", TYPE_QA_RESULT)]},
+    "error_classifier":           {"inputs": [("error", TYPE_ERROR, True)],
+                                   "outputs": [("kind", TYPE_STRING)]},
+    "phase_score_calculator":     {"inputs": [("phase_data", TYPE_JSON, True)],
+                                   "outputs": [("score", TYPE_SCORE)]},
+    # ── Observability ────────────────────────────────────────────────────
+    "telemetry_emitter":          {"inputs": [("event", TYPE_JSON, True)],
+                                   "outputs": [("emitted", TYPE_BOOL)]},
+    "job_child_creator":          {"inputs": [("parent_job", TYPE_ANY, True), ("payload", TYPE_JSON, True)],
+                                   "outputs": [("job_id", TYPE_STRING)]},
+    # ── Legacy ───────────────────────────────────────────────────────────
+    "cache":                      {"inputs": [("key", TYPE_STRING, True)],
+                                   "outputs": [("hit", TYPE_BOOL), ("value", TYPE_ANY)]},
+    "rag_context":                {"inputs": [("query", TYPE_STRING, True)],
+                                   "outputs": [("context", TYPE_STRING)]},
+    "router":                     {"inputs": [("payload", TYPE_ANY, True)],
+                                   "outputs": [("route", TYPE_STRING)]},
+    "retry":                      {"inputs": [("operation", TYPE_ANY, True)],
+                                   "outputs": [("result", TYPE_ANY), ("error", TYPE_ERROR)]},
+    "validator":                  {"inputs": [("payload", TYPE_ANY, True)],
+                                   "outputs": [("valid", TYPE_BOOL)]},
+    "cost_guard":                 {"inputs": [("cost", TYPE_NUMBER, True)],
+                                   "outputs": [("allowed", TYPE_BOOL)]},
+    "rate_limiter":               {"inputs": [("request", TYPE_ANY, True)],
+                                   "outputs": [("allowed", TYPE_BOOL)]},
+    "timeout":                    {"inputs": [("operation", TYPE_ANY, True)],
+                                   "outputs": [("result", TYPE_ANY), ("timed_out", TYPE_BOOL)]},
+    "prompt_transformer":         {"inputs": [("prompt", TYPE_PROMPT, True)],
+                                   "outputs": [("prompt", TYPE_PROMPT)]},
+
+    # ── v3.5 — Control flow (multi-output handles) ───────────────────────
+    "if_else": {
+        "inputs":  [("input", TYPE_ANY, True), ("condition", TYPE_STRING, False)],
+        "outputs": [("true", TYPE_ANY), ("false", TYPE_ANY)],
+    },
+    "switch": {
+        # cases declared in node.data.config.cases: ["case_a", "case_b", ...]
+        "inputs":  [("input", TYPE_ANY, True), ("selector", TYPE_STRING, False)],
+        "outputs": [("default", TYPE_ANY)],  # extras vão dinâmicos
+        "dynamic_outputs": True,
+    },
+    "for_each": {
+        "inputs":  [("collection", TYPE_COLLECTION, True)],
+        "outputs": [("body", TYPE_ANY), ("done", TYPE_COLLECTION)],
+    },
+    "while_loop": {
+        "inputs":  [("state", TYPE_ANY, True), ("condition", TYPE_STRING, False)],
+        "outputs": [("body", TYPE_ANY), ("done", TYPE_ANY)],
+    },
+    "logical_and": {
+        "inputs":  [("a", TYPE_BOOL, True), ("b", TYPE_BOOL, True)],
+        "outputs": [("result", TYPE_BOOL)],
+    },
+    "logical_or": {
+        "inputs":  [("a", TYPE_BOOL, True), ("b", TYPE_BOOL, True)],
+        "outputs": [("result", TYPE_BOOL)],
+    },
+    "logical_not": {
+        "inputs":  [("input", TYPE_BOOL, True)],
+        "outputs": [("result", TYPE_BOOL)],
+    },
+
+    # ── Container nodes ──────────────────────────────────────────────────
+    # ioNode = Entrada/Saída de um subflow. Aceita/produz Any.
+    # Direção (input vs output) é dada por data.io_kind.
+    "io_input":   {"inputs": [],
+                   "outputs": [("payload", TYPE_ANY)]},
+    "io_output":  {"inputs": [("payload", TYPE_ANY, True)],
+                   "outputs": []},
+    # modelNode = chamada AI. Recebe prompt, produz response.
+    "model":      {"inputs": [("prompt", TYPE_PROMPT, True)],
+                   "outputs": [("response", TYPE_AI_RESPONSE), ("error", TYPE_ERROR)]},
+}
+
+
+def _schema_for(kind: str) -> dict:
+    """Resolve I/O schema for a node kind. Returns Any-Any defaults for unknown."""
+    if kind in NODE_IO_SCHEMA:
+        return NODE_IO_SCHEMA[kind]
+    return {
+        "inputs":  [("input", TYPE_ANY, True)],
+        "outputs": [("output", TYPE_ANY)],
+    }
+
+
+def _schema_to_dict(schema: dict) -> dict:
+    """Convert tuple-list schema to JSON-friendly dict for the frontend."""
+    inputs = []
+    for spec in schema.get("inputs", []):
+        name, ttype = spec[0], spec[1]
+        required = spec[2] if len(spec) > 2 else True
+        inputs.append({"name": name, "type": ttype, "required": required})
+    outputs = []
+    for spec in schema.get("outputs", []):
+        outputs.append({"name": spec[0], "type": spec[1]})
+    return {
+        "inputs": inputs,
+        "outputs": outputs,
+        "dynamic_outputs": bool(schema.get("dynamic_outputs", False)),
+    }
+
+
 def _merge_phase_configs(profile_phase_configs: dict, fallback_phases: list) -> dict:
     """Merge a pipeline_profile.phase_configs jsonb with the DEEP_PIPELINE_PHASES
     fallback so the snapshot always renders every phase, even if the profile
@@ -431,6 +655,7 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         "Observability":  ("#64748b", "activity"),
         "Resilience":     ("#3b82f6", "repeat"),
         "Routing":        ("#10b981", "git-fork"),
+        "ControlFlow":    ("#dc2626", "git-branch"),
     }
     # Map kind → (label, category) baseado no catalog_utilities. Sincronizar
     # com a lista abaixo se adicionar kinds novos.
@@ -480,6 +705,14 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         # Legacy / routing
         "router":                     ("Router",                    "Routing"),
         "retry":                      ("Retry",                     "Resilience"),
+        # v3.5 ControlFlow
+        "if_else":                    ("If / Else",                 "ControlFlow"),
+        "switch":                     ("Switch",                    "ControlFlow"),
+        "for_each":                   ("For Each",                  "ControlFlow"),
+        "while_loop":                 ("While",                     "ControlFlow"),
+        "logical_and":                ("AND",                       "ControlFlow"),
+        "logical_or":                 ("OR",                        "ControlFlow"),
+        "logical_not":                ("NOT",                       "ControlFlow"),
     }
     def _resolve_utility_template(kind: str) -> dict:
         label, category = _KIND_META.get(kind, (kind, "Outras"))
@@ -916,6 +1149,38 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         _u("job_child_creator",           "Child Job",               "Observability",  "#64748b", "git-branch",
            {"job_type": "generic", "phase_label": ""},
            description="Create child AsyncJob + lifecycle (start/complete/fail)"),
+
+        # ── v3.5 — Control flow nodes (own React renderer w/ multi-handles)
+        # `type: controlFlowNode` triggers the multi-handle renderer on the
+        # frontend; `data.kind` picks the variant (if_else/switch/...).
+        _u("if_else",       "If / Else",         "ControlFlow",  "#dc2626", "git-branch",
+           {"condition": "$.output.score < 70"},
+           react_type="controlFlowNode",
+           description="2 saídas: true/false. Avalia condição sobre input."),
+        _u("switch",        "Switch (multi-way)", "ControlFlow", "#dc2626", "git-fork",
+           {"selector": "$.output.kind", "cases": ["case_a", "case_b"]},
+           react_type="controlFlowNode",
+           description="N saídas nomeadas + default. Avalia selector."),
+        _u("for_each",      "For Each",          "ControlFlow",  "#dc2626", "repeat-2",
+           {"collection_path": "$.items"},
+           react_type="controlFlowNode",
+           description="Itera sobre coleção. Saídas: body (1 por item) e done."),
+        _u("while_loop",    "While",             "ControlFlow",  "#dc2626", "rotate-cw",
+           {"condition": "$.iter < 10"},
+           react_type="controlFlowNode",
+           description="Loop com condição. Saídas: body e done."),
+        _u("logical_and",   "AND",               "ControlFlow",  "#dc2626", "x",
+           {},
+           react_type="controlFlowNode",
+           description="2 entradas booleanas → 1 saída. Merge AND."),
+        _u("logical_or",    "OR",                "ControlFlow",  "#dc2626", "x",
+           {},
+           react_type="controlFlowNode",
+           description="2 entradas booleanas → 1 saída. Merge OR."),
+        _u("logical_not",   "NOT",               "ControlFlow",  "#dc2626", "x",
+           {},
+           react_type="controlFlowNode",
+           description="Inverte booleano de entrada."),
     ]
 
     # v3.4: if the user previously saved a customized graph via /canvas-save,
@@ -927,6 +1192,9 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         edges = saved_graph.get("edges") or []
         subflows = saved_graph.get("subflows") or {}
 
+    # v3.5: expose I/O type schemas pro frontend validar conexões em tempo real
+    types_schema = {kind: _schema_to_dict(schema) for kind, schema in NODE_IO_SCHEMA.items()}
+
     return {
         "nodes": nodes,
         "edges": edges,
@@ -936,6 +1204,8 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             "models": catalog_models,
             "utilities": catalog_utilities,
         },
+        # v3.5 — type schemas per kind, used by useConnectionValidator
+        "types_schema": types_schema,
         "meta": {
             "model_count": len(models),
             "chain_count": len(chains),
@@ -944,6 +1214,7 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             "profile_id": str(profile.id) if profile else None,
             "profile_name": profile.name if profile else None,
             "graph_source": "custom" if (isinstance(saved_graph, dict) and saved_graph.get("nodes")) else "default",
+            "control_flow_kinds": ["if_else", "switch", "for_each", "while_loop", "logical_and", "logical_or", "logical_not"],
         },
     }
 
