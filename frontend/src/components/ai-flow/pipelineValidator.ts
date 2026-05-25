@@ -146,6 +146,10 @@ function validateSubflow(
       if (n.type === 'ioNode') continue;
       // subflowNodes representam children — checados separadamente
       if (n.type === 'subflowNode') continue;
+      // v3.6.2: groupNodes são containers VISUAIS (parent de outros nodes
+      // via parentId), nunca recebem/produzem edges por design. Não são
+      // órfãos — pular o check de adjacência.
+      if (n.type === 'groupNode') continue;
       const fwd = forward.get(n.id) || new Set();
       const rev = reverse.get(n.id) || new Set();
       const hasIncoming = Array.from(rev).some((src) => memberIds.has(src));

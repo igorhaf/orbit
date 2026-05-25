@@ -118,9 +118,13 @@ function AIFlowPageInner() {
   const progress = useDeepPipelineProgress(runningProjectId);
 
   // ── Load full project snapshot on mount (v3.0) ─────────────────────
-  // The snapshot endpoint returns ALL models, chains and Deep Pipeline
-  // phases pre-arranged as canvas nodes/edges/subflows.
+  // v3.6.2: ref de mount guard evita hidratação dupla em React StrictMode
+  // dev (que monta 2x propositalmente). Sem isso, a 2ª chamada sobrescreve
+  // posições que o usuário pode ter movido entre a 1ª resposta e a 2ª.
+  const hydratedRef = useRef(false);
   useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
     Promise.all([
       aiFlowApi.canvasSnapshot(),
       aiFlowApi.listProfiles(),
@@ -135,17 +139,18 @@ function AIFlowPageInner() {
         canvas.setNodes(snap.nodes as Node[]);
         canvas.setEdges(snap.edges as any);
         canvas.setSubflows(snap.subflows as any);
-        // v3.2: sidebar catalog
         if ((snap as any).catalog) {
           setCatalog((snap as any).catalog as Catalog);
         }
-        // v3.5: type schemas
         if ((snap as any).types_schema) {
           setTypesSchema((snap as any).types_schema);
         }
         canvas.markClean();
       })
-      .catch((e) => showError(`Falha ao carregar canvas: ${e?.message || e}`));
+      .catch((e) => {
+        hydratedRef.current = false; // permite retry se falhou
+        showError(`Falha ao carregar canvas: ${e?.message || e}`);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
