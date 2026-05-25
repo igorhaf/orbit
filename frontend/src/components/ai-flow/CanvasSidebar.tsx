@@ -27,6 +27,9 @@ interface Props {
     utilities: CatalogItem[];
   };
   canvasNodes: Node[];
+  // v3.4.1 — needed by the hierarchical "No canvas atual" tree to know which
+  // nodes belong to which subflow.
+  subflows: Record<string, { label?: string; node_ids?: string[] }>;
   selectedNodeId: string | null;
   onSelectCanvasNode: (nodeId: string) => void;
   // Opens a subflow tab. Called when user clicks a subflow entry in the
@@ -60,6 +63,7 @@ function iconForType(type: string): React.ElementType {
 export function CanvasSidebar({
   catalog,
   canvasNodes,
+  subflows,
   selectedNodeId,
   onSelectCanvasNode,
   onOpenSubflow,
@@ -75,15 +79,8 @@ export function CanvasSidebar({
     'canvas-subflow': false,
   });
 
-  const toggleCollapse = (id: SectionId) =>
+  const toggleCollapse = (id: string) =>
     setCollapsed((p) => ({ ...p, [id]: !p[id] }));
-
-  // Group canvas nodes by type for the bottom section
-  const grouped = canvasNodes.reduce<Record<string, Node[]>>((acc, n) => {
-    const key = n.type || 'unknown';
-    (acc[key] ||= []).push(n);
-    return acc;
-  }, {});
 
   const handleDragStart = (e: React.DragEvent, item: CatalogItem) => {
     // Payload consumed by ReactFlow onDrop in page.tsx
@@ -201,89 +198,201 @@ export function CanvasSidebar({
         })()}
       </div>
 
-      {/* ── BOTTOM: objects currently in the canvas ───────────────────── */}
+      {/* ── BOTTOM: tree global hierárquica (v3.4.1) ─────────────────────
+          Reflete a herança real do canvas: Root contém subflowNodes; cada
+          subflow contém seus inner nodes (Entrada, modelNodes, Saída).
+          Click em qualquer item seleciona + (se subflow) abre a tab. */}
       <div className="flex-1 overflow-y-auto">
         <header className="px-3 py-2 border-b border-gray-100 bg-gray-50">
           <span className="text-[10px] uppercase font-semibold text-gray-500 tracking-wider">No canvas atual</span>
         </header>
 
-        {Object.entries(grouped).map(([type, list]) => {
-          const sectionId = `canvas-${type.replace('Node', '').toLowerCase()}` as SectionId;
-          const isOpen = !collapsed[sectionId];
-          const Icon = iconForType(type);
-          const label = ({
-            modelNode: 'Modelos',
-            pipelinePhaseNode: 'Fases',
-            subflowNode: 'Subflows',
-          } as Record<string, string>)[type] || type.replace('Node', '');
-          return (
-            <React.Fragment key={type}>
-              <SectionHeader
-                icon={Icon}
-                label={label}
-                count={list.length}
-                collapsed={!isOpen}
-                onToggle={() => toggleCollapse(sectionId)}
-              />
-              {isOpen && (
-                <ul className="px-2 py-1">
-                  {list.map((n) => {
-                    const isSelected = n.id === selectedNodeId;
-                    const label = (n.data as any)?.label || n.id;
-                    const subtitle =
-                      (n.data as any)?.model_id ||
-                      (n.data as any)?.phase_key ||
-                      (n.data as any)?.type ||
-                      n.type;
-                    const isSubflow = n.type === 'subflowNode';
-                    // Subflow node ids look like "sf-<subflowId>"
-                    const subflowId = isSubflow ? n.id.replace(/^sf-/, '') : null;
-                    const handleClick = () => {
-                      onSelectCanvasNode(n.id);
-                      if (isSubflow && subflowId && onOpenSubflow) {
-                        onOpenSubflow(subflowId, label);
-                      }
-                    };
-                    return (
-                      <li
-                        key={n.id}
-                        onClick={handleClick}
-                        title={isSubflow ? 'Clique pra abrir aba' : undefined}
-                        className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${
-                          isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${
-                          type === 'modelNode' ? 'text-purple-600' :
-                          type === 'pipelinePhaseNode' ? 'text-blue-600' :
-                          type === 'subflowNode' ? 'text-cyan-600' :
-                          'text-amber-600'
-                        }`} />
-                        <div className="min-w-0 flex-1">
-                          <div className={`truncate text-xs ${isSelected ? 'font-semibold text-blue-900' : 'text-gray-800'}`}>
-                            {label}
-                          </div>
-                          <div className="truncate text-[10px] font-mono text-gray-400">{subtitle}</div>
-                        </div>
-                        {isSubflow && onOpenSubflow && (
-                          <span className="text-[10px] text-cyan-600 flex-shrink-0">↗</span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </React.Fragment>
-          );
-        })}
-
-        {Object.keys(grouped).length === 0 && (
+        {canvasNodes.length === 0 ? (
           <div className="px-3 py-4 text-gray-400 text-center">
             Canvas vazio. Arraste itens do catálogo acima.
           </div>
+        ) : (
+          <CanvasTree
+            canvasNodes={canvasNodes}
+            subflows={subflows}
+            selectedNodeId={selectedNodeId}
+            collapsed={collapsed}
+            onToggleCollapse={toggleCollapse}
+            onSelectCanvasNode={onSelectCanvasNode}
+            onOpenSubflow={onOpenSubflow}
+          />
         )}
       </div>
     </aside>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// v3.4.1 — CanvasTree: hierarchical tree view of every node currently on
+// the canvas. Root level shows top-level nodes (those NOT belonging to any
+// subflow). Subflow nodes have a caret to expand/collapse their children.
+// Click selects + opens the subflow tab when clicking a subflowNode.
+// ---------------------------------------------------------------------------
+
+interface CanvasTreeProps {
+  canvasNodes: Node[];
+  subflows: Record<string, { label?: string; node_ids?: string[] }>;
+  selectedNodeId: string | null;
+  collapsed: Record<string, boolean>;
+  onToggleCollapse: (id: string) => void;
+  onSelectCanvasNode: (id: string) => void;
+  onOpenSubflow?: (sfId: string, label?: string) => void;
+}
+
+function CanvasTree({
+  canvasNodes,
+  subflows,
+  selectedNodeId,
+  collapsed,
+  onToggleCollapse,
+  onSelectCanvasNode,
+  onOpenSubflow,
+}: CanvasTreeProps) {
+  // Map node_id → Node for O(1) lookup
+  const nodeById = new Map<string, Node>();
+  canvasNodes.forEach((n) => nodeById.set(n.id, n));
+
+  // Build set of all node ids that belong to some subflow
+  const insideSubflow = new Set<string>();
+  Object.values(subflows).forEach((sf) => {
+    (sf.node_ids || []).forEach((id) => insideSubflow.add(id));
+  });
+
+  // Root-level nodes: those NOT inside any subflow
+  const rootNodes = canvasNodes.filter((n) => !insideSubflow.has(n.id));
+
+  return (
+    <ul className="px-1 py-1 text-xs">
+      {rootNodes.map((n) => (
+        <TreeNode
+          key={n.id}
+          node={n}
+          depth={0}
+          nodeById={nodeById}
+          subflows={subflows}
+          selectedNodeId={selectedNodeId}
+          collapsed={collapsed}
+          onToggleCollapse={onToggleCollapse}
+          onSelectCanvasNode={onSelectCanvasNode}
+          onOpenSubflow={onOpenSubflow}
+        />
+      ))}
+    </ul>
+  );
+}
+
+interface TreeNodeProps {
+  node: Node;
+  depth: number;
+  nodeById: Map<string, Node>;
+  subflows: Record<string, { label?: string; node_ids?: string[] }>;
+  selectedNodeId: string | null;
+  collapsed: Record<string, boolean>;
+  onToggleCollapse: (id: string) => void;
+  onSelectCanvasNode: (id: string) => void;
+  onOpenSubflow?: (sfId: string, label?: string) => void;
+}
+
+function TreeNode({
+  node, depth, nodeById, subflows,
+  selectedNodeId, collapsed,
+  onToggleCollapse, onSelectCanvasNode, onOpenSubflow,
+}: TreeNodeProps) {
+  const isSelected = node.id === selectedNodeId;
+  const isSubflow = node.type === 'subflowNode';
+  const subflowId = isSubflow ? node.id.replace(/^sf-/, '') : null;
+  const childIds: string[] = (isSubflow && subflowId && subflows[subflowId]?.node_ids) || [];
+  const hasChildren = childIds.length > 0;
+  const treeKey = `tree-${node.id}`;
+  const isExpanded = collapsed[treeKey] === undefined ? false : !collapsed[treeKey];
+  // Default: subflows start collapsed in the tree (lots of children); other
+  // expandable nodes start expanded. The `collapsed` state stores `true` for
+  // collapsed; `undefined` means "use default".
+  const effectiveCollapsed = collapsed[treeKey] === undefined ? isSubflow : !!collapsed[treeKey];
+
+  const label = (node.data as any)?.label || node.id;
+  const subtitle =
+    (node.data as any)?.model_id ||
+    (node.data as any)?.phase_key ||
+    (node.data as any)?.kind ||
+    node.type;
+
+  // Color by type
+  const iconColor =
+    node.type === 'modelNode' ? 'text-purple-600' :
+    node.type === 'subflowNode' ? 'text-cyan-600' :
+    node.type === 'ioNode' ? ((node.data as any)?.io_kind === 'input' ? 'text-emerald-600' : 'text-orange-600') :
+    node.type === 'utilityNode' ? 'text-amber-600' :
+    node.type === 'pipelinePhaseNode' ? 'text-blue-600' :
+    'text-gray-500';
+  const Icon = NODE_TYPE_ICON[node.type || ''] || Wrench;
+
+  const handleClick = () => {
+    onSelectCanvasNode(node.id);
+    if (isSubflow && subflowId && onOpenSubflow) {
+      onOpenSubflow(subflowId, label);
+    }
+  };
+
+  return (
+    <li>
+      <div
+        onClick={handleClick}
+        title={isSubflow ? 'Clique pra abrir aba' : undefined}
+        className={`flex items-center gap-1 px-1.5 py-1 rounded cursor-pointer ${
+          isSelected ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
+        }`}
+        style={{ paddingLeft: 4 + depth * 12 }}
+      >
+        {hasChildren ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleCollapse(treeKey); }}
+            className="w-3.5 h-3.5 flex items-center justify-center text-gray-400 hover:text-gray-700 flex-shrink-0"
+          >
+            {effectiveCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+        ) : (
+          <span className="w-3.5 flex-shrink-0" />
+        )}
+        <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${iconColor}`} />
+        <div className="min-w-0 flex-1">
+          <div className={`truncate text-xs ${isSelected ? 'font-semibold text-blue-900' : 'text-gray-800'}`}>
+            {label}
+          </div>
+          <div className="truncate text-[10px] font-mono text-gray-400">{subtitle}</div>
+        </div>
+        {isSubflow && onOpenSubflow && (
+          <span className="text-[10px] text-cyan-600 flex-shrink-0">↗</span>
+        )}
+      </div>
+      {hasChildren && !effectiveCollapsed && (
+        <ul>
+          {childIds.map((childId) => {
+            const child = nodeById.get(childId);
+            if (!child) return null;
+            return (
+              <TreeNode
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                nodeById={nodeById}
+                subflows={subflows}
+                selectedNodeId={selectedNodeId}
+                collapsed={collapsed}
+                onToggleCollapse={onToggleCollapse}
+                onSelectCanvasNode={onSelectCanvasNode}
+                onOpenSubflow={onOpenSubflow}
+              />
+            );
+          })}
+        </ul>
+      )}
+    </li>
   );
 }
 

@@ -161,53 +161,54 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         if mid and mid not in model_by_id:
             model_by_id[mid] = m
 
-    # ── 1. Subflow nodes (4 grupos do Deep Pipeline) on the root ────────
+    # ── 1. Root canvas: subflows em sequência (sem ioNodes no root) ─────
+    # v3.5: canvas root NÃO tem Entrada/Saída — a sequência de subflows JÁ
+    # É o pipeline. Cada SUBFLOW (Discovery/Cards/Wiki/QA) abre uma tab
+    # com 1 ioNode Entrada + N modelNodes em sequência (1 por phase) + 1
+    # ioNode Saída. Sem trios por phase.
     SUBFLOW_X = 280
     SUBFLOW_Y_BASE = 80
     SUBFLOW_GAP = 130
     prev_sf_node_id: str | None = None
-    # Internal layout (per subflow tab): each phase becomes a trio
-    # [Entrada] → [Modelo] → [Saída], stacked vertically (one row per phase).
-    PHASE_ROW_Y_BASE = 80
-    PHASE_ROW_GAP = 200
-    TRIO_X_IN = 80
-    TRIO_X_MODEL = 360
-    TRIO_X_OUT = 640
+
+    # Layout dentro do subflow tab
+    SF_INNER_Y = 160
+    SF_INNER_X_IN = 80
+    SF_INNER_X_STEP = 240
     for idx, group in enumerate(DEEP_PIPELINE_GROUPS):
         sf_node_id = f"sf-{group['id']}"
         group_phase_keys = group["phase_keys"]
 
-        # v3.3: each phase is rendered INSIDE its subflow tab as a trio
-        # of nodes — [Entrada] → [Modelo do catálogo] → [Saída].
-        inner_node_ids: list[str] = []
+        # IDs dos nodes que vivem DENTRO desta subflow tab
+        sf_in_id = f"sf-{group['id']}-in"
+        sf_out_id = f"sf-{group['id']}-out"
+        inner_node_ids: list[str] = [sf_in_id]
+        phase_node_ids: list[str] = []
+
+        # 1 Entrada do subflow (canto esquerdo)
+        nodes.append({
+            "id": sf_in_id,
+            "type": "ioNode",
+            "position": {"x": SF_INNER_X_IN, "y": SF_INNER_Y},
+            "data": {
+                "label": f"Entrada — {group['label']}",
+                "io_kind": "input",
+                "group_id": group["id"],
+            },
+        })
+
+        # N modelNodes em sequência (1 por phase, sem trio)
         for p_idx, pk in enumerate(group_phase_keys):
             phase = phase_catalog.get(pk, {})
             phase_label = phase.get("label") or pk
-            assigned_model_id = phase.get("model")  # e.g. "claude-sonnet-4-6"
+            assigned_model_id = phase.get("model")
             ai_model = model_by_id.get(assigned_model_id) if assigned_model_id else None
-            row_y = PHASE_ROW_Y_BASE + p_idx * PHASE_ROW_GAP
-
-            in_id = f"phase-{pk}-in"
-            model_id_node = f"phase-{pk}-model"
-            out_id = f"phase-{pk}-out"
-
-            # [Entrada]
+            model_node_id = f"phase-{pk}-model"
+            x_pos = SF_INNER_X_IN + (p_idx + 1) * SF_INNER_X_STEP
             nodes.append({
-                "id": in_id,
-                "type": "ioNode",
-                "position": {"x": TRIO_X_IN, "y": row_y},
-                "data": {
-                    "label": f"Entrada — {phase_label}",
-                    "io_kind": "input",
-                    "phase_key": pk,
-                    "group_id": group["id"],
-                },
-            })
-            # [Modelo] (the configured model for this phase)
-            nodes.append({
-                "id": model_id_node,
+                "id": model_node_id,
                 "type": "modelNode",
-                "position": {"x": TRIO_X_MODEL, "y": row_y},
+                "position": {"x": x_pos, "y": SF_INNER_Y},
                 "data": {
                     "label": ai_model.name if ai_model else (assigned_model_id or "(sem modelo)"),
                     "provider": "claudius",
@@ -215,50 +216,58 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     "model_id": assigned_model_id,
                     "ai_model_id": str(ai_model.id) if ai_model else None,
                     "phase_key": pk,
+                    "phase_label": phase_label,
                     "group_id": group["id"],
                     "description": phase.get("description"),
                     "animation": "idle",
                 },
             })
-            # [Saída]
-            nodes.append({
-                "id": out_id,
-                "type": "ioNode",
-                "position": {"x": TRIO_X_OUT, "y": row_y},
-                "data": {
-                    "label": f"Saída — {phase_label}",
-                    "io_kind": "output",
-                    "phase_key": pk,
-                    "group_id": group["id"],
-                },
-            })
-            inner_node_ids.extend([in_id, model_id_node, out_id])
-            # Trio edges: in → model → out
+            inner_node_ids.append(model_node_id)
+            phase_node_ids.append(model_node_id)
+
+            # Edge: predecessor (Entrada do subflow ou phase anterior) → este modelNode
+            prev_node = sf_in_id if p_idx == 0 else f"phase-{group_phase_keys[p_idx - 1]}-model"
             edges.append({
-                "id": f"edge-{in_id}-{model_id_node}",
-                "source": in_id, "target": model_id_node,
+                "id": f"edge-{prev_node}-{model_node_id}",
+                "source": prev_node, "target": model_node_id,
                 "type": "smartEdge",
-                "style": {"stroke": "#0891b2", "strokeWidth": 1.6},
-                "data": {"port_type": "trio_in"},
+                "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
+                "data": {"port_type": "subflow_sequence"},
             })
+
+        # 1 Saída do subflow (canto direito)
+        sf_out_x = SF_INNER_X_IN + (len(group_phase_keys) + 1) * SF_INNER_X_STEP
+        nodes.append({
+            "id": sf_out_id,
+            "type": "ioNode",
+            "position": {"x": sf_out_x, "y": SF_INNER_Y},
+            "data": {
+                "label": f"Saída — {group['label']}",
+                "io_kind": "output",
+                "group_id": group["id"],
+            },
+        })
+        inner_node_ids.append(sf_out_id)
+
+        # Edge final: último modelNode → Saída
+        if phase_node_ids:
+            last_model = phase_node_ids[-1]
             edges.append({
-                "id": f"edge-{model_id_node}-{out_id}",
-                "source": model_id_node, "target": out_id,
+                "id": f"edge-{last_model}-{sf_out_id}",
+                "source": last_model, "target": sf_out_id,
                 "type": "smartEdge",
-                "style": {"stroke": "#0891b2", "strokeWidth": 1.6},
-                "data": {"port_type": "trio_out"},
+                "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
+                "data": {"port_type": "subflow_sequence"},
             })
-            # Sequence between phases: previous out → next in
-            if p_idx > 0:
-                prev_pk = group_phase_keys[p_idx - 1]
-                edges.append({
-                    "id": f"edge-seq-{prev_pk}-{pk}",
-                    "source": f"phase-{prev_pk}-out",
-                    "target": in_id,
-                    "type": "smartEdge",
-                    "style": {"stroke": "#3b82f6", "strokeWidth": 1.8, "strokeDasharray": "4 4"},
-                    "data": {"port_type": "phase_sequence", "label": "then"},
-                })
+        else:
+            # Subflow sem phases: Entrada → Saída direto
+            edges.append({
+                "id": f"edge-{sf_in_id}-{sf_out_id}",
+                "source": sf_in_id, "target": sf_out_id,
+                "type": "smartEdge",
+                "style": {"stroke": "#9ca3af", "strokeWidth": 1.4, "strokeDasharray": "4 4"},
+                "data": {"port_type": "subflow_sequence"},
+            })
 
         subflows[group["id"]] = {
             "label": group["label"],

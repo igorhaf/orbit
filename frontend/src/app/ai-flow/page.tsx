@@ -566,6 +566,7 @@ function AIFlowPageInner() {
           <CanvasSidebar
             catalog={catalog}
             canvasNodes={canvas.nodes}
+            subflows={canvas.subflows}
             selectedNodeId={canvas.selectedNodeId}
             onSelectCanvasNode={canvas.setSelectedNodeId}
             onOpenSubflow={canvas.openSubflowTab}
