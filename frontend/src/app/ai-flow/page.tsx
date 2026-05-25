@@ -19,8 +19,10 @@ import {
   MiniMap,
   useReactFlow,
   ReactFlowProvider,
+  reconnectEdge,
   type Node,
   type Edge,
+  type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -87,11 +89,15 @@ function AIFlowPageInner() {
   // v3.2: sidebar catalog (pre-configured templates — drag to canvas)
   const [catalog, setCatalog] = useState<Catalog>({ models: [], utilities: [] });
 
+  // v3.5: type schemas per kind (from snapshot) — used by validator + inspector
+  const [typesSchema, setTypesSchema] = useState<Record<string, any>>({});
+
   // Canvas state
   const canvas = useCanvasState({});
 
-  // Connection validator (typed)
-  const validator = useConnectionValidator(canvas.nodes, canvas.setEdges, canvas.markDirty);
+  // Connection validator (typed) — v3.5 takes typesSchema for handle-level
+  // type compatibility checks.
+  const validator = useConnectionValidator(canvas.nodes, canvas.setEdges, canvas.markDirty, typesSchema);
 
   // Debug panel state
   const [debugOpen, setDebugOpen] = useState(false);
@@ -130,6 +136,10 @@ function AIFlowPageInner() {
         // v3.2: sidebar catalog
         if ((snap as any).catalog) {
           setCatalog((snap as any).catalog as Catalog);
+        }
+        // v3.5: type schemas
+        if ((snap as any).types_schema) {
+          setTypesSchema((snap as any).types_schema);
         }
         canvas.markClean();
       })
@@ -498,6 +508,45 @@ function AIFlowPageInner() {
     }
   }, [validator.lastRejection, validator.clearRejection, showError]);
 
+  // v3.5: edge reconnection (drag the arrow head to a new handle or off-canvas)
+  //
+  // ReactFlow chama onReconnectStart quando o usuário começa a arrastar uma
+  // ponta de edge existente; onReconnect quando solta em outro handle;
+  // onReconnectEnd quando solta (sucesso OU fora). Se a edge não foi
+  // re-conectada (handle válido), removemos ela — comportamento desejado:
+  // arrastar pra fora = desconectar.
+  const edgeReconnectSuccessful = useRef(true);
+
+  const onReconnectStart = useCallback(() => {
+    edgeReconnectSuccessful.current = false;
+  }, []);
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      // Re-valida a nova conexão usando o mesmo validador do onConnect.
+      const source = canvas.nodes.find((n) => n.id === newConnection.source);
+      const target = canvas.nodes.find((n) => n.id === newConnection.target);
+      if (!source || !target) return;
+      edgeReconnectSuccessful.current = true;
+      canvas.setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds));
+      canvas.markDirty();
+    },
+    [canvas],
+  );
+
+  const onReconnectEnd = useCallback(
+    (_: any, edge: Edge) => {
+      // Se reconectou com sucesso, edgeReconnectSuccessful.current = true;
+      // senão, removemos a edge (desconexão por arrasto pra fora).
+      if (!edgeReconnectSuccessful.current) {
+        canvas.setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+        canvas.markDirty();
+      }
+      edgeReconnectSuccessful.current = true;
+    },
+    [canvas],
+  );
+
   // v3.2: drag-and-drop from sidebar catalog onto the canvas
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -579,6 +628,11 @@ function AIFlowPageInner() {
               onEdgesChange={canvas.onEdgesChange}
               onConnect={validator.onConnect}
               onSelectionChange={onSelectionChange}
+              // v3.5: edge dinâmica — arrastar a ponta da seta pra desconectar
+              edgesReconnectable
+              onReconnectStart={onReconnectStart}
+              onReconnect={onReconnect}
+              onReconnectEnd={onReconnectEnd}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               fitView
