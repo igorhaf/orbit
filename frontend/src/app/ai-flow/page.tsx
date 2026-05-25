@@ -42,6 +42,7 @@ import { SubflowRunDialog } from '@/components/ai-flow/SubflowRunDialog';
 import { useCanvasState, type Subflow } from '@/hooks/useCanvasState';
 import { useConnectionValidator } from '@/hooks/useConnectionValidator';
 import { useDeepPipelineProgress, type PhaseState } from '@/hooks/useDeepPipelineProgress';
+import { validatePipeline } from '@/components/ai-flow/pipelineValidator';
 
 interface CatalogItem {
   id: string;
@@ -317,6 +318,23 @@ function AIFlowPageInner() {
 
   const onSave = useCallback(async () => {
     try {
+      // v3.5: validar o grafo antes de salvar. Erros bloqueiam o save;
+      // warnings só vão pro console + toast informativo.
+      const validation = validatePipeline(canvas.nodes, canvas.edges, canvas.subflows, typesSchema);
+      const errors = validation.issues.filter((i) => i.severity === 'error');
+      if (errors.length > 0) {
+        const sample = errors.slice(0, 3).map((e) => `• ${e.message}`).join('\n');
+        showError(`Pipeline inválido (${errors.length} erros):\n${sample}${errors.length > 3 ? `\n+${errors.length - 3} ...` : ''}`);
+        // eslint-disable-next-line no-console
+        console.error('validatePipeline errors:', errors);
+        return;
+      }
+      const warnings = validation.issues.filter((i) => i.severity === 'warning');
+      if (warnings.length > 0) {
+        // eslint-disable-next-line no-console
+        console.warn('validatePipeline warnings:', warnings);
+      }
+
       // v3.4: single round-trip via /api/v1/ai-flow/canvas-save.
       // Sends model patches + phase_configs + the full custom graph
       // (nodes + edges + subflows) so reload restores exactly what the user
@@ -382,7 +400,7 @@ function AIFlowPageInner() {
     } catch (e: any) {
       showError(`Falha ao salvar: ${e?.message || e}`);
     }
-  }, [canvas, showError, showSuccess]);
+  }, [canvas, showError, showSuccess, typesSchema]);
 
   const onRun = useCallback(async () => {
     setRunning(true);
