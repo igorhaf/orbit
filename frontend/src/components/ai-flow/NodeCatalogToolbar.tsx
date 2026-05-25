@@ -30,6 +30,8 @@ export interface ToolbarProps {
   onOptimize: () => void;
   onToggleDebug: () => void;
   dirty: boolean;
+  // v3.6.3: estado do auto-save (mostra chip discreto ao lado do botão Save)
+  autoSaveState?: 'idle' | 'pending' | 'saving' | 'saved' | 'error';
   running: boolean;
   selectionCount: number;
 }
@@ -174,6 +176,24 @@ export function NodeCatalogToolbar(props: ToolbarProps) {
       >
         <Save className="w-3.5 h-3.5" /> {props.dirty ? 'Salvar' : 'Salvo ✓'}
       </button>
+      {/* v3.6.3: indicador auto-save discreto. Aparece só durante save/erro
+          ou logo após persistir, depois volta a idle (some). */}
+      {props.autoSaveState && props.autoSaveState !== 'idle' && (
+        <span
+          className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md ${
+            props.autoSaveState === 'pending' ? 'text-amber-700 bg-amber-50 border border-amber-200' :
+            props.autoSaveState === 'saving'  ? 'text-blue-700 bg-blue-50 border border-blue-200' :
+            props.autoSaveState === 'saved'   ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' :
+                                                'text-red-700 bg-red-50 border border-red-200'
+          }`}
+          title={`Auto-save: ${props.autoSaveState}`}
+        >
+          {props.autoSaveState === 'pending' && '⋯ aguardando…'}
+          {props.autoSaveState === 'saving'  && '⟳ salvando…'}
+          {props.autoSaveState === 'saved'   && '✓ auto-salvo'}
+          {props.autoSaveState === 'error'   && '⚠ falhou'}
+        </span>
+      )}
       <button
         onClick={props.onOptimize}
         className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-gray-200 hover:bg-gray-50"

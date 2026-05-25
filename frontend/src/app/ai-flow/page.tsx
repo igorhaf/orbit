@@ -322,18 +322,22 @@ function AIFlowPageInner() {
     showSuccess(`${selectionIds.length} nodes agrupados em "${sf.label}"`);
   }, [selectionIds, canvas, showSuccess]);
 
-  const onSave = useCallback(async () => {
+  // v3.6.3: estado do auto-save (visível no toolbar como indicador discreto)
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
+
+  const doSave = useCallback(async (silent: boolean) => {
     try {
-      // v3.5: validar o grafo antes de salvar. Erros bloqueiam o save;
-      // warnings só vão pro console + toast informativo.
       const validation = validatePipeline(canvas.nodes, canvas.edges, canvas.subflows, typesSchema);
       const errors = validation.issues.filter((i) => i.severity === 'error');
       if (errors.length > 0) {
-        const sample = errors.slice(0, 3).map((e) => `• ${e.message}`).join('\n');
-        showError(`Pipeline inválido (${errors.length} erros):\n${sample}${errors.length > 3 ? `\n+${errors.length - 3} ...` : ''}`);
+        if (!silent) {
+          const sample = errors.slice(0, 3).map((e) => `• ${e.message}`).join('\n');
+          showError(`Pipeline inválido (${errors.length} erros):\n${sample}${errors.length > 3 ? `\n+${errors.length - 3} ...` : ''}`);
+        }
         // eslint-disable-next-line no-console
         console.error('validatePipeline errors:', errors);
-        return;
+        setAutoSaveState('error');
+        return false;
       }
       const warnings = validation.issues.filter((i) => i.severity === 'warning');
       if (warnings.length > 0) {
@@ -341,13 +345,8 @@ function AIFlowPageInner() {
         console.warn('validatePipeline warnings:', warnings);
       }
 
-      // v3.4: single round-trip via /api/v1/ai-flow/canvas-save.
-      // Sends model patches + phase_configs + the full custom graph
-      // (nodes + edges + subflows) so reload restores exactly what the user
-      // built. Backend stores the graph in PipelineProfile.phase_configs
-      // under the reserved key __canvas_graph__.
+      setAutoSaveState('saving');
 
-      // 1) per-model patches (only modelNodes that have a backing ai_model_id)
       const modelEdits = canvas.nodes
         .filter((n) => n.type === 'modelNode' && n.data?.ai_model_id)
         .map((n) => {
@@ -361,8 +360,6 @@ function AIFlowPageInner() {
           };
         });
 
-      // 2) phase_configs derived from any modelNode that has a phase_key
-      //    (i.e. the model that sits inside a phase trio)
       const phase_configs: Record<string, any> = {};
       canvas.nodes.forEach((n) => {
         if (n.type === 'modelNode' && typeof n.data?.phase_key === 'string') {
@@ -374,7 +371,6 @@ function AIFlowPageInner() {
         }
       });
 
-      // 3) full graph payload (includes positions implicit in node.position)
       const graph = {
         nodes: canvas.nodes,
         edges: canvas.edges,
@@ -388,25 +384,59 @@ function AIFlowPageInner() {
       });
 
       canvas.markClean();
+      setAutoSaveState('saved');
       const errCount = (result.errors || []).length;
-      const msg = `Canvas salvo · ${result.models_updated} modelos · ${canvas.nodes.length} nodes` +
-        (result.profile_updated ? ' · profile atualizado' : '') +
-        (errCount ? ` · ${errCount} erros` : '');
-      if (errCount) {
-        showError(msg + ' — veja console');
-        // eslint-disable-next-line no-console
-        console.warn('canvas-save errors:', result.errors);
-      } else {
-        showSuccess(msg);
+
+      if (!silent) {
+        const msg = `Canvas salvo · ${result.models_updated} modelos · ${canvas.nodes.length} nodes` +
+          (result.profile_updated ? ' · profile atualizado' : '') +
+          (errCount ? ` · ${errCount} erros` : '');
+        if (errCount) {
+          showError(msg + ' — veja console');
+          // eslint-disable-next-line no-console
+          console.warn('canvas-save errors:', result.errors);
+        } else {
+          showSuccess(msg);
+        }
+        const ps = await aiFlowApi.listProfiles();
+        setProfiles(ps as Profile[]);
+        const ms = await aiModelsApi.list();
+        setModels(ms as any[]);
       }
-      const ps = await aiFlowApi.listProfiles();
-      setProfiles(ps as Profile[]);
-      const ms = await aiModelsApi.list();
-      setModels(ms as any[]);
+      return true;
     } catch (e: any) {
-      showError(`Falha ao salvar: ${e?.message || e}`);
+      setAutoSaveState('error');
+      if (!silent) showError(`Falha ao salvar: ${e?.message || e}`);
+      // eslint-disable-next-line no-console
+      console.error('canvas-save failed:', e);
+      return false;
     }
   }, [canvas, showError, showSuccess, typesSchema]);
+
+  const onSave = useCallback(() => doSave(false), [doSave]);
+
+  // v3.6.3: AUTO-SAVE com debounce 1.5s. Dispara silenciosamente quando
+  // `canvas.dirty` vira true (após arrastar node, criar/deletar edge etc).
+  // Cancela o save anterior se nova mudança chega dentro da janela.
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!canvas.dirty) {
+      // Reset indicador depois de alguns segundos quando salvo
+      if (autoSaveState === 'saved') {
+        const t = setTimeout(() => setAutoSaveState('idle'), 2500);
+        return () => clearTimeout(t);
+      }
+      return;
+    }
+    setAutoSaveState('pending');
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      doSave(true);
+    }, 1500);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [canvas.dirty, doSave, autoSaveState]);
 
   const onRun = useCallback(async () => {
     // v3.5.1: pre-run validation — rejeita rodar se houver subflows/nodes
@@ -648,6 +678,7 @@ function AIFlowPageInner() {
           onOptimize={() => showError('Otimização — pendente nesta entrega')}
           onToggleDebug={() => setDebugOpen((o) => !o)}
           dirty={canvas.dirty}
+          autoSaveState={autoSaveState}
           running={running}
           selectionCount={selectionIds.length}
         />
