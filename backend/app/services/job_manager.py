@@ -228,7 +228,8 @@ class JobManager:
         self,
         job_id: UUID,
         progress_percent: float,
-        progress_message: Optional[str] = None
+        progress_message: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Update job progress.
@@ -276,12 +277,16 @@ class JobManager:
             logger.debug(f"Job {job_id} progress: {progress_percent}% - {progress_message}")
 
             # PROMPT #134 - Broadcast via WebSocket only at milestones
-            _broadcast_job_event("job_progress", {
+            ws_payload = {
                 "job_id": str(job_id),
                 "job_type": job.job_type.value,
                 "progress_percent": progress_percent,
-                "progress_message": progress_message
-            })
+                "progress_message": progress_message,
+            }
+            # v3.1: optional extra payload (phase_key, status, etc) for clean UI
+            if extra and isinstance(extra, dict):
+                ws_payload.update(extra)
+            _broadcast_job_event("job_progress", ws_payload)
         else:
             # Lightweight update: just flush progress to DB without full commit
             self.db.flush()

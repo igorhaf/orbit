@@ -32,9 +32,11 @@ import SmartEdge from '@/components/ai-flow/SmartEdge';
 import { NodeCatalogToolbar } from '@/components/ai-flow/NodeCatalogToolbar';
 import { NodeInspector } from '@/components/ai-flow/NodeInspector';
 import { DebugPanel, type DebugEvent } from '@/components/ai-flow/DebugPanel';
-import { SubflowBreadcrumbs } from '@/components/ai-flow/SubflowBreadcrumbs';
+import { CanvasTabBar } from '@/components/ai-flow/CanvasTabBar';
+import { SubflowRunDialog } from '@/components/ai-flow/SubflowRunDialog';
 import { useCanvasState, type Subflow } from '@/hooks/useCanvasState';
 import { useConnectionValidator } from '@/hooks/useConnectionValidator';
+import { useDeepPipelineProgress, type PhaseState } from '@/hooks/useDeepPipelineProgress';
 
 const edgeTypes = { smartEdge: SmartEdge };
 
@@ -74,6 +76,13 @@ export default function AIFlowPage() {
 
   // Track selection count for subflow grouping
   const [selectionIds, setSelectionIds] = useState<string[]>([]);
+
+  // v3.1: SubflowRunDialog visibility + currently-running project
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [runningProjectId, setRunningProjectId] = useState<string | null>(null);
+
+  // v3.1: hook into deep_pipeline progress for phase animation
+  const progress = useDeepPipelineProgress(runningProjectId);
 
   // ── Load full project snapshot on mount (v3.0) ─────────────────────
   // The snapshot endpoint returns ALL models, chains and Deep Pipeline
@@ -343,31 +352,90 @@ export default function AIFlowPage() {
   const onRun = useCallback(async () => {
     setRunning(true);
     setLastRunAt(new Date().toISOString());
-    setDebugOpen(true);
-    setDebugEvents([
-      { id: '1', node_id: 'system', node_label: 'system', status: 'success', ts: new Date().toISOString(),
-        message: 'Run via canvas — implementação backend pendente (POST /api/v1/ai-flow/profiles/{id}/run-canvas)' },
-    ]);
-    setTimeout(() => setRunning(false), 800);
+    // v3.1: Run opens the SubflowRunDialog (project + mode picker).
+    // Confirmed dispatch flows back via SubflowRunDialog.onConfirmed.
+    setRunDialogOpen(true);
+    setRunning(false);
   }, []);
 
-  // Inject toggle/enter callbacks into subflow nodes
+  // v3.1 — open subflow tab on canvas open action
+  const openSubflowTab = canvas.openSubflowTab;
+  // Inject runtime callbacks + animation states into nodes
   const enhancedNodes = useMemo(() => {
     return canvas.visibleNodes.map((n) => {
+      // SubflowNode: aggregate state of inner phases
       if (n.type === 'subflowNode') {
         const sfId = n.id.replace(/^sf-/, '');
+        const sf = canvas.subflows[sfId];
+        let animation: PhaseState = 'idle';
+        if (sf?.node_ids?.length) {
+          const innerStates = sf.node_ids
+            .map((nid: string) => {
+              // Phase node ids look like "phase-{phase_key}"
+              const m = /^phase-(.+)$/.exec(nid);
+              return m ? progress.phaseStates[m[1]] : undefined;
+            })
+            .filter(Boolean) as PhaseState[];
+          if (innerStates.some((s) => s === 'running')) animation = 'running';
+          else if (innerStates.some((s) => s === 'failed')) animation = 'failed';
+          else if (innerStates.length > 0 && innerStates.every((s) => s === 'success')) animation = 'success';
+        }
         return {
           ...n,
           data: {
             ...n.data,
+            animation: animation === 'running' ? 'executing' : animation,
+            onOpen: () => openSubflowTab(sfId, n.data?.label || sf?.label || sfId),
             onToggleCollapsed: () => canvas.toggleSubflowCollapsed(sfId),
-            onEnter: () => canvas.enterSubflow(sfId),
+          },
+        };
+      }
+      // PipelinePhaseNode: animation from progress.phaseStates
+      if (n.type === 'pipelinePhaseNode') {
+        const pk = n.data?.phase_key;
+        const state: PhaseState = (pk && progress.phaseStates[pk]) || 'idle';
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            animation: state === 'running' ? 'executing' : state,
           },
         };
       }
       return n;
     });
-  }, [canvas.visibleNodes, canvas.toggleSubflowCollapsed, canvas.enterSubflow]);
+  }, [canvas.visibleNodes, canvas.subflows, canvas.toggleSubflowCollapsed, openSubflowTab, progress.phaseStates]);
+
+  // v3.1 — annotate edges with flowing=true when they're currently animated
+  const enhancedEdges = useMemo(() => {
+    return canvas.visibleEdges.map((e) => {
+      const flowing = progress.flowingEdges.has(e.id);
+      return flowing
+        ? { ...e, data: { ...(e.data || {}), flowing: true } }
+        : e;
+    });
+  }, [canvas.visibleEdges, progress.flowingEdges]);
+
+  // Tabs running indicator (used by CanvasTabBar)
+  const runningTabIds = useMemo(() => {
+    const s = new Set<string>();
+    if (Object.values(progress.phaseStates).some((st) => st === 'running')) {
+      // Mark the canvas tab as running too
+      s.add('canvas');
+      // Mark each subflow tab whose group has a running phase
+      canvas.openTabs.forEach((t) => {
+        if (!t.subflowId) return;
+        const sf = canvas.subflows[t.subflowId];
+        if (!sf) return;
+        const hasRunning = sf.node_ids.some((nid: string) => {
+          const m = /^phase-(.+)$/.exec(nid);
+          return m && progress.phaseStates[m[1]] === 'running';
+        });
+        if (hasRunning) s.add(t.id);
+      });
+    }
+    return s;
+  }, [canvas.openTabs, canvas.subflows, progress.phaseStates]);
 
   // Stable refs to avoid re-subscribing xyflow on every render
   const setSelectedNodeIdRef = useRef(canvas.setSelectedNodeId);
@@ -413,20 +481,20 @@ export default function AIFlowPage() {
           selectionCount={selectionIds.length}
         />
 
-        <SubflowBreadcrumbs
-          subflowStack={canvas.subflowStack}
-          subflows={canvas.subflows}
-          onPopTo={(i) => {
-            if (i < 0) canvas.popToRoot();
-            else while (canvas.subflowStack.length - 1 > i) canvas.exitSubflow();
-          }}
+        {/* v3.1: tabs replace breadcrumbs as the subflow navigation */}
+        <CanvasTabBar
+          tabs={canvas.openTabs}
+          activeTabId={canvas.activeTabId}
+          onSelectTab={canvas.setActiveTab}
+          onCloseTab={canvas.closeTab}
+          runningTabIds={runningTabIds}
         />
 
         <div className="flex flex-1 min-h-0">
           <div className="flex-1 relative">
             <ReactFlow
               nodes={enhancedNodes}
-              edges={canvas.visibleEdges}
+              edges={enhancedEdges}
               onNodesChange={canvas.onNodesChange}
               onEdgesChange={canvas.onEdgesChange}
               onConnect={validator.onConnect}
@@ -470,6 +538,18 @@ export default function AIFlowPage() {
           lastRunAt={lastRunAt}
         />
       </div>
+      {/* v3.1: Run dialog (project picker + mode) */}
+      <SubflowRunDialog
+        isOpen={runDialogOpen}
+        onClose={() => setRunDialogOpen(false)}
+        onConfirmed={(projectId, _jobId) => {
+          setRunningProjectId(projectId);
+          showSuccess('Pipeline iniciado — observe a animação no canvas');
+          setDebugOpen(true);
+          setLastRunAt(new Date().toISOString());
+        }}
+      />
+
       {NotificationComponent}
     </Layout>
   );

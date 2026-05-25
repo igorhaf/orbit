@@ -67,42 +67,203 @@ DEEP_PIPELINE_PHASES = [
 ]
 
 
+
+# v3.1 — Deep Pipeline grouped into 4 logical subflows for the canvas root.
+DEEP_PIPELINE_GROUPS = [
+    {"id": "discovery", "label": "Discovery",
+     "phase_keys": ["phase_0", "phase_1", "phase_2", "phase_3"], "order": 0},
+    {"id": "cards",     "label": "Cards",
+     "phase_keys": ["phase_4a", "phase_4b", "phase_4c"], "order": 1},
+    {"id": "wiki",      "label": "Wiki",
+     "phase_keys": ["phase_5"], "order": 2},
+    {"id": "qa",        "label": "QA",
+     "phase_keys": ["phase_6"], "order": 3},
+]
+
+
+def _merge_phase_configs(profile_phase_configs: dict, fallback_phases: list) -> dict:
+    """Merge a pipeline_profile.phase_configs jsonb with the DEEP_PIPELINE_PHASES
+    fallback so the snapshot always renders every phase, even if the profile
+    doesn't cover all of them."""
+    merged: dict = {}
+    for key, label, default_model, description in fallback_phases:
+        entry = {
+            "label": label,
+            "description": description,
+            "model": default_model,
+        }
+        if profile_phase_configs and key in profile_phase_configs:
+            user_cfg = profile_phase_configs[key] or {}
+            if isinstance(user_cfg, dict):
+                entry.update(user_cfg)
+                # If profile sets model, prefer that
+                if user_cfg.get("model"):
+                    entry["model"] = user_cfg["model"]
+        merged[key] = entry
+    return merged
+
+
 @router.get("/canvas-snapshot")
 async def get_canvas_snapshot(db: Session = Depends(get_db)):
     """Return the full project's AI configuration as a ReactFlow-compatible
-    snapshot for the v3.0 unified canvas.
+    snapshot for the v3.1 unified canvas.
 
-    Renders:
-      - All AIModel rows as ModelNodes (positioned in a column)
-      - All AIFlowChain rows as ChainSubflows (one subflow per usage_type,
-        containing the model nodes wired by that chain)
-      - All Deep Pipeline phases as PipelinePhaseNodes (wired to their
-        default model) inside a "Deep Pipeline" subflow
+    Root tab "Canvas" shows:
+      - 4 SubflowNodes (Discovery → Cards → Wiki → QA), wired sequentially
+      - 10 ModelNodes (3 columns: Opus / Sonnet / Haiku) with usage_type badges
+      - Edges between consecutive subflows in canonical order
+
+    Each subflow exposes its phase nodes when opened in a tab on the frontend.
+    The canvas IS the Deep Pipeline — there's no separate "Deep Pipeline" subflow.
+    Other chains (interview, prompt_generation, ...) appear as badges on
+    ModelNodes — no extra subflows for single-model chains.
     """
+    from app.models.ai_model import AIModel
+    from app.models.ai_flow_chain import AIFlowChain
+    from app.models.pipeline_profile import PipelineProfile
+
     models = db.query(AIModel).filter(AIModel.is_active == True).all()
     chains = db.query(AIFlowChain).filter(AIFlowChain.is_active == True).all()
+    # Default pipeline profile (canvas-owned). Falls back to DEEP_PIPELINE_PHASES.
+    profile = (
+        db.query(PipelineProfile)
+        .filter(PipelineProfile.is_default == True)
+        .first()
+    )
+    profile_phase_configs = (profile.phase_configs if profile else {}) or {}
+    phase_catalog = _merge_phase_configs(profile_phase_configs, DEEP_PIPELINE_PHASES)
+
+    # Build usage_type → list of model_ids (chain[0] is the primary)
+    usage_to_model_pks: dict[str, list[str]] = {}
+    for ch in chains:
+        usage = ch.usage_type.value if hasattr(ch.usage_type, "value") else str(ch.usage_type)
+        usage_to_model_pks[usage] = [str(mid) for mid in (ch.chain or [])]
+    model_pk_to_usages: dict[str, list[str]] = {}
+    for usage, pks in usage_to_model_pks.items():
+        for pk in pks:
+            model_pk_to_usages.setdefault(pk, []).append(usage)
 
     nodes: list[dict] = []
     edges: list[dict] = []
     subflows: dict[str, dict] = {}
 
-    # ── 1. Model nodes (catalog) ───────────────────────────────────────
-    # Group models by model_id (Opus/Sonnet/Haiku) into 3 columns.
-    column_by_model = {
-        "claude-opus-4-7":   {"x": 80,   "col_y": 80},
-        "claude-sonnet-4-6": {"x": 400,  "col_y": 80},
-        "claude-haiku-4-5":  {"x": 720,  "col_y": 80},
-    }
-    model_node_id_by_model_pk: dict[str, str] = {}
+    # ── 1. Subflow nodes (4 grupos do Deep Pipeline) on the root ────────
+    SUBFLOW_X = 280
+    SUBFLOW_Y_BASE = 80
+    SUBFLOW_GAP = 130
+    subflow_node_ids_by_group: dict[str, list[str]] = {}
+    prev_sf_node_id: str | None = None
+    for idx, group in enumerate(DEEP_PIPELINE_GROUPS):
+        sf_node_id = f"sf-{group['id']}"
+        group_phase_keys = group["phase_keys"]
+        # Phase node ids (these live INSIDE the subflow tab)
+        phase_node_ids = [f"phase-{pk}" for pk in group_phase_keys]
+        subflow_node_ids_by_group[group["id"]] = phase_node_ids
 
+        subflows[group["id"]] = {
+            "label": group["label"],
+            "node_ids": phase_node_ids,
+            "position": {"x": SUBFLOW_X, "y": SUBFLOW_Y_BASE + idx * SUBFLOW_GAP},
+            "collapsed": True,
+            "kind": "deep_pipeline_group",
+            "order": group["order"],
+        }
+        # SubflowNode (visible on root)
+        nodes.append({
+            "id": sf_node_id,
+            "type": "subflowNode",
+            "position": {"x": SUBFLOW_X, "y": SUBFLOW_Y_BASE + idx * SUBFLOW_GAP},
+            "data": {
+                "label": group["label"],
+                "collapsed": True,
+                "node_count": len(phase_node_ids),
+                "kind": "deep_pipeline_group",
+                "group_id": group["id"],
+                "phase_keys": group_phase_keys,
+            },
+        })
+        # Wire sequentially: Discovery → Cards → Wiki → QA
+        if prev_sf_node_id is not None:
+            edges.append({
+                "id": f"edge-sf-{prev_sf_node_id}-{sf_node_id}",
+                "source": prev_sf_node_id,
+                "target": sf_node_id,
+                "type": "smartEdge",
+                "style": {"stroke": "#3b82f6", "strokeWidth": 2},
+                "data": {"label": "then", "port_type": "subflow_sequence"},
+            })
+        prev_sf_node_id = sf_node_id
+
+    # ── 2. Phase nodes (live INSIDE their group's tab — not on root) ────
+    for group in DEEP_PIPELINE_GROUPS:
+        group_phase_keys = group["phase_keys"]
+        for p_idx, pk in enumerate(group_phase_keys):
+            phase = phase_catalog.get(pk, {})
+            node_id = f"phase-{pk}"
+            # Position within the tab: horizontal arrangement
+            position = {"x": 120 + p_idx * 260, "y": 160}
+            nodes.append({
+                "id": node_id,
+                "type": "pipelinePhaseNode",
+                "position": position,
+                "data": {
+                    "label": phase.get("label") or pk,
+                    "phase_key": pk,
+                    "description": phase.get("description"),
+                    "model_id": phase.get("model"),
+                    "model_count": 1 if phase.get("model") else 0,
+                    "phase_index": p_idx,
+                    "group_id": group["id"],
+                    "animation": "idle",
+                },
+            })
+            # Wire phase → next phase within the same group
+            if p_idx > 0:
+                prev_pk = group_phase_keys[p_idx - 1]
+                edges.append({
+                    "id": f"edge-phase-{prev_pk}-{pk}",
+                    "source": f"phase-{prev_pk}",
+                    "target": node_id,
+                    "type": "smartEdge",
+                    "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
+                    "data": {"label": "then", "port_type": "phase_sequence"},
+                })
+            # Wire phase → ModelNode (the model that runs this phase)
+            target_model_id = phase.get("model")
+            if target_model_id:
+                # Pick the first active model that matches this model_id
+                target_model = next(
+                    (m for m in models
+                     if (m.config or {}).get("model_id") == target_model_id),
+                    None,
+                )
+                if target_model:
+                    target_model_node_id = f"model-{target_model.id}"
+                    edges.append({
+                        "id": f"edge-phase-{pk}-uses-model",
+                        "source": node_id,
+                        "target": target_model_node_id,
+                        "type": "smartEdge",
+                        "style": {"stroke": "#6b7280", "strokeWidth": 1.4, "strokeDasharray": "4 3"},
+                        "data": {"label": "uses", "port_type": "phase_uses_model"},
+                    })
+
+    # ── 3. Model catalog (3 columns) — appears on root AND in every tab ─
+    column_by_model = {
+        "claude-opus-4-7":   {"x": 760,   "y": 80},
+        "claude-sonnet-4-6": {"x": 1040,  "y": 80},
+        "claude-haiku-4-5":  {"x": 1320,  "y": 80},
+    }
     for m in models:
         node_id = f"model-{m.id}"
-        model_node_id_by_model_pk[str(m.id)] = node_id
         cfg = m.config or {}
         mid = cfg.get("model_id") or "claude-sonnet-4-6"
-        col = column_by_model.get(mid, {"x": 400, "col_y": 80})
-        position = {"x": col["x"], "y": col["col_y"]}
-        col["col_y"] += 140  # stack vertically per column
+        col = column_by_model.get(mid, column_by_model["claude-sonnet-4-6"])
+        position = {"x": col["x"], "y": col["y"]}
+        col["y"] += 140  # stack vertically per column
+        # Badges: which usage_types use this model + its primary one
+        primary_usage = (m.usage_type.value if hasattr(m.usage_type, "value") else str(m.usage_type))
+        usage_badges = list({primary_usage, *model_pk_to_usages.get(str(m.id), [])})
         nodes.append({
             "id": node_id,
             "type": "modelNode",
@@ -114,110 +275,11 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 "rate_limit_requests": m.rate_limit_requests,
                 "timeout_seconds": m.timeout_seconds,
                 "model_id": mid,
-                "usage_type": (m.usage_type.value if hasattr(m.usage_type, "value") else str(m.usage_type)),
+                "usage_type": primary_usage,
+                "usage_badges": sorted(usage_badges),
                 "ai_model_id": str(m.id),
             },
         })
-
-    # ── 2. Chains → one subflow per usage_type, edges between models ──
-    chain_y = 80
-    for ch in chains:
-        chain_models: list[str] = ch.chain or []
-        if not chain_models:
-            continue
-        usage = ch.usage_type.value if hasattr(ch.usage_type, "value") else str(ch.usage_type)
-        member_node_ids = [
-            model_node_id_by_model_pk.get(str(mid))
-            for mid in chain_models
-            if model_node_id_by_model_pk.get(str(mid))
-        ]
-        if not member_node_ids:
-            continue
-        # Wire models sequentially as a fallback chain
-        for i in range(len(member_node_ids) - 1):
-            edges.append({
-                "id": f"edge-chain-{usage}-{i}",
-                "source": member_node_ids[i],
-                "target": member_node_ids[i + 1],
-                "type": "smartEdge",
-                "style": {"stroke": "#f97316", "strokeWidth": 1.8},
-                "data": {"label": "fallback"},
-            })
-        sf_id = f"chain_{usage}"
-        subflows[sf_id] = {
-            "label": f"Chain: {usage}",
-            "node_ids": member_node_ids,
-            "position": {"x": 1100, "y": chain_y},
-            "collapsed": True,
-        }
-        # Subflow representation node
-        nodes.append({
-            "id": f"sf-{sf_id}",
-            "type": "subflowNode",
-            "position": {"x": 1100, "y": chain_y},
-            "data": {
-                "label": f"Chain: {usage}",
-                "collapsed": True,
-                "node_count": len(member_node_ids),
-                "chain_id": str(ch.id),
-                "usage_type": usage,
-            },
-        })
-        chain_y += 120
-
-    # ── 3. Deep Pipeline phases ────────────────────────────────────────
-    phase_node_ids: list[str] = []
-    phase_y = 80
-    for (key, label, default_model_id, description) in DEEP_PIPELINE_PHASES:
-        node_id = f"phase-{key}"
-        phase_node_ids.append(node_id)
-        nodes.append({
-            "id": node_id,
-            "type": "pipelinePhaseNode",
-            "position": {"x": 1480, "y": phase_y},
-            "data": {
-                "label": label,
-                "phase_key": key,
-                "description": description,
-                "model_id": default_model_id,
-                "model_count": 1 if default_model_id else 0,
-            },
-        })
-        # Wire phase → corresponding model node (pick first model with matching model_id)
-        if default_model_id:
-            target_model_node = next(
-                (n["id"] for n in nodes
-                 if n["type"] == "modelNode" and n["data"].get("model_id") == default_model_id),
-                None,
-            )
-            if target_model_node:
-                edges.append({
-                    "id": f"edge-phase-{key}-model",
-                    "source": node_id,
-                    "target": target_model_node,
-                    "type": "smartEdge",
-                    "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
-                    "data": {"label": "uses"},
-                })
-        phase_y += 110
-
-    subflows["deep_pipeline"] = {
-        "label": "Deep Pipeline (7 fases)",
-        "node_ids": phase_node_ids,
-        "position": {"x": 1480, "y": 60},
-        "collapsed": False,
-    }
-    # Subflow representation node for Deep Pipeline
-    nodes.append({
-        "id": "sf-deep_pipeline",
-        "type": "subflowNode",
-        "position": {"x": 1480, "y": 60},
-        "data": {
-            "label": "Deep Pipeline (7 fases)",
-            "collapsed": False,
-            "node_count": len(phase_node_ids),
-        },
-    })
 
     return {
         "nodes": nodes,
@@ -227,8 +289,175 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             "model_count": len(models),
             "chain_count": len(chains),
             "phase_count": len(DEEP_PIPELINE_PHASES),
+            "group_count": len(DEEP_PIPELINE_GROUPS),
+            "profile_id": str(profile.id) if profile else None,
+            "profile_name": profile.name if profile else None,
         },
     }
+
+
+# Backward-compat: keep DEEP_PIPELINE_PHASES exported for callers
+DEEP_PIPELINE_PHASES_FALLBACK = DEEP_PIPELINE_PHASES
+
+
+@router.post("/canvas-save")
+async def canvas_save(payload: dict, db: Session = Depends(get_db)):
+    """Persist the unified canvas state.
+
+    Payload:
+      {
+        "models": [ { ai_model_id, name?, config?, rate_limit_requests?, timeout_seconds? } ],
+        "phase_configs": { phase_key: { model?, max_tokens?, ... } },
+        "chain_overrides": { usage_type: [model_id1, model_id2, ...] }?,
+        "subflows": { ... },
+        "node_positions": { node_id: {x, y} }?
+      }
+
+    Returns counts of what was applied.
+    """
+    from app.models.ai_model import AIModel
+    from app.models.pipeline_profile import PipelineProfile
+    from datetime import datetime as _dt
+
+    payload = payload or {}
+    models_payload = payload.get("models") or []
+    phase_configs_payload = payload.get("phase_configs") or {}
+    chain_overrides = payload.get("chain_overrides") or {}
+
+    models_updated = 0
+    model_errors: list[str] = []
+
+    # 1) Patch per-model edits
+    for entry in models_payload:
+        aid = entry.get("ai_model_id")
+        if not aid:
+            continue
+        try:
+            m = db.query(AIModel).filter(AIModel.id == aid).first()
+            if not m:
+                model_errors.append(f"model {aid} not found")
+                continue
+            if "name" in entry and entry["name"]:
+                m.name = entry["name"]
+            if "config" in entry and isinstance(entry["config"], dict):
+                # Validate model_id whitelist (v2.5)
+                mid = (entry["config"].get("model_id") or "").strip()
+                if mid and mid not in {"claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"}:
+                    model_errors.append(f"model {aid} invalid model_id={mid}")
+                    continue
+                m.config = entry["config"]
+            if "rate_limit_requests" in entry and entry["rate_limit_requests"] is not None:
+                m.rate_limit_requests = int(entry["rate_limit_requests"])
+            if "timeout_seconds" in entry and entry["timeout_seconds"] is not None:
+                m.timeout_seconds = int(entry["timeout_seconds"])
+            m.updated_at = _dt.utcnow()
+            models_updated += 1
+        except Exception as e:
+            model_errors.append(f"model {aid}: {type(e).__name__}: {str(e)[:80]}")
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    # 2) UPSERT pipeline profile "Canvas" (default)
+    profile_updated = False
+    profile_id = None
+    if phase_configs_payload:
+        try:
+            existing = (
+                db.query(PipelineProfile)
+                .filter(PipelineProfile.name == "Canvas")
+                .first()
+            )
+            if existing:
+                # Merge with current phase_configs (preserve unknown keys)
+                merged = dict(existing.phase_configs or {})
+                for pk, cfg in phase_configs_payload.items():
+                    if isinstance(cfg, dict):
+                        merged[pk] = {**(merged.get(pk) or {}), **cfg}
+                existing.phase_configs = merged
+                existing.updated_at = _dt.utcnow()
+                # Ensure it's the default (mark others as non-default in same tx)
+                db.query(PipelineProfile).filter(
+                    PipelineProfile.id != existing.id,
+                    PipelineProfile.is_default == True,
+                ).update({"is_default": False})
+                existing.is_default = True
+                profile_id = str(existing.id)
+                profile_updated = True
+            else:
+                # Demote any current default
+                db.query(PipelineProfile).filter(
+                    PipelineProfile.is_default == True,
+                ).update({"is_default": False})
+                from uuid import uuid4 as _uuid4
+                new_profile = PipelineProfile(
+                    id=_uuid4(),
+                    name="Canvas",
+                    description="Auto-managed by the AI Studio canvas",
+                    phase_configs=phase_configs_payload,
+                    quality_threshold=70,
+                    is_default=True,
+                    created_at=_dt.utcnow(),
+                    updated_at=_dt.utcnow(),
+                )
+                db.add(new_profile)
+                db.flush()
+                profile_id = str(new_profile.id)
+                profile_updated = True
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            model_errors.append(f"pipeline_profile: {type(e).__name__}: {str(e)[:80]}")
+
+    # 3) chain_overrides (per usage_type) — UPSERT in ai_flow_chains
+    chains_updated = 0
+    if chain_overrides:
+        from app.models.ai_flow_chain import AIFlowChain
+        from app.models.ai_model import AIModelUsageType
+        for usage, model_pks in chain_overrides.items():
+            try:
+                # Normalize usage_type to enum value (string)
+                if not isinstance(model_pks, list):
+                    continue
+                model_pks = [str(x) for x in model_pks if x]
+                ch = (
+                    db.query(AIFlowChain)
+                    .filter(AIFlowChain.usage_type == usage)
+                    .first()
+                )
+                if ch:
+                    ch.chain = model_pks
+                    ch.updated_at = _dt.utcnow()
+                else:
+                    from uuid import uuid4 as _uuid4
+                    ch = AIFlowChain(
+                        id=_uuid4(),
+                        usage_type=AIModelUsageType(usage),
+                        chain=model_pks,
+                        is_active=True,
+                        created_at=_dt.utcnow(),
+                        updated_at=_dt.utcnow(),
+                    )
+                    db.add(ch)
+                chains_updated += 1
+            except Exception as e:
+                model_errors.append(f"chain {usage}: {type(e).__name__}: {str(e)[:80]}")
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    return {
+        "models_updated": models_updated,
+        "profile_updated": profile_updated,
+        "profile_id": profile_id,
+        "chains_updated": chains_updated,
+        "errors": model_errors,
+    }
+
+
 
 
 # ============================================================================

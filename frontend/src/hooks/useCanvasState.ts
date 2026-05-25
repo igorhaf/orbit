@@ -27,6 +27,12 @@ export interface Subflow {
   collapsed: boolean;
 }
 
+export interface CanvasTab {
+  id: string;          // 'canvas' for root; subflow id otherwise
+  label: string;       // user-visible label
+  subflowId?: string;  // present when tab represents a subflow
+}
+
 export interface CanvasState {
   // Core flow state
   nodes: Node[];
@@ -39,11 +45,18 @@ export interface CanvasState {
   // Subflows
   subflows: Record<string, Subflow>;
   setSubflows: (subflows: Record<string, Subflow>) => void;
-  subflowStack: string[]; // breadcrumbs: [] = root, ['sf1'] = inside sf1
+  subflowStack: string[]; // legacy — kept for compat
   enterSubflow: (subflowId: string) => void;
   exitSubflow: () => void;
   popToRoot: () => void;
   toggleSubflowCollapsed: (subflowId: string) => void;
+
+  // v3.1 — multi-tab navigation
+  openTabs: CanvasTab[];
+  activeTabId: string;
+  setActiveTab: (tabId: string) => void;
+  openSubflowTab: (subflowId: string, label?: string) => void;
+  closeTab: (tabId: string) => void;
 
   // Selection
   selectedNodeId: string | null;
@@ -55,7 +68,7 @@ export interface CanvasState {
   markClean: () => void;
   markDirty: () => void;
 
-  // Visible nodes (filtered by current subflow context)
+  // Visible nodes (filtered by active tab)
   visibleNodes: Node[];
   visibleEdges: Edge[];
 }
@@ -71,6 +84,8 @@ export function useCanvasState(initial?: InitialState): CanvasState {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial?.edges || []);
   const [subflows, setSubflowsState] = useState<Record<string, Subflow>>(initial?.subflows || {});
   const [subflowStack, setSubflowStack] = useState<string[]>([]);
+  const [openTabs, setOpenTabs] = useState<CanvasTab[]>([{ id: 'canvas', label: 'Canvas' }]);
+  const [activeTabId, setActiveTabIdState] = useState<string>('canvas');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -101,32 +116,68 @@ export function useCanvasState(initial?: InitialState): CanvasState {
     });
   }, []);
 
-  // Visible nodes/edges depend on subflowStack:
-  //   - root (stack=[]): show all nodes NOT inside any collapsed subflow,
-  //     plus the subflow node itself
-  //   - inside a subflow: show only that subflow's node_ids
+  // v3.1 — multi-tab navigation
+  const setActiveTab = useCallback((tabId: string) => {
+    setActiveTabIdState(tabId);
+  }, []);
+
+  const openSubflowTab = useCallback((subflowId: string, label?: string) => {
+    setOpenTabs((tabs) => {
+      const tabId = `sf-tab-${subflowId}`;
+      if (tabs.some((t) => t.id === tabId)) {
+        // Already open — just activate
+        setActiveTabIdState(tabId);
+        return tabs;
+      }
+      const next = [...tabs, { id: tabId, label: label || subflowId, subflowId }];
+      setActiveTabIdState(tabId);
+      return next;
+    });
+  }, []);
+
+  const closeTab = useCallback((tabId: string) => {
+    if (tabId === 'canvas') return; // canvas tab cannot be closed
+    setOpenTabs((tabs) => {
+      const filtered = tabs.filter((t) => t.id !== tabId);
+      // If active tab was closed, fall back to canvas
+      setActiveTabIdState((curId) => (curId === tabId ? 'canvas' : curId));
+      return filtered;
+    });
+  }, []);
+
+  // Visible nodes/edges depend on activeTabId:
+  //   - 'canvas' (root): show all nodes NOT inside any subflow
+  //     (subflow nodes themselves are always shown on root)
+  //   - subflow tab: show only that subflow's node_ids
   const { visibleNodes, visibleEdges } = useMemo(() => {
-    if (subflowStack.length === 0) {
-      // Root view: hide nodes belonging to collapsed subflows
-      const hiddenIds = new Set<string>();
+    const activeTab = openTabs.find((t) => t.id === activeTabId);
+    const inSubflow = activeTab?.subflowId;
+
+    if (!inSubflow) {
+      // Root view: hide nodes that belong to any subflow (they live in tabs)
+      const insideSubflowIds = new Set<string>();
       Object.values(subflows).forEach((sf) => {
-        if (sf.collapsed) sf.node_ids.forEach((id) => hiddenIds.add(id));
+        sf.node_ids.forEach((id) => insideSubflowIds.add(id));
       });
-      const vn = nodes.filter((n) => !hiddenIds.has(n.id));
+      const vn = nodes.filter((n) => !insideSubflowIds.has(n.id));
       const ve = edges.filter(
-        (e) => !hiddenIds.has(e.source) && !hiddenIds.has(e.target),
+        (e) => !insideSubflowIds.has(e.source) && !insideSubflowIds.has(e.target),
       );
       return { visibleNodes: vn, visibleEdges: ve };
     }
-    // Inside a subflow: only its members
-    const currentSfId = subflowStack[subflowStack.length - 1];
-    const sf = subflows[currentSfId];
+
+    // Subflow tab: only its members + always-visible Model catalog
+    const sf = subflows[inSubflow];
     if (!sf) return { visibleNodes: nodes, visibleEdges: edges };
     const memberSet = new Set(sf.node_ids);
-    const vn = nodes.filter((n) => memberSet.has(n.id));
-    const ve = edges.filter((e) => memberSet.has(e.source) && memberSet.has(e.target));
+    // Also show model nodes (catalog is global) — they help the user pick a model
+    const vn = nodes.filter((n) =>
+      memberSet.has(n.id) || n.type === 'modelNode',
+    );
+    const visibleIds = new Set(vn.map((n) => n.id));
+    const ve = edges.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
     return { visibleNodes: vn, visibleEdges: ve };
-  }, [nodes, edges, subflows, subflowStack]);
+  }, [nodes, edges, subflows, openTabs, activeTabId]);
 
   const selectedNode = useMemo(
     () => nodes.find((n) => n.id === selectedNodeId) ?? null,
@@ -150,6 +201,11 @@ export function useCanvasState(initial?: InitialState): CanvasState {
     exitSubflow,
     popToRoot,
     toggleSubflowCollapsed,
+    openTabs,
+    activeTabId,
+    setActiveTab,
+    openSubflowTab,
+    closeTab,
     selectedNodeId,
     setSelectedNodeId,
     selectedNode,

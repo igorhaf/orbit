@@ -88,6 +88,19 @@ export function ModelNode({ data }: { data: any }) {
         {data.config?.model && (
           <div className="text-[10px] text-gray-400 mt-1.5 font-mono truncate">{data.config.model}</div>
         )}
+        {data.config?.model_id && !data.config?.model && (
+          <div className="text-[10px] text-gray-400 mt-1.5 font-mono truncate">{data.config.model_id}</div>
+        )}
+        {/* v3.1: usage_type badges from chains */}
+        {Array.isArray(data.usage_badges) && data.usage_badges.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {data.usage_badges.map((u: string) => (
+              <span key={u} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono">
+                {u}
+              </span>
+            ))}
+          </div>
+        )}
         {data.position_label && (
           <div className="mt-1.5 flex items-center gap-1.5">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
@@ -458,98 +471,138 @@ export function PromptNodeNode({ data }: { data: any }) {
 // ---------------------------------------------------------------------------
 
 export function PipelinePhaseNode({ data }: { data: any }) {
+  // v3.1: animation states drive border + marching ants
   const animation: NodeAnimationState = data.animation || 'idle';
-  let borderOverride: Record<string, string> = {};
-  let animationClasses = '';
-  if (animation === 'executing') {
-    animationClasses = 'animate-pulse';
-    borderOverride = { borderColor: '#3b82f6', boxShadow: '0 0 12px rgba(59,130,246,0.5)' };
-  } else if (animation === 'success') {
-    borderOverride = { borderColor: '#22c55e', boxShadow: '0 0 12px rgba(34,197,94,0.5)' };
-  } else if (animation === 'failed') {
-    animationClasses = 'animate-shake';
-    borderOverride = { borderColor: '#ef4444', boxShadow: '0 0 12px rgba(239,68,68,0.5)' };
-  }
+  const isRunning = animation === 'executing';
+  const isSuccess = animation === 'success';
+  const isFailed = animation === 'failed';
+
+  // Border color per state
+  const borderLeftColor =
+    isFailed ? '#ef4444' :
+    isSuccess ? '#22c55e' :
+    isRunning ? '#3b82f6' :
+    '#9ca3af';   // idle: gray
+
   const phaseLabel = data.label || data.phase_key || 'Fase';
-  const modelCount: number = data.model_count ?? 0;
+  const modelLabel: string | undefined = data.model_id;
+  // Wrapper div hosts the marching-ants border when running
   return (
     <div
-      className={`bg-white rounded-lg shadow-md border-2 min-w-[200px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all ${animationClasses}`}
-      style={{ borderLeftColor: '#3b82f6', borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb', ...borderOverride }}
+      className={`relative bg-white rounded-lg shadow-md min-w-[220px] cursor-grab active:cursor-grabbing hover:shadow-lg transition-all ${
+        isRunning ? 'animate-marching-ants p-[2px]' : ''
+      }`}
+      style={!isRunning ? {
+        border: '2px solid #e5e7eb',
+        borderLeft: `4px solid ${borderLeftColor}`,
+      } : { padding: 2 }}
     >
-      <Handle type="target" position={Position.Left} id="left" className="!bg-blue-400 !w-3.5 !h-3.5 !border-2 !border-white" />
-      <div className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-7 h-7 bg-blue-50 rounded text-blue-600 text-xs font-bold">
-            {data.phase_index ?? '#'}
-          </span>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-gray-900 truncate">{phaseLabel}</div>
-            <div className="text-xs text-blue-600">Fase de Pipeline</div>
+      <div className="bg-white rounded-md" style={isRunning ? { borderLeft: `4px solid ${borderLeftColor}` } : undefined}>
+        <Handle type="target" position={Position.Left} id="left" className="!bg-blue-400 !w-3.5 !h-3.5 !border-2 !border-white" />
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center justify-center w-7 h-7 rounded text-xs font-bold ${
+              isSuccess ? 'bg-green-50 text-green-600' :
+              isFailed  ? 'bg-red-50 text-red-600' :
+              isRunning ? 'bg-blue-50 text-blue-600' :
+                          'bg-gray-100 text-gray-500'
+            }`}>
+              {isSuccess ? '✓' : isFailed ? '✕' : (data.phase_index ?? '#')}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm text-gray-900 truncate">{phaseLabel}</div>
+              <div className={`text-xs ${
+                isSuccess ? 'text-green-600' :
+                isFailed  ? 'text-red-600' :
+                isRunning ? 'text-blue-600' : 'text-gray-500'
+              }`}>
+                {isRunning ? 'executando…' : isSuccess ? 'concluído' : isFailed ? 'falhou' : 'pendente'}
+              </div>
+            </div>
           </div>
-        </div>
-        {data.description && (
-          <p className="mt-2 text-[11px] text-gray-500 line-clamp-2">{data.description}</p>
-        )}
-        <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[10px]">
-          <span className="text-gray-500">Modelos: <span className="font-semibold text-gray-700">{modelCount}</span></span>
-          {data.duration_ms != null && (
-            <span className="text-gray-500">{(data.duration_ms / 1000).toFixed(1)}s</span>
+          {data.description && (
+            <p className="mt-2 text-[11px] text-gray-500 line-clamp-2">{data.description}</p>
+          )}
+          {modelLabel && (
+            <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] font-mono text-gray-500 truncate">
+              {modelLabel}
+            </div>
           )}
         </div>
+        {data.onRemove && (
+          <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">×</button>
+        )}
+        <Handle type="source" position={Position.Right} id="right" className="!bg-blue-400 !w-3.5 !h-3.5 !border-2 !border-white" />
       </div>
-      {data.onRemove && (
-        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
-          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">×</button>
-      )}
-      <Handle type="source" position={Position.Right} id="right" className="!bg-blue-400 !w-3.5 !h-3.5 !border-2 !border-white" />
     </div>
   );
 }
 
 export function SubflowNode({ data }: { data: any }) {
-  const collapsed: boolean = data.collapsed ?? true;
+  // v3.1: subflow represents a logical group of phases. Double-click opens
+  // it in a new tab (via data.onOpen). Animation 'executing' = some inner
+  // phase is currently running.
   const count: number = data.node_count ?? 0;
+  const animation: NodeAnimationState = data.animation || 'idle';
+  const isRunning = animation === 'executing';
+  const isSuccess = animation === 'success';
+  const isFailed = animation === 'failed';
+
+  const accent =
+    isFailed ? '#ef4444' :
+    isSuccess ? '#22c55e' :
+    isRunning ? '#0891b2' :
+    '#06b6d4';
+
   return (
     <div
-      className="rounded-lg shadow-md border-2 border-dashed border-cyan-400 bg-cyan-50/60 relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
-      style={{ minWidth: 220 }}
+      onDoubleClick={(e) => { e.stopPropagation(); data.onOpen?.(); }}
+      className={`rounded-lg shadow-md relative cursor-pointer hover:shadow-lg transition-all ${
+        isRunning ? 'animate-marching-ants-subtle p-[2px]' : ''
+      }`}
+      style={!isRunning ? {
+        border: `2px dashed ${accent}`,
+        background: 'rgba(207, 250, 254, 0.6)',
+        minWidth: 240,
+      } : { padding: 2, minWidth: 240, background: accent }}
+      title="Duplo-clique pra abrir em nova aba"
     >
-      <Handle type="target" position={Position.Left} id="left" className="!bg-cyan-500 !w-3.5 !h-3.5 !border-2 !border-white" />
-      <div className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-7 h-7 bg-cyan-100 rounded text-cyan-700 text-base">
-            {collapsed ? '▶' : '▼'}
-          </span>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-gray-900 truncate">{data.label || 'Subflow'}</div>
-            <div className="text-xs text-cyan-700">{count} nodes agrupados</div>
+      <div className="rounded-md bg-cyan-50/60" style={isRunning ? { padding: 2 } : undefined}>
+        <Handle type="target" position={Position.Left} id="left" className="!bg-cyan-500 !w-3.5 !h-3.5 !border-2 !border-white" />
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center justify-center w-7 h-7 rounded text-base ${
+              isSuccess ? 'bg-green-100 text-green-700' :
+              isFailed  ? 'bg-red-100 text-red-700' :
+              isRunning ? 'bg-blue-100 text-blue-700' : 'bg-cyan-100 text-cyan-700'
+            }`}>
+              {isSuccess ? '✓' : isFailed ? '✕' : '⊞'}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm text-gray-900 truncate">{data.label || 'Subflow'}</div>
+              <div className="text-xs text-cyan-700">
+                {count} {count === 1 ? 'fase' : 'fases'}{isRunning ? ' · executando' : ''}
+              </div>
+            </div>
+          </div>
+          <div className="mt-2 pt-2 border-t border-cyan-200 flex items-center gap-2">
+            {data.onOpen && (
+              <button
+                onClick={(e) => { e.stopPropagation(); data.onOpen(); }}
+                className="text-[10px] text-cyan-700 hover:underline"
+              >
+                Abrir aba →
+              </button>
+            )}
           </div>
         </div>
-        <div className="mt-2 pt-2 border-t border-cyan-200 flex items-center gap-2">
-          {data.onToggleCollapsed && (
-            <button
-              onClick={(e) => { e.stopPropagation(); data.onToggleCollapsed(); }}
-              className="text-[10px] text-cyan-700 hover:underline"
-            >
-              {collapsed ? 'Expandir' : 'Colapsar'}
-            </button>
-          )}
-          {data.onEnter && (
-            <button
-              onClick={(e) => { e.stopPropagation(); data.onEnter(); }}
-              className="text-[10px] text-cyan-700 hover:underline"
-            >
-              Entrar →
-            </button>
-          )}
-        </div>
+        {data.onRemove && (
+          <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">×</button>
+        )}
+        <Handle type="source" position={Position.Right} id="right" className="!bg-cyan-500 !w-3.5 !h-3.5 !border-2 !border-white" />
       </div>
-      {data.onRemove && (
-        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
-          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">×</button>
-      )}
-      <Handle type="source" position={Position.Right} id="right" className="!bg-cyan-500 !w-3.5 !h-3.5 !border-2 !border-white" />
     </div>
   );
 }

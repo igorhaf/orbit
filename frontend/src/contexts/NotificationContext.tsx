@@ -362,6 +362,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           progress_percent: data.progress_percent,
           progress_message: data.progress_message,
         });
+        // v3.1: surface deep_pipeline phase progress as a CustomEvent so the
+        // canvas useDeepPipelineProgress hook can animate phase nodes/edges.
+        if (data.job_type === 'deep_pipeline') {
+          window.dispatchEvent(new CustomEvent('deepPipelineProgress', { detail: data }));
+        }
         break;
 
       case 'job_completed':

@@ -289,7 +289,14 @@ export default function SmartEdge({
   label,
   labelStyle,
   labelBgStyle,
-}: EdgeProps) {
+  data,
+}: EdgeProps & { data?: any }) {
+  // v3.1: when data.flowing is true (set by the page based on phase progress),
+  // render the edge with a marching dashed line.
+  const flowing = !!(data && (data as any).flowing);
+  const flowingStyle = flowing
+    ? { ...(style || {}), strokeDasharray: '6 4', animation: 'edge-flow 0.6s linear infinite' }
+    : style;
   const allNodes = useNodes();
 
   // Stable key: only recalc when node positions change meaningfully
@@ -342,7 +349,7 @@ export default function SmartEdge({
       <BaseEdge
         id={id}
         path={svgPath}
-        style={style}
+        style={flowingStyle}
         markerEnd={markerEnd}
         markerStart={markerStart}
       />

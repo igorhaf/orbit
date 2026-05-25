@@ -190,11 +190,35 @@ async def trigger_deep_pipeline(
                 6: (91, 8),    # Phase 6: 91-99% (QA)
             }
 
-            async def _update_progress(phase, pct, msg):
+            # v3.1: map phase int → phase_key string for clean WS payloads
+            # (canvas animation consumes phase_key instead of parsing message text)
+            _PHASE_INT_TO_KEY = {
+                0: "phase_0", 1: "phase_1", 2: "phase_2", 3: "phase_3",
+                4: "phase_4a", 5: "phase_5", 6: "phase_6",
+            }
+
+            async def _update_progress(phase, pct, msg, phase_key=None, status=None):
                 try:
                     start, weight = _PHASE_OFFSETS.get(phase, (0, 14))
                     overall_pct = min(99, int(start + pct / 100 * weight))
-                    jm.update_progress(job_id, overall_pct, f"[Fase {phase}] {msg}")
+                    # If phase_key not explicit, infer from phase int + msg
+                    if phase_key is None:
+                        phase_key = _PHASE_INT_TO_KEY.get(phase)
+                        # Detect 4a/b/c from message (legacy code sends `phase=4` for all)
+                        if phase == 4 and msg:
+                            low = msg.lower()
+                            if "story" in low or "decomp" in low: phase_key = "phase_4b"
+                            elif "task" in low: phase_key = "phase_4c"
+                            else: phase_key = "phase_4a"
+                    # Status derivation from pct + msg
+                    if status is None:
+                        if pct >= 100: status = "completed"
+                        elif pct > 0: status = "running"
+                        else: status = "starting"
+                    jm.update_progress(
+                        job_id, overall_pct, f"[Fase {phase}] {msg}",
+                        extra={"phase_key": phase_key, "phase_status": status, "phase_pct": pct},
+                    )
                 except Exception:
                     pass
 
