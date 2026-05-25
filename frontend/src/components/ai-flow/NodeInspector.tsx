@@ -273,11 +273,12 @@ function UtilityKindFields({
   type FieldSpec = {
     key: string;
     label: string;
-    type: 'number' | 'text' | 'boolean' | 'select';
+    type: 'number' | 'text' | 'boolean' | 'select' | 'string_array' | 'expression';
     options?: string[];
     default?: any;
     placeholder?: string;
     step?: number;
+    hint?: string;
   };
   const FIELDS: Record<string, FieldSpec[]> = {
     // Discovery
@@ -382,6 +383,47 @@ function UtilityKindFields({
       { key: 'job_type', label: 'JobType', type: 'text', default: 'generic' },
       { key: 'phase_label', label: 'Phase label', type: 'text', placeholder: 'Fase X — ...' },
     ],
+
+    // v3.7.2 — Control Flow
+    if_else: [
+      { key: 'condition', label: 'Condição',
+        type: 'expression', placeholder: '$.input.score > 70',
+        hint: 'Operadores: == != < <= > >= · prefixos NOT/! · paths $.foo.bar · literais true/false/numbers/"strings"',
+      },
+    ],
+    switch: [
+      { key: 'selector', label: 'Selector',
+        type: 'expression', placeholder: '$.input.kind',
+        hint: 'Path do valor a comparar com cada case',
+      },
+      { key: 'cases', label: 'Cases (1 por linha)',
+        type: 'string_array', default: [],
+        hint: 'Lista de valores que viram handles de saída do switch',
+      },
+    ],
+    for_each: [
+      { key: 'collection_path', label: 'Path da coleção (opcional)',
+        type: 'text', placeholder: '$.files',
+        hint: 'Caminho que aponta pra lista no input. Vazio = usa input.collection',
+      },
+      { key: 'item_var', label: 'Variável do item',
+        type: 'text', default: 'item',
+        hint: 'Nome usado internamente pelo body sub-grafo',
+      },
+    ],
+    while_loop: [
+      { key: 'condition', label: 'Condição',
+        type: 'expression', placeholder: '$.state.score < 70',
+        hint: 'Avaliada a cada iteração contra {state, iter, ...inputs}',
+      },
+      { key: 'max_iter', label: 'Max iterações',
+        type: 'number', default: 10,
+        hint: 'Safety limit pra evitar loop infinito',
+      },
+    ],
+    logical_and: [],  // sem config (só inputs)
+    logical_or:  [],
+    logical_not: [],
   };
 
   const fields = FIELDS[kind];
@@ -437,6 +479,53 @@ function UtilityKindFields({
             </div>
           );
         }
+        if (f.type === 'expression') {
+          // v3.7.2: textarea monospace pra expressões. Hint abaixo.
+          return (
+            <div key={f.key}>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{f.label}</label>
+              <textarea
+                value={value}
+                placeholder={f.placeholder}
+                onChange={(e) => onChange({ [f.key]: e.target.value })}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-mono"
+                rows={2}
+              />
+              {f.hint && (
+                <div className="text-[10px] text-gray-400 mt-1 leading-tight">{f.hint}</div>
+              )}
+            </div>
+          );
+        }
+        if (f.type === 'string_array') {
+          // v3.7.2: textarea com 1 valor por linha → array de strings.
+          const arr: string[] = Array.isArray(value) ? value : (value ? [String(value)] : []);
+          return (
+            <div key={f.key}>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{f.label}</label>
+              <textarea
+                value={arr.join('\n')}
+                placeholder="case_a\ncase_b\ncase_c"
+                onChange={(e) => {
+                  const lines = e.target.value
+                    .split('\n')
+                    .map((l) => l.trim())
+                    .filter(Boolean);
+                  onChange({ [f.key]: lines });
+                }}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-mono"
+                rows={Math.max(2, arr.length + 1)}
+              />
+              {f.hint && (
+                <div className="text-[10px] text-gray-400 mt-1 leading-tight">{f.hint}</div>
+              )}
+              <div className="text-[10px] text-gray-500 mt-1">
+                {arr.length} {arr.length === 1 ? 'case' : 'cases'}
+              </div>
+            </div>
+          );
+        }
+        // text (default)
         return (
           <div key={f.key}>
             <label className="block text-xs font-medium text-gray-700 mb-1">{f.label}</label>
@@ -447,6 +536,9 @@ function UtilityKindFields({
               onChange={(e) => onChange({ [f.key]: e.target.value })}
               className="w-full px-2 py-1.5 border border-gray-200 rounded text-sm"
             />
+            {f.hint && (
+              <div className="text-[10px] text-gray-400 mt-1 leading-tight">{f.hint}</div>
+            )}
           </div>
         );
       })}

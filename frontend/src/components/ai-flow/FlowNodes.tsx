@@ -19,7 +19,7 @@ import type { AIFlowModelMetrics } from '@/lib/types';
 // Node Animation State type (shared across components)
 // ---------------------------------------------------------------------------
 
-export type NodeAnimationState = 'idle' | 'executing' | 'success' | 'failed';
+export type NodeAnimationState = 'idle' | 'executing' | 'success' | 'failed' | 'skipped';
 
 // ---------------------------------------------------------------------------
 // Custom ReactFlow Node: ModelNode (PROMPT #124 - with metrics & animation)
@@ -51,6 +51,9 @@ export function ModelNode({ data }: { data: any }) {
       boxShadow: '0 0 12px rgba(239,68,68,0.5)',
     };
   }
+  // v3.7.2: skipped state — esmaecido + grayscale (mesma estética dos
+  // outros nodes pra coerência visual).
+  const isSkipped = animation === 'skipped';
 
   // Health indicator color
   const healthColor = metrics
@@ -67,6 +70,8 @@ export function ModelNode({ data }: { data: any }) {
         borderRightColor: '#e5e7eb',
         borderBottomColor: '#e5e7eb',
         ...borderOverride,
+        opacity: isSkipped ? 0.5 : 1,
+        filter: isSkipped ? 'grayscale(60%)' : undefined,
       }}
     >
       <Handle
@@ -558,6 +563,9 @@ export function ControlFlowNode({ data }: { data: any }) {
   // Visual config peek
   const cfg = (data.config || {}) as Record<string, any>;
   const cfgEntries = Object.entries(cfg).slice(0, 2);
+  // v3.7.2: skipped state
+  const anim: NodeAnimationState = data.animation || 'idle';
+  const isSkipped = anim === 'skipped';
 
   // Color per handle (true=green, false=red, body=blue, done=gray, default=gray, case_*=purple)
   const handleColor = (name: string): string => {
@@ -579,6 +587,8 @@ export function ControlFlowNode({ data }: { data: any }) {
         borderWidth: 2,
         borderStyle: 'dashed',
         background: 'linear-gradient(180deg, rgba(220,38,38,0.04), white 30%)',
+        opacity: isSkipped ? 0.5 : 1,
+        filter: isSkipped ? 'grayscale(60%)' : undefined,
       }}
     >
       {/* Input handles (left edge) */}
@@ -685,6 +695,9 @@ export function GenericUtilityNode({ data }: { data: any }) {
   // Config items: render up to 3 key=value pairs to keep the node compact.
   const cfg = (data.config || {}) as Record<string, any>;
   const cfgEntries = Object.entries(cfg).slice(0, 3);
+  // v3.7.2: visual state — skipped fica esmaecido com badge "pulado"
+  const anim: NodeAnimationState = data.animation || 'idle';
+  const isSkipped = anim === 'skipped';
 
   return (
     <div
@@ -695,6 +708,8 @@ export function GenericUtilityNode({ data }: { data: any }) {
         borderTopColor: '#e5e7eb',
         borderRightColor: '#e5e7eb',
         borderBottomColor: '#e5e7eb',
+        opacity: isSkipped ? 0.5 : 1,
+        filter: isSkipped ? 'grayscale(60%)' : undefined,
       }}
     >
       <Handle
@@ -723,10 +738,18 @@ export function GenericUtilityNode({ data }: { data: any }) {
           <div className={`w-2 h-2 rounded-full flex-shrink-0 ${enabled ? '' : 'bg-gray-300'}`}
                style={enabled ? { background: accent } : undefined} />
         </div>
-        {description && (
+        {isSkipped && (
+          <div
+            className="mt-1.5 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded inline-block"
+            style={{ background: '#f3f4f6', color: '#6b7280', border: '1px dashed #9ca3af' }}
+          >
+            ↳ pulado
+          </div>
+        )}
+        {description && !isSkipped && (
           <div className="mt-1.5 text-[10px] text-gray-500 line-clamp-2" title={description}>{description}</div>
         )}
-        {cfgEntries.length > 0 && (
+        {cfgEntries.length > 0 && !isSkipped && (
           <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5">
             {cfgEntries.map(([k, v]) => (
               <div key={k} className="text-[10px] text-gray-500 truncate">
