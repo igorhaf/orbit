@@ -8,11 +8,12 @@
 
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback, useRef } from 'react';
 import {
   BaseEdge,
   EdgeLabelRenderer,
   useNodes,
+  useReactFlow,
   type EdgeProps,
   type Node,
 } from '@xyflow/react';
@@ -341,7 +342,8 @@ export default function SmartEdge({
   labelStyle,
   labelBgStyle,
   data,
-}: EdgeProps & { data?: any }) {
+  selected,
+}: EdgeProps & { data?: any; selected?: boolean }) {
   // v3.1: when data.flowing is true (set by the page based on phase progress),
   // render the edge with a marching dashed line.
   const flowing = !!(data && (data as any).flowing);
@@ -349,6 +351,15 @@ export default function SmartEdge({
     ? { ...(style || {}), strokeDasharray: '6 4', animation: 'edge-flow 0.6s linear infinite' }
     : style;
   const allNodes = useNodes();
+  const reactFlow = useReactFlow();
+
+  // v3.6.5: waypoints manuais arrastáveis. Se data.waypoints existe, usa
+  // esses pontos em vez do A* automático. Cada waypoint vira um handle
+  // arrastável; click duplo na edge adiciona; right-click remove.
+  const waypoints: [number, number][] | null =
+    Array.isArray((data as any)?.waypoints) && (data as any).waypoints.length > 0
+      ? (data as any).waypoints
+      : null;
 
   // Stable key: recalc when posição OU dimensão medida mudar (v3.5.5: size
   // entra no key porque measured.width/height vem só após primeiro render,
@@ -367,11 +378,16 @@ export default function SmartEdge({
     [allNodes],
   );
 
-  const { svgPath, labelPoint } = useMemo(() => {
-    // Exclude source, target, and terminal nodes from obstacles
-    const obstacles = buildObstacles(allNodes, [source, target]);
-
-    const pts = findPath(sourceX, sourceY, targetX, targetY, obstacles);
+  const { svgPath, labelPoint, pathPoints } = useMemo(() => {
+    let pts: [number, number][];
+    if (waypoints) {
+      // Caminho manual: source → waypoints → target
+      pts = [[sourceX, sourceY], ...waypoints, [targetX, targetY]];
+    } else {
+      // Caminho automático A*
+      const obstacles = buildObstacles(allNodes, [source, target]);
+      pts = findPath(sourceX, sourceY, targetX, targetY, obstacles);
+    }
     const path = toSvgPath(pts);
 
     // Label position: midpoint along the path by arc length
@@ -396,9 +412,94 @@ export default function SmartEdge({
       half -= segLens[i];
     }
 
-    return { svgPath: path, labelPoint: { x: lx, y: ly } };
+    return { svgPath: path, labelPoint: { x: lx, y: ly }, pathPoints: pts };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceX, sourceY, targetX, targetY, source, target, nodesKey]);
+  }, [sourceX, sourceY, targetX, targetY, source, target, nodesKey, waypoints]);
+
+  // ── Waypoint editing helpers (v3.6.5) ─────────────────────────────────
+  const updateWaypoints = useCallback(
+    (newWaypoints: [number, number][]) => {
+      reactFlow.setEdges((eds) =>
+        eds.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                data: {
+                  ...(e.data || {}),
+                  waypoints: newWaypoints.length > 0 ? newWaypoints : undefined,
+                },
+              }
+            : e,
+        ),
+      );
+    },
+    [id, reactFlow],
+  );
+
+  // Double-click na edge → adiciona um waypoint no ponto clicado
+  const handleEdgeDoubleClick = useCallback(
+    (e: React.MouseEvent<SVGPathElement>) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const flowPos = reactFlow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const current = waypoints ? [...waypoints] : [];
+      // Inserir no índice mais perto da posição do mouse
+      // (estratégia simples: anexar; usuário pode arrastar pra reordenar visualmente)
+      current.push([Math.round(flowPos.x), Math.round(flowPos.y)]);
+      updateWaypoints(current);
+    },
+    [waypoints, updateWaypoints, reactFlow],
+  );
+
+  // Drag handlers (mouse capture global)
+  const dragRef = useRef<{ idx: number; startMouse: { x: number; y: number }; startWp: [number, number] } | null>(null);
+
+  const onWaypointMouseDown = useCallback(
+    (e: React.MouseEvent, idx: number) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const wp = waypoints![idx];
+      dragRef.current = { idx, startMouse: { x: e.clientX, y: e.clientY }, startWp: [wp[0], wp[1]] };
+      const onMove = (ev: MouseEvent) => {
+        if (!dragRef.current) return;
+        const dragData = dragRef.current;
+        // Convert delta de pixels de tela pra delta de unidades do canvas
+        const start = reactFlow.screenToFlowPosition(dragData.startMouse);
+        const cur = reactFlow.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+        const dx = cur.x - start.x;
+        const dy = cur.y - start.y;
+        const next: [number, number][] = waypoints!.map((p, i) =>
+          i === dragData.idx
+            ? [Math.round(dragData.startWp[0] + dx), Math.round(dragData.startWp[1] + dy)]
+            : p,
+        );
+        updateWaypoints(next);
+      };
+      const onUp = () => {
+        dragRef.current = null;
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    },
+    [waypoints, updateWaypoints, reactFlow],
+  );
+
+  // Right-click num waypoint → remove
+  const onWaypointContextMenu = useCallback(
+    (e: React.MouseEvent, idx: number) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!waypoints) return;
+      const next = waypoints.filter((_, i) => i !== idx);
+      updateWaypoints(next);
+    },
+    [waypoints, updateWaypoints],
+  );
+
+  // Mostrar waypoint controls quando edge está selecionada OU já tem waypoints
+  const showWaypointControls = selected || (waypoints && waypoints.length > 0);
 
   return (
     <>
@@ -409,6 +510,40 @@ export default function SmartEdge({
         markerEnd={markerEnd}
         markerStart={markerStart}
       />
+      {/* v3.6.5: invisible thicker path por cima do BaseEdge pra capturar
+          double-click (mais fácil de acertar). Não estiliza, só serve de hit area. */}
+      <path
+        d={svgPath}
+        stroke="transparent"
+        strokeWidth={18}
+        fill="none"
+        style={{ pointerEvents: 'stroke', cursor: 'crosshair' }}
+        onDoubleClick={handleEdgeDoubleClick}
+      />
+      {/* Waypoint handles (drag/remove) */}
+      {showWaypointControls && waypoints && waypoints.map((wp, idx) => (
+        <EdgeLabelRenderer key={`wp-${idx}`}>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${wp[0]}px, ${wp[1]}px)`,
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              background: '#3b82f6',
+              border: '2px solid white',
+              boxShadow: '0 0 0 1px #3b82f6',
+              cursor: 'grab',
+              pointerEvents: 'all',
+              zIndex: 10,
+            }}
+            className="nodrag nopan"
+            onMouseDown={(e) => onWaypointMouseDown(e, idx)}
+            onContextMenu={(e) => onWaypointContextMenu(e, idx)}
+            title="Arrastar pra mover · botão direito pra remover"
+          />
+        </EdgeLabelRenderer>
+      ))}
       {label && (
         <EdgeLabelRenderer>
           <div
