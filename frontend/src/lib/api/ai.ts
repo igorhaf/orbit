@@ -30,6 +30,14 @@ export const aiModelsApi = {
 
 // AI Flow Chains API (PROMPT #122 - Visual Fallback Chain Configuration)
 export const aiFlowApi = {
+  // v3.0 — full project snapshot for the unified AI Studio canvas
+  canvasSnapshot: () => request<{
+    nodes: any[];
+    edges: any[];
+    subflows: Record<string, any>;
+    meta: { model_count: number; chain_count: number; phase_count: number };
+  }>('/api/v1/ai-flow/canvas-snapshot'),
+
   listChains: () => request<any>('/api/v1/ai-flow/chains'),
 
   getChain: (usageType: string) => request<any>(`/api/v1/ai-flow/chains/${usageType}`),

@@ -64,7 +64,7 @@ export default function AIFlowPage() {
   const canvas = useCanvasState({});
 
   // Connection validator (typed)
-  const validator = useConnectionValidator(canvas.nodes, canvas.setEdges);
+  const validator = useConnectionValidator(canvas.nodes, canvas.setEdges, canvas.markDirty);
 
   // Debug panel state
   const [debugOpen, setDebugOpen] = useState(false);
@@ -75,21 +75,30 @@ export default function AIFlowPage() {
   // Track selection count for subflow grouping
   const [selectionIds, setSelectionIds] = useState<string[]>([]);
 
-  // ── Load profiles + models on mount ────────────────────────────────
+  // ── Load full project snapshot on mount (v3.0) ─────────────────────
+  // The snapshot endpoint returns ALL models, chains and Deep Pipeline
+  // phases pre-arranged as canvas nodes/edges/subflows.
   useEffect(() => {
-    Promise.all([aiFlowApi.listProfiles(), aiModelsApi.list()])
-      .then(([ps, ms]) => {
+    Promise.all([
+      aiFlowApi.canvasSnapshot(),
+      aiFlowApi.listProfiles(),
+      aiModelsApi.list(),
+    ])
+      .then(([snap, ps, ms]) => {
         setProfiles(ps as Profile[]);
         setModels(ms as any[]);
         const active = (ps as Profile[]).find((p) => p.is_active) || (ps as Profile[])[0];
-        if (active) {
-          setActiveProfileId(active.id);
-          loadProfileIntoCanvas(active, ms as any[]);
-        }
+        if (active) setActiveProfileId(active.id);
+        // Hydrate canvas from snapshot
+        canvas.setNodes(snap.nodes as Node[]);
+        canvas.setEdges(snap.edges as any);
+        canvas.setSubflows(snap.subflows as any);
+        canvas.markClean();
       })
-      .catch((e) => showError(`Falha ao carregar profiles: ${e?.message || e}`));
+      .catch((e) => showError(`Falha ao carregar canvas: ${e?.message || e}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
   const loadProfileIntoCanvas = useCallback(
     (profile: Profile, modelsCatalog: any[]) => {
@@ -259,39 +268,73 @@ export default function AIFlowPage() {
   }, [selectionIds, canvas, showSuccess]);
 
   const onSave = useCallback(async () => {
-    if (!activeProfileId) {
-      showError('Nenhum profile selecionado pra salvar');
-      return;
-    }
     try {
-      // Snapshot positions
+      // 1. Persist per-model edits (every modelNode that has ai_model_id)
+      const modelNodes = canvas.nodes.filter((n) => n.type === 'modelNode' && n.data?.ai_model_id);
+      const modelPatches = modelNodes.map(async (n) => {
+        const d: any = n.data || {};
+        try {
+          await aiModelsApi.update(d.ai_model_id, {
+            name: d.label,
+            config: d.config,
+            rate_limit_requests: d.rate_limit_requests,
+            timeout_seconds: d.timeout_seconds,
+          });
+        } catch (err) {
+          // best-effort per model; collect failures below
+          // eslint-disable-next-line no-console
+          console.warn(`PATCH ai-models/${d.ai_model_id} failed`, err);
+        }
+      });
+      await Promise.allSettled(modelPatches);
+
+      // 2. Persist layout + subflows in the active profile (creates one if missing)
       const node_positions: Record<string, { x: number; y: number }> = {};
       canvas.nodes.forEach((n) => { node_positions[n.id] = n.position; });
-      // Snapshot chain (model node ids)
+
+      // Build chain from non-subflow model node order (left→right)
       const chain = canvas.nodes
         .filter((n) => n.type === 'modelNode')
-        .map((n) => (n.data?.model_id as string) || n.id);
-      // Utility nodes
+        .sort((a, b) => a.position.x - b.position.x)
+        .map((n) => (n.data?.ai_model_id as string) || n.id);
+
       const utility_nodes = canvas.nodes
-        .filter((n) => n.type && n.type.endsWith('Node') && n.type !== 'modelNode' && n.type !== 'pipelinePhaseNode' && n.type !== 'subflowNode')
+        .filter((n) => n.type && (n.type as string).endsWith('Node')
+          && n.type !== 'modelNode'
+          && n.type !== 'pipelinePhaseNode'
+          && n.type !== 'subflowNode')
         .map((n) => ({
           id: n.id,
-          type: n.data?.type || (n.type as string).replace('Node', '').toLowerCase(),
+          type: (n.data?.type as string) || (n.type as string).replace('Node', '').toLowerCase(),
           label: n.data?.label,
           config: n.data?.config || {},
           enabled: n.data?.enabled !== false,
         }));
-      await aiFlowApi.updateProfile(activeProfileId, {
-        chain,
-        utility_nodes,
-        node_positions,
-        subflows: canvas.subflows,
-      });
+
+      if (activeProfileId) {
+        await aiFlowApi.updateProfile(activeProfileId, {
+          chain,
+          utility_nodes,
+          node_positions,
+          subflows: canvas.subflows,
+        });
+      } else {
+        const created = await aiFlowApi.createProfile({
+          name: 'Canvas',
+          usage_type: 'general',
+          chain,
+          utility_nodes,
+          node_positions,
+          subflows: canvas.subflows,
+        });
+        setActiveProfileId((created as any).id);
+      }
       canvas.markClean();
-      showSuccess('Profile salvo');
-      // Refetch
+      showSuccess(`Canvas salvo · ${modelNodes.length} modelos atualizados`);
       const ps = await aiFlowApi.listProfiles();
       setProfiles(ps as Profile[]);
+      const ms = await aiModelsApi.list();
+      setModels(ms as any[]);
     } catch (e: any) {
       showError(`Falha ao salvar: ${e?.message || e}`);
     }
@@ -326,11 +369,20 @@ export default function AIFlowPage() {
     });
   }, [canvas.visibleNodes, canvas.toggleSubflowCollapsed, canvas.enterSubflow]);
 
+  // Stable refs to avoid re-subscribing xyflow on every render
+  const setSelectedNodeIdRef = useRef(canvas.setSelectedNodeId);
+  setSelectedNodeIdRef.current = canvas.setSelectedNodeId;
+
   const onSelectionChange = useCallback(({ nodes }: { nodes: Node[] }) => {
-    setSelectionIds(nodes.map((n) => n.id));
-    if (nodes.length === 1) canvas.setSelectedNodeId(nodes[0].id);
-    else if (nodes.length === 0) canvas.setSelectedNodeId(null);
-  }, [canvas]);
+    setSelectionIds((prev) => {
+      const next = nodes.map((n) => n.id);
+      // Avoid setState when nothing actually changed
+      if (prev.length === next.length && prev.every((id, i) => id === next[i])) return prev;
+      return next;
+    });
+    if (nodes.length === 1) setSelectedNodeIdRef.current(nodes[0].id);
+    else if (nodes.length === 0) setSelectedNodeIdRef.current(null);
+  }, []);
 
   // Show validator rejection as toast
   useEffect(() => {

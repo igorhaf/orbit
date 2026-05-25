@@ -10,7 +10,7 @@
  */
 'use client';
 
-import { useCallback, useState, useMemo, useEffect } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import {
   useNodesState,
   useEdgesState,
@@ -74,8 +74,10 @@ export function useCanvasState(initial?: InitialState): CanvasState {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  // Mark dirty on any structural change
-  useEffect(() => { setDirty(true); }, [nodes, edges, subflows]);
+  // v3.0 fix: dirty is set explicitly via markDirty() inside add/update/delete
+  // handlers. A useEffect on [nodes, edges, subflows] caused an infinite render
+  // loop because xyflow internally mutates node refs on selection/hover/drag,
+  // triggering the effect → setDirty → re-render → effect again.
 
   const enterSubflow = useCallback((subflowId: string) => {
     setSubflowStack((s) => [...s, subflowId]);
@@ -131,6 +133,9 @@ export function useCanvasState(initial?: InitialState): CanvasState {
     [nodes, selectedNodeId],
   );
 
+  const markClean = useCallback(() => setDirty(false), []);
+  const markDirty = useCallback(() => setDirty(true), []);
+
   return {
     nodes,
     edges,
@@ -149,8 +154,8 @@ export function useCanvasState(initial?: InitialState): CanvasState {
     setSelectedNodeId,
     selectedNode,
     dirty,
-    markClean: () => setDirty(false),
-    markDirty: () => setDirty(true),
+    markClean,
+    markDirty,
     visibleNodes,
     visibleEdges,
   };

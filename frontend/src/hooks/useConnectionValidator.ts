@@ -30,6 +30,7 @@ export interface UseConnectionValidatorResult {
 export function useConnectionValidator(
   nodes: Node[],
   setEdges: (updater: (edges: Edge[]) => Edge[]) => void,
+  onAccept?: () => void,
 ): UseConnectionValidatorResult {
   const [lastRejection, setLastRejection] = useState<ConnectionRejection | null>(null);
 
@@ -59,8 +60,9 @@ export function useConnectionValidator(
           eds,
         ),
       );
+      onAccept?.();
     },
-    [nodes, setEdges],
+    [nodes, setEdges, onAccept],
   );
 
   const clearRejection = useCallback(() => setLastRejection(null), []);
