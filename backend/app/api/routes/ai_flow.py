@@ -147,26 +147,121 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
     edges: list[dict] = []
     subflows: dict[str, dict] = {}
 
+    # Build a lookup of AIModel by model_id (config.model_id) so each phase
+    # can resolve its assigned model to a label/PK for the inner ModelNode.
+    model_by_id: dict[str, "AIModel"] = {}
+    for m in models:
+        mid = (m.config or {}).get("model_id")
+        if mid and mid not in model_by_id:
+            model_by_id[mid] = m
+
     # ── 1. Subflow nodes (4 grupos do Deep Pipeline) on the root ────────
     SUBFLOW_X = 280
     SUBFLOW_Y_BASE = 80
     SUBFLOW_GAP = 130
-    subflow_node_ids_by_group: dict[str, list[str]] = {}
     prev_sf_node_id: str | None = None
+    # Internal layout (per subflow tab): each phase becomes a trio
+    # [Entrada] → [Modelo] → [Saída], stacked vertically (one row per phase).
+    PHASE_ROW_Y_BASE = 80
+    PHASE_ROW_GAP = 200
+    TRIO_X_IN = 80
+    TRIO_X_MODEL = 360
+    TRIO_X_OUT = 640
     for idx, group in enumerate(DEEP_PIPELINE_GROUPS):
         sf_node_id = f"sf-{group['id']}"
         group_phase_keys = group["phase_keys"]
-        # Phase node ids (these live INSIDE the subflow tab)
-        phase_node_ids = [f"phase-{pk}" for pk in group_phase_keys]
-        subflow_node_ids_by_group[group["id"]] = phase_node_ids
+
+        # v3.3: each phase is rendered INSIDE its subflow tab as a trio
+        # of nodes — [Entrada] → [Modelo do catálogo] → [Saída].
+        inner_node_ids: list[str] = []
+        for p_idx, pk in enumerate(group_phase_keys):
+            phase = phase_catalog.get(pk, {})
+            phase_label = phase.get("label") or pk
+            assigned_model_id = phase.get("model")  # e.g. "claude-sonnet-4-6"
+            ai_model = model_by_id.get(assigned_model_id) if assigned_model_id else None
+            row_y = PHASE_ROW_Y_BASE + p_idx * PHASE_ROW_GAP
+
+            in_id = f"phase-{pk}-in"
+            model_id_node = f"phase-{pk}-model"
+            out_id = f"phase-{pk}-out"
+
+            # [Entrada]
+            nodes.append({
+                "id": in_id,
+                "type": "ioNode",
+                "position": {"x": TRIO_X_IN, "y": row_y},
+                "data": {
+                    "label": f"Entrada — {phase_label}",
+                    "io_kind": "input",
+                    "phase_key": pk,
+                    "group_id": group["id"],
+                },
+            })
+            # [Modelo] (the configured model for this phase)
+            nodes.append({
+                "id": model_id_node,
+                "type": "modelNode",
+                "position": {"x": TRIO_X_MODEL, "y": row_y},
+                "data": {
+                    "label": ai_model.name if ai_model else (assigned_model_id or "(sem modelo)"),
+                    "provider": "claudius",
+                    "config": (ai_model.config if ai_model else {"model_id": assigned_model_id}) or {},
+                    "model_id": assigned_model_id,
+                    "ai_model_id": str(ai_model.id) if ai_model else None,
+                    "phase_key": pk,
+                    "group_id": group["id"],
+                    "description": phase.get("description"),
+                    "animation": "idle",
+                },
+            })
+            # [Saída]
+            nodes.append({
+                "id": out_id,
+                "type": "ioNode",
+                "position": {"x": TRIO_X_OUT, "y": row_y},
+                "data": {
+                    "label": f"Saída — {phase_label}",
+                    "io_kind": "output",
+                    "phase_key": pk,
+                    "group_id": group["id"],
+                },
+            })
+            inner_node_ids.extend([in_id, model_id_node, out_id])
+            # Trio edges: in → model → out
+            edges.append({
+                "id": f"edge-{in_id}-{model_id_node}",
+                "source": in_id, "target": model_id_node,
+                "type": "smartEdge",
+                "style": {"stroke": "#0891b2", "strokeWidth": 1.6},
+                "data": {"port_type": "trio_in"},
+            })
+            edges.append({
+                "id": f"edge-{model_id_node}-{out_id}",
+                "source": model_id_node, "target": out_id,
+                "type": "smartEdge",
+                "style": {"stroke": "#0891b2", "strokeWidth": 1.6},
+                "data": {"port_type": "trio_out"},
+            })
+            # Sequence between phases: previous out → next in
+            if p_idx > 0:
+                prev_pk = group_phase_keys[p_idx - 1]
+                edges.append({
+                    "id": f"edge-seq-{prev_pk}-{pk}",
+                    "source": f"phase-{prev_pk}-out",
+                    "target": in_id,
+                    "type": "smartEdge",
+                    "style": {"stroke": "#3b82f6", "strokeWidth": 1.8, "strokeDasharray": "4 4"},
+                    "data": {"port_type": "phase_sequence", "label": "then"},
+                })
 
         subflows[group["id"]] = {
             "label": group["label"],
-            "node_ids": phase_node_ids,
+            "node_ids": inner_node_ids,
             "position": {"x": SUBFLOW_X, "y": SUBFLOW_Y_BASE + idx * SUBFLOW_GAP},
             "collapsed": True,
             "kind": "deep_pipeline_group",
             "order": group["order"],
+            "phase_keys": group_phase_keys,
         }
         # SubflowNode (visible on root)
         nodes.append({
@@ -176,13 +271,13 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             "data": {
                 "label": group["label"],
                 "collapsed": True,
-                "node_count": len(phase_node_ids),
+                "node_count": len(group_phase_keys),  # show #phases, not #inner nodes
                 "kind": "deep_pipeline_group",
                 "group_id": group["id"],
                 "phase_keys": group_phase_keys,
             },
         })
-        # Wire sequentially: Discovery → Cards → Wiki → QA
+        # Wire root subflows sequentially: Discovery → Cards → Wiki → QA
         if prev_sf_node_id is not None:
             edges.append({
                 "id": f"edge-sf-{prev_sf_node_id}-{sf_node_id}",
@@ -193,45 +288,6 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 "data": {"label": "then", "port_type": "subflow_sequence"},
             })
         prev_sf_node_id = sf_node_id
-
-    # ── 2. Phase nodes (live INSIDE their group's tab — not on root) ────
-    for group in DEEP_PIPELINE_GROUPS:
-        group_phase_keys = group["phase_keys"]
-        for p_idx, pk in enumerate(group_phase_keys):
-            phase = phase_catalog.get(pk, {})
-            node_id = f"phase-{pk}"
-            # Position within the tab: horizontal arrangement
-            position = {"x": 120 + p_idx * 260, "y": 160}
-            nodes.append({
-                "id": node_id,
-                "type": "pipelinePhaseNode",
-                "position": position,
-                "data": {
-                    "label": phase.get("label") or pk,
-                    "phase_key": pk,
-                    "description": phase.get("description"),
-                    "model_id": phase.get("model"),
-                    "model_count": 1 if phase.get("model") else 0,
-                    "phase_index": p_idx,
-                    "group_id": group["id"],
-                    "animation": "idle",
-                },
-            })
-            # Wire phase → next phase within the same group
-            if p_idx > 0:
-                prev_pk = group_phase_keys[p_idx - 1]
-                edges.append({
-                    "id": f"edge-phase-{prev_pk}-{pk}",
-                    "source": f"phase-{prev_pk}",
-                    "target": node_id,
-                    "type": "smartEdge",
-                    "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
-                    "data": {"label": "then", "port_type": "phase_sequence"},
-                })
-            # v3.2: phase → model relationship lives in the phase's own data
-            # (model_id). No edge needed — the model is shown in the sidebar
-            # catalog. Drag-and-drop a model from the sidebar onto a phase
-            # to wire it explicitly.
 
     # ── 3. Model catalog — sidebar items (NOT on the canvas).
     # v3.2: models live in the left sidebar. They become canvas nodes only

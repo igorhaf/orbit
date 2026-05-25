@@ -392,7 +392,8 @@ function AIFlowPageInner() {
   // Inject runtime callbacks + animation states into nodes
   const enhancedNodes = useMemo(() => {
     return canvas.visibleNodes.map((n) => {
-      // SubflowNode: aggregate state of inner phases
+      // SubflowNode: aggregate state of inner phases. v3.3: phase trio uses
+      // ids like "phase-{phase_key}-model" inside the subflow's node_ids.
       if (n.type === 'subflowNode') {
         const sfId = n.id.replace(/^sf-/, '');
         const sf = canvas.subflows[sfId];
@@ -400,8 +401,7 @@ function AIFlowPageInner() {
         if (sf?.node_ids?.length) {
           const innerStates = sf.node_ids
             .map((nid: string) => {
-              // Phase node ids look like "phase-{phase_key}"
-              const m = /^phase-(.+)$/.exec(nid);
+              const m = /^phase-(.+)-model$/.exec(nid);
               return m ? progress.phaseStates[m[1]] : undefined;
             })
             .filter(Boolean) as PhaseState[];
@@ -419,7 +419,20 @@ function AIFlowPageInner() {
           },
         };
       }
-      // PipelinePhaseNode: animation from progress.phaseStates
+      // v3.3: animation lives on the modelNode inside each phase trio
+      // (id pattern: "phase-{phase_key}-model"). Old pipelinePhaseNode branch
+      // kept for back-compat in case any profile still uses it.
+      if (n.type === 'modelNode' && typeof n.data?.phase_key === 'string') {
+        const pk = n.data.phase_key;
+        const state: PhaseState = (pk && progress.phaseStates[pk]) || 'idle';
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            animation: state === 'running' ? 'executing' : state,
+          },
+        };
+      }
       if (n.type === 'pipelinePhaseNode') {
         const pk = n.data?.phase_key;
         const state: PhaseState = (pk && progress.phaseStates[pk]) || 'idle';

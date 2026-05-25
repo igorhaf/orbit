@@ -166,14 +166,12 @@ export function useCanvasState(initial?: InitialState): CanvasState {
       return { visibleNodes: vn, visibleEdges: ve };
     }
 
-    // Subflow tab: only its members + always-visible Model catalog
+    // Subflow tab: show only its members (the phase trios). Models are
+    // available via the left sidebar catalog (drag to add). v3.3.
     const sf = subflows[inSubflow];
     if (!sf) return { visibleNodes: nodes, visibleEdges: edges };
     const memberSet = new Set(sf.node_ids);
-    // Also show model nodes (catalog is global) — they help the user pick a model
-    const vn = nodes.filter((n) =>
-      memberSet.has(n.id) || n.type === 'modelNode',
-    );
+    const vn = nodes.filter((n) => memberSet.has(n.id));
     const visibleIds = new Set(vn.map((n) => n.id));
     const ve = edges.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
     return { visibleNodes: vn, visibleEdges: ve };

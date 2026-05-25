@@ -539,6 +539,56 @@ export function PipelinePhaseNode({ data }: { data: any }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// v3.3 — IONode (Entrada/Saída of a phase's trio inside a subflow)
+// ---------------------------------------------------------------------------
+
+export function IONode({ data }: { data: any }) {
+  const isInput = data.io_kind === 'input';
+  const accent = isInput ? '#10b981' : '#f97316'; // green for input, orange for output
+  const label = data.label || (isInput ? 'Entrada' : 'Saída');
+  const icon = isInput ? '→' : '⇒';
+  return (
+    <div
+      className="rounded-lg shadow-sm border-2 bg-white cursor-grab active:cursor-grabbing hover:shadow-md transition-all"
+      style={{ borderColor: accent, minWidth: 160 }}
+    >
+      {!isInput && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="left"
+          className="!w-3 !h-3 !border-2 !border-white"
+          style={{ background: accent }}
+        />
+      )}
+      <div className="px-3 py-2 flex items-center gap-2">
+        <span
+          className="inline-flex items-center justify-center w-6 h-6 rounded text-sm font-bold"
+          style={{ background: `${accent}22`, color: accent }}
+        >
+          {icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: accent }}>
+            {isInput ? 'Entrada' : 'Saída'}
+          </div>
+          <div className="text-xs text-gray-700 truncate">{label.replace(/^(Entrada|Saída)\s*—\s*/, '')}</div>
+        </div>
+      </div>
+      {isInput && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="right"
+          className="!w-3 !h-3 !border-2 !border-white"
+          style={{ background: accent }}
+        />
+      )}
+    </div>
+  );
+}
+
 export function SubflowNode({ data }: { data: any }) {
   // v3.1: subflow represents a logical group of phases. Double-click opens
   // it in a new tab (via data.onOpen). Animation 'executing' = some inner
@@ -625,4 +675,6 @@ export const nodeTypes = {
   // v3.0
   pipelinePhaseNode: PipelinePhaseNode,
   subflowNode: SubflowNode,
+  // v3.3 — phase trio terminals (Entrada / Saída)
+  ioNode: IONode,
 };
