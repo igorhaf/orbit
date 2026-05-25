@@ -25,6 +25,13 @@ export interface Subflow {
   node_ids: string[];
   position: { x: number; y: number };
   collapsed: boolean;
+  // v3.5 — hierarquia: child_subflow_ids lista subflows aninhados (L2 dentro
+  // de L1, L3 dentro de L2, etc); parent_id aponta pro subflow imediatamente
+  // acima na árvore (null/undefined = root level).
+  child_subflow_ids?: string[];
+  parent_id?: string | null;
+  kind?: string;
+  phase_key?: string;
 }
 
 export interface CanvasTab {

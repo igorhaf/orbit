@@ -81,6 +81,263 @@ DEEP_PIPELINE_GROUPS = [
 ]
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# v3.5 — DEEP_PIPELINE_HIERARCHY (3 níveis aninhados)
+#
+# Mapa completo da arquitetura ideal do Deep Pipeline pra render no canvas:
+#  - Nível 1 (root): 4 áreas executáveis (Discovery, Cards, Wiki, QA)
+#  - Nível 2: sub-subflows (Phase0_Scan, Phase1_FileAnalysis, Phase4a_Epics...)
+#  - Nível 3: cada sub-subflow contém uma cadeia de utility nodes + ioNodes
+#    Entrada/Saída + (opcionalmente) modelNode.
+#
+# Cada step nível 3 é uma tupla:
+#   (kind, opts?)  ─ kind é o `kind` do catálogo (file_scanner, etc) ou
+#                    "model:<model_id>" para um modelNode da phase;
+#                    opts é um dict de config override + flag `planned`.
+#
+# Esta estrutura É a "arquitetura ideal" que a Entrega B (engine) vai
+# executar. Itens marcados com {"planned": True} ainda não rodam no código
+# atual mas a Entrega B vai introduzir.
+# ────────────────────────────────────────────────────────────────────────────
+DEEP_PIPELINE_HIERARCHY = [
+    {
+        "id": "discovery", "label": "Discovery", "order": 0,
+        "children": [
+            {"id": "phase_0_scan", "label": "Phase 0 — Scan", "phase_key": "phase_0",
+             "steps": [
+                 ("file_scanner", {}),
+                 ("file_type_classifier", {}),
+                 ("semantic_layer_classifier", {}),
+                 ("change_detector", {"planned": True}),
+                 ("pipeline_artifact_writer", {"planned": True}),
+             ]},
+            {"id": "phase_1_file_analysis", "label": "Phase 1 — File Analysis", "phase_key": "phase_1",
+             "steps": [
+                 ("file_scanner", {}),
+                 ("content_truncator", {}),
+                 ("spec_loader", {"planned": True}),
+                 ("spec_relevance_filter", {"planned": True}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_file_analysis"}}),
+                 ("model_selector", {}),
+                 ("quota_probe", {}),
+                 ("provider_health_check", {}),
+                 ("model:claude-haiku-4-5", {"call_kind": "batch"}),
+                 ("json_extractor", {}),
+                 ("json_schema_validator", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("checkpoint_saver", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_2_rule_synthesis", "label": "Phase 2 — Rule Synthesis", "phase_key": "phase_2",
+             "steps": [
+                 ("domain_grouper", {}),
+                 ("json_compactor", {}),
+                 ("spec_loader", {"planned": True}),
+                 ("spec_relevance_filter", {"planned": True}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_rule_synthesis"}}),
+                 ("model_selector", {}),
+                 ("quota_probe", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "single", "multi_turn": True}),
+                 ("json_extractor", {}),
+                 ("json_schema_validator", {"planned": True}),
+                 ("business_rule_storer", {}),
+                 ("embed_and_store", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_3_arch_map", "label": "Phase 3 — Architectural Map", "phase_key": "phase_3",
+             "steps": [
+                 ("json_compactor", {}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_architectural_map"}}),
+                 ("model_selector", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "single", "thinking_budget": 4000}),
+                 ("json_extractor", {}),
+                 ("json_schema_validator", {"planned": True}),
+                 ("error_classifier", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("checkpoint_saver", {"planned": True}),
+                 ("telemetry_emitter", {}),
+             ]},
+        ],
+    },
+    {
+        "id": "cards", "label": "Cards", "order": 1,
+        "children": [
+            {"id": "phase_4a_epics", "label": "Phase 4a — Epics", "phase_key": "phase_4a",
+             "steps": [
+                 ("domain_grouper", {}),
+                 ("json_compactor", {}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_epic_generation"}}),
+                 ("model_selector", {}),
+                 ("quota_probe", {}),
+                 ("model:claude-opus-4-7", {"call_kind": "batch", "max_concurrency": 20}),
+                 ("json_extractor", {}),
+                 ("epic_deduplicator", {}),
+                 ("card_hierarchy_builder", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("checkpoint_saver", {"planned": True}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_4b_stories", "label": "Phase 4b — Stories", "phase_key": "phase_4b",
+             "steps": [
+                 ("json_compactor", {}),
+                 ("prompt_context_compressor", {"planned": True}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_story_generation"}}),
+                 ("model_selector", {}),
+                 ("model:claude-opus-4-7", {"call_kind": "batch", "max_concurrency": 3}),
+                 ("json_extractor", {}),
+                 ("json_schema_validator", {"planned": True}),
+                 ("card_hierarchy_builder", {}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("checkpoint_saver", {"planned": True}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_4c_tasks", "label": "Phase 4c — Tasks", "phase_key": "phase_4c",
+             "steps": [
+                 ("json_compactor", {}),
+                 ("prompt_context_compressor", {"planned": True}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_task_generation"}}),
+                 ("model_selector", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "batch", "max_concurrency": 5}),
+                 ("json_extractor", {}),
+                 ("json_schema_validator", {"planned": True}),
+                 ("card_hierarchy_builder", {}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("checkpoint_saver", {"planned": True}),
+                 ("telemetry_emitter", {}),
+             ]},
+        ],
+    },
+    {
+        "id": "wiki", "label": "Wiki", "order": 2,
+        "children": [
+            {"id": "phase_5a_structure", "label": "Phase 5a — Structure", "phase_key": "phase_5",
+             "steps": [
+                 ("json_compactor", {}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_wiki_structure"}}),
+                 ("model_selector", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "single"}),
+                 ("json_extractor", {}),
+                 ("json_schema_validator", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_5b_overview", "label": "Phase 5b — Overview", "phase_key": "phase_5",
+             "steps": [
+                 ("json_compactor", {}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_wiki_overview"}}),
+                 ("model_selector", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "single", "max_tokens": 64000}),
+                 ("json_extractor", {}),
+                 ("wiki_page_writer", {}),
+                 ("embed_and_store", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_5c_domain_pages", "label": "Phase 5c — Domain Pages", "phase_key": "phase_5",
+             "steps": [
+                 ("domain_grouper", {}),
+                 ("json_compactor", {}),
+                 ("prompt_context_compressor", {"planned": True}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_wiki_domain"}}),
+                 ("model_selector", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "batch", "max_concurrency": 3}),
+                 ("json_extractor", {}),
+                 ("wiki_page_writer", {}),
+                 ("text_chunker", {"planned": True}),
+                 ("embed_and_store", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_5d_flow_pages", "label": "Phase 5d — Flow Pages", "phase_key": "phase_5",
+             "steps": [
+                 ("json_compactor", {}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_wiki_flow"}}),
+                 ("model_selector", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "single", "optional": True}),
+                 ("json_extractor", {}),
+                 ("wiki_page_writer", {}),
+                 ("embed_and_store", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+        ],
+    },
+    {
+        "id": "qa", "label": "QA", "order": 3,
+        "children": [
+            {"id": "phase_6_ai_qa", "label": "Phase 6 — AI QA", "phase_key": "phase_6",
+             "steps": [
+                 ("json_compactor", {}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_qa"}}),
+                 ("model_selector", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "single", "thinking_budget": 3000}),
+                 ("json_extractor", {}),
+                 ("json_schema_validator", {"planned": True}),
+                 ("phase_score_calculator", {"planned": True}),
+                 ("error_classifier", {"planned": True}),
+                 ("ai_execution_logger", {}),
+                 ("token_cost_calculator", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_6_local_qa", "label": "Phase 6 — Local QA", "phase_key": "phase_6",
+             "steps": [
+                 ("phase_score_calculator", {}),
+                 ("local_qa", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "phase_7_gap_filling", "label": "Phase 7 — Gap Filling", "phase_key": "phase_7",
+             "steps": [
+                 ("error_classifier", {"planned": True}),
+                 ("router", {"planned": True}),
+                 ("job_child_creator", {"planned": True}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+            {"id": "post_enrich_project", "label": "Post — Enrich Project", "phase_key": "phase_7",
+             "steps": [
+                 ("git_commit_fetcher", {}),
+                 ("rag_query", {}),
+                 ("json_compactor", {}),
+                 ("contract_renderer", {"config": {"contract_name": "deep_project_enrichment"}}),
+                 ("model_selector", {}),
+                 ("model:claude-sonnet-4-6", {"call_kind": "single"}),
+                 ("json_extractor", {}),
+                 ("pipeline_artifact_writer", {}),
+                 ("telemetry_emitter", {}),
+             ]},
+        ],
+    },
+]
+
+
+# Helper: catálogo de utility nodes por kind (lookup). Populado em
+# `get_canvas_snapshot` quando o catalog_utilities é construído.
+_UTILITY_CATALOG_BY_KIND: dict[str, dict] = {}
+
+
 def _merge_phase_configs(profile_phase_configs: dict, fallback_phases: list) -> dict:
     """Merge a pipeline_profile.phase_configs jsonb with the DEEP_PIPELINE_PHASES
     fallback so the snapshot always renders every phase, even if the profile
@@ -161,148 +418,319 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
         if mid and mid not in model_by_id:
             model_by_id[mid] = m
 
-    # ── 1. Root canvas: subflows em sequência (sem ioNodes no root) ─────
-    # v3.5: canvas root NÃO tem Entrada/Saída — a sequência de subflows JÁ
-    # É o pipeline. Cada SUBFLOW (Discovery/Cards/Wiki/QA) abre uma tab
-    # com 1 ioNode Entrada + N modelNodes em sequência (1 por phase) + 1
-    # ioNode Saída. Sem trios por phase.
-    SUBFLOW_X = 280
-    SUBFLOW_Y_BASE = 80
-    SUBFLOW_GAP = 130
-    prev_sf_node_id: str | None = None
+    # Defaults visuais por categoria (usado pra preencher utility nodes da
+    # hierarquia quando o catalog completo ainda não foi materializado).
+    # Match os valores em catalog_utilities mais abaixo.
+    _CAT_DEFAULTS: dict[str, tuple[str, str]] = {
+        "Discovery":      ("#0891b2", "folder-search"),
+        "Processing":     ("#f59e0b", "edit"),
+        "Storage":        ("#8b5cf6", "database-zap"),
+        "AI":             ("#7c3aed", "sparkles"),
+        "Specs":          ("#0ea5e9", "file-text"),
+        "Validation":     ("#22c55e", "shield-check"),
+        "Observability":  ("#64748b", "activity"),
+        "Resilience":     ("#3b82f6", "repeat"),
+        "Routing":        ("#10b981", "git-fork"),
+    }
+    # Map kind → (label, category) baseado no catalog_utilities. Sincronizar
+    # com a lista abaixo se adicionar kinds novos.
+    _KIND_META: dict[str, tuple[str, str]] = {
+        # Discovery
+        "file_scanner":               ("File Scanner",              "Discovery"),
+        "file_type_classifier":       ("File Type Classifier",      "Discovery"),
+        "semantic_layer_classifier":  ("Semantic Layer",            "Discovery"),
+        "change_detector":            ("Change Detector",           "Discovery"),
+        # Processing
+        "content_truncator":          ("Content Truncator",         "Processing"),
+        "json_compactor":             ("JSON Compactor",            "Processing"),
+        "json_extractor":             ("JSON Extractor",            "Processing"),
+        "domain_grouper":             ("Domain Grouper",            "Processing"),
+        "epic_deduplicator":          ("Epic Deduplicator",         "Processing"),
+        "card_hierarchy_builder":     ("Card Hierarchy",            "Processing"),
+        "text_chunker":               ("Text Chunker",              "Processing"),
+        "git_commit_fetcher":         ("Git Commit Fetcher",        "Processing"),
+        "prompt_context_compressor":  ("Context Compressor",        "Processing"),
+        # Storage
+        "embed_and_store":            ("Embed & Store",             "Storage"),
+        "rag_query":                  ("RAG Query",                 "Storage"),
+        "business_rule_storer":       ("Business Rule Storer",      "Storage"),
+        "pipeline_artifact_writer":   ("Artifact Writer",           "Storage"),
+        "wiki_page_writer":           ("Wiki Page Writer",          "Storage"),
+        "checkpoint_saver":           ("Checkpoint Saver",          "Storage"),
+        # AI
+        "claudius_single_call":       ("Claudius Call",             "AI"),
+        "claudius_batch_call":        ("Claudius Batch",            "AI"),
+        "quota_probe":                ("Quota Probe",               "AI"),
+        "provider_health_check":      ("Health Check",              "AI"),
+        "model_selector":             ("Model Selector",            "AI"),
+        "token_cost_calculator":      ("Token Cost",                "AI"),
+        "ai_execution_logger":        ("AI Execution Logger",       "AI"),
+        # Specs
+        "spec_loader":                ("Spec Loader",               "Specs"),
+        "spec_relevance_filter":      ("Spec Filter",               "Specs"),
+        "contract_renderer":          ("Contract Renderer",         "Specs"),
+        # Validation
+        "json_schema_validator":      ("JSON Schema",               "Validation"),
+        "local_qa":                   ("Local QA",                  "Validation"),
+        "error_classifier":           ("Error Classifier",          "Validation"),
+        "phase_score_calculator":     ("Phase Score",               "Validation"),
+        # Observability
+        "telemetry_emitter":          ("Telemetry",                 "Observability"),
+        "job_child_creator":          ("Child Job",                 "Observability"),
+        # Legacy / routing
+        "router":                     ("Router",                    "Routing"),
+        "retry":                      ("Retry",                     "Resilience"),
+    }
+    def _resolve_utility_template(kind: str) -> dict:
+        label, category = _KIND_META.get(kind, (kind, "Outras"))
+        color, icon = _CAT_DEFAULTS.get(category, ("#94a3b8", "circle"))
+        return {"label": label, "category": category, "color": color, "icon": icon}
 
-    # Layout dentro do subflow tab
-    SF_INNER_Y = 160
-    SF_INNER_X_IN = 80
-    SF_INNER_X_STEP = 240
-    for idx, group in enumerate(DEEP_PIPELINE_GROUPS):
-        sf_node_id = f"sf-{group['id']}"
-        group_phase_keys = group["phase_keys"]
+    # ── 1. Hierarquia 3 níveis: Root → Áreas (L1) → Sub-subflows (L2) → Steps (L3)
+    #
+    # Cada NÍVEL é uma tab/subflow no canvas:
+    #
+    #   Nível 1 (root tab):  4 SubflowNodes (Discovery, Cards, Wiki, QA)
+    #     em sequência, sem ioNodes (a sequência É o pipeline).
+    #
+    #   Nível 2 (área tab):  N SubflowNodes (Phase0_Scan, Phase1_FileAnalysis...)
+    #     entre 1 ioNode Entrada e 1 ioNode Saída da área.
+    #
+    #   Nível 3 (sub-subflow tab):  cadeia de utilityNodes (+ modelNode) entre
+    #     1 ioNode Entrada e 1 ioNode Saída do sub-subflow. ESTE é o nível
+    #     executável.
+    ROOT_SUBFLOW_X = 280
+    ROOT_SUBFLOW_Y_BASE = 80
+    ROOT_SUBFLOW_GAP = 130
 
-        # IDs dos nodes que vivem DENTRO desta subflow tab
-        sf_in_id = f"sf-{group['id']}-in"
-        sf_out_id = f"sf-{group['id']}-out"
-        inner_node_ids: list[str] = [sf_in_id]
-        phase_node_ids: list[str] = []
+    # Layout dentro de uma área (nível 2)
+    L2_INNER_Y = 200
+    L2_INNER_X_IN = 80
+    L2_INNER_X_STEP = 260
 
-        # 1 Entrada do subflow (canto esquerdo)
+    # Layout dentro de um sub-subflow (nível 3) — cadeia longa de steps
+    L3_INNER_Y = 200
+    L3_INNER_X_IN = 60
+    L3_INNER_X_STEP = 200
+
+    prev_l1_node_id: str | None = None
+    for l1_idx, area in enumerate(DEEP_PIPELINE_HIERARCHY):
+        l1_sf_id = f"sf-{area['id']}"
+        l1_in_id = f"sf-{area['id']}-in"
+        l1_out_id = f"sf-{area['id']}-out"
+        l1_inner_ids: list[str] = [l1_in_id]
+        l1_child_subflow_ids: list[str] = []
+
+        # Entrada da área (L2)
         nodes.append({
-            "id": sf_in_id,
-            "type": "ioNode",
-            "position": {"x": SF_INNER_X_IN, "y": SF_INNER_Y},
+            "id": l1_in_id, "type": "ioNode",
+            "position": {"x": L2_INNER_X_IN, "y": L2_INNER_Y},
             "data": {
-                "label": f"Entrada — {group['label']}",
+                "label": f"Entrada — {area['label']}",
                 "io_kind": "input",
-                "group_id": group["id"],
+                "area_id": area["id"],
             },
         })
 
-        # N modelNodes em sequência (1 por phase, sem trio)
-        for p_idx, pk in enumerate(group_phase_keys):
-            phase = phase_catalog.get(pk, {})
-            phase_label = phase.get("label") or pk
-            assigned_model_id = phase.get("model")
-            ai_model = model_by_id.get(assigned_model_id) if assigned_model_id else None
-            model_node_id = f"phase-{pk}-model"
-            x_pos = SF_INNER_X_IN + (p_idx + 1) * SF_INNER_X_STEP
+        # Para cada sub-subflow (Nível 2), criar 1 subflowNode + 1 subflow entry
+        prev_l2_node_id = l1_in_id
+        for l2_idx, sub in enumerate(area["children"]):
+            sub_sf_id = f"sf-{sub['id']}"
+            l2_x = L2_INNER_X_IN + (l2_idx + 1) * L2_INNER_X_STEP
+
+            # SubflowNode visível dentro da área tab (representa o sub-subflow)
             nodes.append({
-                "id": model_node_id,
-                "type": "modelNode",
-                "position": {"x": x_pos, "y": SF_INNER_Y},
+                "id": sub_sf_id, "type": "subflowNode",
+                "position": {"x": l2_x, "y": L2_INNER_Y},
                 "data": {
-                    "label": ai_model.name if ai_model else (assigned_model_id or "(sem modelo)"),
-                    "provider": "claudius",
-                    "config": (ai_model.config if ai_model else {"model_id": assigned_model_id}) or {},
-                    "model_id": assigned_model_id,
-                    "ai_model_id": str(ai_model.id) if ai_model else None,
-                    "phase_key": pk,
-                    "phase_label": phase_label,
-                    "group_id": group["id"],
-                    "description": phase.get("description"),
-                    "animation": "idle",
+                    "label": sub["label"],
+                    "kind": "deep_pipeline_step",
+                    "phase_key": sub.get("phase_key"),
+                    "area_id": area["id"],
+                    "step_id": sub["id"],
+                    "node_count": len(sub["steps"]) + 2,  # +Entrada/Saída
+                    "collapsed": True,
                 },
             })
-            inner_node_ids.append(model_node_id)
-            phase_node_ids.append(model_node_id)
+            l1_inner_ids.append(sub_sf_id)
+            l1_child_subflow_ids.append(sub["id"])
 
-            # Edge: predecessor (Entrada do subflow ou phase anterior) → este modelNode
-            prev_node = sf_in_id if p_idx == 0 else f"phase-{group_phase_keys[p_idx - 1]}-model"
+            # Sequência L2: predecessor → este subflowNode
             edges.append({
-                "id": f"edge-{prev_node}-{model_node_id}",
-                "source": prev_node, "target": model_node_id,
+                "id": f"edge-{prev_l2_node_id}-{sub_sf_id}",
+                "source": prev_l2_node_id, "target": sub_sf_id,
                 "type": "smartEdge",
                 "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
-                "data": {"port_type": "subflow_sequence"},
+                "data": {"port_type": "area_sequence"},
+            })
+            prev_l2_node_id = sub_sf_id
+
+            # ── Nível 3: gerar nodes da cadeia interna do sub-subflow ──
+            l3_in_id = f"sf-{sub['id']}-in"
+            l3_out_id = f"sf-{sub['id']}-out"
+            l3_inner_ids: list[str] = [l3_in_id]
+
+            # Entrada do sub-subflow
+            nodes.append({
+                "id": l3_in_id, "type": "ioNode",
+                "position": {"x": L3_INNER_X_IN, "y": L3_INNER_Y},
+                "data": {
+                    "label": f"Entrada — {sub['label']}",
+                    "io_kind": "input",
+                    "step_id": sub["id"],
+                },
             })
 
-        # 1 Saída do subflow (canto direito)
-        sf_out_x = SF_INNER_X_IN + (len(group_phase_keys) + 1) * SF_INNER_X_STEP
-        nodes.append({
-            "id": sf_out_id,
-            "type": "ioNode",
-            "position": {"x": sf_out_x, "y": SF_INNER_Y},
-            "data": {
-                "label": f"Saída — {group['label']}",
-                "io_kind": "output",
-                "group_id": group["id"],
-            },
-        })
-        inner_node_ids.append(sf_out_id)
+            prev_step_id = l3_in_id
+            for step_idx, (kind_or_model, opts) in enumerate(sub["steps"]):
+                step_x = L3_INNER_X_IN + (step_idx + 1) * L3_INNER_X_STEP
+                step_node_id = f"step-{sub['id']}-{step_idx}-{kind_or_model.replace(':', '-')}"
 
-        # Edge final: último modelNode → Saída
-        if phase_node_ids:
-            last_model = phase_node_ids[-1]
+                is_model = isinstance(kind_or_model, str) and kind_or_model.startswith("model:")
+                planned = bool(opts.get("planned"))
+
+                if is_model:
+                    assigned_model_id = kind_or_model.split(":", 1)[1]
+                    ai_model = model_by_id.get(assigned_model_id)
+                    nodes.append({
+                        "id": step_node_id, "type": "modelNode",
+                        "position": {"x": step_x, "y": L3_INNER_Y},
+                        "data": {
+                            "label": ai_model.name if ai_model else assigned_model_id,
+                            "provider": "claudius",
+                            "config": (ai_model.config if ai_model else {"model_id": assigned_model_id}) or {},
+                            "model_id": assigned_model_id,
+                            "ai_model_id": str(ai_model.id) if ai_model else None,
+                            "phase_key": sub.get("phase_key"),
+                            "step_id": sub["id"],
+                            "call_kind": opts.get("call_kind"),
+                            "max_concurrency": opts.get("max_concurrency"),
+                            "thinking_budget": opts.get("thinking_budget"),
+                            "max_tokens": opts.get("max_tokens"),
+                            "optional": opts.get("optional", False),
+                            "planned": planned,
+                            "animation": "idle",
+                        },
+                    })
+                else:
+                    # utility node — usa metadata resolvida do _KIND_META
+                    tpl = _resolve_utility_template(kind_or_model)
+                    nodes.append({
+                        "id": step_node_id, "type": "utilityNode",
+                        "position": {"x": step_x, "y": L3_INNER_Y},
+                        "data": {
+                            "label": tpl["label"],
+                            "kind": kind_or_model,
+                            "category": tpl["category"],
+                            "color": tpl["color"],
+                            "icon": tpl["icon"],
+                            "step_id": sub["id"],
+                            "phase_key": sub.get("phase_key"),
+                            "planned": planned,
+                            "config": opts.get("config") or {},
+                            "enabled": not planned,
+                        },
+                    })
+
+                l3_inner_ids.append(step_node_id)
+                edges.append({
+                    "id": f"edge-{prev_step_id}-{step_node_id}",
+                    "source": prev_step_id, "target": step_node_id,
+                    "type": "smartEdge",
+                    "style": {
+                        "stroke": "#9ca3af" if planned else "#3b82f6",
+                        "strokeWidth": 1.6,
+                        **({"strokeDasharray": "4 4"} if planned else {}),
+                    },
+                    "data": {"port_type": "step_sequence", "planned": planned},
+                })
+                prev_step_id = step_node_id
+
+            # Saída do sub-subflow
+            l3_out_x = L3_INNER_X_IN + (len(sub["steps"]) + 1) * L3_INNER_X_STEP
+            nodes.append({
+                "id": l3_out_id, "type": "ioNode",
+                "position": {"x": l3_out_x, "y": L3_INNER_Y},
+                "data": {
+                    "label": f"Saída — {sub['label']}",
+                    "io_kind": "output",
+                    "step_id": sub["id"],
+                },
+            })
+            l3_inner_ids.append(l3_out_id)
             edges.append({
-                "id": f"edge-{last_model}-{sf_out_id}",
-                "source": last_model, "target": sf_out_id,
+                "id": f"edge-{prev_step_id}-{l3_out_id}",
+                "source": prev_step_id, "target": l3_out_id,
                 "type": "smartEdge",
-                "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
-                "data": {"port_type": "subflow_sequence"},
-            })
-        else:
-            # Subflow sem phases: Entrada → Saída direto
-            edges.append({
-                "id": f"edge-{sf_in_id}-{sf_out_id}",
-                "source": sf_in_id, "target": sf_out_id,
-                "type": "smartEdge",
-                "style": {"stroke": "#9ca3af", "strokeWidth": 1.4, "strokeDasharray": "4 4"},
-                "data": {"port_type": "subflow_sequence"},
+                "style": {"stroke": "#3b82f6", "strokeWidth": 1.6},
+                "data": {"port_type": "step_sequence"},
             })
 
-        subflows[group["id"]] = {
-            "label": group["label"],
-            "node_ids": inner_node_ids,
-            "position": {"x": SUBFLOW_X, "y": SUBFLOW_Y_BASE + idx * SUBFLOW_GAP},
-            "collapsed": True,
-            "kind": "deep_pipeline_group",
-            "order": group["order"],
-            "phase_keys": group_phase_keys,
-        }
-        # SubflowNode (visible on root)
-        nodes.append({
-            "id": sf_node_id,
-            "type": "subflowNode",
-            "position": {"x": SUBFLOW_X, "y": SUBFLOW_Y_BASE + idx * SUBFLOW_GAP},
-            "data": {
-                "label": group["label"],
+            # Persistir o sub-subflow no dict subflows
+            subflows[sub["id"]] = {
+                "label": sub["label"],
+                "node_ids": l3_inner_ids,
+                "position": {"x": l2_x, "y": L2_INNER_Y},
                 "collapsed": True,
-                "node_count": len(group_phase_keys),  # show #phases, not #inner nodes
-                "kind": "deep_pipeline_group",
-                "group_id": group["id"],
-                "phase_keys": group_phase_keys,
+                "kind": "deep_pipeline_step",
+                "parent_id": area["id"],
+                "phase_key": sub.get("phase_key"),
+            }
+
+        # Saída da área (L2): último sub-subflow → Saída
+        l1_out_x = L2_INNER_X_IN + (len(area["children"]) + 1) * L2_INNER_X_STEP
+        nodes.append({
+            "id": l1_out_id, "type": "ioNode",
+            "position": {"x": l1_out_x, "y": L2_INNER_Y},
+            "data": {
+                "label": f"Saída — {area['label']}",
+                "io_kind": "output",
+                "area_id": area["id"],
             },
         })
-        # Wire root subflows sequentially: Discovery → Cards → Wiki → QA
-        if prev_sf_node_id is not None:
+        l1_inner_ids.append(l1_out_id)
+        edges.append({
+            "id": f"edge-{prev_l2_node_id}-{l1_out_id}",
+            "source": prev_l2_node_id, "target": l1_out_id,
+            "type": "smartEdge",
+            "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
+            "data": {"port_type": "area_sequence"},
+        })
+
+        # Persistir a área (L1)
+        subflows[area["id"]] = {
+            "label": area["label"],
+            "node_ids": l1_inner_ids,
+            "child_subflow_ids": l1_child_subflow_ids,
+            "position": {"x": ROOT_SUBFLOW_X, "y": ROOT_SUBFLOW_Y_BASE + l1_idx * ROOT_SUBFLOW_GAP},
+            "collapsed": True,
+            "kind": "deep_pipeline_area",
+            "order": area["order"],
+        }
+        # SubflowNode visível no ROOT (representa a área)
+        nodes.append({
+            "id": l1_sf_id,
+            "type": "subflowNode",
+            "position": {"x": ROOT_SUBFLOW_X, "y": ROOT_SUBFLOW_Y_BASE + l1_idx * ROOT_SUBFLOW_GAP},
+            "data": {
+                "label": area["label"],
+                "collapsed": True,
+                "node_count": len(area["children"]),  # # de sub-subflows
+                "kind": "deep_pipeline_area",
+                "area_id": area["id"],
+                "child_subflow_count": len(l1_child_subflow_ids),
+            },
+        })
+        # Wire root areas sequentially: Discovery → Cards → Wiki → QA
+        if prev_l1_node_id is not None:
             edges.append({
-                "id": f"edge-sf-{prev_sf_node_id}-{sf_node_id}",
-                "source": prev_sf_node_id,
-                "target": sf_node_id,
+                "id": f"edge-{prev_l1_node_id}-{l1_sf_id}",
+                "source": prev_l1_node_id, "target": l1_sf_id,
                 "type": "smartEdge",
                 "style": {"stroke": "#3b82f6", "strokeWidth": 2},
-                "data": {"label": "then", "port_type": "subflow_sequence"},
+                "data": {"label": "then", "port_type": "root_sequence"},
             })
-        prev_sf_node_id = sf_node_id
+        prev_l1_node_id = l1_sf_id
 
     # ── 3. Model catalog — sidebar items (NOT on the canvas).
     # v3.2: models live in the left sidebar. They become canvas nodes only
