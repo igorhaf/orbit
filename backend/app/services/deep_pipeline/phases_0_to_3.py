@@ -293,9 +293,11 @@ class Phase0to3Mixin:
             await progress_cb(1, pct,
                 f"Analisados {done_total}/{total_files} arquivos (batch {batch_num}/{total_batches})")
 
-            # Pause between batches to avoid overloading the provider
+            # Pause between batches to avoid overloading the provider.
+            # Claudius already retries on 429; 5s was over-conservative and added
+            # ~2 min of pure idle on 256-file projects.
             if batch_start + batch_size < len(pending):
-                await asyncio.sleep(5)  # 5s pause
+                await asyncio.sleep(1)
 
         # Clear checkpoint on successful completion
         if pipeline_run and pipeline_run.checkpoint_state:
@@ -552,11 +554,14 @@ class Phase0to3Mixin:
             "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
         })
 
+        # Compact JSON: drop indent + use tight separators. Same semantic
+        # payload to the model, ~25% fewer input tokens.
+        _compact = lambda obj: json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
         user_prompt = (
             f"Projeto: {project.name}\n"
-            f"Stack: {json.dumps(project.stack or {})}\n\n"
-            f"Metadados estruturais:\n{json.dumps(structural, ensure_ascii=False, indent=2)}\n\n"
-            f"Dominios e regras sintetizadas:\n{json.dumps(domains_summary, ensure_ascii=False, indent=2)}"
+            f"Stack: {_compact(project.stack or {})}\n\n"
+            f"Metadados estruturais:\n{_compact(structural)}\n\n"
+            f"Dominios e regras sintetizadas:\n{_compact(domains_summary)}"
         )
 
         p3_model = self._get_model("phase_3", MODEL_SONNET)

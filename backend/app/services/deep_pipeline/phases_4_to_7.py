@@ -513,7 +513,7 @@ class Phase4to7Mixin:
                     result = await self.claudius.call(
                         model=self._get_model("phase_5d", MODEL_SONNET),
                         system_prompt="Gere uma pagina de wiki detalhada para este fluxo cross-domain. Responda com JSON: {\"pages\": [{\"slug\": \"...\", \"title\": \"...\", \"content\": \"markdown...\", \"word_count\": N}]}",
-                        user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, indent=2)}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False)}",
+                        user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, separators=(',', ':'))}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False, separators=(',', ':'))}",
                         max_tokens=self._get_max_tokens("phase_5d", 16000),
                         **self._ollama_kwargs("phase_5d"),
                     )
@@ -617,11 +617,13 @@ class Phase4to7Mixin:
             model=p6_model,
             system_prompt=system_prompt or "Review the quality of all pipeline artifacts. Respond with JSON.",
             user_prompt=(
+                # Compact JSON — pretty-print custa 20-30% extra tokens
+                # sem ganho semantico para o modelo.
                 f"Projeto: {project.name}\n\n"
-                f"Mapa: {json.dumps(arch_map, ensure_ascii=False, indent=2)}\n\n"
-                f"Regras: {json.dumps(rules_summary, ensure_ascii=False)}\n\n"
-                f"Cards: {json.dumps(card_stats, ensure_ascii=False)}\n\n"
-                f"Wiki: {json.dumps(wiki_summary, ensure_ascii=False)}"
+                f"Mapa: {json.dumps(arch_map, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                f"Regras: {json.dumps(rules_summary, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                f"Cards: {json.dumps(card_stats, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                f"Wiki: {json.dumps(wiki_summary, ensure_ascii=False, separators=(',', ':'))}"
             ),
             thinking={"type": "enabled", "budget_tokens": p6_thinking} if p6_thinking else None,
             max_tokens=p6_max_tokens,
@@ -821,11 +823,13 @@ class Phase4to7Mixin:
 
         await progress_cb(7, 85, "Gerando descricao e contexto semantico do projeto...")
 
+        # Compact-JSON helper: same payload, ~25% less bytes than pretty.
+        _c = lambda obj: json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
         contract_vars = {
             "project_name": project.name,
-            "architectural_map_json": json.dumps(arch_map, ensure_ascii=False)[:8000],
-            "domains_summary": json.dumps(domains_summary, ensure_ascii=False)[:4000],
-            "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
+            "architectural_map_json": _c(arch_map)[:8000],
+            "domains_summary": _c(domains_summary)[:4000],
+            "tech_stack": _c(project.stack or {}),
             "files_count": str(len(file_inventory)),
             "rules_count": str(total_rules),
             "cards_count": str(card_stats.get("total_cards", 0)),
@@ -840,12 +844,12 @@ class Phase4to7Mixin:
 
         user_prompt = (
             f"Projeto: {project.name}\n"
-            f"Stack: {json.dumps(project.stack or {})}\n"
+            f"Stack: {_c(project.stack or {})}\n"
             f"Arquivos analisados: {len(file_inventory)}\n"
             f"Regras de negocio: {total_rules}\n"
             f"Cards gerados: {card_stats.get('total_cards', 0)}\n\n"
-            f"Mapa Arquitetural:\n{json.dumps(arch_map, ensure_ascii=False)[:6000]}\n\n"
-            f"Dominios:\n{json.dumps(domains_summary, ensure_ascii=False)[:3000]}"
+            f"Mapa Arquitetural:\n{_c(arch_map)[:6000]}\n\n"
+            f"Dominios:\n{_c(domains_summary)[:3000]}"
         )
 
         # Append rich context to user prompt
