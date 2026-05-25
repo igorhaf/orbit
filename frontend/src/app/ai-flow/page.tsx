@@ -415,6 +415,38 @@ function AIFlowPageInner() {
 
   const onSave = useCallback(() => doSave(false), [doSave]);
 
+  // v3.6.6: reset layout — descarta o grafo salvo no DB e recarrega o snapshot
+  // default. Útil quando o usuário quer voltar pro padrão ou ver mudanças
+  // estruturais no gerador do backend.
+  const onResetLayout = useCallback(async () => {
+    try {
+      // Cancelar auto-save pendente pra não re-salvar enquanto resetamos
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      setAutoSaveState('saving');
+      const result = await aiFlowApi.canvasReset();
+      if (!result.reset) {
+        showError(`Reset não aplicado: ${result.reason || 'desconhecido'}`);
+        setAutoSaveState('idle');
+        return;
+      }
+      // Re-hidrata o canvas com o snapshot default
+      const snap = await aiFlowApi.canvasSnapshot();
+      canvas.setNodes(snap.nodes as Node[]);
+      canvas.setEdges(snap.edges as any);
+      canvas.setSubflows(snap.subflows as any);
+      if ((snap as any).catalog) setCatalog((snap as any).catalog as Catalog);
+      if ((snap as any).types_schema) setTypesSchema((snap as any).types_schema);
+      canvas.markClean();
+      setAutoSaveState('idle');
+      showSuccess(result.had_saved_graph
+        ? 'Layout resetado — grafo customizado descartado'
+        : 'Layout resetado (não havia customizações salvas)');
+    } catch (e: any) {
+      setAutoSaveState('error');
+      showError(`Falha ao resetar: ${e?.message || e}`);
+    }
+  }, [canvas, showError, showSuccess]);
+
   // v3.6.3: AUTO-SAVE com debounce 1.5s. Dispara silenciosamente quando
   // `canvas.dirty` vira true (após arrastar node, criar/deletar edge etc).
   // Cancela o save anterior se nova mudança chega dentro da janela.
@@ -675,6 +707,7 @@ function AIFlowPageInner() {
           onGroupSubflow={groupIntoSubflow}
           onRun={onRun}
           onSave={onSave}
+          onResetLayout={onResetLayout}
           onOptimize={() => showError('Otimização — pendente nesta entrega')}
           onToggleDebug={() => setDebugOpen((o) => !o)}
           dirty={canvas.dirty}

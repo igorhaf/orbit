@@ -52,6 +52,13 @@ export const aiFlowApi = {
     };
   }>(`/api/v1/ai-flow/canvas-snapshot?t=${Date.now()}`),
 
+  // v3.6.6 — reset layout (deleta o grafo salvo, força gerar default)
+  canvasReset: () =>
+    request<{ reset: boolean; had_saved_graph?: boolean; reason?: string }>(
+      '/api/v1/ai-flow/canvas-reset',
+      { method: 'POST' },
+    ),
+
   // v3.4 — persist customized canvas state (models, phase_configs, graph)
   canvasSave: (payload: {
     models?: Array<{ ai_model_id: string; name?: string; config?: any; rate_limit_requests?: number; timeout_seconds?: number }>;

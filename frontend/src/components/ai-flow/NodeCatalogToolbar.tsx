@@ -14,7 +14,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Cpu, Sparkles, Wrench, FolderTree, Play, Bug, Save, Zap, ChevronDown,
+  Cpu, Sparkles, Wrench, FolderTree, Play, Bug, Save, Zap, ChevronDown, RotateCcw,
 } from 'lucide-react';
 
 export interface ToolbarProps {
@@ -27,6 +27,7 @@ export interface ToolbarProps {
   onGroupSubflow: () => void;
   onRun: () => void;
   onSave: () => void;
+  onResetLayout?: () => void;  // v3.6.6
   onOptimize: () => void;
   onToggleDebug: () => void;
   dirty: boolean;
@@ -193,6 +194,16 @@ export function NodeCatalogToolbar(props: ToolbarProps) {
           {props.autoSaveState === 'saved'   && '✓ auto-salvo'}
           {props.autoSaveState === 'error'   && '⚠ falhou'}
         </span>
+      )}
+      {/* v3.6.6: reset layout — descarta grafo salvo e regenera default */}
+      {props.onResetLayout && (
+        <button
+          onClick={props.onResetLayout}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-orange-200 text-orange-700 hover:bg-orange-50"
+          title="Descartar customizações e voltar ao layout default"
+        >
+          <RotateCcw className="w-3.5 h-3.5" /> Resetar
+        </button>
       )}
       <button
         onClick={props.onOptimize}

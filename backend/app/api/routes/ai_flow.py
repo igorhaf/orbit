@@ -1638,6 +1638,24 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
 DEEP_PIPELINE_PHASES_FALLBACK = DEEP_PIPELINE_PHASES
 
 
+@router.post("/canvas-reset")
+async def canvas_reset(db: Session = Depends(get_db)):
+    """v3.6.6: deleta o `__canvas_graph__` do profile Canvas. Próxima chamada
+    de canvas-snapshot regenera o layout default a partir do gerador atual.
+    Útil quando o usuário quer descartar customizações ou quando há mudanças
+    estruturais no backend que o usuário quer ver."""
+    from app.models.pipeline_profile import PipelineProfile
+    profile = db.query(PipelineProfile).filter(PipelineProfile.name == "Canvas").first()
+    if not profile:
+        return {"reset": False, "reason": "no Canvas profile"}
+    cfg = dict(profile.phase_configs or {})
+    had_graph = "__canvas_graph__" in cfg
+    cfg.pop("__canvas_graph__", None)
+    profile.phase_configs = cfg
+    db.commit()
+    return {"reset": True, "had_saved_graph": had_graph}
+
+
 @router.post("/canvas-save")
 async def canvas_save(payload: dict, db: Session = Depends(get_db)):
     """Persist the unified canvas state.
