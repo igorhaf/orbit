@@ -367,6 +367,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (data.job_type === 'deep_pipeline') {
           window.dispatchEvent(new CustomEvent('deepPipelineProgress', { detail: data }));
         }
+        // v3.7.1: ai_flow_run events (graph_started, node_*, graph_completed)
+        // — useAIFlowProgress hook consome via CustomEvent.
+        if (data.job_type === 'ai_flow_run' || data.ai_flow_event) {
+          window.dispatchEvent(new CustomEvent('aiFlowProgress', { detail: data }));
+        }
         break;
 
       case 'job_completed':

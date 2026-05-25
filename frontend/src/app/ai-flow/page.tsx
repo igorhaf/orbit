@@ -43,6 +43,7 @@ import { SubflowRunDialog } from '@/components/ai-flow/SubflowRunDialog';
 import { useCanvasState, type Subflow } from '@/hooks/useCanvasState';
 import { useConnectionValidator } from '@/hooks/useConnectionValidator';
 import { useDeepPipelineProgress, type PhaseState } from '@/hooks/useDeepPipelineProgress';
+import { useAIFlowProgress, type NodeRunState } from '@/hooks/useAIFlowProgress';
 import { validatePipeline, validatePipelinePreRun } from '@/components/ai-flow/pipelineValidator';
 
 interface CatalogItem {
@@ -116,6 +117,11 @@ function AIFlowPageInner() {
 
   // v3.1: hook into deep_pipeline progress for phase animation
   const progress = useDeepPipelineProgress(runningProjectId);
+
+  // v3.7.1: hook into AI Flow engine run progress (POST /ai-flow/run) —
+  // anima nodes por node_id (não phase_key como Deep Pipeline).
+  const [aiFlowJobId, setAiFlowJobId] = useState<string | null>(null);
+  const flowProgress = useAIFlowProgress(aiFlowJobId);
 
   // ── Load full project snapshot on mount (v3.0) ─────────────────────
   // v3.6.2: ref de mount guard evita hidratação dupla em React StrictMode
@@ -499,6 +505,8 @@ function AIFlowPageInner() {
       if (result.error) {
         showError(`Engine: ${result.error}`);
       } else if (result.job_id) {
+        // v3.7.1: salva jobId pra useAIFlowProgress animar nodes via WS
+        setAiFlowJobId(result.job_id);
         showSuccess(`Engine iniciado · job ${result.job_id.slice(0, 8)} · ${result.total_nodes} nodes`);
         setDebugOpen(true); // mostra DebugPanel pra ver events do WS
       }
@@ -512,63 +520,76 @@ function AIFlowPageInner() {
   // v3.1 — open subflow tab on canvas open action
   const openSubflowTab = canvas.openSubflowTab;
   // Inject runtime callbacks + animation states into nodes
+  // v3.7.1: helper unificado de animation por node.
+  // PRIORIDADE: flowProgress.nodeStates (engine real, por node_id) > legacy
+  // progress.phaseStates (Deep Pipeline antigo, por phase_key).
+  const stateToAnim = (s: NodeRunState | PhaseState | undefined): string => {
+    if (s === 'running') return 'executing';
+    if (s === 'success') return 'success';
+    if (s === 'failed') return 'failed';
+    if (s === 'skipped') return 'skipped';
+    return 'idle';
+  };
+
   const enhancedNodes = useMemo(() => {
     return canvas.visibleNodes.map((n) => {
-      // SubflowNode: aggregate state of inner phases. v3.3: phase trio uses
-      // ids like "phase-{phase_key}-model" inside the subflow's node_ids.
+      // 1. Engine real (v3.7.1) tem prioridade absoluta — animação por node_id
+      const flowState = flowProgress.nodeStates[n.id];
+
+      // SubflowNode: aggregate state dos children
       if (n.type === 'subflowNode') {
         const sfId = n.id.replace(/^sf-/, '');
         const sf = canvas.subflows[sfId];
-        let animation: PhaseState = 'idle';
+        let animation: NodeRunState | PhaseState = 'idle';
         if (sf?.node_ids?.length) {
-          const innerStates = sf.node_ids
-            .map((nid: string) => {
-              const m = /^phase-(.+)-model$/.exec(nid);
-              return m ? progress.phaseStates[m[1]] : undefined;
-            })
-            .filter(Boolean) as PhaseState[];
-          if (innerStates.some((s) => s === 'running')) animation = 'running';
-          else if (innerStates.some((s) => s === 'failed')) animation = 'failed';
-          else if (innerStates.length > 0 && innerStates.every((s) => s === 'success')) animation = 'success';
+          // v3.7.1: primeiro tenta engine real (flowProgress); fallback Deep Pipeline.
+          const childStates: (NodeRunState | PhaseState)[] = [];
+          for (const nid of sf.node_ids) {
+            const fs = flowProgress.nodeStates[nid];
+            if (fs) {
+              childStates.push(fs);
+              continue;
+            }
+            const m = /^phase-(.+)-model$/.exec(nid);
+            if (m) {
+              const ps = progress.phaseStates[m[1]];
+              if (ps) childStates.push(ps);
+            }
+          }
+          if (childStates.some((s) => s === 'running')) animation = 'running';
+          else if (childStates.some((s) => s === 'failed')) animation = 'failed';
+          else if (childStates.length > 0 && childStates.every((s) => s === 'success' || s === 'skipped')) animation = 'success';
         }
         return {
           ...n,
           data: {
             ...n.data,
-            animation: animation === 'running' ? 'executing' : animation,
+            animation: stateToAnim(animation),
             onOpen: () => openSubflowTab(sfId, n.data?.label || sf?.label || sfId),
             onToggleCollapsed: () => canvas.toggleSubflowCollapsed(sfId),
           },
         };
       }
-      // v3.3: animation lives on the modelNode inside each phase trio
-      // (id pattern: "phase-{phase_key}-model"). Old pipelinePhaseNode branch
-      // kept for back-compat in case any profile still uses it.
+
+      // 2. Engine real por node_id (todos os outros tipos)
+      if (flowState) {
+        return { ...n, data: { ...n.data, animation: stateToAnim(flowState) } };
+      }
+
+      // 3. Fallback Deep Pipeline (legacy): modelNode com phase_key
       if (n.type === 'modelNode' && typeof n.data?.phase_key === 'string') {
         const pk = n.data.phase_key;
         const state: PhaseState = (pk && progress.phaseStates[pk]) || 'idle';
-        return {
-          ...n,
-          data: {
-            ...n.data,
-            animation: state === 'running' ? 'executing' : state,
-          },
-        };
+        return { ...n, data: { ...n.data, animation: stateToAnim(state) } };
       }
       if (n.type === 'pipelinePhaseNode') {
         const pk = n.data?.phase_key;
         const state: PhaseState = (pk && progress.phaseStates[pk]) || 'idle';
-        return {
-          ...n,
-          data: {
-            ...n.data,
-            animation: state === 'running' ? 'executing' : state,
-          },
-        };
+        return { ...n, data: { ...n.data, animation: stateToAnim(state) } };
       }
       return n;
     });
-  }, [canvas.visibleNodes, canvas.subflows, canvas.toggleSubflowCollapsed, openSubflowTab, progress.phaseStates]);
+  }, [canvas.visibleNodes, canvas.subflows, canvas.toggleSubflowCollapsed, openSubflowTab, progress.phaseStates, flowProgress.nodeStates]);
 
   // v3.1 — annotate edges with flowing=true when they're currently animated
   const enhancedEdges = useMemo(() => {

@@ -206,6 +206,11 @@ class GraphExecutor:
     # Node types that DON'T execute (visuals/containers)
     _SKIP_TYPES = {"groupNode", "subflowNode", "ioNode"}
 
+    # Kinds que produzem branches condicionais (some outputs ficam None
+    # quando aquele branch não está ativo). Successors via handle None
+    # são marcados como skipped (propagação transparente).
+    _BRANCHING_KINDS = {"if_else", "switch"}
+
     def __init__(
         self,
         graph: dict[str, Any],
@@ -217,6 +222,10 @@ class GraphExecutor:
         self.registry = node_registry or registry
         self.nodes_by_id: dict[str, dict] = {n["id"]: n for n in graph.get("nodes", [])}
         self.edges = list(graph.get("edges", []))
+        # v3.7.1: set de nodes a pular (decidido em runtime pelo branch-skip).
+        # Propagação: se TODOS os predecessores executáveis estão skipped,
+        # este node também é skipped (não há dado pra processar).
+        self._skipped: set[str] = set()
 
     # ── Public ────────────────────────────────────────────────────────────
 
@@ -239,6 +248,22 @@ class GraphExecutor:
         for node_id in order:
             node = self.nodes_by_id[node_id]
             kind = self._kind_of(node)
+
+            # v3.7.1: branch-skip — se este node foi marcado como skipped
+            # (propagação de branch inativo), não executa. Emite evento e
+            # propaga skip pra seus successors.
+            if node_id in self._skipped:
+                await self.ctx.emit("node_skipped", {
+                    "run_id": str(self.ctx.run_id),
+                    "node_id": node_id,
+                    "kind": kind,
+                    "reason": "predecessor branch inactive",
+                })
+                # Output vazio mas registrado pra successors saberem que existe
+                self.ctx.outputs[node_id] = {}
+                self._propagate_skip(node_id, all_handles_inactive=True)
+                continue
+
             await self.ctx.emit("node_started", {
                 "run_id": str(self.ctx.run_id),
                 "node_id": node_id,
@@ -275,6 +300,11 @@ class GraphExecutor:
                     "duration_ms": duration_ms,
                     "output_keys": list(output.keys()),
                 })
+
+                # v3.7.1: se este node é branching (if_else/switch), marca
+                # successors dos handles inativos (None) como skipped.
+                if kind in self._BRANCHING_KINDS:
+                    self._skip_inactive_branches(node_id, output)
             except NodeExecutionError as e:
                 self.ctx.nodes_failed += 1
                 errors.append({
@@ -461,3 +491,48 @@ class GraphExecutor:
             initial_inputs,
             _visited,
         )
+
+    # ── Branch-skip helpers (v3.7.1) ──────────────────────────────────────
+
+    def _skip_inactive_branches(self, branching_node_id: str, output: dict[str, Any]) -> None:
+        """Após executar um branching node (if_else/switch), marca como skipped
+        todos os successors conectados a handles cujo output é None.
+
+        Ex: if_else produziu {true: <payload>, false: None}. Os successors
+        ligados ao handle "false" são marcados skipped; os ligados a "true"
+        executam normalmente.
+        """
+        inactive_handles = {h for h, v in output.items() if v is None}
+        if not inactive_handles:
+            return
+        for e in self.edges:
+            if e.get("source") != branching_node_id:
+                continue
+            handle = e.get("sourceHandle")
+            if handle in inactive_handles:
+                target = e.get("target")
+                if target and target not in self._skipped:
+                    self._skipped.add(target)
+
+    def _propagate_skip(self, skipped_node_id: str, all_handles_inactive: bool = True) -> None:
+        """Propaga skip pra successors quando o atual node é skipped.
+
+        Heurística: se TODOS os predecessores executáveis (não visuais) de um
+        successor estão skipped, o successor também não tem do que se alimentar
+        → skipped. Caso contrário, ele pode ter input válido de outro caminho
+        e deve executar.
+        """
+        successors = [e["target"] for e in self.edges if e.get("source") == skipped_node_id]
+        for succ_id in successors:
+            if succ_id in self._skipped:
+                continue
+            # Verifica se todos os predecessores executáveis estão skipped
+            preds = [e.get("source") for e in self.edges if e.get("target") == succ_id]
+            exec_preds = [p for p in preds if p and self._is_executable(self.nodes_by_id.get(p, {}))]
+            if not exec_preds:
+                continue
+            # Considera "ativo" um pred que (a) não está skipped E (b) já
+            # executou OU ainda vai executar
+            any_active = any(p not in self._skipped for p in exec_preds)
+            if not any_active:
+                self._skipped.add(succ_id)
