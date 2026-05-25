@@ -482,13 +482,32 @@ function AIFlowPageInner() {
       console.error('validatePipelinePreRun errors:', errors);
       return;
     }
+
+    // v3.7.0: dispara via Engine de execução (GraphExecutor backend).
+    // Envia o grafo atual do canvas direto, sem precisar abrir dialog.
     setRunning(true);
     setLastRunAt(new Date().toISOString());
-    // v3.1: Run opens the SubflowRunDialog (project + mode picker).
-    // Confirmed dispatch flows back via SubflowRunDialog.onConfirmed.
-    setRunDialogOpen(true);
-    setRunning(false);
-  }, [canvas, typesSchema, showError]);
+    try {
+      const result = await aiFlowApi.runGraph({
+        graph: {
+          nodes: canvas.nodes as any[],
+          edges: canvas.edges as any[],
+          subflows: canvas.subflows as any,
+        },
+        // initial_inputs vazio por enquanto; iteração futura: project picker
+      });
+      if (result.error) {
+        showError(`Engine: ${result.error}`);
+      } else if (result.job_id) {
+        showSuccess(`Engine iniciado · job ${result.job_id.slice(0, 8)} · ${result.total_nodes} nodes`);
+        setDebugOpen(true); // mostra DebugPanel pra ver events do WS
+      }
+    } catch (e: any) {
+      showError(`Falha ao executar: ${e?.message || e}`);
+    } finally {
+      setRunning(false);
+    }
+  }, [canvas, typesSchema, showError, showSuccess]);
 
   // v3.1 — open subflow tab on canvas open action
   const openSubflowTab = canvas.openSubflowTab;

@@ -1648,6 +1648,145 @@ async def canvas_reset(db: Session = Depends(get_db)):
     return {"reset": True, "had_saved_graph": had_graph}
 
 
+@router.post("/run")
+async def run_graph(payload: dict, db: Session = Depends(get_db)):
+    """v3.7.0 — executa o grafo customizado do canvas via GraphExecutor.
+
+    Payload (todos opcionais):
+      {
+        "project_id": "uuid"?,        # se grafo precisa de project context
+        "graph": {nodes, edges, subflows}?,  # se não fornecido, usa o
+                                              # __canvas_graph__ salvo
+        "initial_inputs": {...}?      # inputs pros nodes-raiz
+      }
+
+    Resposta IMEDIATA (assíncrona):
+      {"job_id": "...", "run_id": "...", "total_nodes": N}
+
+    Progresso via WS canal `job_progress` (events do GraphExecutor:
+    graph_started, node_started, node_completed, node_failed,
+    graph_completed). Frontend escuta via NotificationContext.
+    """
+    from app.models.pipeline_profile import PipelineProfile
+    from app.services.ai_flow import GraphExecutor, ExecutionContext
+    from app.services.ai_flow.executor import GraphValidationError
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
+    from datetime import datetime as _dt
+    import asyncio
+    from uuid import uuid4 as _uuid4
+
+    payload = payload or {}
+    project_id_str = payload.get("project_id")
+    project_uuid = None
+    project = None
+    if project_id_str:
+        from app.models.project import Project
+        from uuid import UUID as _UUID
+        try:
+            project_uuid = _UUID(project_id_str)
+            project = db.query(Project).filter(Project.id == project_uuid).first()
+        except (ValueError, TypeError):
+            return {"error": f"invalid project_id: {project_id_str}"}
+
+    # Resolve grafo: payload tem precedência sobre o profile salvo
+    graph = payload.get("graph")
+    if not graph:
+        profile = (
+            db.query(PipelineProfile)
+            .filter(PipelineProfile.is_default == True)
+            .first()
+        )
+        cfg = (profile.phase_configs if profile else {}) or {}
+        saved = cfg.get("__canvas_graph__")
+        if isinstance(saved, dict) and saved.get("nodes"):
+            graph = {
+                "nodes": saved.get("nodes") or [],
+                "edges": saved.get("edges") or [],
+                "subflows": saved.get("subflows") or {},
+            }
+    if not graph or not graph.get("nodes"):
+        return {"error": "no graph provided and no saved Canvas graph found"}
+
+    initial_inputs = payload.get("initial_inputs") or {}
+    if project and "project" not in initial_inputs:
+        initial_inputs["project"] = {"id": str(project.id), "name": project.name, "code_path": project.code_path}
+
+    # Cria AsyncJob pra rastrear a execução
+    jm = JobManager(db)
+    job = jm.create_job(
+        job_type=JobType.AI_FLOW_RUN,
+        input_data={
+            "project_id": project_id_str,
+            "graph_size": len(graph.get("nodes", [])),
+            "edges_count": len(graph.get("edges", [])),
+        },
+        project_id=project_uuid,
+        notification_title=f"AI Flow Run — {project.name if project else 'canvas'}",
+    )
+    jm.start_job(job.id)
+
+    run_id = _uuid4()
+
+    # WS broadcast helper — usa broadcast_job_event existente
+    async def ws_emit(event: str, data: dict):
+        from app.api.websocket import broadcast_job_event
+        payload_event = {
+            "job_id": str(job.id),
+            "job_type": "ai_flow_run",
+            "ai_flow_event": event,
+            **data,
+        }
+        try:
+            await broadcast_job_event("job_progress", payload_event)
+        except Exception:
+            pass
+
+    ctx = ExecutionContext(
+        run_id=run_id,
+        db=db,
+        project_id=project_uuid,
+        project=project,
+        ws_emit=ws_emit,
+        job_id=job.id,
+    )
+
+    async def run_in_background():
+        from app.database import SessionLocal
+        # Cria session NOVA pra background — evita conflito com a request
+        bg_db = SessionLocal()
+        try:
+            ctx.db = bg_db
+            executor = GraphExecutor(graph, ctx)
+            result = await executor.run(initial_inputs)
+            jm2 = JobManager(bg_db)
+            if result.ok:
+                jm2.complete_job(job.id, result={
+                    "ok": True,
+                    "nodes_executed": result.nodes_executed,
+                    "duration_seconds": result.duration_seconds,
+                })
+            else:
+                err_msg = "; ".join(e.get("message", "") for e in result.errors[:3])
+                jm2.fail_job(job.id, error=err_msg or "execution failed")
+        except GraphValidationError as e:
+            JobManager(bg_db).fail_job(job.id, error=f"graph invalid: {e}")
+        except Exception as e:
+            JobManager(bg_db).fail_job(job.id, error=f"{type(e).__name__}: {e}")
+        finally:
+            bg_db.close()
+
+    # Dispara em background — não bloqueia o request
+    asyncio.create_task(run_in_background())
+
+    return {
+        "job_id": str(job.id),
+        "run_id": str(run_id),
+        "total_nodes": len(graph.get("nodes", [])),
+        "status": "started",
+    }
+
+
 @router.post("/canvas-save")
 async def canvas_save(payload: dict, db: Session = Depends(get_db)):
     """Persist the unified canvas state.

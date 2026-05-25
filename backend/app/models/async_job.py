@@ -79,6 +79,9 @@ class JobType(str, enum.Enum):
     # PROMPT #260: Deep Pipeline (7-phase Claudius pipeline)
     DEEP_PIPELINE = "deep_pipeline"
 
+    # v3.7.0: AI Flow Run — executa o grafo customizado do canvas via engine
+    AI_FLOW_RUN = "ai_flow_run"
+
     # PROMPT #282: RAG Chat message (user asks, AI answers from RAG)
     CHAT_MESSAGE = "chat_message"
 

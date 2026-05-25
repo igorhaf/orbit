@@ -52,6 +52,23 @@ export const aiFlowApi = {
     };
   }>(`/api/v1/ai-flow/canvas-snapshot?t=${Date.now()}`),
 
+  // v3.7.0 — executa o grafo no engine real (Entrega B)
+  runGraph: (payload?: {
+    project_id?: string;
+    graph?: { nodes: any[]; edges: any[]; subflows: Record<string, any> };
+    initial_inputs?: Record<string, any>;
+  }) =>
+    request<{
+      job_id?: string;
+      run_id?: string;
+      total_nodes?: number;
+      status?: string;
+      error?: string;
+    }>('/api/v1/ai-flow/run', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    }),
+
   // v3.6.6 — reset layout (deleta o grafo salvo, força gerar default)
   canvasReset: () =>
     request<{ reset: boolean; had_saved_graph?: boolean; reason?: string }>(
