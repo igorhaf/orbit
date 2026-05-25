@@ -17,6 +17,8 @@ import {
   Background,
   Controls,
   MiniMap,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
 } from '@xyflow/react';
@@ -33,10 +35,21 @@ import { NodeCatalogToolbar } from '@/components/ai-flow/NodeCatalogToolbar';
 import { NodeInspector } from '@/components/ai-flow/NodeInspector';
 import { DebugPanel, type DebugEvent } from '@/components/ai-flow/DebugPanel';
 import { CanvasTabBar } from '@/components/ai-flow/CanvasTabBar';
+import { CanvasSidebar } from '@/components/ai-flow/CanvasSidebar';
 import { SubflowRunDialog } from '@/components/ai-flow/SubflowRunDialog';
 import { useCanvasState, type Subflow } from '@/hooks/useCanvasState';
 import { useConnectionValidator } from '@/hooks/useConnectionValidator';
 import { useDeepPipelineProgress, type PhaseState } from '@/hooks/useDeepPipelineProgress';
+
+interface CatalogItem {
+  id: string;
+  type: string;
+  data: any;
+}
+interface Catalog {
+  models: CatalogItem[];
+  utilities: CatalogItem[];
+}
 
 const edgeTypes = { smartEdge: SmartEdge };
 
@@ -53,7 +66,16 @@ interface Profile {
 }
 
 export default function AIFlowPage() {
+  return (
+    <ReactFlowProvider>
+      <AIFlowPageInner />
+    </ReactFlowProvider>
+  );
+}
+
+function AIFlowPageInner() {
   const { showError, showSuccess, NotificationComponent } = useNotification();
+  const reactFlowInstance = useReactFlow();
 
   // Profiles + active selection
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -61,6 +83,9 @@ export default function AIFlowPage() {
 
   // Models catalog (for resolving Modelo node data when reloading)
   const [models, setModels] = useState<any[]>([]);
+
+  // v3.2: sidebar catalog (pre-configured templates — drag to canvas)
+  const [catalog, setCatalog] = useState<Catalog>({ models: [], utilities: [] });
 
   // Canvas state
   const canvas = useCanvasState({});
@@ -102,6 +127,10 @@ export default function AIFlowPage() {
         canvas.setNodes(snap.nodes as Node[]);
         canvas.setEdges(snap.edges as any);
         canvas.setSubflows(snap.subflows as any);
+        // v3.2: sidebar catalog
+        if ((snap as any).catalog) {
+          setCatalog((snap as any).catalog as Catalog);
+        }
         canvas.markClean();
       })
       .catch((e) => showError(`Falha ao carregar canvas: ${e?.message || e}`));
@@ -460,6 +489,39 @@ export default function AIFlowPage() {
     }
   }, [validator.lastRejection, validator.clearRejection, showError]);
 
+  // v3.2: drag-and-drop from sidebar catalog onto the canvas
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const raw = e.dataTransfer.getData('application/x-ai-flow-catalog-item');
+      if (!raw) return;
+      let item: CatalogItem;
+      try {
+        item = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: e.clientX,
+        y: e.clientY,
+      });
+      const newNode: Node = {
+        id: `${item.id}-${Date.now()}`,
+        type: item.type,
+        position,
+        data: { ...item.data },
+      };
+      canvas.setNodes((ns) => [...ns, newNode]);
+      canvas.markDirty();
+    },
+    [reactFlowInstance, canvas],
+  );
+
   return (
     <Layout>
       <Breadcrumbs />
@@ -491,7 +553,14 @@ export default function AIFlowPage() {
         />
 
         <div className="flex flex-1 min-h-0">
-          <div className="flex-1 relative">
+          {/* v3.2: left sidebar — catalog (top) + canvas objects (bottom) */}
+          <CanvasSidebar
+            catalog={catalog}
+            canvasNodes={canvas.nodes}
+            selectedNodeId={canvas.selectedNodeId}
+            onSelectCanvasNode={canvas.setSelectedNodeId}
+          />
+          <div className="flex-1 relative" onDrop={onDrop} onDragOver={onDragOver}>
             <ReactFlow
               nodes={enhancedNodes}
               edges={enhancedEdges}

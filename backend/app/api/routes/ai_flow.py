@@ -228,46 +228,23 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                     "style": {"stroke": "#3b82f6", "strokeWidth": 1.8},
                     "data": {"label": "then", "port_type": "phase_sequence"},
                 })
-            # Wire phase → ModelNode (the model that runs this phase)
-            target_model_id = phase.get("model")
-            if target_model_id:
-                # Pick the first active model that matches this model_id
-                target_model = next(
-                    (m for m in models
-                     if (m.config or {}).get("model_id") == target_model_id),
-                    None,
-                )
-                if target_model:
-                    target_model_node_id = f"model-{target_model.id}"
-                    edges.append({
-                        "id": f"edge-phase-{pk}-uses-model",
-                        "source": node_id,
-                        "target": target_model_node_id,
-                        "type": "smartEdge",
-                        "style": {"stroke": "#6b7280", "strokeWidth": 1.4, "strokeDasharray": "4 3"},
-                        "data": {"label": "uses", "port_type": "phase_uses_model"},
-                    })
+            # v3.2: phase → model relationship lives in the phase's own data
+            # (model_id). No edge needed — the model is shown in the sidebar
+            # catalog. Drag-and-drop a model from the sidebar onto a phase
+            # to wire it explicitly.
 
-    # ── 3. Model catalog (3 columns) — appears on root AND in every tab ─
-    column_by_model = {
-        "claude-opus-4-7":   {"x": 760,   "y": 80},
-        "claude-sonnet-4-6": {"x": 1040,  "y": 80},
-        "claude-haiku-4-5":  {"x": 1320,  "y": 80},
-    }
+    # ── 3. Model catalog — sidebar items (NOT on the canvas).
+    # v3.2: models live in the left sidebar. They become canvas nodes only
+    # when the user drags them in (frontend creates a node with this template).
+    catalog_models: list[dict] = []
     for m in models:
-        node_id = f"model-{m.id}"
         cfg = m.config or {}
         mid = cfg.get("model_id") or "claude-sonnet-4-6"
-        col = column_by_model.get(mid, column_by_model["claude-sonnet-4-6"])
-        position = {"x": col["x"], "y": col["y"]}
-        col["y"] += 140  # stack vertically per column
-        # Badges: which usage_types use this model + its primary one
         primary_usage = (m.usage_type.value if hasattr(m.usage_type, "value") else str(m.usage_type))
         usage_badges = list({primary_usage, *model_pk_to_usages.get(str(m.id), [])})
-        nodes.append({
-            "id": node_id,
+        catalog_models.append({
+            "id": f"model-{m.id}",
             "type": "modelNode",
-            "position": position,
             "data": {
                 "label": m.name,
                 "provider": "claudius",
@@ -281,10 +258,28 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
             },
         })
 
+    # Utility node templates (drag from sidebar to add to canvas)
+    catalog_utilities = [
+        {"id": "util-cache",              "type": "cacheNode",            "data": {"label": "Cache",         "type": "cache",              "config": {}, "enabled": True}},
+        {"id": "util-rag_context",        "type": "ragContextNode",       "data": {"label": "RAG Context",   "type": "rag_context",        "config": {}, "enabled": True}},
+        {"id": "util-router",             "type": "routerNode",           "data": {"label": "Router",        "type": "router",             "config": {}, "enabled": True}},
+        {"id": "util-retry",              "type": "retryNode",            "data": {"label": "Retry",         "type": "retry",              "config": {"max_retries": 3, "backoff_base_ms": 1000}, "enabled": True}},
+        {"id": "util-validator",          "type": "validatorNode",        "data": {"label": "Validator",     "type": "validator",          "config": {}, "enabled": True}},
+        {"id": "util-cost_guard",         "type": "costGuardNode",        "data": {"label": "Cost Guard",    "type": "cost_guard",         "config": {}, "enabled": True}},
+        {"id": "util-rate_limiter",       "type": "rateLimiterNode",      "data": {"label": "Rate Limiter",  "type": "rate_limiter",       "config": {}, "enabled": True}},
+        {"id": "util-timeout",            "type": "timeoutNode",          "data": {"label": "Timeout",       "type": "timeout",            "config": {"timeout_seconds": 120}, "enabled": True}},
+        {"id": "util-prompt_transformer", "type": "promptTransformerNode","data": {"label": "Prompt Xform",  "type": "prompt_transformer", "config": {}, "enabled": True}},
+    ]
+
     return {
         "nodes": nodes,
         "edges": edges,
         "subflows": subflows,
+        # v3.2 — sidebar catalog (left top section, draggable into canvas)
+        "catalog": {
+            "models": catalog_models,
+            "utilities": catalog_utilities,
+        },
         "meta": {
             "model_count": len(models),
             "chain_count": len(chains),
