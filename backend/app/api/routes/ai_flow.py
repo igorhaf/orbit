@@ -1006,6 +1006,10 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
     def _u(kind: str, label: str, category: str, color: str, icon: str,
            config: dict | None = None, react_type: str = "utilityNode",
            description: str | None = None) -> dict:
+        # v3.5: ship inputs/outputs in the template so multi-handle renderers
+        # (controlFlowNode) know which handles to draw, and the frontend
+        # validator can check connections without a separate schema lookup.
+        schema = _schema_to_dict(_schema_for(kind))
         return {
             "id": f"util-{kind}",
             "type": react_type,
@@ -1018,6 +1022,9 @@ async def get_canvas_snapshot(db: Session = Depends(get_db)):
                 "config": config or {},
                 "enabled": True,
                 "description": description,
+                "inputs": schema["inputs"],
+                "outputs": schema["outputs"],
+                "dynamic_outputs": schema["dynamic_outputs"],
             },
         }
 

@@ -540,6 +540,129 @@ export function PipelinePhaseNode({ data }: { data: any }) {
 }
 
 // ---------------------------------------------------------------------------
+// v3.5 — ControlFlowNode (multi-handle renderer for if/switch/loop/AND/OR/NOT)
+//
+// Diff vs GenericUtilityNode: renders N source handles on the right edge,
+// each labeled with the output name (true/false/body/done/case_X/...).
+// The Handle.id matches data.outputs[i].name so the engine can dispatch
+// to the right branch. Input handles can be multiple too (for AND/OR).
+// ---------------------------------------------------------------------------
+
+export function ControlFlowNode({ data }: { data: any }) {
+  const accent: string = data.color || '#dc2626';
+  const label: string = data.label || data.kind || 'Control';
+  const description: string | undefined = data.description;
+  const enabled: boolean = data.enabled !== false;
+  const inputs: Array<{ name: string; type: string; required?: boolean }> = data.inputs || [];
+  const outputs: Array<{ name: string; type: string }> = data.outputs || [];
+  // Visual config peek
+  const cfg = (data.config || {}) as Record<string, any>;
+  const cfgEntries = Object.entries(cfg).slice(0, 2);
+
+  // Color per handle (true=green, false=red, body=blue, done=gray, default=gray, case_*=purple)
+  const handleColor = (name: string): string => {
+    if (name === 'true') return '#22c55e';
+    if (name === 'false') return '#ef4444';
+    if (name === 'body') return '#3b82f6';
+    if (name === 'done') return '#9ca3af';
+    if (name === 'default') return '#9ca3af';
+    if (name.startsWith('case_')) return '#8b5cf6';
+    if (name === 'result') return accent;
+    return accent;
+  };
+
+  return (
+    <div
+      className="bg-white rounded-lg shadow-md border-2 min-w-[200px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{
+        borderColor: accent,
+        borderWidth: 2,
+        borderStyle: 'dashed',
+        background: 'linear-gradient(180deg, rgba(220,38,38,0.04), white 30%)',
+      }}
+    >
+      {/* Input handles (left edge) */}
+      {inputs.map((inp, i) => {
+        const top = inputs.length === 1 ? 50 : 28 + (i * (44 / Math.max(1, inputs.length - 1)));
+        return (
+          <Handle
+            key={`in-${inp.name}`}
+            type="target"
+            position={Position.Left}
+            id={inp.name}
+            className="!w-3 !h-3 !border-2 !border-white"
+            style={{ background: accent, top: `${top}%` }}
+          />
+        );
+      })}
+      <div className="px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-flex items-center justify-center w-7 h-7 rounded text-sm font-bold flex-shrink-0"
+            style={{ background: `${accent}22`, color: accent }}
+            title="ControlFlow"
+          >
+            ◇
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: accent }}>
+              Control Flow
+            </div>
+            <div className="text-xs font-semibold text-gray-900 truncate" title={label}>{label}</div>
+          </div>
+          <div className={`w-2 h-2 rounded-full flex-shrink-0`} style={enabled ? { background: accent } : { background: '#d1d5db' }} />
+        </div>
+        {description && (
+          <div className="mt-1.5 text-[10px] text-gray-500 line-clamp-2" title={description}>{description}</div>
+        )}
+        {cfgEntries.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5">
+            {cfgEntries.map(([k, v]) => (
+              <div key={k} className="text-[10px] text-gray-500 truncate">
+                <span className="font-medium text-gray-600">{k}:</span>{' '}
+                <span className="font-mono">{typeof v === 'object' ? JSON.stringify(v).slice(0, 24) : String(v).slice(0, 32)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Output labels list (so user knows which handle is which) */}
+        {outputs.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5">
+            {outputs.map((o) => (
+              <div key={o.name} className="flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: handleColor(o.name) }} />
+                <span className="text-[10px] font-mono text-gray-600">{o.name}</span>
+                <span className="text-[9px] text-gray-400 ml-auto">{o.type}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Output handles (right edge, distributed vertically) */}
+      {outputs.map((out, i) => {
+        const top = outputs.length === 1 ? 50 : 28 + (i * (44 / Math.max(1, outputs.length - 1)));
+        return (
+          <Handle
+            key={`out-${out.name}`}
+            type="source"
+            position={Position.Right}
+            id={out.name}
+            className="!w-3 !h-3 !border-2 !border-white"
+            style={{ background: handleColor(out.name), top: `${top}%` }}
+          />
+        );
+      })}
+      {data.onRemove && (
+        <button
+          onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm"
+        >×</button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // v3.4 — GenericUtilityNode (single component for all new utility nodes)
 //
 // Backend catalog ships ~34 new utility templates that all share the same
@@ -774,4 +897,6 @@ export const nodeTypes = {
   ioNode: IONode,
   // v3.4 — generic renderer for all new utility nodes from the backend catalog
   utilityNode: GenericUtilityNode,
+  // v3.5 — multi-handle renderer for control-flow nodes (if/switch/loop/AND/OR/NOT)
+  controlFlowNode: ControlFlowNode,
 };

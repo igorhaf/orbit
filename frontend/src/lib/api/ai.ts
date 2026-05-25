@@ -36,7 +36,18 @@ export const aiFlowApi = {
     edges: any[];
     subflows: Record<string, any>;
     catalog?: { models: any[]; utilities: any[] };
-    meta: { model_count: number; chain_count: number; phase_count: number; graph_source?: 'default' | 'custom' };
+    types_schema?: Record<string, {
+      inputs: Array<{ name: string; type: string; required: boolean }>;
+      outputs: Array<{ name: string; type: string }>;
+      dynamic_outputs: boolean;
+    }>;
+    meta: {
+      model_count: number;
+      chain_count: number;
+      phase_count: number;
+      graph_source?: 'default' | 'custom';
+      control_flow_kinds?: string[];
+    };
   }>('/api/v1/ai-flow/canvas-snapshot'),
 
   // v3.4 — persist customized canvas state (models, phase_configs, graph)
