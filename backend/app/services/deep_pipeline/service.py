@@ -607,10 +607,17 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
         return {"epics": epics, "stories": stories, "tasks": tasks, "total_cards": epics + stories + tasks}
 
     def _reload_wiki_stats(self, project_id: UUID, run_id: UUID) -> dict:
-        """Reload Phase 5 wiki stats."""
+        """Reload Phase 5 wiki stats for THIS run only.
+
+        Previously counted ALL WikiPages of the project, ignoring run_id — so on
+        a resume it inflated card_coverage (25% of the QA score), could spuriously
+        trigger/skip Phase 7, and double-counted wiki across runs. Mirror the
+        run_id filter that _reload_card_stats already applies.
+        """
         from app.models.wiki_page import WikiPage
         pages = self.db.query(WikiPage).filter(
             WikiPage.project_id == project_id,
+            WikiPage.pipeline_run_id == run_id,
         ).count()
         return {"total_pages": pages, "total_words": 0}
 

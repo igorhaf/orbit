@@ -127,7 +127,7 @@ export function useDeepPipelineProgress(
   // When job_completed/failed reaches us (via NotificationContext notifications)
   useEffect(() => {
     if (!projectId || !activeJobId) return;
-    const lastNotif = notifications.find((n: any) => n.jobId === activeJobId);
+    const lastNotif = notifications.find((n: any) => n.job_id === activeJobId);
     if (!lastNotif) return;
     if (lastNotif.status === 'completed') {
       setPhaseStates((prev) => {
@@ -160,7 +160,7 @@ export function useDeepPipelineProgress(
   useEffect(() => {
     if (!projectId || activeJobId) return;
     const dp = (activeJobs as any[]).find((j: any) =>
-      (j.jobType === 'deep_pipeline' || j.job_type === 'deep_pipeline'),
+      j.job_type === 'deep_pipeline',
     );
     if (dp) {
       currentJobIdRef.current = dp.id || dp.job_id;

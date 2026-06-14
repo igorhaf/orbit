@@ -247,6 +247,20 @@ class GraphExecutor:
         self.ctx.executor = self
         # Validation phase
         order = self._topological_order()
+
+        # Loop bodies run INSIDE run_subgraph, once per iteration. They must NOT
+        # also run in the main topological pass, or each body node executes N+1
+        # times (1 stray main-pass run + N iterations) — duplicating side effects
+        # and quota spend. Exclude every loop's body-subgraph node ids from the
+        # main order. (Nested loops are excluded from their parent's body list by
+        # body_subgraph_node_ids, so each is driven only by its own loop node.)
+        loop_body_ids: set[str] = set()
+        for nid, node in self.nodes_by_id.items():
+            if self._kind_of(node) in ("for_each", "while_loop"):
+                loop_body_ids.update(self.body_subgraph_node_ids(nid))
+        if loop_body_ids:
+            order = [nid for nid in order if nid not in loop_body_ids]
+
         await self.ctx.emit("graph_started", {
             "run_id": str(self.ctx.run_id),
             "total_nodes": len(order),
@@ -292,7 +306,17 @@ class GraphExecutor:
                 executor = executor_cls()
                 config = node.get("data", {}).get("config", {}) or {}
                 t0 = time.monotonic()
-                output = await executor.execute(inputs, config, self.ctx)
+                # Real per-node timeout. Previously TimeoutExecutor claimed to
+                # enforce one but `await execute` had no wait_for, so a hung node
+                # (RAG hang, retry loop, pending API) pinned the whole run forever.
+                node_timeout = config.get("timeout_seconds")
+                if node_timeout:
+                    output = await asyncio.wait_for(
+                        executor.execute(inputs, config, self.ctx),
+                        timeout=float(node_timeout),
+                    )
+                else:
+                    output = await executor.execute(inputs, config, self.ctx)
                 duration_ms = int((time.monotonic() - t0) * 1000)
 
                 if not isinstance(output, dict):
@@ -316,38 +340,19 @@ class GraphExecutor:
                 if kind in self._BRANCHING_KINDS:
                     self._skip_inactive_branches(node_id, output)
             except NodeExecutionError as e:
-                self.ctx.nodes_failed += 1
-                errors.append({
-                    "node_id": node_id,
-                    "kind": kind,
-                    "message": str(e),
-                })
-                await self.ctx.emit("node_failed", {
-                    "run_id": str(self.ctx.run_id),
-                    "node_id": node_id,
-                    "kind": kind,
-                    "error": str(e),
-                })
-                logger.error(f"node {node_id} ({kind}) failed: {e}")
-                # Por enquanto, falha PARA tudo. Em iteração futura: respeitar
-                # `error` output handles dos executors (json_extractor, claudius)
-                # pra permitir fluxo de tratamento de erro.
+                if await self._handle_node_error(node, node_id, kind, str(e), errors):
+                    continue
+                break
+            except asyncio.TimeoutError:
+                msg = f"node timed out after {config.get('timeout_seconds')}s"
+                if await self._handle_node_error(node, node_id, kind, msg, errors):
+                    continue
                 break
             except Exception as e:
-                # Unexpected — wrap and stop
-                self.ctx.nodes_failed += 1
-                errors.append({
-                    "node_id": node_id,
-                    "kind": kind,
-                    "message": f"{type(e).__name__}: {e}",
-                })
+                msg = f"{type(e).__name__}: {e}"
                 logger.exception(f"unexpected error in node {node_id} ({kind})")
-                await self.ctx.emit("node_failed", {
-                    "run_id": str(self.ctx.run_id),
-                    "node_id": node_id,
-                    "kind": kind,
-                    "error": f"{type(e).__name__}: {e}",
-                })
+                if await self._handle_node_error(node, node_id, kind, msg, errors):
+                    continue
                 break
 
         duration = time.monotonic() - self.ctx.started_at
@@ -373,6 +378,37 @@ class GraphExecutor:
         return result
 
     # ── Internal helpers ──────────────────────────────────────────────────
+
+    async def _handle_node_error(
+        self, node: dict, node_id: str, kind: str, message: str, errors: list
+    ) -> bool:
+        """Record a node failure and decide whether the run continues.
+
+        Replaces the old unconditional `break` that killed the ENTIRE graph on
+        any exception — including transient ones (429, timeout). Now each node
+        honours `config.on_error`:
+          - "stop"     (default): record + halt the run (legacy behavior).
+          - "continue": record the failure, emit node_failed, but keep running
+                        downstream nodes (resilient flows / best-effort fan-out).
+        Returns True to continue, False to stop.
+        """
+        self.ctx.nodes_failed += 1
+        errors.append({"node_id": node_id, "kind": kind, "message": message})
+        await self.ctx.emit("node_failed", {
+            "run_id": str(self.ctx.run_id),
+            "node_id": node_id,
+            "kind": kind,
+            "error": message,
+        })
+        config = (node.get("data", {}) or {}).get("config", {}) or {}
+        on_error = (config.get("on_error") or "stop").lower()
+        if on_error == "continue":
+            logger.warning(f"node {node_id} ({kind}) failed but on_error=continue: {message}")
+            # Mark this node's output empty so downstream gather doesn't KeyError.
+            self.ctx.outputs.setdefault(node_id, {})
+            return True
+        logger.error(f"node {node_id} ({kind}) failed (on_error=stop): {message}")
+        return False
 
     def _kind_of(self, node: dict) -> str:
         """Resolve the executable kind of a node.

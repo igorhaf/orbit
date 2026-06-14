@@ -98,6 +98,20 @@ async def get_all_projects_rag_stats(
         - totals: Aggregated totals across all projects
     """
     try:
+        # Guard: on a fresh/legacy deploy the rag_documents table may not exist
+        # yet (the RAG migrations create it). Return an explicit "uninitialized"
+        # payload instead of a confusing 500 that reads like a random bug.
+        table_exists = db.execute(
+            text("SELECT to_regclass('public.rag_documents')")
+        ).scalar()
+        if table_exists is None:
+            return {
+                "rag_uninitialized": True,
+                "message": "RAG não inicializado: tabela rag_documents ausente (rode as migrations de pgvector/RAG).",
+                "projects": [],
+                "totals": {},
+            }
+
         # Get all projects
         projects = db.query(Project).order_by(Project.name).all()
 

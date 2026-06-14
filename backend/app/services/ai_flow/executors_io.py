@@ -271,7 +271,11 @@ class ClaudiusSingleCallExecutor(NodeExecutor):
         try:
             from app.services.claudius_pipeline import ClaudiusPipelineService
             from app.services.claudius_pipeline import ClaudiusPipelineError, ClaudiusQuotaExhaustedError
-            cp = ClaudiusPipelineService(ctx.db)
+            # db is the 2nd ctor param — passing ctx.db positionally landed it in
+            # `base_url`, then `.rstrip("/")` crashed (Session has no rstrip),
+            # making every engine Claudius executor inoperant. Pass by keyword +
+            # a usage_type so quota logging isn't silently disabled (CLAUDE.md §5).
+            cp = ClaudiusPipelineService(db=ctx.db, default_usage_type="ai_flow")
             thinking = {"type": "enabled", "budget_tokens": thinking_budget} if thinking_budget > 0 else None
             result = await cp.call(
                 model=model,

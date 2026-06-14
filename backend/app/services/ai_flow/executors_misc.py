@@ -366,7 +366,11 @@ class ClaudiusBatchCallExecutor(NodeExecutor):
             from app.services.claudius_pipeline import (
                 ClaudiusPipelineService, ClaudiusPipelineError, ClaudiusQuotaExhaustedError,
             )
-            cp = ClaudiusPipelineService(ctx.db)
+            # db is the 2nd ctor param — passing ctx.db positionally landed it in
+            # `base_url`, then `.rstrip("/")` crashed (Session has no rstrip),
+            # making every engine Claudius executor inoperant. Pass by keyword +
+            # a usage_type so quota logging isn't silently disabled (CLAUDE.md §5).
+            cp = ClaudiusPipelineService(db=ctx.db, default_usage_type="ai_flow")
         except Exception as e:
             return {"responses": [], "errors": [{"index": 0, "message": str(e)}]}
 
@@ -420,7 +424,11 @@ class QuotaProbeExecutor(NodeExecutor):
         mode = config.get("mode", "status")
         try:
             from app.services.claudius_pipeline import ClaudiusPipelineService
-            cp = ClaudiusPipelineService(ctx.db)
+            # db is the 2nd ctor param — passing ctx.db positionally landed it in
+            # `base_url`, then `.rstrip("/")` crashed (Session has no rstrip),
+            # making every engine Claudius executor inoperant. Pass by keyword +
+            # a usage_type so quota logging isn't silently disabled (CLAUDE.md §5).
+            cp = ClaudiusPipelineService(db=ctx.db, default_usage_type="ai_flow")
             if mode == "probe":
                 status = await cp.quota_probe()
             elif mode == "plan":
@@ -448,7 +456,11 @@ class ProviderHealthCheckExecutor(NodeExecutor):
         backoff = config.get("backoff", "exponential")
         try:
             from app.services.claudius_pipeline import ClaudiusPipelineService
-            cp = ClaudiusPipelineService(ctx.db)
+            # db is the 2nd ctor param — passing ctx.db positionally landed it in
+            # `base_url`, then `.rstrip("/")` crashed (Session has no rstrip),
+            # making every engine Claudius executor inoperant. Pass by keyword +
+            # a usage_type so quota logging isn't silently disabled (CLAUDE.md §5).
+            cp = ClaudiusPipelineService(db=ctx.db, default_usage_type="ai_flow")
             for attempt in range(retries):
                 try:
                     ok = await cp.health_check()
@@ -767,8 +779,13 @@ class RAGContextExecutor(NodeExecutor):
             text = "\n\n".join(c for c in chunks if c)
             max_chars = int(config.get("max_chars", 3000))
             return {"context": text[:max_chars]}
-        except Exception:
-            return {"context": ""}
+        except Exception as e:
+            # NOT silent: a RAG failure (table missing, Ollama down, timeout)
+            # would otherwise leave the downstream LLM with no context and no
+            # trace — the §1(A) fail-silent anti-pattern. Log it; the sibling
+            # rag_query executor raises, this one degrades but at least records.
+            logger.error("rag_context retrieve failed (returning empty context): %s", e)
+            return {"context": "", "_rag_error": str(e)}
 
 
 @registry.register("router")

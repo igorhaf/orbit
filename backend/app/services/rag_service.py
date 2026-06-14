@@ -37,6 +37,7 @@ Usage:
 import json
 import logging
 import os
+from functools import lru_cache
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -71,7 +72,12 @@ class RAGService:
 
     @staticmethod
     def _generate_embedding(text_content: str) -> List[float]:
-        """Generate embedding via Nomic Embed Text (Ollama API).
+        """Generate embedding via Nomic Embed Text (Ollama API), with cache.
+
+        retrieve() embeds the SAME query text on every call; without a cache
+        each one pays a fresh Ollama round-trip (30s timeout worst case). We
+        cache by SHA256 of the content so repeated queries are instant. The
+        cache lives only for successful embeddings (failures raise, never cached).
 
         Args:
             text_content: Text to embed
@@ -82,6 +88,15 @@ class RAGService:
         Raises:
             RuntimeError: If Ollama is unreachable or model unavailable
         """
+        import hashlib
+        key = hashlib.sha256(text_content.encode("utf-8")).hexdigest()
+        return list(RAGService._embed_cached(key, text_content))
+
+    @staticmethod
+    @lru_cache(maxsize=2048)
+    def _embed_cached(content_hash: str, text_content: str) -> tuple:
+        """Cached embedding keyed by SHA256(content). Returns a tuple so it is
+        hashable/immutable in the LRU; callers copy to a list."""
         try:
             resp = requests.post(
                 f"{OLLAMA_HOST}/api/embeddings",
@@ -92,9 +107,11 @@ class RAGService:
             embedding = resp.json()["embedding"]
             if len(embedding) != NOMIC_DIMS:
                 logger.warning(f"Unexpected embedding dims: {len(embedding)} (expected {NOMIC_DIMS})")
-            return embedding
+            return tuple(embedding)
         except Exception as e:
-            logger.error(f"Nomic embedding failed: {e}")
+            # Fail-loud: name the host so "Ollama down" is unmistakable in logs,
+            # distinct from a parse error or empty result.
+            logger.error(f"Nomic embedding failed (host={OLLAMA_HOST}): {e}")
             raise RuntimeError(f"Failed to generate embedding via Ollama ({OLLAMA_HOST}): {e}")
 
     def store(
