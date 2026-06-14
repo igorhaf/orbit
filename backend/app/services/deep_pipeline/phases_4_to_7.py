@@ -53,8 +53,14 @@ class Phase4to7Mixin:
 
         stats = {"epics": 0, "stories": 0, "tasks": 0, "total_cards": 0}
 
-        # Phase 4a: Generate epics (batched by domain groups for scalability)
-        DOMAIN_BATCH_SIZE = 20
+        # Phase 4a: Generate epics (batched by domain groups for scalability).
+        # 6 domains/batch: each epic is a min-300-char description + acceptance
+        # criteria + story points + labels — lots of OUTPUT. 12 domains × up-to-3
+        # epics took >600s to generate and hit the CLI timeout (502). 6 halves the
+        # output per call. Same failure mode + fix as Phase 3 (small batch + long
+        # timeout), but here the bottleneck is output volume, not input.
+        DOMAIN_BATCH_SIZE = 6
+        P4A_CALL_TIMEOUT_S = 900
         p4a_label = self._model_label(self._get_model("phase_4a", MODEL_SONNET))
         p4a_model = self._get_model("phase_4a", MODEL_SONNET)
         p4a_max_tokens = self._get_max_tokens("phase_4a", 16000)
@@ -83,7 +89,15 @@ class Phase4to7Mixin:
 
         epics = []
         for batch_idx, batch_domains in enumerate(batches):
-            batch_arch = {d: arch_by_domain[d] for d in batch_domains if d in arch_by_domain}
+            # Resilient to name mismatch: Phase 3 (chunked) may RENAME domains
+            # vs Phase 2's rules (e.g. "Gestão de Reservas" → "Gestão de Quartos"),
+            # so arch_by_domain misses ~half the rule domains. The rules are the
+            # essential input; the arch_map is optional context. Include EVERY
+            # batch domain — with its arch object if matched, or a name-only stub
+            # otherwise — so the model always sees the full domain list to cover.
+            batch_arch = {}
+            for d in batch_domains:
+                batch_arch[d] = arch_by_domain.get(d, {"name": d})
             batch_rules = {d: all_rules_summary[d] for d in batch_domains if d in all_rules_summary}
             # Include project_summary for context in every batch
             if "project_summary" in arch_map:
@@ -105,6 +119,7 @@ class Phase4to7Mixin:
                 system_prompt=system_prompt or "Generate project epics. Respond with JSON.",
                 user_prompt=f"Projeto: {project.name}\n\nDominios ({batch_label}):\n{arch_compact}\n\nRegras:\n{rules_compact}",
                 max_tokens=p4a_max_tokens,
+                timeout=P4A_CALL_TIMEOUT_S,
                 cacheable=True,
             )
 
