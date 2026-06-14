@@ -370,22 +370,26 @@ class ClaudiusBatchCallExecutor(NodeExecutor):
             # `base_url`, then `.rstrip("/")` crashed (Session has no rstrip),
             # making every engine Claudius executor inoperant. Pass by keyword +
             # a usage_type so quota logging isn't silently disabled (CLAUDE.md §5).
-            cp = ClaudiusPipelineService(db=ctx.db, default_usage_type="ai_flow")
+            cp = ClaudiusPipelineService(
+                db=ctx.db, default_usage_type="ai_flow",
+                cache_service=getattr(ctx, "cache_service", None),
+            )
         except Exception as e:
             return {"responses": [], "errors": [{"index": 0, "message": str(e)}]}
 
-        # Build request list
+        # Build request list (cacheable: identical prompt reuses the response).
         requests = []
         for p in prompts:
             if isinstance(p, str):
                 requests.append({"system_prompt": "Respond concisely.", "user_prompt": p,
-                                 "model": model, "max_tokens": max_tokens})
+                                 "model": model, "max_tokens": max_tokens, "cacheable": True})
             elif isinstance(p, dict):
                 requests.append({
                     "system_prompt": p.get("system") or "Respond concisely.",
                     "user_prompt": p.get("user") or "",
                     "model": p.get("model") or model,
                     "max_tokens": int(p.get("max_tokens", max_tokens)),
+                    "cacheable": True,
                 })
 
         try:

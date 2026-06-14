@@ -767,3 +767,39 @@ class CacheService:
             "cost_saved": stats.get("cost_saved", 0.0),
             "hit_rate_percent": f"{hit_rate * 100:.1f}%",
         }
+
+
+def build_default_cache_service(enable_semantic: bool = False) -> "CacheService":
+    """Build a CacheService wired to Redis (shared with AIOrchestrator's setup).
+
+    Extracted so the Deep Pipeline and the AI Flow engine can share ONE cache
+    instance across calls without duplicating the Redis-connect logic. Defaults
+    to L1/L3 only (enable_semantic=False) — L2 semantic needs Ollama embeddings
+    (30s timeout per miss) and is opt-in until its hit rate is measured.
+    """
+    import os
+
+    redis_client = None
+    redis_host = os.getenv("REDIS_HOST")
+    if redis_host:
+        try:
+            import redis as _redis
+            redis_client = _redis.Redis(
+                host=redis_host,
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                db=0,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+            )
+            redis_client.ping()
+        except Exception as e:
+            logger.warning(f"build_default_cache_service: Redis unavailable ({e}); in-memory fallback")
+            redis_client = None
+
+    # Semantic (L2) can only work with Redis present.
+    return CacheService(
+        redis_client=redis_client,
+        enable_semantic=bool(enable_semantic and redis_client),
+        similarity_threshold=0.97,
+    )

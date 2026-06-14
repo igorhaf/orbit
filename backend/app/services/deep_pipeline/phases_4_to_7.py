@@ -105,6 +105,7 @@ class Phase4to7Mixin:
                 system_prompt=system_prompt or "Generate project epics. Respond with JSON.",
                 user_prompt=f"Projeto: {project.name}\n\nDominios ({batch_label}):\n{arch_compact}\n\nRegras:\n{rules_compact}",
                 max_tokens=p4a_max_tokens,
+                cacheable=True,
                 **self._ollama_kwargs("phase_4a"),
             )
 
@@ -209,6 +210,7 @@ class Phase4to7Mixin:
                 "system_prompt": system_prompt or "Decompose this epic into stories. Respond with JSON.",
                 "user_prompt": f"Epic:\n{epic_compact}\n\nRegras do dominio:\n{rules_compact}",
                 "max_tokens": self._get_max_tokens("phase_4b", 32000),
+                "cacheable": True,
                 **p4b_ollama,
             })
 
@@ -290,6 +292,7 @@ class Phase4to7Mixin:
                 "system_prompt": system_prompt or "Decompose this story into tasks. Respond with JSON.",
                 "user_prompt": f"Story:\n{story_compact}\n\nContexto do Epic:\n{epic_ctx_compact}",
                 "max_tokens": self._get_max_tokens("phase_4c", 8000),
+                "cacheable": True,
                 **p4c_ollama,
             })
             story_titles_for_tasks.append(story.get("title", ""))
@@ -405,6 +408,7 @@ class Phase4to7Mixin:
             system_prompt=system_prompt or "Plan wiki structure. Respond with JSON.",
             user_prompt=f"Projeto: {project.name}\n\nMapa:\n{arch_compact}\n\nCards:\n{cards_compact}",
             max_tokens=self._get_max_tokens("phase_5a", 8000),
+            cacheable=True,
             **self._ollama_kwargs("phase_5a"),
         )
 
@@ -457,6 +461,7 @@ class Phase4to7Mixin:
                 system_prompt=system_prompt or "Generate wiki overview pages. Respond with JSON.",
                 user_prompt=f"Plano:\n{pages_compact}\n\nMapa:\n{arch_compact}",
                 max_tokens=self._get_max_tokens("phase_5b", 64000),
+                cacheable=True,
                 **self._ollama_kwargs("phase_5b"),
             )
 
@@ -498,6 +503,7 @@ class Phase4to7Mixin:
                 "system_prompt": system_prompt or "Generate domain wiki pages. Respond with JSON.",
                 "user_prompt": f"Dominio: {domain}\n\nPlano:\n{plan_compact}\n\nRegras:\n{rules_compact}",
                 "max_tokens": self._get_max_tokens("phase_5c", 32000),
+                "cacheable": True,
                 **self._ollama_kwargs("phase_5c"),
             })
 
@@ -539,6 +545,7 @@ class Phase4to7Mixin:
                         system_prompt="Gere uma pagina de wiki detalhada para este fluxo cross-domain. Responda com JSON: {\"pages\": [{\"slug\": \"...\", \"title\": \"...\", \"content\": \"markdown...\", \"word_count\": N}]}",
                         user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, separators=(',', ':'))}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False, separators=(',', ':'))}",
                         max_tokens=self._get_max_tokens("phase_5d", 16000),
+                        cacheable=True,
                         **self._ollama_kwargs("phase_5d"),
                     )
                     pages_data = self.claudius.extract_json(result.get("text", ""))
@@ -655,6 +662,7 @@ class Phase4to7Mixin:
             ),
             thinking={"type": "enabled", "budget_tokens": p6_thinking} if p6_thinking else None,
             max_tokens=p6_max_tokens,
+            cacheable=True,
             **self._ollama_kwargs("phase_6"),
         )
 
@@ -922,6 +930,7 @@ class Phase4to7Mixin:
                 ),
                 user_prompt=user_prompt,
                 max_tokens=self._get_max_tokens("phase_3", 4000),
+                cacheable=True,
                 **self._ollama_kwargs("phase_3"),
             )
 

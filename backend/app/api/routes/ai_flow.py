@@ -1757,6 +1757,13 @@ async def run_graph(payload: dict, db: Session = Depends(get_db)):
         bg_db = SessionLocal()
         try:
             ctx.db = bg_db
+            # Shared L1 response cache so the engine's Claudius nodes reuse
+            # identical-prompt responses (no quota spent on re-runs).
+            try:
+                from app.services.cache_service import build_default_cache_service
+                ctx.cache_service = build_default_cache_service(enable_semantic=False)
+            except Exception:
+                ctx.cache_service = None
             executor = GraphExecutor(graph, ctx)
             result = await executor.run(initial_inputs)
             jm2 = JobManager(bg_db)

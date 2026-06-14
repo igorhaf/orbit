@@ -250,6 +250,10 @@ class Phase0to3Mixin:
                     "system_prompt": system_prompt,
                     "user_prompt": user_prompt,
                     "max_tokens": p1_max_tokens,
+                    # Per-file analysis: prompt = path + (truncated) content, fully
+                    # deterministic. Identical on re-run of an unchanged file →
+                    # cache hit, no quota spent. Biggest single cache win.
+                    "cacheable": True,
                     **p1_ollama,
                 })
 
@@ -646,6 +650,7 @@ class Phase0to3Mixin:
                 "thinking": {"type": "enabled", "budget_tokens": p3_thinking} if p3_thinking else None,
                 "max_tokens": p3_max_tokens,
                 "timeout": self.P3_CALL_TIMEOUT_S,
+                "cacheable": True,
                 **self._ollama_kwargs("phase_3"),
             })
             batch_domain_counts.append(len(batch_domains))

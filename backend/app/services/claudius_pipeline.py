@@ -103,11 +103,16 @@ class ClaudiusPipelineService:
         base_url: str | None = None,
         db: Session | None = None,
         default_usage_type: str | None = None,
+        cache_service: Any = None,
     ):
         self.base_url = (base_url or CLAUDIUS_BASE_URL).rstrip("/")
         self._client: httpx.AsyncClient | None = None
         self.db = db
         self.default_usage_type = default_usage_type
+        # Optional response cache. When set AND a call passes cacheable=True AND
+        # has no session_key, an exact-prompt hit returns without spending quota.
+        # Injected by the caller so one instance is shared across call/call_batch.
+        self.cache_service = cache_service
 
     def _log_execution(
         self,
@@ -202,6 +207,7 @@ class ClaudiusPipelineService:
         max_retries: int | None = None,
         usage_type: str | None = None,
         timeout: int | None = None,
+        cacheable: bool = False,
         **kwargs,  # Accept and ignore Ollama params for cross-provider compat
     ) -> dict[str, Any]:
         """
@@ -240,6 +246,37 @@ class ClaudiusPipelineService:
             payload["thinking"] = thinking
         if max_tokens:
             payload["max_tokens"] = max_tokens
+
+        # ── Cache lookup (exact-prompt) ──────────────────────────────────────
+        # Only when explicitly cacheable and NOT a multi-turn session (each turn
+        # is unique). A hit returns the stored response WITHOUT calling Claudius,
+        # saving a prompt off the quota. Cache failures never block the call.
+        cache_input = None
+        use_cache = bool(self.cache_service) and cacheable and not session_key
+        if use_cache:
+            cache_input = self._build_cache_input(
+                model, system_prompt, user_prompt, max_tokens, thinking, usage_type
+            )
+            try:
+                cached = self.cache_service.get(cache_input)
+            except Exception as e:
+                logger.warning(f"Claudius cache get failed (ignoring): {e}")
+                cached = None
+            if cached and cached.get("response"):
+                logger.info(
+                    f"Claudius cache HIT ({model}, usage={usage_type}) — quota saved"
+                )
+                return {
+                    "text": cached["response"],
+                    "thinking": "",
+                    "usage": {
+                        "input_tokens": cached.get("input_tokens", 0),
+                        "output_tokens": cached.get("output_tokens", 0),
+                    },
+                    "model": cached.get("model", model),
+                    "stop_reason": "end_turn",
+                    "raw": {"cache_hit": True},
+                }
 
         last_error = None
         for attempt in range(retries + 1):
@@ -289,6 +326,33 @@ class ClaudiusPipelineService:
                     result=parsed,
                     start_time=start_time,
                 )
+
+                # ── Cache store ──────────────────────────────────────────────
+                # Only cache non-empty responses. Quota-exhausted already raised
+                # above (never reaches here). Cache failures never block.
+                if use_cache and cache_input is not None and (parsed.get("text") or "").strip():
+                    try:
+                        usage = parsed.get("usage", {}) or {}
+                        cost = 0.0
+                        try:
+                            from app.utils.pricing import calculate_cost
+                            cost = calculate_cost(
+                                usage.get("input_tokens", 0),
+                                usage.get("output_tokens", 0),
+                                parsed.get("model", model),
+                            ).get("total_cost", 0.0)
+                        except Exception:
+                            pass
+                        self.cache_service.set(cache_input, {
+                            "response": parsed["text"],
+                            "model": parsed.get("model", model),
+                            "input_tokens": usage.get("input_tokens", 0),
+                            "output_tokens": usage.get("output_tokens", 0),
+                            "cost": cost,
+                        })
+                    except Exception as e:
+                        logger.warning(f"Claudius cache set failed (ignoring): {e}")
+
                 return parsed
 
             except httpx.TimeoutException as e:
@@ -556,6 +620,37 @@ class ClaudiusPipelineService:
         except Exception as e:
             logger.exception("quota_probe failed")
             return {"available": False, "reason": "unreachable", "resets_at": None, "raw": f"{type(e).__name__}: {str(e)[:200]}"}
+
+    # ── Cache key ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_cache_input(
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int | None,
+        thinking: dict | None,
+        usage_type: str | None,
+    ) -> dict:
+        """Build the cache_input for CacheService.
+
+        CacheService._generate_cache_key only hashes prompt/system/usage/model/
+        temperature — it ignores max_tokens and thinking. Those DO change the
+        output (a smaller max_tokens truncates), so fold them into the `prompt`
+        field to make them part of the key. temperature=0.7 keeps lookups on the
+        L1 exact path (avoids the L3 template branch that temp=0 would trigger).
+        """
+        prompt_key = json.dumps(
+            {"u": user_prompt, "mt": max_tokens, "th": thinking},
+            sort_keys=True, ensure_ascii=False,
+        )
+        return {
+            "prompt": prompt_key,
+            "system_prompt": system_prompt or "",
+            "usage_type": usage_type or "",
+            "temperature": 0.7,
+            "model": model,
+        }
 
     # ── Response Parsing ─────────────────────────────────────────────────
 

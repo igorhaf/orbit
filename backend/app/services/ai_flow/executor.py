@@ -70,6 +70,7 @@ class ExecutionContext:
     project: Optional[Any] = None                             # eagerly-loaded Project row
     ws_emit: Optional[Callable[[str, dict], Awaitable[None]]] = None  # async fn: (event, payload) -> None
     job_id: Optional[UUID] = None                             # AsyncJob backing this run
+    cache_service: Optional[Any] = None                       # shared Claudius response cache (L1)
 
     # Per-node outputs (populated by GraphExecutor as nodes complete).
     # key = source_node_id; value = dict of output_handle → value (or single value if 1 output).

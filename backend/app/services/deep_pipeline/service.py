@@ -54,7 +54,20 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
 
         # v2.5: claudius-only lockdown. Ollama path removed.
         self._provider = "claudius"
-        self.claudius = ClaudiusPipelineService(db=db, default_usage_type="content_generation")
+        # Response cache (L1 exact, no semantic) shared across all phase calls.
+        # An identical prompt (re-run of the same project, or resume after a
+        # quota stop) becomes a cache hit and does NOT spend a quota prompt.
+        try:
+            from app.services.cache_service import build_default_cache_service
+            self._cache_service = build_default_cache_service(enable_semantic=False)
+        except Exception as e:
+            logger.warning(f"Deep pipeline cache unavailable ({e}); running without cache")
+            self._cache_service = None
+        self.claudius = ClaudiusPipelineService(
+            db=db,
+            default_usage_type="content_generation",
+            cache_service=self._cache_service,
+        )
 
         # ── PROMPT #237: Pipeline telemetry ────
         self._console = get_console_logger()

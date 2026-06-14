@@ -187,7 +187,10 @@ class AIOrchestrator(ModelSelectorMixin, ProvidersMixin, ProvidersStreamMixin):
         self.clients["claudius"] = AsyncAnthropic(api_key=api_key, base_url=claudius_base)
         logger.info(f"✅ Claudius client initialized: {claudius_base}")
 
-        logger.info(f"📊 Initialized async providers: {list(initialized_providers)}")
+        # v2.5 lockdown removed the multi-provider loop that populated
+        # `initialized_providers`; the orphaned reference raised NameError and
+        # broke GET /cache/stats with a 500. Report what was actually set up.
+        logger.info(f"📊 Initialized async providers: {list(self.clients.keys())}")
 
     async def execute(
         self,

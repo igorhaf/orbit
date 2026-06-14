@@ -65,6 +65,7 @@ class TelemetryMixin:
         output_tokens = 0
         cost_usd = 0.0
 
+        cache_hit = False
         if result and isinstance(result, dict):
             usage = result.get("usage", {})
             input_tokens = usage.get("input_tokens", 0) or 0
@@ -72,6 +73,11 @@ class TelemetryMixin:
             if input_tokens or output_tokens:
                 cost_data = calculate_cost(input_tokens, output_tokens, model_name or result.get("model", ""))
                 cost_usd = cost_data.get("total_cost", 0.0)
+            # Count Claudius cache hits per run (quota saved). The flag is set by
+            # ClaudiusPipelineService.call() when it serves a cached response.
+            if (result.get("raw") or {}).get("cache_hit"):
+                cache_hit = True
+                self._run_cache_hits = getattr(self, "_run_cache_hits", 0) + 1
 
         self._run_tokens_in += input_tokens
         self._run_tokens_out += output_tokens

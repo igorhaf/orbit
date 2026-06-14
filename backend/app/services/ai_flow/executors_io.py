@@ -275,7 +275,10 @@ class ClaudiusSingleCallExecutor(NodeExecutor):
             # `base_url`, then `.rstrip("/")` crashed (Session has no rstrip),
             # making every engine Claudius executor inoperant. Pass by keyword +
             # a usage_type so quota logging isn't silently disabled (CLAUDE.md §5).
-            cp = ClaudiusPipelineService(db=ctx.db, default_usage_type="ai_flow")
+            cp = ClaudiusPipelineService(
+                db=ctx.db, default_usage_type="ai_flow",
+                cache_service=getattr(ctx, "cache_service", None),
+            )
             thinking = {"type": "enabled", "budget_tokens": thinking_budget} if thinking_budget > 0 else None
             result = await cp.call(
                 model=model,
@@ -283,6 +286,7 @@ class ClaudiusSingleCallExecutor(NodeExecutor):
                 user_prompt=user,
                 max_tokens=max_tokens,
                 thinking=thinking,
+                cacheable=True,
             )
         except ClaudiusQuotaExhaustedError as e:
             logger.warning(f"claudius_single_call quota exhausted: {e}")
