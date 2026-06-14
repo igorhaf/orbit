@@ -48,7 +48,11 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 # Ollama configuration for Nomic Embed Text
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
+# Ollama runs natively in WSL (systemd service, listens on 0.0.0.0:11434).
+# Containers reach it via host.docker.internal (host-gateway in docker-compose);
+# the OLLAMA_HOST env always overrides this default. The old 172.27.144.1
+# (Windows host) is obsolete since Ollama moved into WSL.
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
 NOMIC_MODEL = "nomic-embed-text"
 NOMIC_DIMS = 768
 

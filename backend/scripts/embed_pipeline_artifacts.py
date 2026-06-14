@@ -42,10 +42,20 @@ logger = logging.getLogger("embed_pipeline_artifacts")
 EMBEDDABLE_TYPES = {"synthesized_rules", "file_analysis", "architectural_map"}
 
 
+# nomic-embed-text has a ~2048-token context (~8K chars). Inputs over that make
+# Ollama return HTTP 500 "input length exceeds the context length". Truncate to
+# a safe margin — the embedding captures the semantics of the leading content,
+# which is enough for retrieval. (Chunking would be richer but is out of scope
+# for a backfill; the head of a domain summary / rule list is the most salient.)
+# 4000 chars keeps us safely under nomic's 2048-token context even for
+# Portuguese + dense JSON (which have a higher char→token ratio than English).
+MAX_EMBED_CHARS = 4000
+
+
 def _artifact_to_text(artifact_type: str, content: dict) -> str:
-    """Render an artifact's JSONB into a compact, embeddable text blob."""
+    """Render an artifact's JSONB into a compact, embeddable text blob (truncated)."""
     if not isinstance(content, dict):
-        return json.dumps(content, ensure_ascii=False)
+        return json.dumps(content, ensure_ascii=False)[:MAX_EMBED_CHARS]
     if artifact_type == "synthesized_rules":
         parts = [f"Domínio: {content.get('domain', '?')}"]
         if content.get("domain_summary"):
@@ -54,14 +64,14 @@ def _artifact_to_text(artifact_type: str, content: dict) -> str:
             t = r.get("rule_text") if isinstance(r, dict) else str(r)
             if t:
                 parts.append(f"- {t}")
-        return "\n".join(parts)
+        return "\n".join(parts)[:MAX_EMBED_CHARS]
     if artifact_type == "file_analysis":
         return (
             f"Arquivo: {content.get('path', '?')}\n"
             f"{content.get('summary', '') or json.dumps(content, ensure_ascii=False)}"
-        )
+        )[:MAX_EMBED_CHARS]
     # architectural_map and others: dump compactly
-    return json.dumps(content, ensure_ascii=False)[:8000]
+    return json.dumps(content, ensure_ascii=False)[:MAX_EMBED_CHARS]
 
 
 def main() -> int:
@@ -104,6 +114,7 @@ def main() -> int:
 
         rag = RAGService(db)
         stored, skipped, failed = 0, 0, 0
+        consecutive_failures = 0
         for art_id, art_type, content in rows:
             if str(art_id) in already:
                 skipped += 1
@@ -126,12 +137,15 @@ def main() -> int:
             try:
                 rag.store(content=blob, metadata=meta, project_id=project_id)
                 stored += 1
+                consecutive_failures = 0
             except Exception as e:
                 failed += 1
+                consecutive_failures += 1
                 logger.error("Falha ao embedar artifact %s (%s): %s", art_id, art_type, e)
-                # If Ollama is down, the first failure repeats — stop early.
-                if failed >= 3:
-                    logger.error("3 falhas seguidas — abortando (Ollama provavelmente indisponível).")
+                # Abort only on a RUN of failures (Ollama down), not sporadic ones
+                # (which truncation should now prevent anyway).
+                if consecutive_failures >= 5:
+                    logger.error("5 falhas seguidas — abortando (Ollama provavelmente indisponível).")
                     break
 
         logger.info(

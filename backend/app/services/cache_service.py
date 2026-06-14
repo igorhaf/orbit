@@ -433,7 +433,8 @@ class CacheService:
             # PROMPT #250 - Use Nomic Embed Text via Ollama (same as RAGService)
             import os
             import requests as _requests
-            ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
+            # Ollama in WSL; containers reach it via host.docker.internal. env wins.
+            ollama_host = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
             resp = _requests.post(
                 f"{ollama_host}/api/embeddings",
                 json={"model": "nomic-embed-text", "prompt": text},

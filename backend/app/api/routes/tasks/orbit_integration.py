@@ -703,7 +703,7 @@ async def _process_semantic_prompt_async(
         prompt_text = None
         ai_model = "unknown"
 
-        ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
+        ollama_host = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
         ollama_model = os.getenv("OLLAMA_SEMANTIC_MODEL", "qwen3:14b")
 
         async def _call_ollama() -> str:
