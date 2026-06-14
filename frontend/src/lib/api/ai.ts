@@ -98,18 +98,8 @@ export const aiFlowApi = {
       body: JSON.stringify(payload),
     }),
 
-  listChains: () => request<any>('/api/v1/ai-flow/chains'),
-
-  getChain: (usageType: string) => request<any>(`/api/v1/ai-flow/chains/${usageType}`),
-
-  upsertChain: (usageType: string, data: { chain: string[]; node_positions?: Record<string, { x: number; y: number }> | null; is_active?: boolean }) =>
-    request<any>(`/api/v1/ai-flow/chains/${usageType}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-
-  deleteChain: (usageType: string) =>
-    request<any>(`/api/v1/ai-flow/chains/${usageType}`, { method: 'DELETE' }),
+  // (v3.7.8) listChains/getChain/upsertChain/deleteChain removidos — endpoints
+  // /chains/* legacy abandonados; nenhum componente os usava.
 
   // PROMPT #124 - Metrics, Analytics, Optimize, Templates
   modelMetrics: (modelIds: string[], days: number = 7) => {

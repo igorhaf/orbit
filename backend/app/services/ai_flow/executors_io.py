@@ -268,6 +268,11 @@ class ClaudiusSingleCallExecutor(NodeExecutor):
         max_tokens = int(config.get("max_tokens", 4000))
         thinking_budget = int(config.get("thinking_budget", 0))
 
+        # Quota coordenada: se outro nó já esgotou a cota nesta run, não queima
+        # mais uma tentativa (a chamada custaria 33s só pra falhar).
+        _quota_evt = getattr(ctx, "quota_exhausted", None)
+        if _quota_evt is not None and _quota_evt.is_set():
+            return {"response": None, "error": "quota_exhausted (skipped)"}
         try:
             from app.services.claudius_pipeline import ClaudiusPipelineService
             from app.services.claudius_pipeline import ClaudiusPipelineError, ClaudiusQuotaExhaustedError
@@ -290,6 +295,8 @@ class ClaudiusSingleCallExecutor(NodeExecutor):
             )
         except ClaudiusQuotaExhaustedError as e:
             logger.warning(f"claudius_single_call quota exhausted: {e}")
+            if _quota_evt is not None:
+                _quota_evt.set()  # sinaliza pros outros nós não queimarem cota
             return {"response": None, "error": f"quota_exhausted: {e}"}
         except ClaudiusPipelineError as e:
             logger.warning(f"claudius_single_call pipeline error: {e}")

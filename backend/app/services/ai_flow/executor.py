@@ -92,6 +92,15 @@ class ExecutionContext:
     # como input quando rodam sub-grafo. Stack pra loops aninhados.
     loop_stack: list[dict[str, Any]] = field(default_factory=list)
 
+    # v3.7.8: concorrência por camadas.
+    max_concurrency: int = 8                  # nós paralelos por onda
+    # db_lock serializa nós side-effecting (a Session SQLAlchemy NÃO é task-safe).
+    # quota_exhausted é setado por qualquer nó Claudius ao esgotar a cota, pra os
+    # outros nós não queimarem chamadas. Ambos lazy-init no GraphExecutor (precisam
+    # de event loop). Acessados via _get_db_lock()/_get_quota_event() helpers.
+    db_lock: Optional[Any] = None             # asyncio.Lock
+    quota_exhausted: Optional[Any] = None     # asyncio.Event
+
     async def emit(self, event: str, payload: dict) -> None:
         """Send a WS event (no-op if ws_emit not provided)."""
         if self.ws_emit:
@@ -235,6 +244,8 @@ class GraphExecutor:
         # Propagação: se TODOS os predecessores executáveis estão skipped,
         # este node também é skipped (não há dado pra processar).
         self._skipped: set[str] = set()
+        # v3.7.8: stop coordenado entre tarefas paralelas (on_error=stop).
+        self._stop_event: asyncio.Event | None = None
 
     # ── Public ────────────────────────────────────────────────────────────
 
@@ -246,6 +257,11 @@ class GraphExecutor:
         """
         # v3.7.2: expõe self no ctx pra control-flow loops chamarem run_subgraph
         self.ctx.executor = self
+        # v3.7.8: lazy-init dos primitivos de concorrência (precisam de event loop).
+        if self.ctx.db_lock is None:
+            self.ctx.db_lock = asyncio.Lock()
+        if self.ctx.quota_exhausted is None:
+            self.ctx.quota_exhausted = asyncio.Event()
         # Validation phase
         order = self._topological_order()
 
@@ -270,91 +286,57 @@ class GraphExecutor:
         errors: list[dict[str, str]] = []
         initial_inputs = initial_inputs or {}
 
-        for node_id in order:
-            node = self.nodes_by_id[node_id]
-            kind = self._kind_of(node)
+        # ── Layered (wave) execution ─────────────────────────────────────────
+        # Nodes whose dependencies are all resolved run IN PARALLEL (bounded by
+        # max_concurrency). This replaces the old strict-sequential loop: with the
+        # 33s/call Claudius overhead, independent nodes serialized needlessly.
+        # Kahn invariant preserved: a node only becomes "ready" once ALL its
+        # predecessors completed (or were skipped + decremented), so self._skipped
+        # already reflects upstream state when we decide to skip — identical to the
+        # sequential behavior.
+        self._stop_event = asyncio.Event()
+        sem = asyncio.Semaphore(max(1, int(getattr(self.ctx, "max_concurrency", 8) or 8)))
 
-            # v3.7.1: branch-skip — se este node foi marcado como skipped
-            # (propagação de branch inativo), não executa. Emite evento e
-            # propaga skip pra seus successors.
-            if node_id in self._skipped:
-                await self.ctx.emit("node_skipped", {
-                    "run_id": str(self.ctx.run_id),
-                    "node_id": node_id,
-                    "kind": kind,
-                    "reason": "predecessor branch inactive",
-                })
-                # Output vazio mas registrado pra successors saberem que existe
-                self.ctx.outputs[node_id] = {}
-                self._propagate_skip(node_id, all_handles_inactive=True)
-                continue
+        order_set = set(order)
+        indegree, successors = self._build_dep_state(order_set)
+        ready: deque[str] = deque(nid for nid in order if indegree.get(nid, 0) == 0)
 
-            await self.ctx.emit("node_started", {
-                "run_id": str(self.ctx.run_id),
-                "node_id": node_id,
-                "kind": kind,
-            })
+        def _release_successors(nid: str) -> None:
+            for succ in successors.get(nid, []):
+                indegree[succ] -= 1
+                if indegree[succ] == 0:
+                    ready.append(succ)
 
-            try:
-                inputs = self._gather_inputs(node_id, initial_inputs)
-                executor_cls = self.registry.get(kind)
-                if executor_cls is None:
-                    raise NodeExecutionError(
-                        node_id, kind,
-                        f"no executor registered for kind={kind!r}. "
-                        f"Available: {self.registry.all_kinds()}",
-                    )
-                executor = executor_cls()
-                config = node.get("data", {}).get("config", {}) or {}
-                t0 = time.monotonic()
-                # Real per-node timeout. Previously TimeoutExecutor claimed to
-                # enforce one but `await execute` had no wait_for, so a hung node
-                # (RAG hang, retry loop, pending API) pinned the whole run forever.
-                node_timeout = config.get("timeout_seconds")
-                if node_timeout:
-                    output = await asyncio.wait_for(
-                        executor.execute(inputs, config, self.ctx),
-                        timeout=float(node_timeout),
-                    )
+        while ready:
+            if self._stop_event.is_set():
+                break
+            # Collect the current wave.
+            wave = list(ready)
+            ready.clear()
+            coros = []
+            for node_id in wave:
+                if node_id in self._skipped:
+                    # Skipped: emit, register empty output, propagate, free successors.
+                    kind = self._kind_of(self.nodes_by_id[node_id])
+                    await self.ctx.emit("node_skipped", {
+                        "run_id": str(self.ctx.run_id),
+                        "node_id": node_id,
+                        "kind": kind,
+                        "reason": "predecessor branch inactive",
+                    })
+                    self.ctx.outputs[node_id] = {}
+                    self._propagate_skip(node_id, all_handles_inactive=True)
+                    _release_successors(node_id)
                 else:
-                    output = await executor.execute(inputs, config, self.ctx)
-                duration_ms = int((time.monotonic() - t0) * 1000)
+                    coros.append(self._run_one_node(node_id, initial_inputs, errors, sem))
 
-                if not isinstance(output, dict):
-                    raise NodeExecutionError(
-                        node_id, kind,
-                        f"executor returned {type(output).__name__}, expected dict",
-                    )
-
-                self.ctx.outputs[node_id] = output
-                self.ctx.nodes_executed += 1
-                await self.ctx.emit("node_completed", {
-                    "run_id": str(self.ctx.run_id),
-                    "node_id": node_id,
-                    "kind": kind,
-                    "duration_ms": duration_ms,
-                    "output_keys": list(output.keys()),
-                })
-
-                # v3.7.1: se este node é branching (if_else/switch), marca
-                # successors dos handles inativos (None) como skipped.
-                if kind in self._BRANCHING_KINDS:
-                    self._skip_inactive_branches(node_id, output)
-            except NodeExecutionError as e:
-                if await self._handle_node_error(node, node_id, kind, str(e), errors):
-                    continue
-                break
-            except asyncio.TimeoutError:
-                msg = f"node timed out after {config.get('timeout_seconds')}s"
-                if await self._handle_node_error(node, node_id, kind, msg, errors):
-                    continue
-                break
-            except Exception as e:
-                msg = f"{type(e).__name__}: {e}"
-                logger.exception(f"unexpected error in node {node_id} ({kind})")
-                if await self._handle_node_error(node, node_id, kind, msg, errors):
-                    continue
-                break
+            if coros:
+                outcomes = await asyncio.gather(*coros)
+                # Release successors AFTER the whole wave resolved, so _skipped is
+                # fully populated (branching nodes marked inactive handles) before
+                # downstream skip decisions are made.
+                for nid, _status in outcomes:
+                    _release_successors(nid)
 
         duration = time.monotonic() - self.ctx.started_at
         result = ExecutionResult(
@@ -476,6 +458,153 @@ class GraphExecutor:
 
         # Filter to executable
         return [nid for nid in order_all if self._is_executable(self.nodes_by_id[nid])]
+
+    def _build_dep_state(self, order_set: set[str]) -> tuple[dict[str, int], dict[str, list[str]]]:
+        """Build (indegree, successors) restricted to the nodes in `order_set`.
+
+        order_set = executable nodes that will actually run (visual nodes and loop
+        bodies excluded). Edges go THROUGH excluded nodes (ioNode passes data,
+        group is transparent, loop bodies run inside run_subgraph), so we collapse
+        each edge to the nearest order_set endpoints: from every order node, walk
+        forward through non-order nodes to find the order successors it feeds.
+        """
+        raw_succ: dict[str, list[str]] = defaultdict(list)
+        for e in self.edges:
+            src, tgt = e.get("source"), e.get("target")
+            if not src or not tgt:
+                continue
+            if src not in self.nodes_by_id or tgt not in self.nodes_by_id:
+                continue
+            raw_succ[src].append(tgt)
+
+        def _order_descendants(start: str) -> set[str]:
+            # BFS forward from start's raw successors, stopping at order nodes.
+            found: set[str] = set()
+            seen: set[str] = set()
+            stack = list(raw_succ.get(start, []))
+            while stack:
+                n = stack.pop()
+                if n in seen:
+                    continue
+                seen.add(n)
+                if n in order_set:
+                    found.add(n)
+                else:
+                    # transparent (visual / loop body) — keep walking forward
+                    stack.extend(raw_succ.get(n, []))
+            return found
+
+        successors: dict[str, list[str]] = {nid: [] for nid in order_set}
+        indegree: dict[str, int] = {nid: 0 for nid in order_set}
+        for nid in order_set:
+            for succ in _order_descendants(nid):
+                successors[nid].append(succ)
+                indegree[succ] += 1
+        return indegree, successors
+
+    async def _run_one_node(
+        self,
+        node_id: str,
+        initial_inputs: dict[str, Any],
+        errors: list[dict[str, str]],
+        sem: "asyncio.Semaphore",
+    ) -> tuple[str, str]:
+        """Execute a single node (used as a coroutine inside a wave).
+
+        Returns (node_id, status) where status ∈ {completed, failed, stopped}.
+        Acquires the concurrency semaphore; side-effecting nodes additionally
+        serialize on ctx.db_lock because the SQLAlchemy Session is NOT task-safe.
+        """
+        async with sem:
+            node = self.nodes_by_id[node_id]
+            kind = self._kind_of(node)
+            # If a prior node already triggered on_error=stop, don't start new work.
+            if self._stop_event is not None and self._stop_event.is_set():
+                return (node_id, "stopped")
+
+            await self.ctx.emit("node_started", {
+                "run_id": str(self.ctx.run_id),
+                "node_id": node_id,
+                "kind": kind,
+            })
+            config = node.get("data", {}).get("config", {}) or {}
+            try:
+                inputs = self._gather_inputs(node_id, initial_inputs)
+                executor_cls = self.registry.get(kind)
+                if executor_cls is None:
+                    raise NodeExecutionError(
+                        node_id, kind,
+                        f"no executor registered for kind={kind!r}. "
+                        f"Available: {self.registry.all_kinds()}",
+                    )
+                executor = executor_cls()
+                t0 = time.monotonic()
+                node_timeout = config.get("timeout_seconds")
+
+                async def _do_exec():
+                    return await executor.execute(inputs, config, self.ctx)
+
+                # Side-effecting nodes serialize on the DB lock (Session not
+                # task-safe). Pure nodes run fully in parallel.
+                if getattr(executor, "side_effecting", False) and self.ctx.db_lock is not None:
+                    async with self.ctx.db_lock:
+                        if node_timeout:
+                            output = await asyncio.wait_for(_do_exec(), timeout=float(node_timeout))
+                        else:
+                            output = await _do_exec()
+                else:
+                    if node_timeout:
+                        output = await asyncio.wait_for(_do_exec(), timeout=float(node_timeout))
+                    else:
+                        output = await _do_exec()
+                duration_ms = int((time.monotonic() - t0) * 1000)
+
+                if not isinstance(output, dict):
+                    raise NodeExecutionError(
+                        node_id, kind,
+                        f"executor returned {type(output).__name__}, expected dict",
+                    )
+
+                self.ctx.outputs[node_id] = output
+                self.ctx.nodes_executed += 1
+                await self.ctx.emit("node_completed", {
+                    "run_id": str(self.ctx.run_id),
+                    "node_id": node_id,
+                    "kind": kind,
+                    "duration_ms": duration_ms,
+                    "output_keys": list(output.keys()),
+                    "output_preview": self._output_preview(output),
+                })
+                if kind in self._BRANCHING_KINDS:
+                    self._skip_inactive_branches(node_id, output)
+                return (node_id, "completed")
+            except asyncio.TimeoutError:
+                msg = f"node timed out after {config.get('timeout_seconds')}s"
+                cont = await self._handle_node_error(node, node_id, kind, msg, errors)
+                if not cont and self._stop_event is not None:
+                    self._stop_event.set()
+                return (node_id, "failed")
+            except Exception as e:
+                if isinstance(e, NodeExecutionError):
+                    msg = str(e)
+                else:
+                    msg = f"{type(e).__name__}: {e}"
+                    logger.exception(f"unexpected error in node {node_id} ({kind})")
+                cont = await self._handle_node_error(node, node_id, kind, msg, errors)
+                if not cont and self._stop_event is not None:
+                    self._stop_event.set()
+                return (node_id, "failed")
+
+    @staticmethod
+    def _output_preview(output: dict) -> dict:
+        """Small truncated preview of a node's output for the DebugPanel/WS."""
+        preview = {}
+        try:
+            for k, v in list(output.items())[:5]:
+                preview[str(k)] = (str(v)[:500] if v is not None else None)
+        except Exception:
+            pass
+        return preview
 
     def _gather_inputs(self, node_id: str, initial_inputs: dict[str, Any]) -> dict[str, Any]:
         """Collect inputs from upstream nodes, keyed by INPUT handle name.

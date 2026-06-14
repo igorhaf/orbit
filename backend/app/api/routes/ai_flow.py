@@ -1708,6 +1708,15 @@ async def run_graph(payload: dict, db: Session = Depends(get_db)):
     if not graph or not graph.get("nodes"):
         return {"error": "no graph provided and no saved Canvas graph found"}
 
+    # Validate the graph SYNCHRONOUSLY (cycle detection) before creating the job,
+    # so an invalid graph returns 400 immediately instead of a job that nasces e
+    # morre em background segundos depois. _topological_order is read-only.
+    try:
+        _dry_ctx = ExecutionContext(run_id=_uuid4(), db=db)
+        GraphExecutor(graph, _dry_ctx)._topological_order()
+    except GraphValidationError as e:
+        raise HTTPException(status_code=400, detail=f"graph inválido: {e}")
+
     initial_inputs = payload.get("initial_inputs") or {}
     if project and "project" not in initial_inputs:
         initial_inputs["project"] = {"id": str(project.id), "name": project.name, "code_path": project.code_path}
@@ -1765,7 +1774,10 @@ async def run_graph(payload: dict, db: Session = Depends(get_db)):
             except Exception:
                 ctx.cache_service = None
             executor = GraphExecutor(graph, ctx)
-            result = await executor.run(initial_inputs)
+            # Global timeout: without it a hung node pins this background task
+            # forever (resource leak). Per-node timeouts don't cover a whole graph.
+            global_timeout = float(payload.get("timeout_seconds") or 3600)
+            result = await asyncio.wait_for(executor.run(initial_inputs), timeout=global_timeout)
             jm2 = JobManager(bg_db)
             if result.ok:
                 jm2.complete_job(job.id, result={
@@ -1776,6 +1788,13 @@ async def run_graph(payload: dict, db: Session = Depends(get_db)):
             else:
                 err_msg = "; ".join(e.get("message", "") for e in result.errors[:3])
                 jm2.fail_job(job.id, error=err_msg or "execution failed")
+        except asyncio.TimeoutError:
+            # Session may be mid-transaction after the cancel; fail defensively.
+            try:
+                bg_db.rollback()
+                JobManager(bg_db).fail_job(job.id, error=f"run exceeded {global_timeout}s global timeout")
+            except Exception:
+                pass
         except GraphValidationError as e:
             JobManager(bg_db).fail_job(job.id, error=f"graph invalid: {e}")
         except Exception as e:
@@ -2029,85 +2048,10 @@ def _chain_to_dict(chain: AIFlowChain, models: List[dict]) -> dict:
     }
 
 
-@router.get("/chains", response_model=List[AIFlowChainWithModels])
-async def list_chains(db: Session = Depends(get_db)):
-    """List all flow chains with their associated model details."""
-    chains = db.query(AIFlowChain).order_by(AIFlowChain.usage_type).all()
-    result = []
-    for chain in chains:
-        models = _resolve_chain_models(db, chain.chain or [])
-        result.append(_chain_to_dict(chain, models))
-    return result
-
-
-@router.get("/chains/{usage_type}", response_model=AIFlowChainWithModels)
-async def get_chain(usage_type: AIModelUsageType, db: Session = Depends(get_db)):
-    """Get chain for specific usage_type."""
-    chain = db.query(AIFlowChain).filter(AIFlowChain.usage_type == usage_type).first()
-    if not chain:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Nenhuma cadeia configurada para o tipo de uso '{usage_type.value}'",
-        )
-    models = _resolve_chain_models(db, chain.chain or [])
-    return _chain_to_dict(chain, models)
-
-
-@router.put("/chains/{usage_type}", response_model=AIFlowChainResponse)
-async def upsert_chain(
-    usage_type: AIModelUsageType,
-    data: AIFlowChainBase,
-    db: Session = Depends(get_db),
-):
-    """Create or update chain for a usage_type (upsert)."""
-    for model_id in data.chain:
-        model = db.query(AIModel).filter(AIModel.id == model_id).first()
-        if not model:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Modelo de IA '{model_id}' não encontrado",
-            )
-
-    existing = db.query(AIFlowChain).filter(AIFlowChain.usage_type == usage_type).first()
-
-    if existing:
-        existing.chain = data.chain
-        existing.node_positions = data.node_positions
-        existing.utility_nodes = data.utility_nodes
-        existing.is_active = data.is_active
-        existing.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(existing)
-        return existing
-    else:
-        new_chain = AIFlowChain(
-            id=uuid4(),
-            usage_type=usage_type,
-            chain=data.chain,
-            node_positions=data.node_positions,
-            utility_nodes=data.utility_nodes,
-            is_active=data.is_active,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-        db.add(new_chain)
-        db.commit()
-        db.refresh(new_chain)
-        return new_chain
-
-
-@router.delete("/chains/{usage_type}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_chain(usage_type: AIModelUsageType, db: Session = Depends(get_db)):
-    """Delete chain for a usage_type."""
-    chain = db.query(AIFlowChain).filter(AIFlowChain.usage_type == usage_type).first()
-    if not chain:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Nenhuma cadeia configurada para o tipo de uso '{usage_type.value}'",
-        )
-    db.delete(chain)
-    db.commit()
-    return None
+# NOTE: os endpoints CRUD /chains/* (list/get/upsert/delete) foram removidos
+# (v3.7.8) — eram a "fallback-chain" da v3.0, abandonada quando o canvas-graph
+# (__canvas_graph__) virou a fonte de verdade. O frontend nunca os chamava. O
+# model AIFlowChain e os helpers permanecem (usados por /chain-analytics).
 
 
 # ============================================================================

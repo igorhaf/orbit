@@ -13,9 +13,11 @@ export interface DebugEvent {
   id: string;
   node_id: string;
   node_label?: string;
-  status: 'pending' | 'running' | 'success' | 'failed';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped';
   duration_ms?: number;
   message?: string;
+  output_keys?: string[];
+  output_preview?: Record<string, string | null>;
   ts: string;
 }
 
@@ -60,24 +62,40 @@ export function DebugPanel({ open, onClose, events, lastRunAt }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {events.map((e) => (
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-1.5">
-                    {e.status === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                    {e.status === 'failed' && <XCircle className="w-3.5 h-3.5 text-red-500" />}
-                    {e.status === 'running' && <Clock className="w-3.5 h-3.5 text-blue-500 animate-spin" />}
-                    {e.status === 'pending' && <Clock className="w-3.5 h-3.5 text-gray-300" />}
-                  </td>
-                  <td className="px-3 py-1.5 font-mono text-[11px] text-gray-700">{e.node_label || e.node_id}</td>
-                  <td className="px-3 py-1.5 text-gray-600">{e.message || '—'}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
-                    {e.duration_ms != null ? `${(e.duration_ms / 1000).toFixed(2)}s` : '—'}
-                  </td>
-                  <td className="px-3 py-1.5 text-right text-gray-400 tabular-nums">
-                    {new Date(e.ts).toLocaleTimeString()}
-                  </td>
-                </tr>
-              ))}
+              {events.map((e) => {
+                const previewText = e.output_preview
+                  ? Object.entries(e.output_preview)
+                      .map(([k, v]) => `${k}: ${v ?? 'null'}`)
+                      .join('\n')
+                  : undefined;
+                const msg = e.message
+                  || (e.output_keys && e.output_keys.length ? e.output_keys.join(', ') : '—');
+                return (
+                  <tr key={e.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-1.5">
+                      {e.status === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                      {e.status === 'failed' && <XCircle className="w-3.5 h-3.5 text-red-500" />}
+                      {e.status === 'running' && <Clock className="w-3.5 h-3.5 text-blue-500 animate-spin" />}
+                      {e.status === 'pending' && <Clock className="w-3.5 h-3.5 text-gray-300" />}
+                      {e.status === 'skipped' && <span className="text-gray-400 text-[11px]">↳</span>}
+                    </td>
+                    <td className="px-3 py-1.5 font-mono text-[11px] text-gray-700">{e.node_label || e.node_id}</td>
+                    <td
+                      className="px-3 py-1.5 text-gray-600 max-w-[280px] truncate"
+                      title={previewText || undefined}
+                    >
+                      {msg}
+                      {previewText && <span className="ml-1 text-gray-300">⊕</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                      {e.duration_ms != null ? `${(e.duration_ms / 1000).toFixed(2)}s` : '—'}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-gray-400 tabular-nums">
+                      {new Date(e.ts).toLocaleTimeString()}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

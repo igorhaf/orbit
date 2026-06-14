@@ -42,10 +42,7 @@ export {
 } from './FlowNodes';
 export type { NodeAnimationState } from './FlowNodes';
 
-// Panels (kept)
-export { default as AnalyticsPanel } from './AnalyticsPanel';
-export type { AnalyticsPanelProps } from './AnalyticsPanel';
-
+// (v3.7.8) AnalyticsPanel removido — componente nunca montado (dead code).
 export { default as OptimizeDialog } from './OptimizeDialog';
 export type { OptimizeDialogProps } from './OptimizeDialog';
 
@@ -58,7 +55,7 @@ export { NodeCatalogToolbar } from './NodeCatalogToolbar';
 export { NodeInspector } from './NodeInspector';
 export { DebugPanel } from './DebugPanel';
 export type { DebugEvent } from './DebugPanel';
-export { SubflowBreadcrumbs } from './SubflowBreadcrumbs';
+// (v3.7.8) SubflowBreadcrumbs removido — componente nunca montado (dead code).
 
 // Utility functions
 export { buildFlowFromChain, computeEdgeProps, validateConnection, categoryOf } from './flowUtils';

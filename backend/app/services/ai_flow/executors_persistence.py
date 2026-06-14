@@ -325,60 +325,53 @@ class CheckpointSaverExecutor(NodeExecutor):
         if not isinstance(state, dict):
             return {"saved": False}
 
-        # Procura PipelineRun ativo pro project deste ctx
+        # Procura PipelineRun ativo pro project deste ctx. Só atualiza um run que
+        # JÁ exista (caso de integração com o Deep Pipeline); NUNCA cria um
+        # PipelineRun novo só pro AI Flow — isso deixava linhas órfãs
+        # `status=running` eternas poluindo a tabela. Sem run ativo, o checkpoint
+        # vai pro AsyncJob (rastreável e com ciclo de vida correto).
         pid = ctx.project_id or (ctx.project.id if ctx.project else None)
-        if not pid:
-            # Sem project — salva no AsyncJob.input_data como fallback
-            if ctx.job_id:
-                try:
-                    from app.models.async_job import AsyncJob
-                    job = ctx.db.query(AsyncJob).filter(AsyncJob.id == ctx.job_id).first()
-                    if job:
-                        existing = dict(job.input_data or {})
-                        existing.setdefault("checkpoints", []).append({
-                            "saved_at": datetime.utcnow().isoformat(),
-                            "scope": config.get("scope", "phase"),
-                            "state": state,
-                        })
-                        job.input_data = existing
-                        ctx.db.commit()
-                        return {"saved": True}
-                except Exception:
-                    ctx.db.rollback()
-            return {"saved": False}
-
-        try:
-            from app.models.pipeline_run import PipelineRun
-            pipeline_run = (
-                ctx.db.query(PipelineRun)
-                .filter(PipelineRun.project_id == pid)
-                .filter(PipelineRun.status.in_(["running", "interrupted"]))
-                .order_by(PipelineRun.created_at.desc())
-                .first()
-            )
-            if not pipeline_run:
-                # Cria um pipeline_run novo só pra carregar o checkpoint
-                pipeline_run = PipelineRun(
-                    id=uuid4(),
-                    project_id=pid,
-                    profile_name="ai_flow_run",
-                    version="v3",
-                    status="running",
-                    started_at=datetime.utcnow(),
+        if pid:
+            try:
+                from app.models.pipeline_run import PipelineRun
+                pipeline_run = (
+                    ctx.db.query(PipelineRun)
+                    .filter(PipelineRun.project_id == pid)
+                    .filter(PipelineRun.status.in_(["running", "interrupted"]))
+                    .order_by(PipelineRun.created_at.desc())
+                    .first()
                 )
-                ctx.db.add(pipeline_run)
-            pipeline_run.checkpoint_state = {
-                "saved_at": datetime.utcnow().isoformat(),
-                "scope": config.get("scope", "phase"),
-                "run_id": str(ctx.run_id),
-                **state,
-            }
-            ctx.db.commit()
-            return {"saved": True}
-        except Exception as e:
-            ctx.db.rollback()
-            logger.warning(f"checkpoint_saver failed: {e}")
-            return {"saved": False}
+                if pipeline_run:
+                    pipeline_run.checkpoint_state = {
+                        "saved_at": datetime.utcnow().isoformat(),
+                        "scope": config.get("scope", "phase"),
+                        "run_id": str(ctx.run_id),
+                        **state,
+                    }
+                    ctx.db.commit()
+                    return {"saved": True}
+            except Exception as e:
+                ctx.db.rollback()
+                logger.warning(f"checkpoint_saver (PipelineRun) failed: {e}")
+
+        # Fallback: save into the AsyncJob backing this run.
+        if ctx.job_id:
+            try:
+                from app.models.async_job import AsyncJob
+                job = ctx.db.query(AsyncJob).filter(AsyncJob.id == ctx.job_id).first()
+                if job:
+                    existing = dict(job.input_data or {})
+                    existing.setdefault("checkpoints", []).append({
+                        "saved_at": datetime.utcnow().isoformat(),
+                        "scope": config.get("scope", "phase"),
+                        "state": state,
+                    })
+                    job.input_data = existing
+                    ctx.db.commit()
+                    return {"saved": True}
+            except Exception:
+                ctx.db.rollback()
+        return {"saved": False}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

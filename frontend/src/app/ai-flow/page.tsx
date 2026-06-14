@@ -123,6 +123,40 @@ function AIFlowPageInner() {
   const [aiFlowJobId, setAiFlowJobId] = useState<string | null>(null);
   const flowProgress = useAIFlowProgress(aiFlowJobId);
 
+  // Feed the DebugPanel from the same WS CustomEvent that drives node animation.
+  // Previously setDebugEvents was never called — the panel was always empty.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const evType = detail.ai_flow_event;
+      if (!evType || !detail.node_id) return;
+      const statusMap: Record<string, DebugEvent['status']> = {
+        node_started: 'running',
+        node_completed: 'success',
+        node_failed: 'failed',
+        node_skipped: 'skipped',
+      };
+      const status = statusMap[evType];
+      if (!status) return;
+      setDebugEvents((prev) => [
+        ...prev,
+        {
+          id: `${detail.node_id}-${evType}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          node_id: detail.node_id,
+          node_label: detail.kind,
+          status,
+          duration_ms: detail.duration_ms,
+          message: detail.error || undefined,
+          output_keys: detail.output_keys,
+          output_preview: detail.output_preview,
+          ts: new Date().toISOString(),
+        },
+      ]);
+    };
+    window.addEventListener('aiFlowProgress', handler as EventListener);
+    return () => window.removeEventListener('aiFlowProgress', handler as EventListener);
+  }, []);
+
   // ── Load full project snapshot on mount (v3.0) ─────────────────────
   // v3.6.2: ref de mount guard evita hidratação dupla em React StrictMode
   // dev (que monta 2x propositalmente). Sem isso, a 2ª chamada sobrescreve
@@ -477,6 +511,8 @@ function AIFlowPageInner() {
   }, [canvas.dirty, doSave, autoSaveState]);
 
   const onRun = useCallback(async () => {
+    // Reset debug log for this run so the panel shows only the current execution.
+    setDebugEvents([]);
     // v3.5.1: pre-run validation — rejeita rodar se houver subflows/nodes
     // soltos no fluxo. Mais estrito que o save validator.
     const validation = validatePipelinePreRun(canvas.nodes, canvas.edges, canvas.subflows, typesSchema);

@@ -55,16 +55,13 @@ const PIPELINE_PHASES = [
   { key: 'phase_6',  label: 'Phase 6 — QA' },
 ];
 
+// v3.7.8: removidos do catálogo os 8 stubs pass-through (cache, router, retry,
+// validator, cost_guard, rate_limiter, timeout, prompt_transformer) — não faziam
+// nada útil e confundiam o usuário. rag_context é REAL (faz retrieve) e fica.
+// (0 grafos salvos no DB usavam os stubs; os executores seguem registrados,
+// inertes, pra não quebrar nada — removíveis numa 2ª passada.)
 const UTILITY_TYPES = [
-  { key: 'cache', label: 'Cache' },
   { key: 'rag_context', label: 'RAG Context' },
-  { key: 'router', label: 'Router' },
-  { key: 'retry', label: 'Retry' },
-  { key: 'validator', label: 'Validator' },
-  { key: 'cost_guard', label: 'Cost Guard' },
-  { key: 'rate_limiter', label: 'Rate Limiter' },
-  { key: 'timeout', label: 'Timeout' },
-  { key: 'prompt_transformer', label: 'Prompt Transformer' },
 ];
 
 function Dropdown({ trigger, items, onSelect }: {
