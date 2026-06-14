@@ -331,6 +331,31 @@ async def get_enrichment_status(
     deep_pipeline_quota_resets_at = _cp.get("quota_resets_at") if interrupted_run else None
     deep_pipeline_interrupted_at = _cp.get("interrupted_at") if interrupted_run else None
 
+    # Anti-residual: a "quota_exhausted" reason + quota_resets_at are a SNAPSHOT
+    # frozen in the checkpoint when the run was interrupted (possibly days ago).
+    # If the live quota has since recovered, the "⏸ Cota esgotada — reseta em X"
+    # banner is stale and misleading (user saw it long after the reset). Cross-
+    # check the live quota (cheap poll, no token cost) and downgrade the reason
+    # to a neutral "interrupted" so the UI offers a plain Resume instead.
+    if deep_pipeline_interruption_reason == "quota_exhausted":
+        try:
+            from app.services.claudius_pipeline import ClaudiusPipelineService
+            live_quota = await ClaudiusPipelineService().quota_status()
+            # "exhausted" if the provider says so, or utilization is at/over 100%.
+            util = live_quota.get("utilization_pct")
+            quota_recovered = (
+                live_quota.get("available", True) is not False
+                and not live_quota.get("exhausted", False)
+                and (util is None or util < 100)
+            )
+            if quota_recovered:
+                deep_pipeline_interruption_reason = "interrupted"
+                deep_pipeline_quota_resets_at = None
+        except Exception:
+            # Never let a quota-poll hiccup break the status endpoint; keep the
+            # checkpoint value as-is (degrade gracefully to prior behavior).
+            pass
+
     return {
         "is_enriching": is_enriching,
         "active_jobs": [
