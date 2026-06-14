@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import re
 import time
 from datetime import datetime
@@ -297,7 +298,7 @@ class ClaudiusPipelineService:
                         f"HTTP {response.status_code}: {error_text}"
                     )
                     if attempt < retries:
-                        await asyncio.sleep(2 ** attempt)
+                        await asyncio.sleep((2 ** attempt + random.random()) * 0.5)
                     continue
 
                 data = response.json()
@@ -363,7 +364,7 @@ class ClaudiusPipelineService:
                 last_error = ClaudiusPipelineError(f"Timeout after {timeout}s: {e}")
                 if attempt < retries:
                     timeout = int(timeout * 1.5)  # Increase timeout on retry
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep((2 ** attempt + random.random()) * 0.5)
 
             except httpx.ConnectError as e:
                 logger.error(f"Cannot connect to Claudius at {self.base_url}: {e}")
@@ -379,7 +380,7 @@ class ClaudiusPipelineService:
                 logger.error(f"Unexpected error calling Claudius: {e}")
                 last_error = ClaudiusPipelineError(f"Unexpected error: {e}")
                 if attempt < retries:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep((2 ** attempt + random.random()) * 0.5)
 
         self._log_execution(
             usage_type=usage_type,

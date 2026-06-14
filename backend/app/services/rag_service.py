@@ -696,63 +696,6 @@ class RAGService:
 
         return similar_cards
 
-    def update_card(
-        self,
-        card_id: UUID,
-        title: str,
-        description: Optional[str],
-        generated_prompt: Optional[str],
-        workflow_state: str,
-        project_id: UUID
-    ) -> Optional[UUID]:
-        """
-        Update a card's RAG entry (delete old + create new).
-
-        Args:
-            card_id: Card UUID
-            title: Updated title
-            description: Updated description
-            generated_prompt: Updated prompt
-            workflow_state: Updated state
-            project_id: Project UUID
-
-        Returns:
-            New RAG document UUID, or None if card not found in RAG
-        """
-        # Delete old entry
-        deleted = self.delete_by_filter({
-            "project_id": str(project_id),
-            "type": "card",
-            "card_id": str(card_id)
-        })
-
-        if deleted == 0:
-            logger.warning(f"Card {card_id} not found in RAG for update")
-
-        # Re-index with updated content
-        # Note: We don't have all metadata here, so we store minimal
-        content_parts = [title]
-        if description:
-            content_parts.append(description)
-        if generated_prompt:
-            content_parts.append(generated_prompt)
-
-        content = "\n\n".join(content_parts)
-
-        doc_id = self.store(
-            content=content,
-            metadata={
-                "type": "card",
-                "card_id": str(card_id),
-                "workflow_state": workflow_state
-            },
-            project_id=project_id
-        )
-
-        logger.info(f"📇 Updated card in RAG: {title} (doc_id={doc_id})")
-
-        return doc_id
-
     def delete_card(self, card_id: UUID, project_id: UUID) -> int:
         """
         Delete a card from RAG.

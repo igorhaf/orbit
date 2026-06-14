@@ -106,7 +106,6 @@ class Phase4to7Mixin:
                 user_prompt=f"Projeto: {project.name}\n\nDominios ({batch_label}):\n{arch_compact}\n\nRegras:\n{rules_compact}",
                 max_tokens=p4a_max_tokens,
                 cacheable=True,
-                **self._ollama_kwargs("phase_4a"),
             )
 
             # PROMPT #237: Emit epic batch telemetry
@@ -188,8 +187,7 @@ class Phase4to7Mixin:
         self.db.commit()
         await progress_cb(4, 20, f"Criados {stats['epics']} Epics. Gerando Stories...")
 
-        # Phase 4b: Generate Stories per Epic (Opus, parallel 3x)
-        p4b_ollama = self._ollama_kwargs("phase_4b")
+        # Phase 4b: Generate Stories per Epic
         story_requests = []
         for epic in epics:
             domain = epic.get("domain", "Geral")
@@ -211,7 +209,6 @@ class Phase4to7Mixin:
                 "user_prompt": f"Epic:\n{epic_compact}\n\nRegras do dominio:\n{rules_compact}",
                 "max_tokens": self._get_max_tokens("phase_4b", 32000),
                 "cacheable": True,
-                **p4b_ollama,
             })
 
         p4b_model = self._get_model("phase_4b", MODEL_SONNET)
@@ -225,7 +222,7 @@ class Phase4to7Mixin:
             )
 
         story_results = await self.claudius.call_batch(
-            story_requests, max_concurrency=self._get_concurrency("phase_4b", 3),
+            story_requests, max_concurrency=self._get_concurrency("phase_4b", 6),
             on_item_complete=_on_story_done,
         )
 
@@ -271,8 +268,7 @@ class Phase4to7Mixin:
         self.db.commit()
         await progress_cb(4, 45, f"Criadas {stats['stories']} Stories. Gerando Tasks...")
 
-        # Phase 4c: Generate Tasks per Story (Sonnet, parallel 5x)
-        p4c_ollama = self._ollama_kwargs("phase_4c")
+        # Phase 4c: Generate Tasks per Story
         task_requests = []
         story_titles_for_tasks = []
         for epic_title, story in all_stories:
@@ -293,7 +289,6 @@ class Phase4to7Mixin:
                 "user_prompt": f"Story:\n{story_compact}\n\nContexto do Epic:\n{epic_ctx_compact}",
                 "max_tokens": self._get_max_tokens("phase_4c", 8000),
                 "cacheable": True,
-                **p4c_ollama,
             })
             story_titles_for_tasks.append(story.get("title", ""))
 
@@ -310,7 +305,7 @@ class Phase4to7Mixin:
             )
 
         task_results = await self.claudius.call_batch(
-            task_requests, max_concurrency=self._get_concurrency("phase_4c", 5),
+            task_requests, max_concurrency=self._get_concurrency("phase_4c", 8),
             on_item_complete=_on_task_done,
         )
 
@@ -409,7 +404,6 @@ class Phase4to7Mixin:
             user_prompt=f"Projeto: {project.name}\n\nMapa:\n{arch_compact}\n\nCards:\n{cards_compact}",
             max_tokens=self._get_max_tokens("phase_5a", 8000),
             cacheable=True,
-            **self._ollama_kwargs("phase_5a"),
         )
 
         # PROMPT #237: Emit wiki planning telemetry
@@ -418,7 +412,22 @@ class Phase4to7Mixin:
             1, 1, model_name=p5a_model, result=structure_result,
         )
 
-        wiki_plan = self.claudius.extract_json(structure_result.get("text", "")) or {}
+        wiki_raw = structure_result.get("text", "") or ""
+        wiki_plan = self.claudius.extract_json(wiki_raw)
+        if not wiki_plan or not isinstance(wiki_plan, dict):
+            # Discriminate quota from corruption instead of a silent `or {}` that
+            # makes the empty-plan raise below indistinguishable between the two.
+            from app.services.claudius_pipeline import _QUOTA_PATTERNS
+            if wiki_raw and len(wiki_raw) < 500 and _QUOTA_PATTERNS.search(wiki_raw):
+                raise ClaudiusQuotaExhaustedError(
+                    f"Fase 5a: cota Claude esgotada -- {wiki_raw.strip()[:200]}"
+                )
+            logger.error(
+                f"[Fase 5a] wiki_plan sem JSON parseavel "
+                f"(stop_reason={structure_result.get('stop_reason')!r}, raw_len={len(wiki_raw)}). "
+                f"First 200 chars: {wiki_raw[:200]!r}"
+            )
+            wiki_plan = {}
 
         # Validacao: plano vazio indica falha de parse ou cota
         _total_planned = (
@@ -462,7 +471,6 @@ class Phase4to7Mixin:
                 user_prompt=f"Plano:\n{pages_compact}\n\nMapa:\n{arch_compact}",
                 max_tokens=self._get_max_tokens("phase_5b", 64000),
                 cacheable=True,
-                **self._ollama_kwargs("phase_5b"),
             )
 
             # PROMPT #237: Emit wiki overview telemetry
@@ -504,7 +512,6 @@ class Phase4to7Mixin:
                 "user_prompt": f"Dominio: {domain}\n\nPlano:\n{plan_compact}\n\nRegras:\n{rules_compact}",
                 "max_tokens": self._get_max_tokens("phase_5c", 32000),
                 "cacheable": True,
-                **self._ollama_kwargs("phase_5c"),
             })
 
         if domain_requests:
@@ -521,7 +528,7 @@ class Phase4to7Mixin:
                 )
 
             domain_results = await self.claudius.call_batch(
-                domain_requests, max_concurrency=self._get_concurrency("phase_5c", 3),
+                domain_requests, max_concurrency=self._get_concurrency("phase_5c", 5),
                 on_item_complete=_on_domain_done,
             )
             for dr_i, result in enumerate(domain_results):
@@ -546,7 +553,6 @@ class Phase4to7Mixin:
                         user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, separators=(',', ':'))}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False, separators=(',', ':'))}",
                         max_tokens=self._get_max_tokens("phase_5d", 16000),
                         cacheable=True,
-                        **self._ollama_kwargs("phase_5d"),
                     )
                     pages_data = self.claudius.extract_json(result.get("text", ""))
                     if pages_data and isinstance(pages_data, dict):
@@ -663,7 +669,6 @@ class Phase4to7Mixin:
             thinking={"type": "enabled", "budget_tokens": p6_thinking} if p6_thinking else None,
             max_tokens=p6_max_tokens,
             cacheable=True,
-            **self._ollama_kwargs("phase_6"),
         )
 
         # PROMPT #237: Emit QA telemetry
@@ -931,7 +936,6 @@ class Phase4to7Mixin:
                 user_prompt=user_prompt,
                 max_tokens=self._get_max_tokens("phase_3", 4000),
                 cacheable=True,
-                **self._ollama_kwargs("phase_3"),
             )
 
             await self._emit_telemetry(

@@ -24,6 +24,7 @@ from app.services.claudius_pipeline import (
     ClaudiusQuotaExhaustedError,
     MODEL_HAIKU,
     MODEL_SONNET,
+    MODEL_OPUS,
 )
 
 from .utils import (
@@ -153,19 +154,27 @@ class Phase0to3Mixin:
         """
         BATCH_DIVISOR = 25
 
-        system_prompt, _ = self._load_contract("deep_file_analysis", {
-            "file_path": "placeholder",
-            "file_content": "placeholder",
+        # Batched analysis: G files per prompt instead of 1. 256 files → ~26
+        # prompts (under the 200/5h quota; 1-file-per-prompt blew it alone).
+        # The Opus 1M context window swallows G truncated files comfortably.
+        P1_FILES_PER_PROMPT = max(1, int(self._get_phase_config("phase_1", "files_per_prompt", 10)))
+
+        system_prompt, _ = self._load_contract("deep_file_analysis_batch", {
+            "file_count": 0,
+            "files_block": "placeholder",
             "project_name": project.name,
         })
         if not system_prompt:
-            system_prompt = "Analyze the code file and extract business rules. Respond with JSON only."
+            system_prompt = (
+                "Analyze each code file (delimited by headers) and extract business rules. "
+                "Respond with JSON only: {\"analyses\":[{...one per file...}]}."
+            )
 
-        # Model/tokens/concurrency from profile
-        p1_model = self._get_model("phase_1", MODEL_HAIKU)
-        p1_max_tokens = self._get_max_tokens("phase_1", 2000)
-        p1_concurrency = self._get_concurrency("phase_1", 10)
-        p1_ollama = self._ollama_kwargs("phase_1")
+        # Model/tokens/concurrency from profile. Phase 1 uses Opus (1M context)
+        # so a 10-file batch fits; max_tokens scales with G (G analyses of output).
+        p1_model = self._get_model("phase_1", MODEL_OPUS)
+        p1_max_tokens = self._get_max_tokens("phase_1", 12000)
+        p1_concurrency = self._get_concurrency("phase_1", 8)
 
         # Proportional batch size: always ~25 batches
         batch_size = max(5, len(inventory) // BATCH_DIVISOR)
@@ -217,14 +226,38 @@ class Phase0to3Mixin:
         # ── Telemetry counter (tracks across all batches) ──
         _global_done = [len(completed_files)]
 
-        # ── Process in micro-batches ──
-        for batch_start in range(0, len(pending), batch_size):
-            batch = pending[batch_start:batch_start + batch_size]
-            batch_num = (batch_start // batch_size) + 1
-            total_batches = -(-len(pending) // batch_size)  # ceil division
+        # Cap content at ~8KB per file: imports, class/function signatures and the
+        # first few bodies fit easily; tails of long files rarely add new business
+        # rules and inflate cost linearly with size.
+        MAX_PROMPT_CONTENT = 8000
 
-            # Health check before each batch
-            if not await self._provider_health_check(p1_model, p1_ollama):
+        def _truncate(content: str) -> str:
+            if len(content) <= MAX_PROMPT_CONTENT:
+                return content
+            head = content[: int(MAX_PROMPT_CONTENT * 0.75)]
+            tail = content[-int(MAX_PROMPT_CONTENT * 0.25):]
+            return f"{head}\n\n# ... [truncated {len(content) - MAX_PROMPT_CONTENT} chars] ...\n\n{tail}"
+
+        # Group pending files into G-file prompts (the unit of work is now a GROUP).
+        groups = [
+            pending[i:i + P1_FILES_PER_PROMPT]
+            for i in range(0, len(pending), P1_FILES_PER_PROMPT)
+        ]
+        logger.info(
+            f"Phase 1: {len(pending)} files -> {len(groups)} groups of <= {P1_FILES_PER_PROMPT} "
+            f"(was 1 prompt/file = {len(pending)} prompts)"
+        )
+
+        # Micro-batch the GROUPS for concurrency + per-batch checkpoint.
+        groups_per_microbatch = max(1, batch_size // P1_FILES_PER_PROMPT)
+        total_batches = -(-len(groups) // groups_per_microbatch)  # ceil
+
+        for mb_start in range(0, len(groups), groups_per_microbatch):
+            mb_groups = groups[mb_start:mb_start + groups_per_microbatch]
+            batch_num = (mb_start // groups_per_microbatch) + 1
+
+            # Health check before each micro-batch
+            if not await self._provider_health_check(p1_model):
                 logger.error("Phase 1: Provider not responding -- saving checkpoint")
                 if pipeline_run:
                     self._save_checkpoint(pipeline_run, 1, completed_files)
@@ -232,49 +265,49 @@ class Phase0to3Mixin:
                     f"Provider offline after {len(completed_files)}/{total_files} files -- checkpoint saved, resume later"
                 )
 
-            # Build batch requests. Cap content at ~8KB per file: imports,
-            # class/function signatures and the first few bodies fit easily;
-            # tails of long files rarely add new business rules and inflate
-            # cost linearly with size.
-            MAX_PROMPT_CONTENT = 8000
+            # Build one request per GROUP: a combined multi-file prompt.
             batch_requests = []
-            for item in batch:
-                content = item['content']
-                if len(content) > MAX_PROMPT_CONTENT:
-                    head = content[: int(MAX_PROMPT_CONTENT * 0.75)]
-                    tail = content[-int(MAX_PROMPT_CONTENT * 0.25):]
-                    content = f"{head}\n\n# ... [truncated {len(item['content']) - MAX_PROMPT_CONTENT} chars] ...\n\n{tail}"
-                user_prompt = f"Arquivo: {item['path']}\n\nCodigo:\n{content}"
+            for group in mb_groups:
+                files_block_parts = []
+                for gi, item in enumerate(group):
+                    files_block_parts.append(
+                        f"=== ARQUIVO [{gi}] path={item['path']} ===\n{_truncate(item['content'] or '')}"
+                    )
+                files_block = "\n\n".join(files_block_parts)
+                user_prompt = (
+                    f"Analise os {len(group)} arquivos abaixo. Retorne um objeto por arquivo em \"analyses\".\n\n"
+                    f"{files_block}"
+                )
                 batch_requests.append({
                     "model": p1_model,
                     "system_prompt": system_prompt,
                     "user_prompt": user_prompt,
                     "max_tokens": p1_max_tokens,
-                    # Per-file analysis: prompt = path + (truncated) content, fully
-                    # deterministic. Identical on re-run of an unchanged file →
-                    # cache hit, no quota spent. Biggest single cache win.
+                    # Deterministic prompt (paths + truncated content) → identical
+                    # on re-run of an unchanged group → cache hit, no quota spent.
+                    # Trade-off: editing ONE file invalidates its whole group's
+                    # cache entry (G files re-analyzed). Accepted: the quota win
+                    # (files/G prompts instead of files) dominates re-run cost.
                     "cacheable": True,
-                    **p1_ollama,
                 })
 
-            # Telemetry callback for this batch
-            async def _on_file_done(index: int, result: Any, total: int):
-                _global_done[0] += 1
-                done = _global_done[0]
-                item_path = batch[index]["path"] if index < len(batch) else f"item-{index}"
+            # Per-GROUP progress telemetry (per-file telemetry is emitted in the
+            # result loop below so granularity is preserved).
+            async def _on_group_done(index: int, result: Any, total: int):
                 await self._emit_telemetry(
-                    "phase_1", "file_analysis", item_path,
-                    done, total_files, model_name=p1_model, result=result,
+                    "phase_1", "file_analysis_group",
+                    f"grupo {mb_start + index + 1}/{len(groups)}",
+                    _global_done[0], total_files, model_name=p1_model, result=result,
                 )
 
-            # Execute micro-batch with global timeout
-            batch_timeout = batch_size * 180  # 3 min max per file
+            # Execute micro-batch with global timeout (scaled by files in flight)
+            batch_timeout = sum(len(g) for g in mb_groups) * 180
             try:
                 results = await asyncio.wait_for(
                     self.claudius.call_batch(
                         batch_requests,
                         max_concurrency=p1_concurrency,
-                        on_item_complete=_on_file_done,
+                        on_item_complete=_on_group_done,
                     ),
                     timeout=batch_timeout,
                 )
@@ -286,36 +319,70 @@ class Phase0to3Mixin:
                     f"Batch {batch_num} timeout after {batch_timeout}s -- checkpoint saved"
                 )
 
-            # Process results and store artifacts
-            for i, result in enumerate(results):
-                file_path = batch[i]["path"]
+            # Process each group's result: parse the array, map back BY PATH.
+            for gidx, result in enumerate(results):
+                group = mb_groups[gidx]
                 if isinstance(result, ClaudiusPipelineError):
-                    logger.warning(f"Phase 1: Failed {file_path}: {result}")
-                    completed_files.add(file_path)
+                    logger.warning(f"Phase 1: group {batch_num}.{gidx} failed: {result}")
+                    for item in group:
+                        completed_files.add(item["path"])
                     continue
 
-                parsed = self.claudius.extract_json(result.get("text", ""))
-                if parsed and isinstance(parsed, dict):
-                    parsed["file_path"] = file_path
-                    parsed["file_type"] = batch[i]["file_type"]
-                    parsed["lines"] = batch[i]["lines"]
-                    parsed["complexity_score"] = batch[i]["complexity_score"]
-                    file_analyses.append(parsed)
+                parsed = self.claudius.extract_json(result.get("text", "") or "")
+                # Tolerate {"analyses":[...]} OR a bare [...].
+                if isinstance(parsed, dict):
+                    items = parsed.get("analyses", [])
+                elif isinstance(parsed, list):
+                    items = parsed
+                else:
+                    items = []
+                by_path = {
+                    it.get("file_path"): it
+                    for it in items
+                    if isinstance(it, dict) and it.get("file_path")
+                }
 
-                    artifact = PipelineArtifact(
-                        project_id=project.id,
-                        artifact_type=ArtifactType.file_analysis,
-                        phase=1,
-                        domain=parsed.get("domain_classification", "Unknown"),
-                        source_path=file_path,
-                        content=parsed,
-                        run_id=run_id,
+                for item in group:
+                    file_path = item["path"]
+                    analysis = by_path.get(file_path)
+                    if analysis and isinstance(analysis, dict) and analysis.get("summary"):
+                        analysis["file_path"] = file_path
+                        analysis["file_type"] = item["file_type"]
+                        analysis["lines"] = item["lines"]
+                        analysis["complexity_score"] = item["complexity_score"]
+                        file_analyses.append(analysis)
+                        self.db.add(PipelineArtifact(
+                            project_id=project.id,
+                            artifact_type=ArtifactType.file_analysis,
+                            phase=1,
+                            domain=analysis.get("domain_classification", "Unknown"),
+                            source_path=file_path,
+                            content=analysis,
+                            run_id=run_id,
+                        ))
+                    else:
+                        # NOT silent: the model dropped or malformed this file's
+                        # analysis. Mark completed (don't reprocess) but record why.
+                        logger.warning(
+                            f"Phase 1: no analysis for {file_path} "
+                            f"(group returned {len(items)}/{len(group)} items)"
+                        )
+                    _global_done[0] += 1
+                    completed_files.add(file_path)
+                    # Per-file telemetry (granularity preserved despite batching)
+                    await self._emit_telemetry(
+                        "phase_1", "file_analysis", file_path,
+                        _global_done[0], total_files, model_name=p1_model,
+                        result={"usage": {}} if analysis else None,
                     )
-                    self.db.add(artifact)
 
-                completed_files.add(file_path)
+                # Free per-file content once the group is processed (~25MB peak on
+                # 256 files; critical on 1000+ file projects). Content is not used
+                # after Phase 1 (Phase 2 uses summaries, Phase 3 uses metadata).
+                for item in group:
+                    item["content"] = None
 
-            # Commit + checkpoint after each batch
+            # Commit + checkpoint after each micro-batch
             if pipeline_run:
                 self._save_checkpoint(pipeline_run, 1, completed_files)
             self.db.commit()
@@ -326,10 +393,8 @@ class Phase0to3Mixin:
             await progress_cb(1, pct,
                 f"Analisados {done_total}/{total_files} arquivos (batch {batch_num}/{total_batches})")
 
-            # Pause between batches to avoid overloading the provider.
-            # Claudius already retries on 429; 5s was over-conservative and added
-            # ~2 min of pure idle on 256-file projects.
-            if batch_start + batch_size < len(pending):
+            # Brief pause between micro-batches; Claudius already retries on 429.
+            if mb_start + groups_per_microbatch < len(groups):
                 await asyncio.sleep(1)
 
         # Clear checkpoint on successful completion
@@ -380,7 +445,6 @@ class Phase0to3Mixin:
             analyses_compact = json.dumps(analyses_summary, ensure_ascii=False, separators=(",", ":"))
             user_prompt = f"Dominio: {domain}\n\nAnalises individuais dos arquivos:\n{analyses_compact}"
 
-            p2_ollama = self._ollama_kwargs("phase_2")
             try:
                 result = await self.claudius.call(
                     model=p2_model,
@@ -388,7 +452,6 @@ class Phase0to3Mixin:
                     user_prompt=user_prompt,
                     session_key=session_key,
                     max_tokens=p2_max_tokens,
-                    **p2_ollama,
                 )
 
                 # PROMPT #237: Emit per-domain telemetry
@@ -408,7 +471,6 @@ class Phase0to3Mixin:
                             session_key=session_key,
                             user_prompt="Revise as regras sintetizadas. Ha regras cross-file que voce perdeu? Gaps importantes? Adicione ao resultado anterior.",
                             max_tokens=p2_max_tokens // 2,
-                            **p2_ollama,
                         )
                         followup_parsed = self.claudius.extract_json(followup.get("text", ""))
                         if followup_parsed and isinstance(followup_parsed, dict):
@@ -478,7 +540,7 @@ class Phase0to3Mixin:
         p2_model = self._get_model("phase_2", MODEL_SONNET)
         p2_max_tokens = self._get_max_tokens("phase_2", 8000)
         p2_multi_turn_threshold = self._get_phase_config("phase_2", "multi_turn_threshold", 30)
-        p2_concurrency = self._get_concurrency("phase_2", 5)
+        p2_concurrency = self._get_concurrency("phase_2", 8)
 
         logger.info(
             f"Phase 2: processing {len(valid_domains)} domains with concurrency={p2_concurrency} "
@@ -651,7 +713,6 @@ class Phase0to3Mixin:
                 "max_tokens": p3_max_tokens,
                 "timeout": self.P3_CALL_TIMEOUT_S,
                 "cacheable": True,
-                **self._ollama_kwargs("phase_3"),
             })
             batch_domain_counts.append(len(batch_domains))
 
@@ -669,7 +730,7 @@ class Phase0to3Mixin:
         # call_batch raises ClaudiusQuotaExhaustedError up if quota is hit.
         results = await self.claudius.call_batch(
             requests,
-            max_concurrency=self._get_concurrency("phase_3", 5),
+            max_concurrency=self._get_concurrency("phase_3", 6),
             on_item_complete=_on_p3_done,
         )
 

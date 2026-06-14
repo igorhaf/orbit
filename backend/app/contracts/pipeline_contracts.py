@@ -197,8 +197,6 @@ TASK (min 200 chars na description):
   - Endpoints, modelos e queries envolvidos
 - acceptance_criteria: MINIMO 2 criterios"""
 
-PIPELINE_CARDS_DETAIL_GENERATION_USER = """"""
-
 
 # --- pipeline/cards_epic_generation.yaml ---
 
@@ -270,8 +268,6 @@ QUALIDADE OBRIGATORIA POR EPIC:
 - labels: array com pelo menos 2 tags relevantes
 
 NAO gere Epics vazios ou com campos minimos. Cada Epic deve ser RICO e COMPLETO."""
-
-PIPELINE_CARDS_EPIC_GENERATION_USER = """"""
 
 
 # --- pipeline/context_merge.yaml ---
@@ -521,6 +517,57 @@ PIPELINE_DEEP_FILE_ANALYSIS_USER = """Arquivo: {{ file_path }}
 
 Codigo:
 {{ file_content }}"""
+
+
+# --- pipeline/deep_file_analysis_batch.yaml ---
+# Batched variant: analisa VARIOS arquivos numa unica chamada. Reduz a contagem
+# de prompts (cota) e o overhead fixo por chamada. Mesmo schema de analise, mas
+# retorna um ARRAY (um objeto por arquivo recebido).
+
+PIPELINE_DEEP_FILE_ANALYSIS_BATCH_SYSTEM = """IMPORTANTE: Voce NAO tem acesso a ferramentas. Analise APENAS o codigo fornecido.
+
+Voce e um analista de software senior. Voce recebera VARIOS arquivos de codigo,
+cada um delimitado por um cabecalho `=== ARQUIVO [i] path=... ===`. Analise CADA
+arquivo e produza uma analise estruturada por arquivo.
+
+RESPONDA APENAS COM JSON PURO. Sem markdown, sem explicacoes.
+
+Formato esperado (um objeto por arquivo recebido, na chave "analyses"):
+{
+  "analyses": [
+    {
+      "file_path": "caminho/exato/do/arquivo (igual ao path do cabecalho)",
+      "summary": "Descricao em portugues do que este arquivo faz (min 50 chars)",
+      "entities": ["Entidade1", "Entidade2"],
+      "business_rules": [
+        {
+          "rule_text": "Descricao da regra em portugues (min 20 chars)",
+          "rule_type": "dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio",
+          "evidence": "trecho de codigo que comprova a regra",
+          "line_range": [inicio, fim],
+          "confidence": "high|medium|low"
+        }
+      ],
+      "external_dependencies": ["API externa", "Servico X"],
+      "complexity_assessment": "high|medium|low",
+      "domain_classification": "Nome do dominio de negocio em portugues"
+    }
+  ]
+}
+
+REGRAS CRITICAS:
+- Retorne EXATAMENTE UM objeto por arquivo recebido. NUNCA omita um arquivo.
+- O "file_path" de cada objeto deve ser IDENTICO ao path do cabecalho do arquivo.
+- Se um arquivo e apenas config/infraestrutura sem regras de negocio: retorne
+  business_rules vazio e domain_classification como "Infraestrutura" (mas inclua o objeto).
+- Extraia TODAS as regras de negocio visiveis em cada arquivo.
+- "evidence" deve ser um trecho real do codigo (max 200 chars).
+- "domain_classification" agrupa o arquivo num dominio de negocio (ex: "Pagamentos", "Autenticacao").
+- Descricoes SEMPRE em portugues."""
+
+PIPELINE_DEEP_FILE_ANALYSIS_BATCH_USER = """Analise os {{ file_count }} arquivos abaixo. Retorne um objeto por arquivo em "analyses".
+
+{{ files_block }}"""
 
 
 # --- pipeline/deep_project_enrichment.yaml ---
@@ -1013,8 +1060,6 @@ QUALIDADE OBRIGATORIA:
 - Se nenhuma regra: {"business_rules": []}
 - source_file = caminho relativo do arquivo"""
 
-PIPELINE_RAG_RULES_EXTRACTION_USER = """"""
-
 
 # --- pipeline/validation_rules.yaml ---
 
@@ -1066,8 +1111,6 @@ REGRAS:
 - Conteudo 100% FACTUAL — apenas o que esta nas regras fornecidas
 - Gere TODAS as paginas necessarias para cobertura TOTAL do dominio"""
 
-PIPELINE_WIKI_DOMAIN_GENERATION_USER = """"""
-
 
 # --- pipeline/wiki_overview_generation.yaml ---
 
@@ -1106,8 +1149,6 @@ REGRAS:
 - Todos os textos em PORTUGUES. NUNCA gere textos em ingles.
 - Conteudo FACTUAL baseado nas regras fornecidas
 - NAO invente features que nao existem nas regras"""
-
-PIPELINE_WIKI_OVERVIEW_GENERATION_USER = """"""
 
 
 # --- pipeline/wiki_page.yaml ---
@@ -1173,12 +1214,13 @@ Cada regra nova deve ter evidencia: "(origem: [arquivo])"
 CONTRACTS = {
     "pipeline/card_hierarchy": {"system": PIPELINE_CARD_HIERARCHY_SYSTEM, "user": PIPELINE_CARD_HIERARCHY_USER, "usage_type": "content_generation"},
     "pipeline/card_semantic_prompt": {"system": PIPELINE_CARD_SEMANTIC_PROMPT_SYSTEM, "user": PIPELINE_CARD_SEMANTIC_PROMPT_USER, "usage_type": "prompt_generation"},
-    "pipeline/cards_detail_generation": {"system": PIPELINE_CARDS_DETAIL_GENERATION_SYSTEM, "user": PIPELINE_CARDS_DETAIL_GENERATION_USER, "usage_type": "content_generation"},
-    "pipeline/cards_epic_generation": {"system": PIPELINE_CARDS_EPIC_GENERATION_SYSTEM, "user": PIPELINE_CARDS_EPIC_GENERATION_USER, "usage_type": "content_generation"},
+    "pipeline/cards_detail_generation": {"system": PIPELINE_CARDS_DETAIL_GENERATION_SYSTEM, "usage_type": "content_generation"},
+    "pipeline/cards_epic_generation": {"system": PIPELINE_CARDS_EPIC_GENERATION_SYSTEM, "usage_type": "content_generation"},
     "pipeline/context_merge": {"system": PIPELINE_CONTEXT_MERGE_SYSTEM, "user": PIPELINE_CONTEXT_MERGE_USER, "usage_type": "content_generation"},
     "pipeline/deep_architectural_map": {"system": PIPELINE_DEEP_ARCHITECTURAL_MAP_SYSTEM, "user": PIPELINE_DEEP_ARCHITECTURAL_MAP_USER, "usage_type": "rag_extraction"},
     "pipeline/deep_epic_generation": {"system": PIPELINE_DEEP_EPIC_GENERATION_SYSTEM, "user": PIPELINE_DEEP_EPIC_GENERATION_USER, "usage_type": "content_generation"},
     "pipeline/deep_file_analysis": {"system": PIPELINE_DEEP_FILE_ANALYSIS_SYSTEM, "user": PIPELINE_DEEP_FILE_ANALYSIS_USER, "usage_type": "rag_extraction"},
+    "pipeline/deep_file_analysis_batch": {"system": PIPELINE_DEEP_FILE_ANALYSIS_BATCH_SYSTEM, "user": PIPELINE_DEEP_FILE_ANALYSIS_BATCH_USER, "usage_type": "rag_extraction"},
     "pipeline/deep_project_enrichment": {"system": PIPELINE_DEEP_PROJECT_ENRICHMENT_SYSTEM, "user": PIPELINE_DEEP_PROJECT_ENRICHMENT_USER, "usage_type": "content_generation"},
     "pipeline/deep_quality_review": {"system": PIPELINE_DEEP_QUALITY_REVIEW_SYSTEM, "user": PIPELINE_DEEP_QUALITY_REVIEW_USER, "usage_type": "validation"},
     "pipeline/deep_rule_synthesis": {"system": PIPELINE_DEEP_RULE_SYNTHESIS_SYSTEM, "user": PIPELINE_DEEP_RULE_SYNTHESIS_USER, "usage_type": "rag_extraction"},
@@ -1187,9 +1229,9 @@ CONTRACTS = {
     "pipeline/deep_wiki_domain": {"system": PIPELINE_DEEP_WIKI_DOMAIN_SYSTEM, "user": PIPELINE_DEEP_WIKI_DOMAIN_USER, "usage_type": "content_generation"},
     "pipeline/deep_wiki_overview": {"system": PIPELINE_DEEP_WIKI_OVERVIEW_SYSTEM, "user": PIPELINE_DEEP_WIKI_OVERVIEW_USER, "usage_type": "content_generation"},
     "pipeline/deep_wiki_structure": {"system": PIPELINE_DEEP_WIKI_STRUCTURE_SYSTEM, "user": PIPELINE_DEEP_WIKI_STRUCTURE_USER, "usage_type": "content_generation"},
-    "pipeline/rag_rules_extraction": {"system": PIPELINE_RAG_RULES_EXTRACTION_SYSTEM, "user": PIPELINE_RAG_RULES_EXTRACTION_USER, "usage_type": "rag_extraction"},
+    "pipeline/rag_rules_extraction": {"system": PIPELINE_RAG_RULES_EXTRACTION_SYSTEM, "usage_type": "rag_extraction"},
     "pipeline/validation_rules": {"system": PIPELINE_VALIDATION_RULES_SYSTEM, "user": PIPELINE_VALIDATION_RULES_USER, "usage_type": "_config"},
-    "pipeline/wiki_domain_generation": {"system": PIPELINE_WIKI_DOMAIN_GENERATION_SYSTEM, "user": PIPELINE_WIKI_DOMAIN_GENERATION_USER, "usage_type": "content_generation"},
-    "pipeline/wiki_overview_generation": {"system": PIPELINE_WIKI_OVERVIEW_GENERATION_SYSTEM, "user": PIPELINE_WIKI_OVERVIEW_GENERATION_USER, "usage_type": "content_generation"},
+    "pipeline/wiki_domain_generation": {"system": PIPELINE_WIKI_DOMAIN_GENERATION_SYSTEM, "usage_type": "content_generation"},
+    "pipeline/wiki_overview_generation": {"system": PIPELINE_WIKI_OVERVIEW_GENERATION_SYSTEM, "usage_type": "content_generation"},
     "pipeline/wiki_page": {"system": PIPELINE_WIKI_PAGE_SYSTEM, "user": PIPELINE_WIKI_PAGE_USER, "usage_type": "content_generation"},
 }

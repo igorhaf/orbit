@@ -127,10 +127,6 @@ class DeepPipelineService(Phase0to3Mixin, Phase4to7Mixin, TelemetryMixin, UtilsM
         """Check if a phase is enabled in the current profile."""
         return self._get_phase_config(phase_key, "enabled", True)
 
-    def _ollama_kwargs(self, phase_key: str) -> dict:
-        """v2.5: Ollama removed; preserved for call-site compat returning {}."""
-        return {}
-
     # =========================================================================
     # MAIN ORCHESTRATOR
     # =========================================================================
