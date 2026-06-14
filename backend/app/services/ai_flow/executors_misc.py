@@ -362,6 +362,12 @@ class ClaudiusBatchCallExecutor(NodeExecutor):
         concurrency = int(config.get("max_concurrency", 10))
         abort_on_quota = bool(config.get("abort_on_quota", True))
 
+        # Quota coordenada: se outro nó já esgotou a cota nesta run, não dispara
+        # um batch inteiro que só vai falhar.
+        _quota_evt = getattr(ctx, "quota_exhausted", None)
+        if _quota_evt is not None and _quota_evt.is_set():
+            return {"responses": [], "errors": [{"index": -1, "message": "quota_exhausted (skipped)"}]}
+
         try:
             from app.services.claudius_pipeline import (
                 ClaudiusPipelineService, ClaudiusPipelineError, ClaudiusQuotaExhaustedError,
@@ -395,6 +401,8 @@ class ClaudiusBatchCallExecutor(NodeExecutor):
         try:
             results = await cp.call_batch(requests, max_concurrency=concurrency)
         except ClaudiusQuotaExhaustedError as e:
+            if _quota_evt is not None:
+                _quota_evt.set()  # sinaliza pros outros nós não queimarem cota
             if abort_on_quota:
                 return {"responses": [], "errors": [{"index": -1, "message": f"quota_exhausted: {e}"}]}
             results = []

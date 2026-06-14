@@ -50,7 +50,27 @@ def _estimate_project_meta(db: Session, project: Project) -> dict:
         ).count()
     except Exception:
         pass
-    return {"n_files": max(1, n_files), "n_domains": n_domains}
+    # Resume-aware: if there's an interrupted run with a checkpoint, the quota
+    # estimate should skip the phases already completed (a resume re-runs only
+    # the pending phases). Without this, the pre-flight overestimates and blocks
+    # a resume that would actually fit.
+    last_completed_phase = -1
+    try:
+        from app.models.pipeline_run import PipelineRun
+        interrupted = (
+            db.query(PipelineRun)
+            .filter(PipelineRun.project_id == project.id,
+                    PipelineRun.status == "interrupted",
+                    PipelineRun.checkpoint_state.isnot(None))
+            .order_by(PipelineRun.created_at.desc())
+            .first()
+        )
+        if interrupted:
+            last_completed_phase = int((interrupted.checkpoint_state or {}).get("last_completed_phase", -1))
+    except Exception:
+        pass
+    return {"n_files": max(1, n_files), "n_domains": n_domains,
+            "last_completed_phase": last_completed_phase}
 
 
 def _profile_to_dict(p):
