@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 // PROMPT #131 - Removed useRouter, now using onInterviewClick callback
-import { Card, CardHeader, CardTitle, CardContent, AIModelBadge } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, AIModelBadge, Spinner } from '@/components/ui';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
