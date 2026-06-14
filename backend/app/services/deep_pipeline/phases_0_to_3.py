@@ -537,6 +537,25 @@ class Phase0to3Mixin:
     # PHASE 3: ARCHITECTURAL MAP (Sonnet + Extended Thinking)
     # =========================================================================
 
+    # Domain batch size for Phase 3. WHY this is the fix for the pipeline dying
+    # at Phase 3 ("architectural_map vazio"):
+    #   • Root cause was NOT a parse bug — it was OUTPUT VOLUME. A single call
+    #     over all 62 Varanda domains had to generate a huge structured JSON;
+    #     measured live, even 20 domains take ~291s to generate (~17.6K output
+    #     tokens), right at the old 300s client timeout. The call timed out, its
+    #     text came back empty/partial, extract_json() returned {}, and the
+    #     `or {}` swallowed it silently.
+    #   • Generation time tracks OUTPUT tokens, not domain count, and the model
+    #     is unpredictable about verbosity (live: 5 domains → 14.4K tok/247s,
+    #     8 domains → 10.6K tok/187s). So we keep batches modest AND raised the
+    #     Sonnet client timeout to 600s (claudius_pipeline) for headroom.
+    #   • 10 domains/batch keeps expected output ~12-15K tokens (~200-250s) with
+    #     ~2.5x margin under the 600s timeout, while NOT collapsing domains
+    #     (domain count is a tracked metric — must never be reduced to "fix" this).
+    P3_DOMAIN_BATCH_SIZE = 10
+    # Generous per-call timeout for Phase 3's large structured-JSON generation.
+    P3_CALL_TIMEOUT_S = 600
+
     async def _phase3_architectural_map(
         self,
         project: Project,
@@ -544,9 +563,13 @@ class Phase0to3Mixin:
         inventory: List[Dict],
         run_id: UUID,
     ) -> Dict:
-        """Build architectural map with extended thinking."""
+        """Build architectural map with extended thinking.
 
-        # Build structural metadata summary
+        Domains are processed in batches and the partial maps are merged, so a
+        large project (many domains) never overflows the model context window.
+        """
+
+        # Build structural metadata summary (shared across all batches)
         structural = {
             "total_files": len(inventory),
             "languages": {},
@@ -566,7 +589,7 @@ class Phase0to3Mixin:
             for f in sorted_by_complexity[:20]
         ]
 
-        # Domain summary for prompt
+        # Per-domain summary used to build each batch prompt
         domains_summary = {}
         for domain, data in domain_rules.items():
             domains_summary[domain] = {
@@ -576,22 +599,12 @@ class Phase0to3Mixin:
                 "gaps": data.get("detected_gaps", []),
             }
 
-        system_prompt, _ = self._load_contract("deep_architectural_map", {
-            "all_domains_summary": json.dumps(domains_summary, ensure_ascii=False),
-            "structural_metadata": json.dumps(structural, ensure_ascii=False),
-            "project_name": project.name,
-            "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
-        })
-
-        # Compact JSON: drop indent + use tight separators. Same semantic
-        # payload to the model, ~25% fewer input tokens.
-        _compact = lambda obj: json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
-        user_prompt = (
-            f"Projeto: {project.name}\n"
-            f"Stack: {_compact(project.stack or {})}\n\n"
-            f"Metadados estruturais:\n{_compact(structural)}\n\n"
-            f"Dominios e regras sintetizadas:\n{_compact(domains_summary)}"
-        )
+        domain_names = list(domains_summary.keys())
+        batches = [
+            domain_names[i:i + self.P3_DOMAIN_BATCH_SIZE]
+            for i in range(0, len(domain_names), self.P3_DOMAIN_BATCH_SIZE)
+        ]
+        total_batches = len(batches) or 1
 
         p3_model = self._get_model("phase_3", MODEL_SONNET)
         p3_max_tokens = self._get_max_tokens("phase_3", 16000)
@@ -600,34 +613,103 @@ class Phase0to3Mixin:
         # 4K keeps the structured-thought benefit at ~60% lower output cost.
         p3_thinking = self._get_phase_config("phase_3", "thinking_budget", 4000)
 
-        result = await self.claudius.call(
-            model=p3_model,
-            system_prompt=system_prompt or "Build an architectural map. Respond with JSON.",
-            user_prompt=user_prompt,
-            thinking={"type": "enabled", "budget_tokens": p3_thinking} if p3_thinking else None,
-            max_tokens=p3_max_tokens,
-            **self._ollama_kwargs("phase_3"),
+        _compact = lambda obj: json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
+        # Build one request per batch and run them in PARALLEL. WHY: the 33s CLI
+        # overhead + ~200s generation per batch parallelizes linearly, so 7
+        # sequential batches (~26min) collapse to ~one batch of wall-time when
+        # run concurrently. Mirrors Phase 1 / Phase 5c which already use
+        # call_batch. Concurrency is bounded by quota, not time.
+        requests = []
+        batch_domain_counts = []
+        for batch_idx, batch_domains in enumerate(batches):
+            batch_summary = {d: domains_summary[d] for d in batch_domains}
+            batch_label = f"batch {batch_idx + 1}/{total_batches}"
+
+            system_prompt, _ = self._load_contract("deep_architectural_map", {
+                "all_domains_summary": json.dumps(batch_summary, ensure_ascii=False),
+                "structural_metadata": json.dumps(structural, ensure_ascii=False),
+                "project_name": project.name,
+                "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
+            })
+            user_prompt = (
+                f"Projeto: {project.name}\n"
+                f"Stack: {_compact(project.stack or {})}\n\n"
+                f"Metadados estruturais:\n{_compact(structural)}\n\n"
+                f"Dominios e regras sintetizadas ({batch_label}, {len(batch_domains)} dominios):\n"
+                f"{_compact(batch_summary)}"
+            )
+            requests.append({
+                "model": p3_model,
+                "system_prompt": system_prompt or "Build an architectural map. Respond with JSON.",
+                "user_prompt": user_prompt,
+                "thinking": {"type": "enabled", "budget_tokens": p3_thinking} if p3_thinking else None,
+                "max_tokens": p3_max_tokens,
+                "timeout": self.P3_CALL_TIMEOUT_S,
+                **self._ollama_kwargs("phase_3"),
+            })
+            batch_domain_counts.append(len(batch_domains))
+
+        p3_done = [0]
+
+        async def _on_p3_done(index: int, result: Any, total: int):
+            p3_done[0] += 1
+            await self._emit_telemetry(
+                "phase_3", "architectural_map",
+                f"Mapa arquitetural: batch {index + 1}/{total} "
+                f"({batch_domain_counts[index]} dominios)",
+                p3_done[0], total, model_name=p3_model, result=result,
+            )
+
+        # call_batch raises ClaudiusQuotaExhaustedError up if quota is hit.
+        results = await self.claudius.call_batch(
+            requests,
+            max_concurrency=self._get_concurrency("phase_3", 5),
+            on_item_complete=_on_p3_done,
         )
 
-        # PROMPT #237: Emit arch map telemetry
-        await self._emit_telemetry(
-            "phase_3", "architectural_map", "Mapa arquitetural gerado",
-            1, 1, model_name=p3_model, result=result,
-        )
+        partial_maps: List[Dict] = []
+        failed_batches = 0
+        for batch_idx, result in enumerate(results):
+            batch_label = f"batch {batch_idx + 1}/{total_batches}"
+            if isinstance(result, ClaudiusPipelineError):
+                failed_batches += 1
+                logger.error(f"[Phase 3] {batch_label} failed: {result}")
+                continue
 
-        raw_text = result.get("text", "") or ""
-        arch_map = self.claudius.extract_json(raw_text) or {}
+            raw_text = result.get("text", "") or ""
+            stop_reason = result.get("stop_reason", "")
+            part = self.claudius.extract_json(raw_text)
 
-        # Guarda: arch_map vazio sinaliza cota/falha upstream que escapou detecao
-        if not arch_map or not isinstance(arch_map, dict) or len(arch_map) == 0:
-            # Distinguir cota de JSON invalido: msg curta + match quota patterns
-            from app.services.claudius_pipeline import _QUOTA_PATTERNS
-            if raw_text and len(raw_text) < 500 and _QUOTA_PATTERNS.search(raw_text):
-                raise ClaudiusQuotaExhaustedError(
-                    f"Phase 3: cota Claude esgotada -- {raw_text.strip()[:200]}"
+            if not part or not isinstance(part, dict) or len(part) == 0:
+                # NOT silent: log exactly why this batch produced nothing so a
+                # future failure is debuggable instead of a mystery "vazio".
+                failed_batches += 1
+                logger.error(
+                    f"[Phase 3] {batch_label} produced no parseable JSON "
+                    f"(stop_reason={stop_reason!r}, raw_len={len(raw_text)}). "
+                    f"First 200 chars: {raw_text[:200]!r}"
                 )
+                continue
+
+            partial_maps.append(part)
+            logger.info(
+                f"[Phase 3] {batch_label}: {len(part.get('domains', []))} domains mapped"
+            )
+
+        # Only abort if EVERY batch failed — a partial map is still useful and
+        # lets the pipeline complete end-to-end instead of dying outright.
+        if not partial_maps:
             raise ClaudiusPipelineError(
-                "Phase 3: architectural_map vazio -- JSON invalido na resposta"
+                f"Phase 3: architectural_map vazio -- todos os {total_batches} "
+                f"batches falharam ao retornar JSON valido (ver logs por batch)"
+            )
+
+        arch_map = self._merge_architectural_maps(partial_maps)
+        if failed_batches:
+            logger.warning(
+                f"[Phase 3] {failed_batches}/{total_batches} batches falharam; "
+                f"mapa montado a partir de {len(partial_maps)} batches validos"
             )
 
         # Store artifact
@@ -641,5 +723,54 @@ class Phase0to3Mixin:
         self.db.add(artifact)
         self.db.commit()
 
-        logger.info(f"Phase 3: Built architectural map with {len(arch_map.get('domains', []))} domains")
+        logger.info(
+            f"Phase 3: Built architectural map with {len(arch_map.get('domains', []))} "
+            f"domains across {len(partial_maps)}/{total_batches} batches"
+        )
         return arch_map
+
+    @staticmethod
+    def _merge_architectural_maps(partials: List[Dict]) -> Dict:
+        """Merge per-batch architectural maps into one.
+
+        List fields are concatenated (domains, cross_domain_flows,
+        missing_domains, tech_debt_indicators); architectural_patterns is
+        de-duplicated; numeric recommendations are summed; project_summary uses
+        the longest non-empty one (most informative). Single-batch input is
+        returned essentially unchanged.
+        """
+        if len(partials) == 1:
+            return partials[0]
+
+        merged: Dict[str, Any] = {
+            "domains": [],
+            "cross_domain_flows": [],
+            "missing_domains": [],
+            "architectural_patterns": [],
+            "tech_debt_indicators": [],
+            "recommended_epic_total": 0,
+            "recommended_wiki_pages": 0,
+        }
+        seen_patterns = set()
+        summaries: List[str] = []
+
+        for part in partials:
+            for key in ("domains", "cross_domain_flows", "missing_domains", "tech_debt_indicators"):
+                val = part.get(key)
+                if isinstance(val, list):
+                    merged[key].extend(val)
+            for pat in part.get("architectural_patterns", []) or []:
+                k = pat.strip().lower() if isinstance(pat, str) else str(pat)
+                if k and k not in seen_patterns:
+                    seen_patterns.add(k)
+                    merged["architectural_patterns"].append(pat)
+            for num_key in ("recommended_epic_total", "recommended_wiki_pages"):
+                v = part.get(num_key)
+                if isinstance(v, (int, float)):
+                    merged[num_key] += int(v)
+            ps = part.get("project_summary")
+            if isinstance(ps, str) and ps.strip():
+                summaries.append(ps.strip())
+
+        merged["project_summary"] = max(summaries, key=len) if summaries else ""
+        return merged

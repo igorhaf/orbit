@@ -34,10 +34,16 @@ MODEL_HAIKU = "claude-haiku-4-5"
 MODEL_SONNET = "claude-sonnet-4-6"
 MODEL_OPUS = "claude-opus-4-7"
 
-# Timeouts per model (seconds) - Opus takes longer for deep reasoning
+# Timeouts per model (seconds) - Opus takes longer for deep reasoning.
+# WHY 600 for Sonnet (was 300): a single structured-JSON generation of ~17.6K
+# output tokens (measured live: 20-domain arch map) takes ~291s — right at the
+# old 300s edge, which is exactly why Phase 3 timed out and died. The Claudius
+# server already allows 600s for sonnet (claudius/backend/config.py), so the
+# client was the tighter bound. Callers that generate a lot of JSON should still
+# keep batches small (see Phase 3 chunking) rather than lean on this headroom.
 MODEL_TIMEOUTS = {
     MODEL_HAIKU: 120,
-    MODEL_SONNET: 300,
+    MODEL_SONNET: 600,
     MODEL_OPUS: 600,
 }
 
@@ -195,6 +201,7 @@ class ClaudiusPipelineService:
         max_tokens: int | None = None,
         max_retries: int | None = None,
         usage_type: str | None = None,
+        timeout: int | None = None,
         **kwargs,  # Accept and ignore Ollama params for cross-provider compat
     ) -> dict[str, Any]:
         """
@@ -208,12 +215,14 @@ class ClaudiusPipelineService:
             thinking: Extended thinking config, e.g. {"type": "enabled", "budget_tokens": 10000}
             max_tokens: Max output tokens (None = model default)
             max_retries: Override default retry count
+            timeout: Override per-call timeout in seconds (None = per-model default).
+                Use for calls that generate a lot of JSON (structured output).
 
         Returns:
             dict with keys: text, thinking, usage, model, session_id
         """
         retries = max_retries if max_retries is not None else MODEL_RETRIES.get(model, 2)
-        timeout = MODEL_TIMEOUTS.get(model, 300)
+        timeout = timeout if timeout is not None else MODEL_TIMEOUTS.get(model, 300)
         start_time = time.time()
         usage_type = usage_type or self.default_usage_type
 

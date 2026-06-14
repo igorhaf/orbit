@@ -71,9 +71,19 @@ class Phase4to7Mixin:
         total_batches = len(batches)
         await progress_cb(4, 5, f"Gerando Epics com {p4a_label} ({total_batches} batch{'es' if total_batches > 1 else ''}, {len(domain_list)} dominios)...")
 
+        # Index the arch map's domain objects by name. Phase 3 returns domains
+        # as a list under arch_map["domains"] (each with a "name"), NOT as
+        # top-level keys — so the old `arch_map.get(d)` lookup always missed and
+        # Phase 4a ran blind to the architectural map. Build a name->object index.
+        arch_by_domain = {
+            dom.get("name"): dom
+            for dom in arch_map.get("domains", [])
+            if isinstance(dom, dict) and dom.get("name")
+        }
+
         epics = []
         for batch_idx, batch_domains in enumerate(batches):
-            batch_arch = {d: arch_map.get(d, {}) for d in batch_domains if d in arch_map}
+            batch_arch = {d: arch_by_domain[d] for d in batch_domains if d in arch_by_domain}
             batch_rules = {d: all_rules_summary[d] for d in batch_domains if d in all_rules_summary}
             # Include project_summary for context in every batch
             if "project_summary" in arch_map:
@@ -106,7 +116,21 @@ class Phase4to7Mixin:
             )
 
             batch_epics_data = self.claudius.extract_json(epic_result.get("text", ""))
-            batch_epics = batch_epics_data.get("epics", []) if batch_epics_data else []
+            # Tolerate both shapes: {"epics": [...]} and a bare [...]. Without
+            # the isinstance guard a bare-list response raised AttributeError on
+            # .get() and aborted the whole batch.
+            if isinstance(batch_epics_data, dict):
+                batch_epics = batch_epics_data.get("epics", [])
+            elif isinstance(batch_epics_data, list):
+                batch_epics = batch_epics_data
+            else:
+                batch_epics = []
+            if not batch_epics:
+                logger.warning(
+                    f"[Phase 4a] {batch_label}: 0 epics parseados "
+                    f"(stop_reason={epic_result.get('stop_reason')!r}, "
+                    f"raw_len={len(epic_result.get('text','') or '')})"
+                )
             epics.extend(batch_epics)
             logger.info(f"[Phase 4a] {batch_label}: {len(batch_epics)} epics gerados")
 
@@ -640,11 +664,28 @@ class Phase4to7Mixin:
             1, 1, model_name=p6_model, result=result,
         )
 
-        qa_result = self.claudius.extract_json(result.get("text", "")) or {
-            "overall_score": 50,
-            "issues": [],
-            "summary": "QA parsing failed",
-        }
+        qa_raw = result.get("text", "") or ""
+        qa_result = self.claudius.extract_json(qa_raw)
+        if not qa_result or not isinstance(qa_result, dict):
+            # Distinguish quota from corruption instead of silently faking a
+            # score=50 (which masks both). QA is the final phase — a fake score
+            # would corrupt the run's quality signal with no trace of why.
+            from app.services.claudius_pipeline import _QUOTA_PATTERNS
+            if qa_raw and len(qa_raw) < 500 and _QUOTA_PATTERNS.search(qa_raw):
+                raise ClaudiusQuotaExhaustedError(
+                    f"Phase 6 QA: cota Claude esgotada -- {qa_raw.strip()[:200]}"
+                )
+            logger.error(
+                f"[Phase 6] QA produced no parseable JSON "
+                f"(stop_reason={result.get('stop_reason')!r}, raw_len={len(qa_raw)}). "
+                f"First 200 chars: {qa_raw[:200]!r}. Falling back to degraded score."
+            )
+            qa_result = {
+                "overall_score": 50,
+                "issues": [],
+                "summary": "QA parsing failed -- ver logs (resposta nao-JSON)",
+                "_parse_failed": True,
+            }
 
         # Store artifact
         artifact = PipelineArtifact(
