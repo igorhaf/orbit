@@ -129,7 +129,10 @@ export class FeaturesService {
     if (!await this.db.one('SELECT 1 FROM board_members WHERE board_id=$1 AND user_id=$2',[boardId,memberId])) bad('Membro não pertence ao quadro.',404);
     const existing=await this.db.one('SELECT 1 FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,memberId]);
     if (existing) await this.db.query('DELETE FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,memberId]);
-    else await this.db.query('INSERT INTO card_assignees(card_id,user_id) VALUES($1,$2)',[cardId,memberId]);
+    else {
+      await this.db.query('INSERT INTO card_assignees(card_id,user_id) VALUES($1,$2)',[cardId,memberId]);
+      await this.db.query('INSERT INTO card_watchers(card_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[cardId,memberId]);
+    }
     await this.record(actorId,boardId,cardId,existing?'unassigned':'assigned',existing?'removeu um membro do cartão':'atribuiu um membro ao cartão');
     if (!existing) {
       const card=await this.db.one('SELECT title FROM cards WHERE id=$1',[cardId]);
@@ -145,9 +148,10 @@ export class FeaturesService {
 
   async record(actorId: string, boardId: string | null, cardId: string | null, kind: string, body: string) {
     await this.db.query('INSERT INTO activities(actor_id,board_id,card_id,kind,body) VALUES($1,$2,$3,$4,$5)',[actorId,boardId,cardId,kind,body.slice(0,1000)]);
+    if(boardId) await this.notifyWatchers(actorId,boardId,cardId,kind,body);
   }
 
-  async notify(userId: string, boardId: string, cardId: string, kind: string, title: string, body: string) {
+  async notify(userId: string, boardId: string, cardId: string | null, kind: string, title: string, body: string) {
     const account=await this.account(userId);
     if (!account.preferences.notifications) return;
     await this.db.query(`INSERT INTO notifications(user_id,board_id,card_id,kind,title,body)
@@ -155,9 +159,45 @@ export class FeaturesService {
   }
 
   async mention(userId: string, boardId: string, cardId: string, body: string) {
-    if (!/@(igor|igorhaf)/i.test(body)) return;
+    const targets=new Set<string>();
+    if(/@card\b/i.test(body)) for(const row of await this.db.query('SELECT user_id FROM card_assignees WHERE card_id=$1',[cardId]))targets.add(row.user_id);
+    if(/@board\b/i.test(body)) for(const row of await this.db.query('SELECT user_id FROM board_members WHERE board_id=$1',[boardId]))targets.add(row.user_id);
+    if(/@(igor|igorhaf)\b/i.test(body))targets.add(userId);
+    if(!targets.size)return;
     const card=await this.db.one('SELECT title FROM cards WHERE id=$1',[cardId]);
-    await this.notify(userId,boardId,cardId,'mention',`Menção em ${card?.title||'um cartão'}`,body);
+    for(const target of targets)await this.notify(target,boardId,cardId,'mention',`Menção em ${card?.title||'um cartão'}`,body);
+  }
+
+  private async notifyWatchers(actorId:string,boardId:string,cardId:string|null,kind:string,body:string){
+    const ids=new Set<string>();
+    for(const row of await this.db.query('SELECT user_id FROM board_watchers WHERE board_id=$1',[boardId]))ids.add(row.user_id);
+    if(cardId){
+      for(const row of await this.db.query('SELECT user_id FROM card_watchers WHERE card_id=$1',[cardId]))ids.add(row.user_id);
+      for(const row of await this.db.query('SELECT lw.user_id FROM list_watchers lw JOIN cards c ON c.list_id=lw.list_id WHERE c.id=$1',[cardId]))ids.add(row.user_id);
+    }
+    const card=cardId?await this.db.one('SELECT title FROM cards WHERE id=$1',[cardId]):null;
+    for(const id of ids)if(id!==actorId)await this.notify(id,boardId,cardId,kind,`Atualização em ${card?.title||'quadro'}`,body);
+  }
+
+  async watches(cardId:string,userId:string){
+    const boardId=await this.cardBoard(cardId,userId);
+    const list=await this.db.one('SELECT list_id FROM cards WHERE id=$1',[cardId]);
+    return {
+      card:Boolean(await this.db.one('SELECT 1 FROM card_watchers WHERE card_id=$1 AND user_id=$2',[cardId,userId])),
+      list:Boolean(await this.db.one('SELECT 1 FROM list_watchers WHERE list_id=$1 AND user_id=$2',[list!.list_id,userId])),
+      board:Boolean(await this.db.one('SELECT 1 FROM board_watchers WHERE board_id=$1 AND user_id=$2',[boardId,userId])),
+    };
+  }
+  async toggleWatch(scope:'card'|'list'|'board',id:string,userId:string){
+    validId(id); let boardId:string;let table:string;let key:string;
+    if(scope==='card'){boardId=await this.cardBoard(id,userId);table='card_watchers';key='card_id'}
+    else if(scope==='list'){const row=await this.db.one('SELECT board_id FROM lists WHERE id=$1',[id]);if(!row)bad('Lista não encontrada.',404);await this.member(row!.board_id,userId);boardId=row!.board_id;table='list_watchers';key='list_id'}
+    else {await this.member(id,userId);boardId=id;table='board_watchers';key='board_id'}
+    const existing=await this.db.one(`SELECT 1 FROM ${table} WHERE ${key}=$1 AND user_id=$2`,[id,userId]);
+    if(existing)await this.db.query(`DELETE FROM ${table} WHERE ${key}=$1 AND user_id=$2`,[id,userId]);
+    else await this.db.query(`INSERT INTO ${table}(${key},user_id) VALUES($1,$2)`,[id,userId]);
+    await this.record(userId,boardId,scope==='card'?id:null,existing?'watch_stopped':'watch_started',existing?'parou de acompanhar':'começou a acompanhar');
+    return {watching:!existing};
   }
 
   async home(userId: string) {
@@ -277,6 +317,10 @@ export class FeaturesController {
   @Patch('favorites/reorder') favorites(@Req() req: Request,@Body() body: {ids: string[]}) { return this.features.reorderFavorites(this.features.user(req),body.ids); }
   @Post('cards/:id/assignee/toggle') toggleAssignee(@Req() req: Request,@Param('id') id: string) { return this.features.toggleAssignee(id,this.features.user(req)); }
   @Post('cards/:id/assignees/:userId/toggle') toggleCardMember(@Req() req: Request,@Param('id') id: string,@Param('userId') userId: string) { return this.features.toggleCardMember(id,this.features.user(req),userId); }
+  @Get('cards/:id/watches') watches(@Req() req:Request,@Param('id') id:string){return this.features.watches(id,this.features.user(req));}
+  @Post('cards/:id/watch/toggle') watchCard(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('card',id,this.features.user(req));}
+  @Post('lists/:id/watch/toggle') watchList(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('list',id,this.features.user(req));}
+  @Post('boards/:id/watch/toggle') watchBoard(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('board',id,this.features.user(req));}
   @Get('search') search(@Req() req: Request,@Query('q') q='') { return this.features.search(this.features.user(req),q); }
   @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
   @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }

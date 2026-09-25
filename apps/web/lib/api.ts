@@ -75,9 +75,11 @@ export type Board = {
   custom_fields?: CustomField[];
 };
 export type Workspace = { id: string; name: string; board_count: number };
-export type Comment = { id: string; body: string; created_at: string; author_id: string; author_name: string };
+export type CommentAttachment = {id:string;kind:'file'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null};
+export type Comment = { id: string; body: string; created_at: string; edited_at?:string|null; author_id: string; author_name: string; attachments?:CommentAttachment[] };
 export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string; text: string; completed: boolean; position: number; assignee_id: string | null; assignee_name?:string|null; due_date: string | null };
 export type CardDetails = { comments: Comment[]; checklist: ChecklistItem[] };
+export type WatchState = {card:boolean;list:boolean;board:boolean};
 export type Activity = { id: string; kind: string; body: string; created_at: string; card_id: string | null; card_title: string | null; board_id: string | null; board_title: string | null; actor_name: string };
 export type HomeCard = { id: string; title: string; description: string; due_date: string | null; overdue?: boolean; completed: boolean; board_id: string; board_title: string; list_title: string; assigned_to_me: boolean; background: string };
 export type HomeItem = { id: string; text: string; completed: boolean; due_date: string | null; overdue?: boolean; card_id: string; card_title: string; board_id: string; board_title: string };
@@ -137,6 +139,11 @@ export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'DELE
   api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 export async function attachmentBlob(id:string):Promise<Blob>{
   const response=await fetch(`${BASE}/attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`}});
+  if(!response.ok)throw new Error('Não foi possível abrir o anexo.');
+  return response.blob();
+}
+export async function commentAttachmentBlob(id:string):Promise<Blob>{
+  const response=await fetch(`${BASE}/comment-attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`}});
   if(!response.ok)throw new Error('Não foi possível abrir o anexo.');
   return response.blob();
 }

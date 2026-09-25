@@ -94,6 +94,35 @@ CREATE TABLE IF NOT EXISTS comments (
   body text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE comments ADD COLUMN IF NOT EXISTS edited_at timestamptz;
+CREATE TABLE IF NOT EXISTS comment_attachments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  comment_id uuid NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+  kind varchar(8) NOT NULL CHECK (kind IN ('file','card','board')),
+  name varchar(255) NOT NULL,
+  url text,
+  target_id uuid,
+  mime_type varchar(120),
+  size_bytes integer,
+  data bytea,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS comment_attachments_comment_idx ON comment_attachments(comment_id,created_at);
+CREATE TABLE IF NOT EXISTS card_watchers (
+  card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY(card_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS list_watchers (
+  list_id uuid NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY(list_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS board_watchers (
+  board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY(board_id,user_id)
+);
 CREATE TABLE IF NOT EXISTS checklist_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,

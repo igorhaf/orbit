@@ -32,6 +32,8 @@ Orbit é uma aplicação Kanban feita com Next.js, NestJS, PostgreSQL e Tailwind
 - Mover e copiar cartões entre listas, quadros e Inbox; cópia com escolha de descrição, datas, etiquetas, membros, checklists, anexos, campos, comentários e capa
 - Arquivar e restaurar cartões; exclusão definitiva somente após arquivar
 - Seleção de até 20 cartões com Ctrl/Cmd, Shift ou modo de seleção por toque para mover, copiar, arrastar em grupo, arquivar ou mesclar; mesclagens podem ser desfeitas por cinco minutos
+- Comentários editáveis com anexos de arquivos, cartões e quadros; links diretos, menções `@card` e `@board`, e acompanhamento de cartão, lista ou quadro
+- Cada cartão exibe um endereço de comentário por e-mail. O recebimento exige configurar `COMMENT_EMAIL_DOMAIN` e um provedor para encaminhar mensagens ao endpoint protegido do Orbit
 
 Arquivos podem ter até 10 MB; imagens para capa, até 2 MB. A prévia de links usa informações da URL; vídeos do YouTube também podem mostrar a miniatura pública. O link abre o serviço original.
 

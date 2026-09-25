@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { AlignLeft, Check, CheckSquare, Clock3, CreditCard, MessageSquare, MoveRight, Palette, Printer, Plus, Tag, Trash2, UserRound, X } from 'lucide-react';
+import { AlignLeft, Check, CheckSquare, Clock3, CreditCard, MoveRight, Palette, Printer, Plus, Tag, Trash2, UserRound, X } from 'lucide-react';
 import { api, send, Board, Card, CardDetails, getUser, labelColors, labelTextColor } from '@/lib/api';
 import { remember } from '@/lib/history';
 import { Avatar, Modal } from './ui';
@@ -8,6 +8,7 @@ import { MarkdownEditor, RichText } from './rich-text';
 import { CardDatesPanel, CardLabelsPanel, CardMembersPanel } from './card-extras';
 import { CardSections } from './card-sections';
 import { CardOperations } from './card-operations';
+import { CardComments } from './card-comments';
 
 export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
   card: Card;
@@ -20,7 +21,6 @@ export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
   const [title,setTitle]=useState(card.title);
   const [description,setDescription]=useState(card.description||'');
   const [editingDescription,setEditingDescription]=useState(false);
-  const [comment,setComment]=useState('');
   const [panel,setPanel]=useState<'labels'|'date'|'members'|'move'|null>(null);
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
@@ -72,7 +72,7 @@ export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
       </div>
       <section><h3 className="mb-3 flex items-center gap-3 font-semibold"><AlignLeft size={21}/> Descrição</h3><div className="pl-0 sm:pl-8">{editingDescription?<div><MarkdownEditor value={description} onChange={setDescription} placeholder="Adicione contexto, links e imagens em Markdown..."/><div className="mt-2 flex gap-2"><button disabled={busy} onClick={async()=>{if(await updateCard({description},{description:card.description},'editar descrição'))setEditingDescription(false)}} className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white">Salvar</button><button onClick={()=>{setDescription(card.description||'');setEditingDescription(false)}} className="rounded px-3 py-1.5 text-sm hover:bg-[#e9eaed]">Cancelar</button></div></div>:<div className="min-h-16 rounded bg-[#e9eaed] p-3 text-sm"><button onClick={()=>setEditingDescription(true)} className="mb-2 text-xs font-semibold text-[#0c66e4]">Editar descrição</button>{description?<RichText text={description}/>:<p>Adicione uma descrição mais detalhada...</p>}</div>}</div></section>
       <CardSections key={card.id} card={card} board={board} onChanged={onChanged}/>
-      <section><h3 className="mb-3 flex items-center gap-3 font-semibold"><MessageSquare size={21}/> Atividade</h3><div className="pl-0 sm:pl-8"><form onSubmit={async e=>{e.preventDefault();if(!comment.trim())return;if(await run(()=>send(`/cards/${card.id}/comments`,'POST',{body:comment})))setComment('')}} className="flex items-start gap-2"><Avatar name={user?.name||'Você'} url={user?.avatar_url} size="sm"/><div className="min-w-0 flex-1"><textarea value={comment} onChange={e=>setComment(e.target.value)} rows={2} placeholder="Escreva um comentário... Use @igor para uma menção." className="w-full resize-y rounded border border-[#dfe1e6] bg-white p-3 text-sm shadow-card"/><button disabled={busy||!comment.trim()} className="mt-2 rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white">Salvar</button></div></form><div className="mt-5 space-y-4">{details.comments.map(current=><div key={current.id} className="flex items-start gap-2"><Avatar name={current.author_name} url={current.author_id===user?.id?user?.avatar_url:null} size="sm"/><div className="min-w-0 flex-1"><p className="text-sm"><strong>{current.author_name}</strong> <span className="text-xs text-[#626f86]">{new Date(current.created_at).toLocaleString('pt-BR')}</span></p><div className="mt-1 whitespace-pre-wrap rounded bg-white px-3 py-2 text-sm shadow-card"><RichText text={current.body}/></div>{current.author_id===user?.id&&<button onClick={()=>run(()=>send(`/comments/${current.id}`,'DELETE'))} className="mt-1 text-xs text-[#626f86] underline hover:text-[#ae2a19]">Excluir</button>}</div></div>)}</div></div></section>
+      <CardComments card={card} board={board} details={details} onChanged={onChanged} run={run} user={user}/>
     </div><aside className="space-y-4"><div><h4 className="mb-2 text-xs font-bold text-[#626f86]">Adicionar ao cartão</h4><div className="space-y-2">
       <button onClick={()=>run(()=>send(`/cards/${card.id}/assignee/toggle`,'POST'))} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><UserRound size={16}/>{card.assigned_to_me?'Remover atribuição':'Atribuir a mim'}</button><button onClick={()=>setPanel(panel==='members'?null:'members')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><UserRound size={16}/> Membros do cartão</button>
       <button onClick={()=>setPanel(panel==='labels'?null:'labels')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Tag size={16}/> Etiquetas</button>

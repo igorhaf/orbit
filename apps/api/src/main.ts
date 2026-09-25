@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import 'dotenv/config';
-import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, HttpException } from '@nestjs/common';
+import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Res, HttpException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { Request, json } from 'express';
+import { Request, Response, json } from 'express';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { PoolClient } from 'pg';
@@ -777,18 +777,39 @@ class Service {
   }
   async cardDetails(id: string,userId: string) {
     await this.cardBoard(id,userId,true);
-    const comments = await this.db.query('SELECT c.id,c.body,c.created_at,u.id AS author_id,u.name AS author_name FROM comments c JOIN users u ON u.id=c.author_id WHERE c.card_id=$1 ORDER BY c.created_at DESC',[id]);
+    const comments = await this.db.query(`SELECT c.id,c.body,c.created_at,c.edited_at,u.id AS author_id,u.name AS author_name,
+      COALESCE((SELECT json_agg(json_build_object('id',a.id,'kind',a.kind,'name',a.name,'url',a.url,'target_id',a.target_id,'mime_type',a.mime_type,'size_bytes',a.size_bytes)) FROM comment_attachments a WHERE a.comment_id=c.id),'[]'::json) AS attachments
+      FROM comments c JOIN users u ON u.id=c.author_id WHERE c.card_id=$1 ORDER BY c.created_at DESC`,[id]);
     const checklist = await this.db.query('SELECT id,text,completed,position,assignee_id,due_date FROM checklist_items WHERE card_id=$1 ORDER BY position',[id]);
     return { comments, checklist };
   }
   async comment(id: string,userId: string,body: Payload) {
     const boardId=await this.contentCard(id,userId);
     const text = value(body.body,'Comentário',5000);
+    if(body.attachments!==undefined&&(!Array.isArray(body.attachments)||body.attachments.length>10))fail('Anexos inválidos.');
     const comment=await this.db.one('INSERT INTO comments(card_id,author_id,body) VALUES($1,$2,$3) RETURNING *',[id,userId,text]);
+    for(const attachment of (body.attachments||[]) as unknown[])await this.addCommentAttachment(comment!.id,id,userId,attachment);
     await this.features.record(userId,boardId,id,'comment',`comentou: ${text.slice(0,180)}`);
     await this.features.mention(userId,boardId,id,text);
     await this.features.notifyAssignees(userId,boardId,id,'comment','Novo comentário',text);
     return comment;
+  }
+  private async addCommentAttachment(commentId:string,cardId:string,userId:string,input:unknown){
+    if(!input||typeof input!=='object')fail('Anexo inválido.');const body=input as Payload;
+    const kind=value(body.kind,'Tipo',8);if(!['file','card','board'].includes(kind))fail('Tipo de anexo inválido.');
+    const name=value(body.name,'Nome',255);let url:string|null=null;let target:string|null=null;let mime:string|null=null;let buffer:Buffer|null=null;
+    if(kind==='file'){
+      mime=value(body.mime_type,'Formato',120).toLowerCase();const raw=body.data;
+      if(typeof raw!=='string'||raw.length>14_000_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))fail('Arquivo inválido ou maior que 10 MB.');
+      buffer=Buffer.from(raw as string,'base64');if(!buffer.length||buffer.length>10_000_000||buffer.toString('base64')!==raw)fail('Arquivo inválido ou maior que 10 MB.');
+    }else {target=uuid(value(body.target_id,'Referência',36));if(kind==='board'){await this.member(target,userId);url=`/board/${target}`;}else{const targetBoard=await this.cardBoard(target,userId);url=`/board/${targetBoard}?card=${target}`;}}
+    await this.db.query('INSERT INTO comment_attachments(comment_id,kind,name,url,target_id,mime_type,size_bytes,data) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[commentId,kind,name,url,target,mime,buffer?.length??null,buffer]);
+  }
+  async updateComment(id:string,userId:string,body:Payload){
+    uuid(id);const old=await this.db.one('SELECT c.author_id,c.card_id,l.board_id FROM comments c JOIN cards card ON card.id=c.card_id JOIN lists l ON l.id=card.list_id WHERE c.id=$1',[id]);
+    if(!old)fail('Comentário não encontrado.',404);await this.member(old!.board_id,userId);if(old!.author_id!==userId)fail('Você só pode editar seus comentários.',403);
+    const text=value(body.body,'Comentário',5000);const updated=await this.db.one('UPDATE comments SET body=$2,edited_at=now() WHERE id=$1 RETURNING *',[id,text]);
+    await this.features.record(userId,old!.board_id,old!.card_id,'comment_updated','editou um comentário');return updated;
   }
   async deleteComment(id: string,userId: string) {
     uuid(id);
@@ -798,6 +819,13 @@ class Service {
     if (row.author_id !== userId) fail('Você só pode excluir seus comentários.',403);
     await this.db.query('DELETE FROM comments WHERE id=$1',[id]); return {ok:true};
   }
+  async commentAttachmentContent(id:string,userId:string,response:Response){
+    uuid(id);const row=await this.db.one(`SELECT a.*,c.card_id FROM comment_attachments a JOIN comments c ON c.id=a.comment_id WHERE a.id=$1`,[id]);
+    if(!row)fail('Anexo não encontrado.',404);await this.contentCard(row!.card_id,userId);if(row!.kind!=='file'||!row!.data)fail('Arquivo indisponível.',404);
+    response.setHeader('Content-Type',row!.mime_type||'application/octet-stream');response.setHeader('Content-Length',row!.data.length);response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(row!.name)}`);response.send(row!.data);
+  }
+  async cardEmail(id:string,userId:string){await this.contentCard(id,userId);const domain=process.env.COMMENT_EMAIL_DOMAIN||'orbit.local';return {address:`card+${id}@${domain}`,enabled:Boolean(process.env.COMMENT_EMAIL_DOMAIN),instructions:'Configure your email provider to forward messages to the Orbit inbound endpoint.'};}
+  async inboundComment(body:Payload,token:string|undefined){if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN)fail('Canal de e-mail não autorizado.',401);const cardId=uuid(value(body.card_id,'Cartão',36));const row=await this.db.one('SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1',[cardId]);if(!row)fail('Cartão não encontrado.',404);const account=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);const text=value(body.body,'Comentário',5000);const comment=await this.db.one('INSERT INTO comments(card_id,author_id,body) VALUES($1,$2,$3) RETURNING *',[cardId,account!.id,text]);await this.features.record(account!.id,row!.board_id,cardId,'email_comment','comentou por e-mail');return comment;}
   async createChecklist(id: string,userId: string,body: Payload) {
     const boardId=await this.contentCard(id,userId);
     const text = value(body.text,'Item',300);
@@ -913,7 +941,11 @@ class ApiController {
   @Delete('cards/:id') deleteCard(@Req() req: Request,@Param('id') id: string) { return this.service.deleteCard(id,this.service.user(req)); }
   @Get('cards/:id/details') cardDetails(@Req() req: Request,@Param('id') id: string) { return this.service.cardDetails(id,this.service.user(req)); }
   @Post('cards/:id/comments') comment(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.comment(id,this.service.user(req),body); }
+  @Get('cards/:id/comment-email') commentEmail(@Req() req:Request,@Param('id') id:string){return this.service.cardEmail(id,this.service.user(req));}
+  @Post('email/comments') inboundComment(@Req() req:Request,@Body() body:Payload){return this.service.inboundComment(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined)}
+  @Patch('comments/:id') updateComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateComment(id,this.service.user(req),body)}
   @Delete('comments/:id') deleteComment(@Req() req: Request,@Param('id') id: string) { return this.service.deleteComment(id,this.service.user(req)); }
+  @Get('comment-attachments/:id/content') commentAttachmentContent(@Req() req:Request,@Param('id') id:string,@Res() response:Response){return this.service.commentAttachmentContent(id,this.service.user(req),response)}
   @Post('cards/:id/checklist') createChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createChecklist(id,this.service.user(req),body); }
   @Patch('checklist/:id') updateChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateChecklist(id,this.service.user(req),body); }
   @Delete('checklist/:id') deleteChecklist(@Req() req: Request,@Param('id') id: string) { return this.service.deleteChecklist(id,this.service.user(req)); }
