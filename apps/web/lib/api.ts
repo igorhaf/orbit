@@ -21,11 +21,15 @@ export type Card = {
   title: string;
   description: string;
   position: number;
+  start_date: string | null;
   due_date: string | null;
+  reminder_minutes: number | null;
+  recurrence: 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
   overdue?: boolean;
   cover_color: string | null;
   completed: boolean;
   assigned_to_me?: boolean;
+  assignees?: User[];
   labels: Label[];
   comment_count: number;
   checklist_total: number;
@@ -125,6 +129,16 @@ export const boardColors: Record<string,string> = {
   ocean: 'linear-gradient(135deg,#4c94b0 0%,#31748d 50%,#1a4e73 100%)',
 };
 export const labelColors: Record<string,string> = {
-  green:'#4bce97', yellow:'#f5cd47', orange:'#fea362', red:'#f87168',
-  purple:'#9f8fef', blue:'#579dff', pink:'#e774bb', teal:'#60c6d2',
+  green:'#4bce97', green_light:'#baf3db', green_dark:'#216e4e',
+  yellow:'#f5cd47', yellow_light:'#f8e6a0', yellow_dark:'#7f5f01',
+  orange:'#fea362', orange_light:'#ffdcc0', orange_dark:'#974f0c',
+  red:'#f87168', red_light:'#ffd5d2', red_dark:'#ae2a19',
+  purple:'#9f8fef', purple_light:'#dfd8fd', purple_dark:'#5e4db2',
+  blue:'#579dff', blue_light:'#cce0ff', blue_dark:'#0c66e4',
+  pink:'#e774bb', pink_light:'#fdd0ec', pink_dark:'#a63586',
+  teal:'#60c6d2', teal_light:'#c6edfb', teal_dark:'#206a83',
+  lime:'#94c748', lime_light:'#d3f1a7', lime_dark:'#4c6b1f',
+  gray:'#8590a2', gray_light:'#dfe1e6', gray_dark:'#44546f',
+  none:'#e9eaed',
 };
+export const labelTextColor = (color:string) => /_dark$/.test(color) ? '#fff' : '#172b4d';

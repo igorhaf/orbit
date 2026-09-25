@@ -2,7 +2,7 @@
 import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Printer } from 'lucide-react';
-import { api, Board, Card, CardDetails, dateLabel, getToken, labelColors } from '@/lib/api';
+import { api, Board, Card, CardDetails, dateLabel, getToken, labelColors, labelTextColor } from '@/lib/api';
 import { RichText } from '@/components/board-tools';
 
 export default function PrintPage({params}:{params:Promise<{id:string}>}) {
@@ -36,13 +36,13 @@ export default function PrintPage({params}:{params:Promise<{id:string}>}) {
       <h1 className="mb-2 text-3xl font-bold">{card?.title||board.title}</h1>
       {card? <>
         <p className="mb-7 text-sm text-[#626f86]">Lista: {board.lists?.find(list=>list.id===card.list_id)?.title}{card.due_date?` · Prazo: ${dateLabel(card.due_date)}`:''}{card.completed?' · Concluído':''}</p>
-        {card.labels?.length>0&&<section className="mb-6"><h2 className="mb-2 font-bold">Etiquetas</h2><div className="flex flex-wrap gap-2">{card.labels.map(label=><span key={label.id} className="rounded px-2 py-1 text-sm" style={{background:labelColors[label.color]||label.color}}>{label.name||label.color}</span>)}</div></section>}
-        {card.description&&<section className="mb-6"><h2 className="mb-2 font-bold">Descrição</h2><p className="text-sm"><RichText text={card.description}/></p></section>}
+        {card.labels?.length>0&&<section className="mb-6"><h2 className="mb-2 font-bold">Etiquetas</h2><div className="flex flex-wrap gap-2">{card.labels.map(label=><span key={label.id} className="rounded px-2 py-1 text-sm" style={{background:labelColors[label.color]||label.color,color:labelTextColor(label.color)}}>{label.name||label.color}</span>)}</div></section>}
+        {card.description&&<section className="mb-6"><h2 className="mb-2 font-bold">Descrição</h2><div className="text-sm"><RichText text={card.description}/></div></section>}
         {details?.checklist.length? <section className="mb-6"><h2 className="mb-2 font-bold">Checklist</h2><ul className="space-y-1 text-sm">{details.checklist.map(item=><li key={item.id}>{item.completed?'☑':'☐'} {item.text}{item.due_date?` · ${dateLabel(item.due_date)}`:''}</li>)}</ul></section>:null}
-        {details?.comments.length? <section><h2 className="mb-2 font-bold">Comentários</h2><div className="space-y-3">{details.comments.map(item=><div key={item.id} className="border-b border-[#dfe1e6] pb-2 text-sm"><strong>{item.author_name}</strong> <small>{new Date(item.created_at).toLocaleString('pt-BR')}</small><p><RichText text={item.body}/></p></div>)}</div></section>:null}
+        {details?.comments.length? <section><h2 className="mb-2 font-bold">Comentários</h2><div className="space-y-3">{details.comments.map(item=><div key={item.id} className="border-b border-[#dfe1e6] pb-2 text-sm"><strong>{item.author_name}</strong> <small>{new Date(item.created_at).toLocaleString('pt-BR')}</small><div><RichText text={item.body}/></div></div>)}</div></section>:null}
       </> : <>
-        {board.description&&<p className="mb-6 text-sm"><RichText text={board.description}/></p>}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{board.lists?.map(list=><section key={list.id} className="print-list rounded border border-[#dfe1e6] p-3"><h2 className="mb-3 border-b border-[#dfe1e6] pb-2 font-bold">{list.title} <span className="font-normal text-[#626f86]">({list.cards.length})</span></h2><div className="space-y-3">{list.cards.map(item=><article key={item.id} className="print-card rounded border border-[#dfe1e6] p-3"><h3 className={`font-semibold ${item.completed?'line-through':''}`}>{item.title}</h3>{item.due_date&&<p className="mt-1 text-xs">Prazo: {dateLabel(item.due_date)}</p>}{item.description&&<p className="mt-2 text-xs"><RichText text={item.description}/></p>}</article>)}</div></section>)}</div>
+        {board.description&&<div className="mb-6 text-sm"><RichText text={board.description}/></div>}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{board.lists?.map(list=><section key={list.id} className="print-list rounded border border-[#dfe1e6] p-3"><h2 className="mb-3 border-b border-[#dfe1e6] pb-2 font-bold">{list.title} <span className="font-normal text-[#626f86]">({list.cards.length})</span></h2><div className="space-y-3">{list.cards.map(item=><article key={item.id} className="print-card rounded border border-[#dfe1e6] p-3"><h3 className={`font-semibold ${item.completed?'line-through':''}`}>{item.title}</h3>{item.due_date&&<p className="mt-1 text-xs">Prazo: {dateLabel(item.due_date)}</p>}{item.description&&<div className="mt-2 text-xs"><RichText text={item.description}/></div>}</article>)}</div></section>)}</div>
       </>}
     </main>
   </div>;

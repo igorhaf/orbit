@@ -7,6 +7,7 @@ import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { Db } from './db';
 import { FeaturesController, FeaturesService, SINGLE_EMAIL } from './features';
+import { dueDateFromTitle, labelColorOptions, nextOccurrence, recurrenceOptions, reminderOptions } from './card-rules';
 
 type Payload = Record<string, unknown>;
 const fail = (message: string, code = 400): never => { throw new HttpException({ message }, code); };
@@ -109,16 +110,17 @@ class Service {
     const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=boards.id) AS background_image FROM boards WHERE id=$1`, [boardId]);
     const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
-    const cards = await this.db.query(`SELECT c.id,c.list_id,c.title,c.description,c.position,c.due_date,c.cover_color,c.completed,c.created_at,c.updated_at,
+    const cards = await this.db.query(`SELECT c.id,c.list_id,c.title,c.description,c.position,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.cover_color,c.completed,c.created_at,c.updated_at,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
       COALESCE((SELECT json_agg(json_build_object('id',l.id,'name',l.name,'color',l.color)) FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
       (SELECT count(*)::int FROM comments cm WHERE cm.card_id=c.id) AS comment_count,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id) AS checklist_total,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id AND ci.completed) AS checklist_done,
-      EXISTS(SELECT 1 FROM card_assignees ca WHERE ca.card_id=c.id AND ca.user_id=$2) AS assigned_to_me
+      EXISTS(SELECT 1 FROM card_assignees ca WHERE ca.card_id=c.id AND ca.user_id=$2) AS assigned_to_me,
+      COALESCE((SELECT json_agg(json_build_object('id',u.id,'name',u.name,'email',u.email,'avatar_url',u.avatar_url)) FROM card_assignees ca JOIN users u ON u.id=ca.user_id WHERE ca.card_id=c.id),'[]'::json) AS assignees
       FROM cards c JOIN lists li ON li.id=c.list_id WHERE li.board_id=$1 AND li.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.position,c.created_at`, [boardId,userId]);
     const labels = await this.db.query('SELECT id,board_id,name,color FROM labels WHERE board_id=$1 ORDER BY name', [boardId]);
-    const members = await this.db.query('SELECT u.id,u.name,u.email,bm.role FROM board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
+    const members = await this.db.query('SELECT u.id,u.name,u.email,u.avatar_url,bm.role FROM board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
     return { ...board, lists: lists.map(list => ({...list, cards: cards.filter(card => card.list_id === list.id)})), labels, members };
   }
   async updateBoard(boardId: string,userId: string,body: Payload) {
@@ -223,8 +225,8 @@ class Service {
         const {rows:[newList]}=await client.query('INSERT INTO lists(board_id,title,position,color,collapsed) VALUES($1,$2,$3,$4,$5) RETURNING id',[copy.id,list.title,list.position,list.color,list.collapsed]);
         const cards=await client.query('SELECT * FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[list.id]);
         for (const card of cards.rows) {
-          const {rows:[newCard]}=await client.query(`INSERT INTO cards(list_id,title,description,position,due_date,cover_color,completed)
-            VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[newList.id,card.title,card.description,card.position,card.due_date,card.cover_color,card.completed]);
+          const {rows:[newCard]}=await client.query(`INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,cover_color,completed)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,[newList.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.cover_color,card.completed]);
           const cardLabels=await client.query('SELECT label_id FROM card_labels WHERE card_id=$1',[card.id]);
           for (const item of cardLabels.rows) await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2)',[newCard.id,labelMap.get(item.label_id)]);
           await client.query(`INSERT INTO checklist_items(card_id,text,completed,position,assignee_id,due_date)
@@ -352,7 +354,7 @@ class Service {
       const copy=(await client.query('INSERT INTO lists(board_id,title,position,color,collapsed) VALUES($1,$2,$3,$4,$5) RETURNING *',[targetBoard,title,position,source.color,source.collapsed])).rows[0];
       const cards=(await client.query('SELECT * FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[id])).rows;
       for (const card of cards) {
-        const newCard=(await client.query('INSERT INTO cards(list_id,title,description,position,due_date,cover_color,completed) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id',[copy.id,card.title,card.description,card.position,card.due_date,card.cover_color,card.completed])).rows[0];
+        const newCard=(await client.query('INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,cover_color,completed) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',[copy.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.cover_color,card.completed])).rows[0];
         await client.query('INSERT INTO checklist_items(card_id,text,completed,position,assignee_id,due_date) SELECT $1,text,completed,position,assignee_id,due_date FROM checklist_items WHERE card_id=$2',[newCard.id,card.id]);
         await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2',[newCard.id,card.id]);
         const labels=(await client.query('SELECT l.name,l.color FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=$1',[card.id])).rows;
@@ -423,35 +425,73 @@ class Service {
     } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   }
   async createCard(listId: string,userId: string,body: Payload) {
+    const title=value(body.title,'Título',300);
+    return (await this.createCards(listId,userId,[title],body.position))[0];
+  }
+  async createCardsBulk(listId: string,userId: string,body: Payload) {
+    if (typeof body.text!=='string' || body.text.length>30000) fail('Texto inválido.');
+    const titles=(body.text as string).split(/\r?\n/).map(line=>line.replace(/\t/g,' ').trim()).filter(Boolean);
+    if (!titles.length || titles.length>100 || titles.some(title=>title.length>300)) fail('Informe de 1 a 100 linhas com até 300 caracteres cada.');
+    return this.createCards(listId,userId,titles,body.position);
+  }
+  private async createCards(listId: string,userId: string,titles: string[],requestedPosition: unknown) {
     const boardId=await this.listBoard(listId,userId);
-    const title = value(body.title,'Título',300);
-    const card=await this.db.one('INSERT INTO cards(list_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1),0)) RETURNING *',[listId,title]);
-    await this.features.record(userId,boardId,card!.id,'card_created',`criou o cartão ${title}`);
-    return card;
+    const client=await this.db.pool.connect();
+    const created: Array<{id:string;title:string}> = [];
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM lists WHERE id=$1 FOR UPDATE',[listId]);
+      const order=(await client.query('SELECT id FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[listId])).rows.map(row=>row.id as string);
+      const index=requestedPosition===undefined?order.length:positionIndex(requestedPosition,order.length);
+      for (const title of titles) {
+        const dueDate=dueDateFromTitle(title);
+        const card: {id:string;title:string}=(await client.query('INSERT INTO cards(list_id,title,position,due_date) VALUES($1,$2,$3,$4) RETURNING *',[listId,title,order.length+created.length,dueDate])).rows[0];
+        created.push(card);
+      }
+      order.splice(index,0,...created.map(card=>card.id as string));
+      for (let i=0;i<order.length;i++) await client.query('UPDATE cards SET position=$2 WHERE id=$1',[order[i],i]);
+      await client.query('COMMIT');
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+    await this.features.record(userId,boardId,null,'card_created',titles.length===1?`criou o cartão ${titles[0]}`:`criou ${titles.length} cartões na lista`);
+    return created;
   }
   async updateCard(id: string,userId: string,body: Payload) {
     const boardId = await this.cardBoard(id,userId);
-    const original=await this.db.one('SELECT list_id FROM cards WHERE id=$1',[id]);
-    const title = body.title === undefined ? null : value(body.title,'Título',300);
-    const description = body.description === undefined ? null : optionalText(body.description);
-    const dueDate = body.due_date === undefined ? undefined : optionalDate(body.due_date);
-    if (dueDate instanceof Date && Number.isNaN(dueDate.getTime())) fail('Data inválida.');
-    const coverColor = body.cover_color === undefined ? undefined : body.cover_color === null ? null : value(body.cover_color,'Cor',32);
+    const original=await this.db.one('SELECT * FROM cards WHERE id=$1',[id]);
+    if (!original) return fail('Cartão não encontrado.',404);
+    const title=body.title===undefined?original.title as string:value(body.title,'Título',300);
+    const description=body.description===undefined?original.description as string:optionalText(body.description);
+    let dueDate: Date | null=body.due_date===undefined?original.due_date as Date | null:optionalDate(body.due_date);
+    let startDate: Date | null=body.start_date===undefined?original.start_date as Date | null:optionalDate(body.start_date);
+    if (body.title!==undefined && body.due_date===undefined && !dueDate) dueDate=dueDateFromTitle(title);
+    const coverColor=body.cover_color===undefined?original.cover_color as string | null:body.cover_color===null?null:value(body.cover_color,'Cor',32);
     if (coverColor && !/^[a-z0-9-]+$/.test(coverColor)) fail('Cor inválida.');
-    const completed = body.completed === undefined ? null : Boolean(body.completed);
-    let listId: string | null = null;
-    if (body.list_id !== undefined) { listId = uuid(value(body.list_id, 'Lista', 36)); if ((await this.listBoard(listId,userId)) !== boardId) fail('A lista pertence a outro quadro.'); }
-    const position = body.position === undefined ? null : Number(body.position);
-    if (position !== null && !Number.isFinite(position)) fail('Posição inválida.');
-    const card=await this.db.one(`UPDATE cards SET title=COALESCE($2,title),description=COALESCE($3,description),
-      due_date=CASE WHEN $4::boolean THEN $5::timestamptz ELSE due_date END,
-      cover_color=CASE WHEN $6::boolean THEN $7::varchar ELSE cover_color END,
-      completed=COALESCE($8,completed),list_id=COALESCE($9,list_id),position=COALESCE($10,position),updated_at=now()
-      WHERE id=$1 RETURNING *`,[id,title,description,dueDate!==undefined,dueDate===undefined?null:dueDate,coverColor!==undefined,coverColor??null,completed,listId,position]);
-    const moved=Boolean(listId && listId!==original?.list_id);
-    if (title || description!==null || dueDate!==undefined || completed!==null || moved) {
-      const action=completed===true?'concluiu um cartão':moved?'moveu um cartão':title?`renomeou o cartão para ${title}`:dueDate!==undefined?'alterou a data de um cartão':'atualizou um cartão';
+    if (body.completed!==undefined && typeof body.completed!=='boolean') fail('Status inválido.');
+    let completed=body.completed===undefined?original.completed as boolean:body.completed as boolean;
+    const recurrence=body.recurrence===undefined?original.recurrence as string | null:body.recurrence===null||body.recurrence===''?null:value(body.recurrence,'Recorrência',16);
+    if (recurrence && !recurrenceOptions.has(recurrence)) fail('Recorrência inválida.');
+    let reminder=body.reminder_minutes===undefined?original.reminder_minutes as number | null:body.reminder_minutes;
+    if (reminder!==null && !reminderOptions.has(reminder as number)) fail('Lembrete inválido.');
+    if (!dueDate) { reminder=null; if (recurrence) fail('Defina um vencimento para repetir o cartão.'); }
+    if (startDate && dueDate && startDate>dueDate) fail('A data inicial deve preceder o vencimento.');
+    if (completed && body.completed===true && recurrence && dueDate) {
+      const next=nextOccurrence(dueDate,recurrence);
+      if (startDate) startDate=new Date(startDate.getTime()+next.getTime()-dueDate.getTime());
+      dueDate=next;
+      completed=false;
+    }
+    const listId=body.list_id===undefined?original.list_id as string:uuid(value(body.list_id,'Lista',36));
+    if (listId!==original.list_id && (await this.listBoard(listId,userId))!==boardId) fail('A lista pertence a outro quadro.');
+    const position=body.position===undefined?original.position as number:Number(body.position);
+    if (!Number.isFinite(position) || position<0) fail('Posição inválida.');
+    const card=await this.db.one(`UPDATE cards SET title=$2,description=$3,start_date=$4,due_date=$5,reminder_minutes=$6,
+      recurrence=$7,cover_color=$8,completed=$9,list_id=$10,position=$11,updated_at=now()
+      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,coverColor,completed,listId,position]);
+    const moved=listId!==original.list_id;
+    if (body.title!==undefined || body.description!==undefined || body.due_date!==undefined || body.start_date!==undefined || body.completed!==undefined || moved) {
+      const action=body.completed===true&&recurrence?'avançou o vencimento recorrente':body.completed===true?'concluiu um cartão':moved?'moveu um cartão':body.title!==undefined?`renomeou o cartão para ${title}`:body.due_date!==undefined?'alterou a data de um cartão':'atualizou um cartão';
       await this.features.record(userId,boardId,id,'card_updated',action);
+      await this.features.notifyAssignees(userId,boardId,id,'card_updated','Cartão atualizado',action);
     }
     return card;
   }
@@ -468,6 +508,7 @@ class Service {
     const comment=await this.db.one('INSERT INTO comments(card_id,author_id,body) VALUES($1,$2,$3) RETURNING *',[id,userId,text]);
     await this.features.record(userId,boardId,id,'comment',`comentou: ${text.slice(0,180)}`);
     await this.features.mention(userId,boardId,id,text);
+    await this.features.notifyAssignees(userId,boardId,id,'comment','Novo comentário',text);
     return comment;
   }
   async deleteComment(id: string,userId: string) {
@@ -512,10 +553,25 @@ class Service {
   }
   async createLabel(boardId: string,userId: string,body: Payload) {
     await this.member(boardId,userId);
-    const name = typeof body.name === 'string' ? body.name.slice(0,100) : '';
+    const name=body.name===undefined?'':optionalText(body.name,100).trim();
     const color = value(body.color,'Cor',32);
-    if (!/^[a-z0-9-]+$/.test(color)) fail('Cor inválida.');
+    if (!labelColorOptions.has(color)) fail('Cor inválida.');
     return this.db.one('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING *',[boardId,name,color]);
+  }
+  async updateLabel(boardId: string,labelId: string,userId: string,body: Payload) {
+    await this.member(boardId,userId); uuid(labelId);
+    const name=body.name===undefined?null:optionalText(body.name,100).trim();
+    const color=body.color===undefined?null:value(body.color,'Cor',32);
+    if (color && !labelColorOptions.has(color)) fail('Cor inválida.');
+    const label=await this.db.one('UPDATE labels SET name=COALESCE($3,name),color=COALESCE($4,color) WHERE id=$1 AND board_id=$2 RETURNING *',[labelId,boardId,name,color]);
+    if (!label) return fail('Etiqueta não encontrada.',404);
+    return label;
+  }
+  async deleteLabel(boardId: string,labelId: string,userId: string) {
+    await this.member(boardId,userId); uuid(labelId);
+    const deleted=await this.db.one('DELETE FROM labels WHERE id=$1 AND board_id=$2 RETURNING id',[labelId,boardId]);
+    if (!deleted) fail('Etiqueta não encontrada.',404);
+    return {ok:true};
   }
   async toggleLabel(cardId: string,labelId: string,userId: string) {
     const boardId = await this.cardBoard(cardId,userId); uuid(labelId);
@@ -550,6 +606,8 @@ class ApiController {
   @Post('boards/:id/lists') createList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createList(id,this.service.user(req),body); }
   @Get('boards/:id/lists/archived') archivedLists(@Req() req: Request,@Param('id') id: string) { return this.service.archivedLists(id,this.service.user(req)); }
   @Post('boards/:id/labels') createLabel(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createLabel(id,this.service.user(req),body); }
+  @Patch('boards/:id/labels/:labelId') updateLabel(@Req() req: Request,@Param('id') id: string,@Param('labelId') labelId: string,@Body() body: Payload) { return this.service.updateLabel(id,labelId,this.service.user(req),body); }
+  @Delete('boards/:id/labels/:labelId') deleteLabel(@Req() req: Request,@Param('id') id: string,@Param('labelId') labelId: string) { return this.service.deleteLabel(id,labelId,this.service.user(req)); }
   @Patch('lists/:id') updateList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateList(id,this.service.user(req),body); }
   @Post('lists/:id/archive') archiveList(@Req() req: Request,@Param('id') id: string) { return this.service.archiveList(id,this.service.user(req)); }
   @Post('lists/:id/restore') restoreList(@Req() req: Request,@Param('id') id: string) { return this.service.restoreList(id,this.service.user(req)); }
@@ -562,6 +620,7 @@ class ApiController {
   @Delete('lists/:id') deleteList(@Req() req: Request,@Param('id') id: string) { return this.service.deleteList(id,this.service.user(req)); }
   @Post('cards/:id/restore') restoreCard(@Req() req: Request,@Param('id') id: string) { return this.service.restoreCard(id,this.service.user(req)); }
   @Post('lists/:id/cards') createCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createCard(id,this.service.user(req),body); }
+  @Post('lists/:id/cards/bulk') createCardsBulk(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createCardsBulk(id,this.service.user(req),body); }
   @Patch('cards/:id') updateCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateCard(id,this.service.user(req),body); }
   @Delete('cards/:id') deleteCard(@Req() req: Request,@Param('id') id: string) { return this.service.deleteCard(id,this.service.user(req)); }
   @Get('cards/:id/details') cardDetails(@Req() req: Request,@Param('id') id: string) { return this.service.cardDetails(id,this.service.user(req)); }

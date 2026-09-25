@@ -62,6 +62,9 @@ CREATE TABLE IF NOT EXISTS cards (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS start_date timestamptz;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS reminder_minutes integer;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS recurrence varchar(16);
 CREATE INDEX IF NOT EXISTS cards_list_position_idx ON cards(list_id, position);
 CREATE TABLE IF NOT EXISTS labels (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -123,5 +126,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS notifications_due_once_idx ON notifications(user_id, card_id, kind) WHERE kind = 'due';
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS due_at timestamptz;
+DELETE FROM notifications WHERE kind='due' AND due_at IS NULL;
+DROP INDEX IF EXISTS notifications_due_once_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_due_occurrence_idx ON notifications(user_id, card_id, kind, due_at) WHERE kind = 'due';
 CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications(user_id, created_at DESC);

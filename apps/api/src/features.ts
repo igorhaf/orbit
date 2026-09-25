@@ -37,9 +37,10 @@ export class FeaturesService {
 
   async cardBoard(cardId: string, userId: string): Promise<string> {
     validId(cardId);
-    const row = await this.db.one('SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
+    const row = await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at AS card_archived FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
     if (!row) return bad('Cartão não encontrado.', 404);
     await this.member(row.board_id, userId);
+    if (row.list_archived || row.card_archived) bad('Este cartão está arquivado.',409);
     return row.board_id;
   }
 
@@ -118,16 +119,27 @@ export class FeaturesService {
   }
 
   async toggleAssignee(cardId: string, userId: string) {
-    const boardId=await this.cardBoard(cardId,userId);
-    const existing=await this.db.one('SELECT 1 FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,userId]);
-    if (existing) await this.db.query('DELETE FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,userId]);
-    else await this.db.query('INSERT INTO card_assignees(card_id,user_id) VALUES($1,$2)',[cardId,userId]);
-    await this.record(userId,boardId,cardId,existing?'unassigned':'assigned',existing?'saiu de um cartão':'assumiu um cartão');
+    return this.toggleCardMember(cardId,userId,userId);
+  }
+
+  async toggleCardMember(cardId: string, actorId: string, memberId: string) {
+    const boardId=await this.cardBoard(cardId,actorId);
+    validId(memberId);
+    if (!await this.db.one('SELECT 1 FROM board_members WHERE board_id=$1 AND user_id=$2',[boardId,memberId])) bad('Membro não pertence ao quadro.',404);
+    const existing=await this.db.one('SELECT 1 FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,memberId]);
+    if (existing) await this.db.query('DELETE FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,memberId]);
+    else await this.db.query('INSERT INTO card_assignees(card_id,user_id) VALUES($1,$2)',[cardId,memberId]);
+    await this.record(actorId,boardId,cardId,existing?'unassigned':'assigned',existing?'removeu um membro do cartão':'atribuiu um membro ao cartão');
     if (!existing) {
       const card=await this.db.one('SELECT title FROM cards WHERE id=$1',[cardId]);
-      await this.notify(userId,boardId,cardId,'assignment','Cartão atribuído a você',card?.title||'');
+      await this.notify(memberId,boardId,cardId,'assignment','Cartão atribuído a você',card?.title||'');
     }
     return { assigned: !existing };
+  }
+
+  async notifyAssignees(actorId: string, boardId: string, cardId: string, kind: string, title: string, body: string) {
+    const members=await this.db.query('SELECT user_id FROM card_assignees WHERE card_id=$1 AND user_id<>$2',[cardId,actorId]);
+    for (const member of members) await this.notify(member.user_id,boardId,cardId,kind,title,body);
   }
 
   async record(actorId: string, boardId: string | null, cardId: string | null, kind: string, body: string) {
@@ -209,7 +221,7 @@ export class FeaturesService {
       this.db.query(`SELECT b.id,b.title,b.background,b.starred,w.name AS workspace_name
         FROM boards b JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         LEFT JOIN workspaces w ON w.id=b.workspace_id WHERE b.closed_at IS NULL AND b.title ILIKE $2 ORDER BY b.starred DESC,b.title LIMIT 12`,[userId,pattern]),
-      this.db.query(`SELECT c.id,c.title,c.description,c.due_date,b.id AS board_id,b.title AS board_title,
+      this.db.query(`SELECT c.id,c.title,c.description,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,
         l.title AS list_title FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND (c.title ILIKE $2 OR c.description ILIKE $2) ORDER BY c.updated_at DESC LIMIT 20`,[userId,pattern]),
@@ -221,14 +233,15 @@ export class FeaturesService {
     const account=await this.account(userId);
     await this.db.query(`DELETE FROM notifications n WHERE n.user_id=$1 AND n.kind='due'
       AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id=n.card_id AND NOT c.completed AND c.archived_at IS NULL
-        AND c.due_date IS NOT NULL AND c.due_date<=now()+interval '48 hours'
+        AND c.due_date=n.due_at AND c.reminder_minutes IS NOT NULL
         AND EXISTS (SELECT 1 FROM lists l JOIN boards b ON b.id=l.board_id WHERE l.id=c.list_id AND l.archived_at IS NULL AND b.closed_at IS NULL))`,[userId]);
     if (account.preferences.notifications) {
-      await this.db.query(`INSERT INTO notifications(user_id,board_id,card_id,kind,title,body)
+      await this.db.query(`INSERT INTO notifications(user_id,board_id,card_id,kind,title,body,due_at)
         SELECT $1,b.id,c.id,'due',CASE WHEN c.due_date<now() THEN 'Cartão vencido' ELSE 'Prazo próximo' END,
-          c.title FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+          c.title,c.due_date FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND NOT c.completed AND c.due_date IS NOT NULL AND c.due_date<=now()+interval '48 hours'
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND NOT c.completed AND c.due_date IS NOT NULL
+          AND c.reminder_minutes IS NOT NULL AND c.due_date<=now()+c.reminder_minutes*interval '1 minute'
         ON CONFLICT DO NOTHING`,[userId]);
     }
     return this.db.query(`SELECT n.id,n.kind,n.title,n.body,n.created_at,n.read_at,n.board_id,n.card_id,
@@ -262,6 +275,7 @@ export class FeaturesController {
   @Post('workspaces') createWorkspace(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.createWorkspace(this.features.user(req),body); }
   @Patch('favorites/reorder') favorites(@Req() req: Request,@Body() body: {ids: string[]}) { return this.features.reorderFavorites(this.features.user(req),body.ids); }
   @Post('cards/:id/assignee/toggle') toggleAssignee(@Req() req: Request,@Param('id') id: string) { return this.features.toggleAssignee(id,this.features.user(req)); }
+  @Post('cards/:id/assignees/:userId/toggle') toggleCardMember(@Req() req: Request,@Param('id') id: string,@Param('userId') userId: string) { return this.features.toggleCardMember(id,this.features.user(req),userId); }
   @Get('search') search(@Req() req: Request,@Query('q') q='') { return this.features.search(this.features.user(req),q); }
   @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
   @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }
