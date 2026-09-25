@@ -1,0 +1,33 @@
+@import "tailwindcss";
+:root { font-family: Arial, Helvetica, sans-serif; color: #172b4d; background: #f7f8fa; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+input:focus, textarea:focus { outline: 2px solid #388bff; outline-offset: 0; }
+.scrollbar-thin { scrollbar-width: thin; scrollbar-color: #b7c2d0 transparent; }
+.board-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.45) transparent; }
+.shadow-card { box-shadow: 0 1px 1px #091e4226, 0 2px 4px #091e4226; }
+.shadow-dialog { box-shadow: 0 20px 60px #091e4250; }
+.fade-in { animation: fadeIn .18s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+html[data-theme="dark"] { color-scheme: dark; color: #dee4ea; background: #1d2125; }
+html[data-theme="dark"] body { color: #dee4ea; background: #1d2125; }
+html[data-theme="dark"] :is(.bg-white,[class~="bg-[#f7f8fa]"],[class~="bg-[#f8f9fb]"]) { background-color: #22272b !important; }
+html[data-theme="dark"] [class~="bg-[#f1f2f4]"] { background-color: #2c333a !important; }
+html[data-theme="dark"] :is([class~="bg-[#e9eaed]"],[class~="bg-[#dfe1e6]"]) { background-color: #38414a !important; }
+html[data-theme="dark"] [class~="bg-[#e9f2ff]"] { background-color: #1c3d5a !important; }
+html[data-theme="dark"] [class~="border-[#dfe1e6]"] { border-color: #3b4754 !important; }
+html[data-theme="dark"] [class~="border-[#f1f2f4]"] { border-color: #313a43 !important; }
+html[data-theme="dark"] [class~="text-[#172b4d]"] { color: #dee4ea !important; }
+html[data-theme="dark"] [class~="text-[#44546f]"] { color: #b6c2cf !important; }
+html[data-theme="dark"] [class~="text-[#626f86]"] { color: #9fadbc !important; }
+html[data-theme="dark"] :is(input,textarea,select) { color: #dee4ea; background-color: #2c333a; border-color: #596773; }
+html[data-theme="dark"] :is(input,textarea)::placeholder { color: #9fadbc; }
+html[data-theme="dark"] .shadow-card { box-shadow: 0 1px 2px #0008; }
+html[data-theme="dark"] .shadow-dialog { box-shadow: 0 20px 60px #000a; }
+html[data-compact-cards="true"] .kanban-card > div:last-child { padding: 5px 9px; }
+html[data-compact-cards="true"] .kanban-card > div:first-child > div { height: 18px; }
+html[data-theme="dark"] [class~="text-[#0c66e4]"] { color: #85b8ff !important; }
+html[data-theme="dark"] [class~="text-[#6554c0]"] { color: #b8a9ff !important; }
