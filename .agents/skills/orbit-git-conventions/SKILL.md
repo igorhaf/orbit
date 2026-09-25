@@ -24,3 +24,8 @@ Use this skill only for Git branch and commit work in the Orbit repository.
 - Use Conventional Commits in the form `<type>: <short description>`.
 - Write exactly one line in English, with a lowercase imperative description and no trailing period or body.
 - Choose the type that describes the change: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, or `perf`. Example: `feat: add card labels`.
+
+## Pull requests
+
+- Every pull request must include a short description in English summarizing the change.
+- Keep the description concise and focused on what the pull request changes.

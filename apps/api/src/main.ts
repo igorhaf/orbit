@@ -27,6 +27,12 @@ const optionalDate = (v: unknown): Date | null => {
 };
 const uuid = (v: string) => { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) fail('ID inválido.'); return v; };
 
+const positionIndex = (v: unknown, length: number) => {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > length) fail('Posição inválida.');
+  return v as number;
+};
+const listColors = new Set(['blue','green','yellow','orange','red','purple','pink','teal']);
+
 @Injectable()
 class Service {
   constructor(private db: Db, private features: FeaturesService) {}
@@ -38,18 +44,20 @@ class Service {
     if (row.closed_at && !allowClosed) fail('Este quadro está fechado. Reabra-o para editar.', 409);
     return row;
   }
-  async listBoard(listId: string, userId: string) {
+  async listBoard(listId: string, userId: string, allowArchived = false) {
     uuid(listId);
-    const row = await this.db.one('SELECT board_id FROM lists WHERE id=$1', [listId]);
+    const row = await this.db.one('SELECT board_id,archived_at FROM lists WHERE id=$1', [listId]);
     if (!row) return fail('Lista não encontrada.', 404);
     await this.member(row.board_id, userId);
+    if (row.archived_at && !allowArchived) fail('Esta lista está arquivada.',409);
     return row.board_id as string;
   }
   async cardBoard(cardId: string, userId: string, allowClosed = false) {
     uuid(cardId);
-    const row = await this.db.one('SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
+    const row = await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at AS card_archived FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
     if (!row) return fail('Cartão não encontrado.', 404);
     await this.member(row.board_id, userId, allowClosed);
+    if ((row.list_archived || row.card_archived) && !allowClosed) fail('Este cartão está arquivado.',409);
     return row.board_id as string;
   }
   async register() { return fail('Cadastro desativado. Este espaço usa uma conta única.', 403); }
@@ -100,7 +108,7 @@ class Service {
     await this.features.visit(boardId,userId);
     const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=boards.id) AS background_image FROM boards WHERE id=$1`, [boardId]);
-    const lists = await this.db.query('SELECT id,board_id,title,position FROM lists WHERE board_id=$1 ORDER BY position,created_at', [boardId]);
+    const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
     const cards = await this.db.query(`SELECT c.id,c.list_id,c.title,c.description,c.position,c.due_date,c.cover_color,c.completed,c.created_at,c.updated_at,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
       COALESCE((SELECT json_agg(json_build_object('id',l.id,'name',l.name,'color',l.color)) FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
@@ -108,7 +116,7 @@ class Service {
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id) AS checklist_total,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id AND ci.completed) AS checklist_done,
       EXISTS(SELECT 1 FROM card_assignees ca WHERE ca.card_id=c.id AND ca.user_id=$2) AS assigned_to_me
-      FROM cards c JOIN lists li ON li.id=c.list_id WHERE li.board_id=$1 ORDER BY c.position,c.created_at`, [boardId,userId]);
+      FROM cards c JOIN lists li ON li.id=c.list_id WHERE li.board_id=$1 AND li.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.position,c.created_at`, [boardId,userId]);
     const labels = await this.db.query('SELECT id,board_id,name,color FROM labels WHERE board_id=$1 ORDER BY name', [boardId]);
     const members = await this.db.query('SELECT u.id,u.name,u.email,bm.role FROM board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
     return { ...board, lists: lists.map(list => ({...list, cards: cards.filter(card => card.list_id === list.id)})), labels, members };
@@ -210,10 +218,10 @@ class Service {
         const {rows:[newLabel]}=await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[copy.id,label.name,label.color]);
         labelMap.set(label.id,newLabel.id);
       }
-      const lists=await client.query('SELECT id,title,position FROM lists WHERE board_id=$1 ORDER BY position,created_at',[boardId]);
+      const lists=await client.query('SELECT id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId]);
       for (const list of lists.rows) {
-        const {rows:[newList]}=await client.query('INSERT INTO lists(board_id,title,position) VALUES($1,$2,$3) RETURNING id',[copy.id,list.title,list.position]);
-        const cards=await client.query('SELECT * FROM cards WHERE list_id=$1 ORDER BY position,created_at',[list.id]);
+        const {rows:[newList]}=await client.query('INSERT INTO lists(board_id,title,position,color,collapsed) VALUES($1,$2,$3,$4,$5) RETURNING id',[copy.id,list.title,list.position,list.color,list.collapsed]);
+        const cards=await client.query('SELECT * FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[list.id]);
         for (const card of cards.rows) {
           const {rows:[newCard]}=await client.query(`INSERT INTO cards(list_id,title,description,position,due_date,cover_color,completed)
             VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[newList.id,card.title,card.description,card.position,card.due_date,card.cover_color,card.completed]);
@@ -237,20 +245,183 @@ class Service {
   async createList(boardId: string,userId: string,body: Payload) {
     await this.member(boardId,userId);
     const title = value(body.title,'Título',160);
-    const list=await this.db.one('INSERT INTO lists(board_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM lists WHERE board_id=$1),0)) RETURNING *',[boardId,title]);
+    const client=await this.db.pool.connect();
+    let list;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
+      const existing=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId])).rows.map(row=>row.id as string);
+      const index=body.position===undefined ? existing.length : positionIndex(body.position,existing.length);
+      list=(await client.query('INSERT INTO lists(board_id,title,position) VALUES($1,$2,$3) RETURNING *',[boardId,title,index])).rows[0];
+      existing.splice(index,0,list.id);
+      for (let i=0;i<existing.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[existing[i],i]);
+      await client.query('COMMIT');
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     await this.features.record(userId,boardId,null,'list_created',`criou a lista ${title}`);
     return list;
   }
   async updateList(id: string,userId: string,body: Payload) {
     const boardId=await this.listBoard(id,userId);
-    const title = body.title === undefined ? null : value(body.title,'Título',160);
-    const position = body.position === undefined ? null : Number(body.position);
-    if (position !== null && !Number.isFinite(position)) fail('Posição inválida.');
-    const list=await this.db.one('UPDATE lists SET title=COALESCE($2,title),position=COALESCE($3,position) WHERE id=$1 RETURNING *',[id,title,position]);
+    const title=body.title===undefined ? null : value(body.title,'Título',160);
+    const color=body.color===undefined ? undefined : body.color===null ? null : value(body.color,'Cor',32);
+    if (color && !listColors.has(color)) fail('Cor inválida.');
+    if (body.collapsed!==undefined && typeof body.collapsed!=='boolean') fail('Estado inválido.');
+    const client=await this.db.pool.connect();
+    let list;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
+      if (body.position!==undefined) {
+        const order=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId])).rows.map(row=>row.id as string);
+        const index=positionIndex(body.position,order.length-1);
+        order.splice(order.indexOf(id),1); order.splice(index,0,id);
+        for (let i=0;i<order.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[order[i],i]);
+      }
+      list=(await client.query('UPDATE lists SET title=COALESCE($2,title),color=CASE WHEN $3::boolean THEN $4::varchar ELSE color END,collapsed=COALESCE($5,collapsed) WHERE id=$1 RETURNING *',[id,title,color!==undefined,color??null,body.collapsed??null])).rows[0];
+      await client.query('COMMIT');
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     if (title) await this.features.record(userId,boardId,null,'list_renamed',`renomeou a lista para ${title}`);
     return list;
   }
-  async deleteList(id: string,userId: string) { await this.listBoard(id,userId); await this.db.query('DELETE FROM lists WHERE id=$1',[id]); return {ok:true}; }
+  async archivedLists(boardId: string,userId: string) {
+    await this.member(boardId,userId);
+    return this.db.query('SELECT l.id,l.title,l.color,l.archived_at,count(c.id)::int AS card_count FROM lists l LEFT JOIN cards c ON c.list_id=l.id WHERE l.board_id=$1 AND l.archived_at IS NOT NULL GROUP BY l.id ORDER BY l.archived_at DESC',[boardId]);
+  }
+  async archiveList(id: string,userId: string) {
+    const boardId=await this.listBoard(id,userId);
+    await this.db.query('UPDATE lists SET archived_at=now() WHERE id=$1',[id]);
+    await this.features.record(userId,boardId,null,'list_archived','arquivou uma lista');
+    return {ok:true};
+  }
+  async restoreList(id: string,userId: string) {
+    const boardId=await this.listBoard(id,userId,true);
+    const list=await this.db.one('UPDATE lists SET archived_at=NULL,position=COALESCE((SELECT max(position)+1 FROM lists WHERE board_id=$2 AND archived_at IS NULL),0) WHERE id=$1 AND archived_at IS NOT NULL RETURNING *',[id,boardId]);
+    if (!list) fail('A lista não está arquivada.',409);
+    await this.features.record(userId,boardId,null,'list_restored','restaurou uma lista');
+    return list;
+  }
+  async deleteList(id: string,userId: string) {
+    await this.listBoard(id,userId,true);
+    const deleted=await this.db.one('DELETE FROM lists WHERE id=$1 AND archived_at IS NOT NULL RETURNING id',[id]);
+    if (!deleted) fail('Arquive a lista antes de excluí-la.',409);
+    return {ok:true};
+  }
+  async moveList(id: string,userId: string,body: Payload) {
+    const sourceBoard=await this.listBoard(id,userId);
+    const targetBoard=uuid(value(body.board_id,'Quadro',36));
+    if (sourceBoard===targetBoard) fail('Escolha outro quadro.');
+    await this.member(targetBoard,userId);
+    const client=await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE',[[sourceBoard,targetBoard]]);
+      const source=(await client.query('SELECT title FROM lists WHERE id=$1 AND archived_at IS NULL',[id])).rows[0];
+      if (!source) fail('Lista não encontrada.',404);
+      const position=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM lists WHERE board_id=$1 AND archived_at IS NULL',[targetBoard])).rows[0].next);
+      const cards=(await client.query('SELECT id FROM cards WHERE list_id=$1',[id])).rows;
+      for (const card of cards) {
+        const labels=(await client.query('SELECT l.name,l.color FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=$1',[card.id])).rows;
+        await client.query('DELETE FROM card_labels WHERE card_id=$1',[card.id]);
+        for (const label of labels) {
+          let target=(await client.query('SELECT id FROM labels WHERE board_id=$1 AND name=$2 AND color=$3 LIMIT 1',[targetBoard,label.name,label.color])).rows[0];
+          if (!target) target=(await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[targetBoard,label.name,label.color])).rows[0];
+          await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[card.id,target.id]);
+        }
+      }
+      await client.query('UPDATE lists SET board_id=$2,position=$3 WHERE id=$1',[id,targetBoard,position]);
+      await client.query('UPDATE notifications SET board_id=$2 WHERE card_id IN (SELECT id FROM cards WHERE list_id=$1)',[id,targetBoard]);
+      await client.query('COMMIT');
+      await this.features.record(userId,sourceBoard,null,'list_moved',`moveu a lista ${source.title} para outro quadro`);
+      await this.features.record(userId,targetBoard,null,'list_moved',`recebeu a lista ${source.title}`);
+      return {ok:true,board_id:targetBoard};
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+  async copyList(id: string,userId: string,body: Payload) {
+    const sourceBoard=await this.listBoard(id,userId);
+    const targetBoard=body.board_id===undefined ? sourceBoard : uuid(value(body.board_id,'Quadro',36));
+    await this.member(targetBoard,userId);
+    const client=await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[targetBoard]);
+      const source=(await client.query('SELECT * FROM lists WHERE id=$1 AND archived_at IS NULL',[id])).rows[0];
+      if (!source) fail('Lista não encontrada.',404);
+      const title=body.title===undefined ? `${source.title.slice(0,152)} (cópia)` : value(body.title,'Título',160);
+      const count=Number((await client.query('SELECT count(*)::int AS count FROM lists WHERE board_id=$1 AND archived_at IS NULL',[targetBoard])).rows[0].count);
+      const position=body.position===undefined ? count : positionIndex(body.position,count);
+      const copy=(await client.query('INSERT INTO lists(board_id,title,position,color,collapsed) VALUES($1,$2,$3,$4,$5) RETURNING *',[targetBoard,title,position,source.color,source.collapsed])).rows[0];
+      const cards=(await client.query('SELECT * FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[id])).rows;
+      for (const card of cards) {
+        const newCard=(await client.query('INSERT INTO cards(list_id,title,description,position,due_date,cover_color,completed) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id',[copy.id,card.title,card.description,card.position,card.due_date,card.cover_color,card.completed])).rows[0];
+        await client.query('INSERT INTO checklist_items(card_id,text,completed,position,assignee_id,due_date) SELECT $1,text,completed,position,assignee_id,due_date FROM checklist_items WHERE card_id=$2',[newCard.id,card.id]);
+        await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2',[newCard.id,card.id]);
+        const labels=(await client.query('SELECT l.name,l.color FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=$1',[card.id])).rows;
+        for (const label of labels) {
+          let target=(await client.query('SELECT id FROM labels WHERE board_id=$1 AND name=$2 AND color=$3 LIMIT 1',[targetBoard,label.name,label.color])).rows[0];
+          if (!target) target=(await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[targetBoard,label.name,label.color])).rows[0];
+          await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2)',[newCard.id,target.id]);
+        }
+      }
+      if (position<count) {
+        const order=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL AND id<>$2 ORDER BY position,created_at',[targetBoard,copy.id])).rows.map(row=>row.id as string);
+        order.splice(position,0,copy.id);
+        for (let i=0;i<order.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[order[i],i]);
+      }
+      await client.query('COMMIT');
+      await this.features.record(userId,targetBoard,null,'list_copied',`copiou a lista ${source.title}`);
+      return copy;
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+  async moveAllCards(id: string,userId: string,body: Payload) {
+    const boardId=await this.listBoard(id,userId);
+    const targetId=uuid(value(body.list_id,'Lista',36));
+    if (targetId===id || await this.listBoard(targetId,userId)!==boardId) fail('Escolha outra lista do mesmo quadro.');
+    const client=await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
+      const start=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM cards WHERE list_id=$1 AND archived_at IS NULL',[targetId])).rows[0].next);
+      const result=await client.query(`WITH ordered AS (SELECT id,row_number() OVER (ORDER BY position,created_at)-1 AS offset FROM cards WHERE list_id=$1 AND archived_at IS NULL)
+        UPDATE cards c SET list_id=$2,position=$3+ordered.offset,updated_at=now() FROM ordered WHERE c.id=ordered.id`,[id,targetId,start]);
+      await client.query('COMMIT');
+      await this.features.record(userId,boardId,null,'cards_moved','moveu todos os cartões de uma lista');
+      return {ok:true,count:result.rowCount};
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+  async archiveAllCards(id: string,userId: string) {
+    const boardId=await this.listBoard(id,userId);
+    const result=await this.db.pool.query('UPDATE cards SET archived_at=now() WHERE list_id=$1 AND archived_at IS NULL',[id]);
+    await this.features.record(userId,boardId,null,'cards_archived','arquivou todos os cartões de uma lista');
+    return {ok:true,count:result.rowCount};
+  }
+  async archivedCards(id: string,userId: string) {
+    await this.listBoard(id,userId);
+    return this.db.query('SELECT id,title,archived_at FROM cards WHERE list_id=$1 AND archived_at IS NOT NULL ORDER BY archived_at DESC',[id]);
+  }
+  async restoreCard(id: string,userId: string) {
+    uuid(id);
+    const row=await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1',[id]);
+    if (!row) return fail('Cartão não encontrado.',404);
+    await this.member(row.board_id,userId);
+    if (row.list_archived) fail('Restaure a lista primeiro.',409);
+    if (!row.archived_at) fail('O cartão não está arquivado.',409);
+    await this.db.query('UPDATE cards SET archived_at=NULL WHERE id=$1',[id]);
+    return {ok:true};
+  }
+  async sortCards(id: string,userId: string,body: Payload) {
+    await this.listBoard(id,userId);
+    const sorts: Record<string,string>={title:'title COLLATE "C" ASC',due:'due_date ASC NULLS LAST',newest:'created_at DESC',oldest:'created_at ASC'};
+    const mode=value(body.by,'Critério',20);
+    if (!sorts[mode]) fail('Critério inválido.');
+    const client=await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const cards=(await client.query(`SELECT id FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY ${sorts[mode]},id`,[id])).rows;
+      for (let i=0;i<cards.length;i++) await client.query('UPDATE cards SET position=$2 WHERE id=$1',[cards[i].id,i]);
+      await client.query('COMMIT');
+      return {ok:true};
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
   async createCard(listId: string,userId: string,body: Payload) {
     const boardId=await this.listBoard(listId,userId);
     const title = value(body.title,'Título',300);
@@ -377,9 +548,19 @@ class ApiController {
   @Delete('boards/:id/background') removeBackground(@Req() req: Request,@Param('id') id: string) { return this.service.removeBackgroundImage(id,this.service.user(req)); }
   @Post('boards/:id/members') invite(@Req() req: Request,@Param('id') id: string) { return this.service.invite(id,this.service.user(req)); }
   @Post('boards/:id/lists') createList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createList(id,this.service.user(req),body); }
+  @Get('boards/:id/lists/archived') archivedLists(@Req() req: Request,@Param('id') id: string) { return this.service.archivedLists(id,this.service.user(req)); }
   @Post('boards/:id/labels') createLabel(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createLabel(id,this.service.user(req),body); }
   @Patch('lists/:id') updateList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateList(id,this.service.user(req),body); }
+  @Post('lists/:id/archive') archiveList(@Req() req: Request,@Param('id') id: string) { return this.service.archiveList(id,this.service.user(req)); }
+  @Post('lists/:id/restore') restoreList(@Req() req: Request,@Param('id') id: string) { return this.service.restoreList(id,this.service.user(req)); }
+  @Post('lists/:id/move') moveList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.moveList(id,this.service.user(req),body); }
+  @Post('lists/:id/copy') copyList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.copyList(id,this.service.user(req),body); }
+  @Post('lists/:id/cards/move-all') moveAllCards(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.moveAllCards(id,this.service.user(req),body); }
+  @Post('lists/:id/cards/archive-all') archiveAllCards(@Req() req: Request,@Param('id') id: string) { return this.service.archiveAllCards(id,this.service.user(req)); }
+  @Get('lists/:id/cards/archived') archivedCards(@Req() req: Request,@Param('id') id: string) { return this.service.archivedCards(id,this.service.user(req)); }
+  @Post('lists/:id/cards/sort') sortCards(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.sortCards(id,this.service.user(req),body); }
   @Delete('lists/:id') deleteList(@Req() req: Request,@Param('id') id: string) { return this.service.deleteList(id,this.service.user(req)); }
+  @Post('cards/:id/restore') restoreCard(@Req() req: Request,@Param('id') id: string) { return this.service.restoreCard(id,this.service.user(req)); }
   @Post('lists/:id/cards') createCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createCard(id,this.service.user(req),body); }
   @Patch('cards/:id') updateCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateCard(id,this.service.user(req),body); }
   @Delete('cards/:id') deleteCard(@Req() req: Request,@Param('id') id: string) { return this.service.deleteCard(id,this.service.user(req)); }

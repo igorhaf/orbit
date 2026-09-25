@@ -155,7 +155,7 @@ export class FeaturesService {
         FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1
-        WHERE b.closed_at IS NULL AND NOT c.completed AND ((c.due_date IS NOT NULL AND c.due_date<=now()+interval '7 days') OR ca.user_id IS NOT NULL)
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND NOT c.completed AND ((c.due_date IS NOT NULL AND c.due_date<=now()+interval '7 days') OR ca.user_id IS NOT NULL)
         ORDER BY c.due_date ASC NULLS LAST,c.updated_at DESC LIMIT 40`,[userId]),
       this.activities(userId,18),
       this.db.query(`SELECT ci.id,ci.text,ci.completed,ci.due_date,c.id AS card_id,c.title AS card_title,
@@ -163,7 +163,7 @@ export class FeaturesService {
         b.id AS board_id,b.title AS board_title FROM checklist_items ci
         JOIN cards c ON c.id=ci.card_id JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-        WHERE ci.assignee_id=$1 AND b.closed_at IS NULL ORDER BY ci.completed,ci.due_date ASC NULLS LAST,ci.position LIMIT 80`,[userId]),
+        WHERE ci.assignee_id=$1 AND b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY ci.completed,ci.due_date ASC NULLS LAST,ci.position LIMIT 80`,[userId]),
       this.db.query(`SELECT b.id,b.title,b.background,b.starred,b.workspace_id,w.name AS workspace_name,v.visited_at,
         (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image
         FROM board_visits v JOIN boards b ON b.id=v.board_id
@@ -178,7 +178,7 @@ export class FeaturesService {
         FROM comments cm JOIN users u ON u.id=cm.author_id JOIN cards c ON c.id=cm.card_id
         JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-        WHERE b.closed_at IS NULL ORDER BY cm.created_at DESC LIMIT 6`,[userId]),
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY cm.created_at DESC LIMIT 6`,[userId]),
     ]);
     return { upNext,highlights,yourItems,recentBoards,favorites,recentConversations };
   }
@@ -198,7 +198,7 @@ export class FeaturesService {
       b.title AS board_title,b.background,l.title AS list_title
       FROM card_assignees ca JOIN cards c ON c.id=ca.card_id JOIN lists l ON l.id=c.list_id
       JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-      WHERE ca.user_id=$1 AND b.closed_at IS NULL ORDER BY c.completed,c.due_date ASC NULLS LAST,c.updated_at DESC`,[userId]);
+      WHERE ca.user_id=$1 AND b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.completed,c.due_date ASC NULLS LAST,c.updated_at DESC`,[userId]);
   }
 
   async search(userId: string, term: string) {
@@ -212,7 +212,7 @@ export class FeaturesService {
       this.db.query(`SELECT c.id,c.title,c.description,c.due_date,b.id AS board_id,b.title AS board_title,
         l.title AS list_title FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-        WHERE b.closed_at IS NULL AND (c.title ILIKE $2 OR c.description ILIKE $2) ORDER BY c.updated_at DESC LIMIT 20`,[userId,pattern]),
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND (c.title ILIKE $2 OR c.description ILIKE $2) ORDER BY c.updated_at DESC LIMIT 20`,[userId,pattern]),
     ]);
     return { boards,cards };
   }
@@ -220,15 +220,15 @@ export class FeaturesService {
   async notifications(userId: string) {
     const account=await this.account(userId);
     await this.db.query(`DELETE FROM notifications n WHERE n.user_id=$1 AND n.kind='due'
-      AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id=n.card_id AND NOT c.completed
+      AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id=n.card_id AND NOT c.completed AND c.archived_at IS NULL
         AND c.due_date IS NOT NULL AND c.due_date<=now()+interval '48 hours'
-        AND EXISTS (SELECT 1 FROM lists l JOIN boards b ON b.id=l.board_id WHERE l.id=c.list_id AND b.closed_at IS NULL))`,[userId]);
+        AND EXISTS (SELECT 1 FROM lists l JOIN boards b ON b.id=l.board_id WHERE l.id=c.list_id AND l.archived_at IS NULL AND b.closed_at IS NULL))`,[userId]);
     if (account.preferences.notifications) {
       await this.db.query(`INSERT INTO notifications(user_id,board_id,card_id,kind,title,body)
         SELECT $1,b.id,c.id,'due',CASE WHEN c.due_date<now() THEN 'Cartão vencido' ELSE 'Prazo próximo' END,
           c.title FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-        WHERE b.closed_at IS NULL AND NOT c.completed AND c.due_date IS NOT NULL AND c.due_date<=now()+interval '48 hours'
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND NOT c.completed AND c.due_date IS NOT NULL AND c.due_date<=now()+interval '48 hours'
         ON CONFLICT DO NOTHING`,[userId]);
     }
     return this.db.query(`SELECT n.id,n.kind,n.title,n.body,n.created_at,n.read_at,n.board_id,n.card_id,

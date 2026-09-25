@@ -31,7 +31,7 @@ export type Card = {
   checklist_total: number;
   checklist_done: number;
 };
-export type List = { id: string; board_id: string; title: string; position: number; cards: Card[] };
+export type List = { id: string; board_id: string; title: string; position: number; color: string | null; collapsed: boolean; archived_at?: string | null; card_count?: number; cards: Card[] };
 export type Board = {
   id: string;
   title: string;

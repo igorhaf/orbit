@@ -17,6 +17,8 @@ Orbit é uma aplicação Kanban feita com Next.js, NestJS, PostgreSQL e Tailwind
 - Central de notificações por prazo e menção; alertas do navegador quando autorizados
 - Desfazer/refazer de ações compatíveis durante a sessão (títulos, favoritos, movimentação, conclusão, descrição e prazos)
 - Listas e cartões com arrastar e soltar, etiquetas, prazos, checklists, atribuições e comentários
+- Listas com criação em qualquer posição, cópia e movimentação entre quadros, cores, recolhimento e arquivo reversível
+- Ações em lote para mover, arquivar e ordenar cartões; restauração de cartões arquivados pela lista
 
 O cadastro e os convites estão desativados nesta etapa de conta única. Exclusões permanentes não entram no histórico de desfazer.
 

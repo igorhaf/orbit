@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS lists (
   position double precision NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE lists ADD COLUMN IF NOT EXISTS color varchar(32);
+ALTER TABLE lists ADD COLUMN IF NOT EXISTS collapsed boolean NOT NULL DEFAULT false;
+ALTER TABLE lists ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 CREATE INDEX IF NOT EXISTS lists_board_position_idx ON lists(board_id, position);
 CREATE TABLE IF NOT EXISTS cards (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -58,6 +61,7 @@ CREATE TABLE IF NOT EXISTS cards (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 CREATE INDEX IF NOT EXISTS cards_list_position_idx ON cards(list_id, position);
 CREATE TABLE IF NOT EXISTS labels (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
