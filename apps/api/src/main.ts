@@ -1,14 +1,18 @@
 import 'reflect-metadata';
 import 'dotenv/config';
-import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, HttpException } from '@nestjs/common';
+import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Res, HttpException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { Request, json } from 'express';
+import { Request, Response, json } from 'express';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
+import { PoolClient } from 'pg';
 import { Db } from './db';
 import { FeaturesController, FeaturesService, SINGLE_EMAIL } from './features';
+import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence, recurrenceOptions, reminderOptions } from './card-rules';
+import { CardExtensionsController, CardExtensionsService } from './card-extensions';
 
 type Payload = Record<string, unknown>;
+type CopyParts = {checklists:boolean;attachments:boolean;customFields:boolean};
 const fail = (message: string, code = 400): never => { throw new HttpException({ message }, code); };
 const value = (v: unknown, name: string, max = 300) => {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max) fail(`${name} inválido.`);
@@ -27,9 +31,58 @@ const optionalDate = (v: unknown): Date | null => {
 };
 const uuid = (v: string) => { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) fail('ID inválido.'); return v; };
 
+const positionIndex = (v: unknown, length: number) => {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > length) fail('Posição inválida.');
+  return v as number;
+};
+const listColors = new Set(['blue','green','yellow','orange','red','purple','pink','teal']);
+
 @Injectable()
 class Service {
   constructor(private db: Db, private features: FeaturesService) {}
+  private async classifyTitle(title:string,userId:string){
+    const result=cardKindFromTitle(title,process.env.WEB_ORIGIN||'http://localhost:3000');
+    if(result.targetBoardId)await this.member(result.targetBoardId,userId);
+    return result;
+  }
+  private async copyCardContent(client:PoolClient,sourceCard:string,targetCard:string,sourceBoard:string,targetBoard:string,fieldMap=new Map<string,string>(),parts:CopyParts={checklists:true,attachments:true,customFields:true}) {
+    if(parts.checklists){
+      const groups=(await client.query('SELECT id,title,position FROM checklists WHERE card_id=$1 ORDER BY position',[sourceCard])).rows;
+      const start=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM checklists WHERE card_id=$1',[targetCard])).rows[0].next);
+      for(let i=0;i<groups.length;i++){
+        const group=groups[i];
+        const copy=(await client.query('INSERT INTO checklists(card_id,title,position) VALUES($1,$2,$3) RETURNING id',[targetCard,group.title,start+i])).rows[0];
+        await client.query(`INSERT INTO checklist_items(card_id,checklist_id,text,completed,position,assignee_id,due_date)
+          SELECT $1,$2,text,completed,position,assignee_id,due_date FROM checklist_items WHERE checklist_id=$3`,[targetCard,copy.id,group.id]);
+      }
+    }
+    if(parts.attachments){
+      const oldAttachments=(await client.query('SELECT * FROM attachments WHERE card_id=$1 ORDER BY position',[sourceCard])).rows;
+      const attachmentMap=new Map<string,string>();
+      const start=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM attachments WHERE card_id=$1',[targetCard])).rows[0].next);
+      let offset=0;
+      for(const attachment of oldAttachments){
+        const copy=(await client.query(`INSERT INTO attachments(card_id,kind,name,url,target_id,mime_type,size_bytes,data,position)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,[targetCard,attachment.kind,attachment.name,attachment.url,attachment.target_id,attachment.mime_type,attachment.size_bytes,attachment.data,start+offset++])).rows[0];
+        attachmentMap.set(attachment.id,copy.id);
+      }
+      const source=(await client.query('SELECT cover_attachment_id FROM cards WHERE id=$1',[sourceCard])).rows[0];
+      if(source?.cover_attachment_id&&attachmentMap.has(source.cover_attachment_id))await client.query('UPDATE cards SET cover_attachment_id=$2 WHERE id=$1',[targetCard,attachmentMap.get(source.cover_attachment_id)]);
+    }
+    if(!parts.customFields)return;
+    const values=(await client.query('SELECT v.field_id,v.value,f.name,f.type,f.options,f.show_on_card FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1',[sourceCard])).rows;
+    for(const entry of values){
+      let fieldId=fieldMap.get(entry.field_id);
+      if(!fieldId&&sourceBoard===targetBoard)fieldId=entry.field_id;
+      if(!fieldId){
+        const existing=(await client.query('SELECT id FROM custom_fields WHERE board_id=$1 AND name=$2 AND type=$3 AND options=$4::jsonb LIMIT 1',[targetBoard,entry.name,entry.type,JSON.stringify(entry.options)])).rows[0];
+        if(existing)fieldId=existing.id;
+        else fieldId=(await client.query('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM custom_fields WHERE board_id=$1),0),$5) RETURNING id',[targetBoard,entry.name,entry.type,JSON.stringify(entry.options),entry.show_on_card])).rows[0].id;
+        fieldMap.set(entry.field_id,fieldId!);
+      }
+      await client.query('INSERT INTO card_custom_values(card_id,field_id,value) VALUES($1,$2,$3) ON CONFLICT(card_id,field_id) DO NOTHING',[targetCard,fieldId,JSON.stringify(entry.value)]);
+    }
+  }
   user(req: Request) { return this.features.user(req); }
   async member(boardId: string, userId: string, allowClosed = false) {
     uuid(boardId);
@@ -38,19 +91,27 @@ class Service {
     if (row.closed_at && !allowClosed) fail('Este quadro está fechado. Reabra-o para editar.', 409);
     return row;
   }
-  async listBoard(listId: string, userId: string) {
+  async listBoard(listId: string, userId: string, allowArchived = false) {
     uuid(listId);
-    const row = await this.db.one('SELECT board_id FROM lists WHERE id=$1', [listId]);
+    const row = await this.db.one('SELECT board_id,archived_at FROM lists WHERE id=$1', [listId]);
     if (!row) return fail('Lista não encontrada.', 404);
     await this.member(row.board_id, userId);
+    if (row.archived_at && !allowArchived) fail('Esta lista está arquivada.',409);
     return row.board_id as string;
   }
   async cardBoard(cardId: string, userId: string, allowClosed = false) {
     uuid(cardId);
-    const row = await this.db.one('SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
+    const row = await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at AS card_archived FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
     if (!row) return fail('Cartão não encontrado.', 404);
     await this.member(row.board_id, userId, allowClosed);
+    if ((row.list_archived || row.card_archived) && !allowClosed) fail('Este cartão está arquivado.',409);
     return row.board_id as string;
+  }
+  private async contentCard(cardId:string,userId:string){
+    const boardId=await this.cardBoard(cardId,userId);
+    const row=await this.db.one('SELECT kind FROM cards WHERE id=$1',[cardId]);
+    if(!row||!['normal','template'].includes(row.kind))fail('Este tipo de cartão não possui detalhes editáveis.',409);
+    return boardId;
   }
   async register() { return fail('Cadastro desativado. Este espaço usa uma conta única.', 403); }
   async login(body: Payload) {
@@ -64,7 +125,7 @@ class Service {
   async me(userId: string) { return this.features.account(userId); }
   async boards(userId: string, status: string) {
     if (status !== 'active' && status !== 'closed') fail('Filtro inválido.');
-    return this.db.query(`SELECT b.id,b.title,b.background,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.description,b.closed_at,
+    return this.db.query(`SELECT b.id,b.title,b.background,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.description,b.closed_at,b.is_inbox,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image,
       w.name AS workspace_name,v.visited_at,
       (SELECT count(*)::int FROM board_members bm2 WHERE bm2.board_id=b.id) AS member_count
@@ -98,20 +159,33 @@ class Service {
   async board(boardId: string, userId: string) {
     await this.member(boardId,userId,true);
     await this.features.visit(boardId,userId);
-    const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,
+    const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,is_inbox,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=boards.id) AS background_image FROM boards WHERE id=$1`, [boardId]);
-    const lists = await this.db.query('SELECT id,board_id,title,position FROM lists WHERE board_id=$1 ORDER BY position,created_at', [boardId]);
-    const cards = await this.db.query(`SELECT c.id,c.list_id,c.title,c.description,c.position,c.due_date,c.cover_color,c.completed,c.created_at,c.updated_at,
+    const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
+    const cards = await this.db.query(`SELECT slot.id,slot.list_id,slot.position,slot.kind,slot.target_board_id,slot.link_url,
+      slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
+      source_board.id AS source_board_id,source_board.title AS source_board_title,
+      (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
+      c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.cover_color,c.cover_attachment_id,c.cover_size,c.completed,c.created_at,c.updated_at,
+      (SELECT 'data:'||a.mime_type||';base64,'||replace(encode(a.data,'base64'), E'\n', '') FROM attachments a WHERE a.id=c.cover_attachment_id AND a.size_bytes<=2000000) AS cover_image,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
-      COALESCE((SELECT json_agg(json_build_object('id',l.id,'name',l.name,'color',l.color)) FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
+      COALESCE((SELECT json_agg(json_build_object('id',label.id,'name',label.name,'color',label.color)) FROM card_labels cl JOIN labels label ON label.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
       (SELECT count(*)::int FROM comments cm WHERE cm.card_id=c.id) AS comment_count,
+      (SELECT count(*)::int FROM attachments a WHERE a.card_id=c.id) AS attachment_count,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id) AS checklist_total,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id AND ci.completed) AS checklist_done,
-      EXISTS(SELECT 1 FROM card_assignees ca WHERE ca.card_id=c.id AND ca.user_id=$2) AS assigned_to_me
-      FROM cards c JOIN lists li ON li.id=c.list_id WHERE li.board_id=$1 ORDER BY c.position,c.created_at`, [boardId,userId]);
+      COALESCE((SELECT json_agg(json_build_object('field_id',v.field_id,'name',f.name,'type',f.type,'value',v.value)) FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=c.id AND f.show_on_card),'[]'::json) AS custom_values,
+      EXISTS(SELECT 1 FROM card_assignees ca WHERE ca.card_id=c.id AND ca.user_id=$2) AS assigned_to_me,
+      COALESCE((SELECT json_agg(json_build_object('id',u.id,'name',u.name,'email',u.email,'avatar_url',u.avatar_url)) FROM card_assignees ca JOIN users u ON u.id=ca.user_id WHERE ca.card_id=c.id),'[]'::json) AS assignees
+      FROM cards slot JOIN lists li ON li.id=slot.list_id
+      JOIN cards c ON c.id=COALESCE(slot.mirror_source_id,slot.id)
+      JOIN lists source_list ON source_list.id=c.list_id JOIN boards source_board ON source_board.id=source_list.board_id
+      WHERE li.board_id=$1 AND li.archived_at IS NULL AND slot.archived_at IS NULL AND c.archived_at IS NULL
+      ORDER BY slot.position,slot.created_at`, [boardId,userId]);
     const labels = await this.db.query('SELECT id,board_id,name,color FROM labels WHERE board_id=$1 ORDER BY name', [boardId]);
-    const members = await this.db.query('SELECT u.id,u.name,u.email,bm.role FROM board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
-    return { ...board, lists: lists.map(list => ({...list, cards: cards.filter(card => card.list_id === list.id)})), labels, members };
+    const members = await this.db.query('SELECT u.id,u.name,u.email,u.avatar_url,bm.role FROM board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
+    const customFields=await this.db.query('SELECT id,name,type,options,position,show_on_card FROM custom_fields WHERE board_id=$1 ORDER BY position,id',[boardId]);
+    return { ...board, lists: lists.map(list => ({...list, cards: cards.filter(card => card.list_id === list.id)})), labels, members, custom_fields:customFields };
   }
   async updateBoard(boardId: string,userId: string,body: Payload) {
     await this.member(boardId,userId);
@@ -210,19 +284,30 @@ class Service {
         const {rows:[newLabel]}=await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[copy.id,label.name,label.color]);
         labelMap.set(label.id,newLabel.id);
       }
-      const lists=await client.query('SELECT id,title,position FROM lists WHERE board_id=$1 ORDER BY position,created_at',[boardId]);
+      const fieldMap=new Map<string,string>();
+      const cardMap=new Map<string,string>();
+      const fields=await client.query('SELECT * FROM custom_fields WHERE board_id=$1 ORDER BY position',[boardId]);
+      for(const field of fields.rows){
+        const copyField=(await client.query('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[copy.id,field.name,field.type,JSON.stringify(field.options),field.position,field.show_on_card])).rows[0];
+        fieldMap.set(field.id,copyField.id);
+      }
+      const lists=await client.query('SELECT id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId]);
       for (const list of lists.rows) {
-        const {rows:[newList]}=await client.query('INSERT INTO lists(board_id,title,position) VALUES($1,$2,$3) RETURNING id',[copy.id,list.title,list.position]);
-        const cards=await client.query('SELECT * FROM cards WHERE list_id=$1 ORDER BY position,created_at',[list.id]);
+        const {rows:[newList]}=await client.query('INSERT INTO lists(board_id,title,position,color,collapsed) VALUES($1,$2,$3,$4,$5) RETURNING id',[copy.id,list.title,list.position,list.color,list.collapsed]);
+        const cards=await client.query('SELECT * FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[list.id]);
         for (const card of cards.rows) {
-          const {rows:[newCard]}=await client.query(`INSERT INTO cards(list_id,title,description,position,due_date,cover_color,completed)
-            VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[newList.id,card.title,card.description,card.position,card.due_date,card.cover_color,card.completed]);
+          const {rows:[newCard]}=await client.query(`INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,cover_color,cover_size,completed,kind,target_board_id,link_url,mirror_source_id,mirror_expanded)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,[newList.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.cover_color,card.cover_size,card.completed,card.kind,card.target_board_id,card.link_url,card.mirror_source_id,card.mirror_expanded]);
+          cardMap.set(card.id,newCard.id);
           const cardLabels=await client.query('SELECT label_id FROM card_labels WHERE card_id=$1',[card.id]);
           for (const item of cardLabels.rows) await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2)',[newCard.id,labelMap.get(item.label_id)]);
-          await client.query(`INSERT INTO checklist_items(card_id,text,completed,position,assignee_id,due_date)
-            SELECT $1,text,completed,position,assignee_id,due_date FROM checklist_items WHERE card_id=$2`,[newCard.id,card.id]);
+          await this.copyCardContent(client,card.id,newCard.id,boardId,copy.id,fieldMap);
           await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2',[newCard.id,card.id]);
         }
+      }
+      for(const [oldId,newId] of cardMap){
+        const source=(await client.query('SELECT mirror_source_id FROM cards WHERE id=$1',[oldId])).rows[0]?.mirror_source_id;
+        if(source&&cardMap.has(source))await client.query('UPDATE cards SET mirror_source_id=$2 WHERE id=$1',[newId,cardMap.get(source)]);
       }
       await client.query('COMMIT');
       await this.features.record(userId,copy.id,null,'board_copied',`copiou o quadro ${source.title}`);
@@ -237,67 +322,494 @@ class Service {
   async createList(boardId: string,userId: string,body: Payload) {
     await this.member(boardId,userId);
     const title = value(body.title,'Título',160);
-    const list=await this.db.one('INSERT INTO lists(board_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM lists WHERE board_id=$1),0)) RETURNING *',[boardId,title]);
+    const client=await this.db.pool.connect();
+    let list;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
+      const existing=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId])).rows.map(row=>row.id as string);
+      const index=body.position===undefined ? existing.length : positionIndex(body.position,existing.length);
+      list=(await client.query('INSERT INTO lists(board_id,title,position) VALUES($1,$2,$3) RETURNING *',[boardId,title,index])).rows[0];
+      existing.splice(index,0,list.id);
+      for (let i=0;i<existing.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[existing[i],i]);
+      await client.query('COMMIT');
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     await this.features.record(userId,boardId,null,'list_created',`criou a lista ${title}`);
     return list;
   }
   async updateList(id: string,userId: string,body: Payload) {
     const boardId=await this.listBoard(id,userId);
-    const title = body.title === undefined ? null : value(body.title,'Título',160);
-    const position = body.position === undefined ? null : Number(body.position);
-    if (position !== null && !Number.isFinite(position)) fail('Posição inválida.');
-    const list=await this.db.one('UPDATE lists SET title=COALESCE($2,title),position=COALESCE($3,position) WHERE id=$1 RETURNING *',[id,title,position]);
+    const title=body.title===undefined ? null : value(body.title,'Título',160);
+    const color=body.color===undefined ? undefined : body.color===null ? null : value(body.color,'Cor',32);
+    if (color && !listColors.has(color)) fail('Cor inválida.');
+    if (body.collapsed!==undefined && typeof body.collapsed!=='boolean') fail('Estado inválido.');
+    const client=await this.db.pool.connect();
+    let list;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
+      if (body.position!==undefined) {
+        const order=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId])).rows.map(row=>row.id as string);
+        const index=positionIndex(body.position,order.length-1);
+        order.splice(order.indexOf(id),1); order.splice(index,0,id);
+        for (let i=0;i<order.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[order[i],i]);
+      }
+      list=(await client.query('UPDATE lists SET title=COALESCE($2,title),color=CASE WHEN $3::boolean THEN $4::varchar ELSE color END,collapsed=COALESCE($5,collapsed) WHERE id=$1 RETURNING *',[id,title,color!==undefined,color??null,body.collapsed??null])).rows[0];
+      await client.query('COMMIT');
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     if (title) await this.features.record(userId,boardId,null,'list_renamed',`renomeou a lista para ${title}`);
     return list;
   }
-  async deleteList(id: string,userId: string) { await this.listBoard(id,userId); await this.db.query('DELETE FROM lists WHERE id=$1',[id]); return {ok:true}; }
-  async createCard(listId: string,userId: string,body: Payload) {
-    const boardId=await this.listBoard(listId,userId);
-    const title = value(body.title,'Título',300);
-    const card=await this.db.one('INSERT INTO cards(list_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1),0)) RETURNING *',[listId,title]);
-    await this.features.record(userId,boardId,card!.id,'card_created',`criou o cartão ${title}`);
-    return card;
+  async archivedLists(boardId: string,userId: string) {
+    await this.member(boardId,userId);
+    return this.db.query('SELECT l.id,l.title,l.color,l.archived_at,count(c.id)::int AS card_count FROM lists l LEFT JOIN cards c ON c.list_id=l.id WHERE l.board_id=$1 AND l.archived_at IS NOT NULL GROUP BY l.id ORDER BY l.archived_at DESC',[boardId]);
   }
-  async updateCard(id: string,userId: string,body: Payload) {
+  async archiveList(id: string,userId: string) {
+    const boardId=await this.listBoard(id,userId);
+    await this.db.query('UPDATE lists SET archived_at=now() WHERE id=$1',[id]);
+    await this.features.record(userId,boardId,null,'list_archived','arquivou uma lista');
+    return {ok:true};
+  }
+  async restoreList(id: string,userId: string) {
+    const boardId=await this.listBoard(id,userId,true);
+    const list=await this.db.one('UPDATE lists SET archived_at=NULL,position=COALESCE((SELECT max(position)+1 FROM lists WHERE board_id=$2 AND archived_at IS NULL),0) WHERE id=$1 AND archived_at IS NOT NULL RETURNING *',[id,boardId]);
+    if (!list) fail('A lista não está arquivada.',409);
+    await this.features.record(userId,boardId,null,'list_restored','restaurou uma lista');
+    return list;
+  }
+  async deleteList(id: string,userId: string) {
+    await this.listBoard(id,userId,true);
+    const deleted=await this.db.one('DELETE FROM lists WHERE id=$1 AND archived_at IS NOT NULL RETURNING id',[id]);
+    if (!deleted) fail('Arquive a lista antes de excluí-la.',409);
+    return {ok:true};
+  }
+  async moveList(id: string,userId: string,body: Payload) {
+    const sourceBoard=await this.listBoard(id,userId);
+    const targetBoard=uuid(value(body.board_id,'Quadro',36));
+    if (sourceBoard===targetBoard) fail('Escolha outro quadro.');
+    await this.member(targetBoard,userId);
+    const client=await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE',[[sourceBoard,targetBoard]]);
+      const source=(await client.query('SELECT title FROM lists WHERE id=$1 AND archived_at IS NULL',[id])).rows[0];
+      if (!source) fail('Lista não encontrada.',404);
+      const position=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM lists WHERE board_id=$1 AND archived_at IS NULL',[targetBoard])).rows[0].next);
+      const cards=(await client.query('SELECT id FROM cards WHERE list_id=$1',[id])).rows;
+      const movedFields=new Map<string,string>();
+      for (const card of cards) {
+        const labels=(await client.query('SELECT l.name,l.color FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=$1',[card.id])).rows;
+        await client.query('DELETE FROM card_labels WHERE card_id=$1',[card.id]);
+        for (const label of labels) {
+          let target=(await client.query('SELECT id FROM labels WHERE board_id=$1 AND name=$2 AND color=$3 LIMIT 1',[targetBoard,label.name,label.color])).rows[0];
+          if (!target) target=(await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[targetBoard,label.name,label.color])).rows[0];
+          await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[card.id,target.id]);
+        }
+        const values=(await client.query('SELECT v.field_id,v.value,f.name,f.type,f.options,f.show_on_card FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1',[card.id])).rows;
+        for(const entry of values){
+          let targetField=movedFields.get(entry.field_id);
+          if(!targetField){
+            const existing=(await client.query('SELECT id FROM custom_fields WHERE board_id=$1 AND name=$2 AND type=$3 AND options=$4::jsonb LIMIT 1',[targetBoard,entry.name,entry.type,JSON.stringify(entry.options)])).rows[0];
+            targetField=existing?.id||(await client.query('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM custom_fields WHERE board_id=$1),0),$5) RETURNING id',[targetBoard,entry.name,entry.type,JSON.stringify(entry.options),entry.show_on_card])).rows[0].id;
+            movedFields.set(entry.field_id,targetField!);
+          }
+          await client.query('DELETE FROM card_custom_values WHERE card_id=$1 AND field_id=$2',[card.id,entry.field_id]);
+          await client.query('INSERT INTO card_custom_values(card_id,field_id,value) VALUES($1,$2,$3) ON CONFLICT(card_id,field_id) DO NOTHING',[card.id,targetField,JSON.stringify(entry.value)]);
+        }
+      }
+      await client.query('UPDATE lists SET board_id=$2,position=$3 WHERE id=$1',[id,targetBoard,position]);
+      await client.query('UPDATE notifications SET board_id=$2 WHERE card_id IN (SELECT id FROM cards WHERE list_id=$1)',[id,targetBoard]);
+      await client.query('COMMIT');
+      await this.features.record(userId,sourceBoard,null,'list_moved',`moveu a lista ${source.title} para outro quadro`);
+      await this.features.record(userId,targetBoard,null,'list_moved',`recebeu a lista ${source.title}`);
+      return {ok:true,board_id:targetBoard};
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+  async copyList(id: string,userId: string,body: Payload) {
+    const sourceBoard=await this.listBoard(id,userId);
+    const targetBoard=body.board_id===undefined ? sourceBoard : uuid(value(body.board_id,'Quadro',36));
+    await this.member(targetBoard,userId);
+    const client=await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[targetBoard]);
+      const source=(await client.query('SELECT * FROM lists WHERE id=$1 AND archived_at IS NULL',[id])).rows[0];
+      if (!source) fail('Lista não encontrada.',404);
+      const title=body.title===undefined ? `${source.title.slice(0,152)} (cópia)` : value(body.title,'Título',160);
+      const count=Number((await client.query('SELECT count(*)::int AS count FROM lists WHERE board_id=$1 AND archived_at IS NULL',[targetBoard])).rows[0].count);
+      const position=body.position===undefined ? count : positionIndex(body.position,count);
+      const copy=(await client.query('INSERT INTO lists(board_id,title,position,color,collapsed) VALUES($1,$2,$3,$4,$5) RETURNING *',[targetBoard,title,position,source.color,source.collapsed])).rows[0];
+      const cards=(await client.query('SELECT * FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[id])).rows;
+      const cardMap=new Map<string,string>();
+      for (const card of cards) {
+        const newCard=(await client.query('INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,cover_color,cover_size,completed,kind,target_board_id,link_url,mirror_source_id,mirror_expanded) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id',[copy.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.cover_color,card.cover_size,card.completed,card.kind,card.target_board_id,card.link_url,card.mirror_source_id,card.mirror_expanded])).rows[0];
+        cardMap.set(card.id,newCard.id);
+        await this.copyCardContent(client,card.id,newCard.id,sourceBoard,targetBoard);
+        await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2',[newCard.id,card.id]);
+        const labels=(await client.query('SELECT l.name,l.color FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=$1',[card.id])).rows;
+        for (const label of labels) {
+          let target=(await client.query('SELECT id FROM labels WHERE board_id=$1 AND name=$2 AND color=$3 LIMIT 1',[targetBoard,label.name,label.color])).rows[0];
+          if (!target) target=(await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[targetBoard,label.name,label.color])).rows[0];
+          await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2)',[newCard.id,target.id]);
+        }
+      }
+      for(const card of cards){if(card.mirror_source_id&&cardMap.has(card.mirror_source_id))await client.query('UPDATE cards SET mirror_source_id=$2 WHERE id=$1',[cardMap.get(card.id),cardMap.get(card.mirror_source_id)])}
+      if (position<count) {
+        const order=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL AND id<>$2 ORDER BY position,created_at',[targetBoard,copy.id])).rows.map(row=>row.id as string);
+        order.splice(position,0,copy.id);
+        for (let i=0;i<order.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[order[i],i]);
+      }
+      await client.query('COMMIT');
+      await this.features.record(userId,targetBoard,null,'list_copied',`copiou a lista ${source.title}`);
+      return copy;
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+  async moveAllCards(id: string,userId: string,body: Payload) {
+    const boardId=await this.listBoard(id,userId);
+    const targetId=uuid(value(body.list_id,'Lista',36));
+    if (targetId===id || await this.listBoard(targetId,userId)!==boardId) fail('Escolha outra lista do mesmo quadro.');
+    const client=await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
+      const start=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM cards WHERE list_id=$1 AND archived_at IS NULL',[targetId])).rows[0].next);
+      const result=await client.query(`WITH ordered AS (SELECT id,row_number() OVER (ORDER BY position,created_at)-1 AS offset FROM cards WHERE list_id=$1 AND archived_at IS NULL)
+        UPDATE cards c SET list_id=$2,position=$3+ordered.offset,updated_at=now() FROM ordered WHERE c.id=ordered.id`,[id,targetId,start]);
+      await client.query('COMMIT');
+      await this.features.record(userId,boardId,null,'cards_moved','moveu todos os cartões de uma lista');
+      return {ok:true,count:result.rowCount};
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+  async archiveAllCards(id: string,userId: string) {
+    const boardId=await this.listBoard(id,userId);
+    const result=await this.db.pool.query('UPDATE cards SET archived_at=now() WHERE list_id=$1 AND archived_at IS NULL',[id]);
+    await this.features.record(userId,boardId,null,'cards_archived','arquivou todos os cartões de uma lista');
+    return {ok:true,count:result.rowCount};
+  }
+  async archivedCards(id: string,userId: string) {
+    await this.listBoard(id,userId);
+    return this.db.query('SELECT id,title,archived_at FROM cards WHERE list_id=$1 AND archived_at IS NOT NULL ORDER BY archived_at DESC',[id]);
+  }
+  async restoreCard(id: string,userId: string) {
+    uuid(id);
+    const row=await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1',[id]);
+    if (!row) return fail('Cartão não encontrado.',404);
+    await this.member(row.board_id,userId);
+    if (row.list_archived) fail('Restaure a lista primeiro.',409);
+    if (!row.archived_at) fail('O cartão não está arquivado.',409);
+    await this.db.query('UPDATE cards SET archived_at=NULL WHERE id=$1',[id]);
+    return {ok:true};
+  }
+  async archiveCard(id:string,userId:string){
+    const boardId=await this.cardBoard(id,userId);
+    await this.db.query('UPDATE cards SET archived_at=now(),updated_at=now() WHERE id=$1',[id]);
+    await this.features.record(userId,boardId,id,'card_archived','arquivou um cartão');
+    return {ok:true};
+  }
+  async templateCard(id:string,userId:string,body:Payload){
+    await this.cardBoard(id,userId);
+    if(typeof body.template!=='boolean')fail('Estado do modelo inválido.');
+    const card=await this.db.one('SELECT kind FROM cards WHERE id=$1',[id]);
+    if(!['normal','template'].includes(card?.kind))fail('Este tipo de cartão não pode ser modelo.',409);
+    return this.db.one('UPDATE cards SET kind=$2,updated_at=now() WHERE id=$1 RETURNING *',[id,body.template?'template':'normal']);
+  }
+  async mirrorCard(id:string,userId:string,body:Payload){
+    await this.cardBoard(id,userId);
+    const source=await this.db.one('SELECT id,title,kind,mirror_source_id FROM cards WHERE id=$1',[id]);
+    const sourceId=source?.mirror_source_id||id;
+    if(sourceId!==id)await this.cardBoard(sourceId,userId);
+    const original=sourceId===id?source:await this.db.one('SELECT id,title,kind FROM cards WHERE id=$1',[sourceId]);
+    if(!original||!['normal','template'].includes(original.kind))fail('Este tipo de cartão não pode ser espelhado.',409);
+    const listId=uuid(value(body.list_id,'Lista',36));
+    await this.listBoard(listId,userId);
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM lists WHERE id=$1 FOR UPDATE',[listId]);
+      const order=(await client.query('SELECT id FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[listId])).rows.map(row=>row.id as string);
+      const position=body.position===undefined?order.length:positionIndex(body.position,order.length);
+      const row=(await client.query('INSERT INTO cards(list_id,title,position,kind,mirror_source_id) VALUES($1,$2,$3,$4,$5) RETURNING *',[listId,original!.title,order.length,'mirror',sourceId])).rows[0];
+      order.splice(position,0,row.id);
+      for(let i=0;i<order.length;i++)await client.query('UPDATE cards SET position=$2 WHERE id=$1',[order[i],i]);
+      await client.query('COMMIT');return row;
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+  }
+  private selectedIds(body:Payload,min=1){
+    if(!Array.isArray(body.card_ids)||body.card_ids.length<min||body.card_ids.length>20||body.card_ids.some(id=>typeof id!=='string'))fail(`Selecione de ${min} a 20 cartões.`);
+    const ids=[...new Set(body.card_ids as string[])].map(uuid);
+    if(ids.length<min)fail('Selecione cartões diferentes.');
+    return ids;
+  }
+  private async targetList(body:Payload,userId:string){
+    if(body.inbox===true){
+      const row=await this.db.one('SELECT l.id,l.board_id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL LIMIT 1',[userId]);
+      if(!row)fail('Inbox indisponível.',404);
+      return row!;
+    }
+    const id=uuid(value(body.list_id,'Lista',36));
+    const boardId=await this.listBoard(id,userId);
+    return {id,board_id:boardId};
+  }
+  private async copyLabels(client:PoolClient,sourceId:string,targetId:string,targetBoard:string){
+    const labels=(await client.query('SELECT l.name,l.color FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=$1',[sourceId])).rows;
+    for(const label of labels){
+      let target=(await client.query('SELECT id FROM labels WHERE board_id=$1 AND name=$2 AND color=$3 LIMIT 1',[targetBoard,label.name,label.color])).rows[0];
+      if(!target)target=(await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[targetBoard,label.name,label.color])).rows[0];
+      await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[targetId,target.id]);
+    }
+  }
+  async copyCards(userId:string,body:Payload){
+    const ids=this.selectedIds(body),target=await this.targetList(body,userId);
+    const include=typeof body.include==='object'&&body.include!==null?body.include as Payload:{};
+    const enabled=(key:string)=>include[key]!==false;
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM lists WHERE id=$1 FOR UPDATE',[target.id]);
+      const current=(await client.query('SELECT id FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[target.id])).rows.map(row=>row.id as string);
+      const position=body.position===undefined?current.length:positionIndex(body.position,current.length);
+      const copied:string[]=[];
+      for(const id of ids){
+        const source=(await client.query('SELECT c.*,l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1 AND c.archived_at IS NULL',[id])).rows[0];
+        if(!source)fail('Cartão não encontrado ou arquivado.',404);
+        await this.listBoard(source.list_id,userId);
+        const card=source.kind==='mirror'?(await client.query('SELECT c.*,l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1 AND c.archived_at IS NULL',[source.mirror_source_id])).rows[0]:source;
+        if(!card)fail('Origem do espelho indisponível.',409);
+        await this.listBoard(card.list_id,userId);
+        const kind=card.kind==='template'?'normal':card.kind;
+        const next=(await client.query(`INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,cover_color,cover_size,completed,kind,target_board_id,link_url)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[target.id,card.title,enabled('description')?card.description:'',current.length+copied.length,enabled('dates')?card.start_date:null,enabled('dates')?card.due_date:null,enabled('dates')?card.reminder_minutes:null,enabled('dates')?card.recurrence:null,enabled('cover')?card.cover_color:null,enabled('cover')?card.cover_size:'normal',card.completed,kind,card.target_board_id,card.link_url])).rows[0];
+        copied.push(next.id);
+        await this.copyCardContent(client,card.id,next.id,card.board_id,target.board_id,new Map(),{checklists:enabled('checklists'),attachments:enabled('attachments'),customFields:enabled('customFields')});
+        if(enabled('cover')&&!enabled('attachments')&&card.cover_attachment_id){
+          const cover=(await client.query(`INSERT INTO attachments(card_id,kind,name,url,target_id,mime_type,size_bytes,data,position)
+            SELECT $1,kind,name,url,target_id,mime_type,size_bytes,data,0 FROM attachments WHERE id=$2 RETURNING id`,[next.id,card.cover_attachment_id])).rows[0];
+          if(cover)await client.query('UPDATE cards SET cover_attachment_id=$2 WHERE id=$1',[next.id,cover.id]);
+        }
+        if(!enabled('cover'))await client.query('UPDATE cards SET cover_attachment_id=NULL WHERE id=$1',[next.id]);
+        if(enabled('labels'))await this.copyLabels(client,card.id,next.id,target.board_id);
+        if(enabled('members'))await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,ca.user_id FROM card_assignees ca JOIN board_members bm ON bm.user_id=ca.user_id AND bm.board_id=$3 WHERE ca.card_id=$2',[next.id,card.id,target.board_id]);
+        if(include.comments===true)await client.query('INSERT INTO comments(card_id,author_id,body,created_at) SELECT $1,author_id,body,created_at FROM comments WHERE card_id=$2',[next.id,card.id]);
+      }
+      current.splice(position,0,...copied);
+      for(let i=0;i<current.length;i++)await client.query('UPDATE cards SET position=$2 WHERE id=$1',[current[i],i]);
+      await client.query('COMMIT');
+      return {ids:copied,board_id:target.board_id};
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+  }
+  async moveCards(userId:string,body:Payload){
+    const ids=this.selectedIds(body),target=await this.targetList(body,userId);
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const rows=(await client.query('SELECT c.id,c.list_id,c.kind,l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=ANY($1::uuid[]) AND c.archived_at IS NULL',[ids])).rows;
+      if(rows.length!==ids.length)fail('Algum cartão não está disponível.',404);
+      for(const listId of new Set(rows.map(row=>row.list_id as string)))await this.listBoard(listId,userId);
+      const dest=(await client.query('SELECT id FROM cards WHERE list_id=$1 AND archived_at IS NULL AND id<>ALL($2::uuid[]) ORDER BY position,created_at',[target.id,ids])).rows.map(row=>row.id as string);
+      const position=body.position===undefined?dest.length:positionIndex(body.position,dest.length);
+      for(const id of ids){
+        const row=rows.find(item=>item.id===id)!;
+        if(row.board_id!==target.board_id&&row.kind!=='mirror'){
+          await this.copyLabels(client,id,id,target.board_id);
+          await client.query('DELETE FROM card_labels cl USING labels l WHERE cl.card_id=$1 AND cl.label_id=l.id AND l.board_id<>$2',[id,target.board_id]);
+          const fields=(await client.query('SELECT v.field_id,v.value,f.name,f.type,f.options,f.show_on_card FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1',[id])).rows;
+          for(const field of fields){
+            let found=(await client.query('SELECT id FROM custom_fields WHERE board_id=$1 AND name=$2 AND type=$3 AND options=$4::jsonb LIMIT 1',[target.board_id,field.name,field.type,JSON.stringify(field.options)])).rows[0];
+            if(!found)found=(await client.query('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM custom_fields WHERE board_id=$1),0),$5) RETURNING id',[target.board_id,field.name,field.type,JSON.stringify(field.options),field.show_on_card])).rows[0];
+            await client.query('DELETE FROM card_custom_values WHERE card_id=$1 AND field_id=$2',[id,field.field_id]);
+            await client.query('INSERT INTO card_custom_values(card_id,field_id,value) VALUES($1,$2,$3) ON CONFLICT(card_id,field_id) DO UPDATE SET value=EXCLUDED.value',[id,found.id,JSON.stringify(field.value)]);
+          }
+          await client.query('DELETE FROM card_assignees ca WHERE ca.card_id=$1 AND NOT EXISTS(SELECT 1 FROM board_members bm WHERE bm.board_id=$2 AND bm.user_id=ca.user_id)',[id,target.board_id]);
+          await client.query('UPDATE notifications SET board_id=$2 WHERE card_id=$1',[id,target.board_id]);
+        }
+        await client.query('UPDATE cards SET list_id=$2,updated_at=now() WHERE id=$1',[id,target.id]);
+      }
+      dest.splice(position,0,...ids);
+      for(let i=0;i<dest.length;i++)await client.query('UPDATE cards SET position=$2 WHERE id=$1',[dest[i],i]);
+      for(const source of new Set(rows.map(row=>row.list_id as string))){if(source===target.id)continue;const remaining=(await client.query('SELECT id FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[source])).rows;for(let i=0;i<remaining.length;i++)await client.query('UPDATE cards SET position=$2 WHERE id=$1',[remaining[i].id,i])}
+      await client.query('COMMIT');
+      return {ids,board_id:target.board_id};
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+  }
+  async mergeCards(userId:string,body:Payload){
+    const ids=this.selectedIds(body,2),target=await this.targetList(body,userId);
+    const sources:Payload[]=[];
+    for(const id of ids){const boardId=await this.cardBoard(id,userId);if(boardId!==target.board_id)fail('Mescle cartões do mesmo quadro.',409);const source=await this.db.one('SELECT * FROM cards WHERE id=$1',[id]);if(!source||!['normal','template'].includes(source.kind))fail('Este cartão não pode ser mesclado.',409);sources.push(source!)}
+    const title=body.title===undefined?sources.map(row=>String(row.title)).join(' + ').slice(0,300):value(body.title,'Título',300);
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const merged=(await client.query(`INSERT INTO cards(list_id,title,description,position) VALUES($1,$2,$3,(SELECT COALESCE(max(position)+1,0) FROM cards WHERE list_id=$1 AND archived_at IS NULL)) RETURNING id`,[target.id,title,sources.map(row=>`## ${row.title}\n${row.description||''}`).join('\n\n')])).rows[0];
+      for(const source of sources){await this.copyCardContent(client,String(source.id),merged.id,target.board_id,target.board_id);await this.copyLabels(client,String(source.id),merged.id,target.board_id);await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2 ON CONFLICT DO NOTHING',[merged.id,source.id]);await client.query('UPDATE cards SET archived_at=now() WHERE id=$1',[source.id])}
+      const merge=(await client.query('INSERT INTO card_merges(user_id,merged_card_id,source_ids) VALUES($1,$2,$3) RETURNING id',[userId,merged.id,ids])).rows[0];
+      await client.query('COMMIT');
+      return {id:merge.id,card_id:merged.id};
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+  }
+  async undoMerge(id:string,userId:string){
+    uuid(id);
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const merge=(await client.query('SELECT * FROM card_merges WHERE id=$1 AND user_id=$2 FOR UPDATE',[id,userId])).rows[0];
+      if(!merge||merge.undone_at||Date.now()-new Date(merge.created_at).getTime()>5*60*1000)fail('O prazo para desfazer a mesclagem terminou.',409);
+      await client.query('UPDATE cards SET archived_at=NULL WHERE id=ANY($1::uuid[])',[merge.source_ids]);
+      await client.query('DELETE FROM cards WHERE id=$1',[merge.merged_card_id]);
+      await client.query('UPDATE card_merges SET undone_at=now() WHERE id=$1',[id]);
+      await client.query('COMMIT');return {ok:true};
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+  }
+  async sortCards(id: string,userId: string,body: Payload) {
+    await this.listBoard(id,userId);
+    const sorts: Record<string,string>={title:'title COLLATE "C" ASC',due:'due_date ASC NULLS LAST',newest:'created_at DESC',oldest:'created_at ASC'};
+    const mode=value(body.by,'Critério',20);
+    if (!sorts[mode]) fail('Critério inválido.');
+    const client=await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const cards=(await client.query(`SELECT id FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY ${sorts[mode]},id`,[id])).rows;
+      for (let i=0;i<cards.length;i++) await client.query('UPDATE cards SET position=$2 WHERE id=$1',[cards[i].id,i]);
+      await client.query('COMMIT');
+      return {ok:true};
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+  async createCard(listId: string,userId: string,body: Payload) {
+    const title=value(body.title,'Título',300);
+    return (await this.createCards(listId,userId,[title],body.position))[0];
+  }
+  async createCardsBulk(listId: string,userId: string,body: Payload) {
+    if (typeof body.text!=='string' || body.text.length>30000) fail('Texto inválido.');
+    const titles=(body.text as string).split(/\r?\n/).map(line=>line.replace(/\t/g,' ').trim()).filter(Boolean);
+    if (!titles.length || titles.length>100 || titles.some(title=>title.length>300)) fail('Informe de 1 a 100 linhas com até 300 caracteres cada.');
+    return this.createCards(listId,userId,titles,body.position);
+  }
+  private async createCards(listId: string,userId: string,titles: string[],requestedPosition: unknown) {
+    const boardId=await this.listBoard(listId,userId);
+    const kinds=await Promise.all(titles.map(title=>this.classifyTitle(title,userId)));
+    const client=await this.db.pool.connect();
+    const created: Array<{id:string;title:string}> = [];
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM lists WHERE id=$1 FOR UPDATE',[listId]);
+      const order=(await client.query('SELECT id FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[listId])).rows.map(row=>row.id as string);
+      const index=requestedPosition===undefined?order.length:positionIndex(requestedPosition,order.length);
+      for (let titleIndex=0;titleIndex<titles.length;titleIndex++) {
+        const title=titles[titleIndex],kind=kinds[titleIndex];
+        const dueDate=kind.kind==='normal'?dueDateFromTitle(title):null;
+        const card: {id:string;title:string}=(await client.query('INSERT INTO cards(list_id,title,position,due_date,kind,target_board_id,link_url) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[listId,title,order.length+created.length,dueDate,kind.kind,kind.targetBoardId,kind.linkUrl])).rows[0];
+        created.push(card);
+      }
+      order.splice(index,0,...created.map(card=>card.id as string));
+      for (let i=0;i<order.length;i++) await client.query('UPDATE cards SET position=$2 WHERE id=$1',[order[i],i]);
+      await client.query('COMMIT');
+    } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+    await this.features.record(userId,boardId,null,'card_created',titles.length===1?`criou o cartão ${titles[0]}`:`criou ${titles.length} cartões na lista`);
+    return created;
+  }
+  async updateCard(id: string,userId: string,body: Payload): Promise<Payload | null> {
     const boardId = await this.cardBoard(id,userId);
-    const original=await this.db.one('SELECT list_id FROM cards WHERE id=$1',[id]);
-    const title = body.title === undefined ? null : value(body.title,'Título',300);
-    const description = body.description === undefined ? null : optionalText(body.description);
-    const dueDate = body.due_date === undefined ? undefined : optionalDate(body.due_date);
-    if (dueDate instanceof Date && Number.isNaN(dueDate.getTime())) fail('Data inválida.');
-    const coverColor = body.cover_color === undefined ? undefined : body.cover_color === null ? null : value(body.cover_color,'Cor',32);
+    const original=await this.db.one('SELECT * FROM cards WHERE id=$1',[id]);
+    if (!original) return fail('Cartão não encontrado.',404);
+    if(original.kind==='mirror'){
+      const placementOnly=Object.keys(body).every(key=>['list_id','position','mirror_expanded'].includes(key));
+      if(!placementOnly)return this.updateCard(original.mirror_source_id,userId,body);
+      const listId=body.list_id===undefined?original.list_id as string:uuid(value(body.list_id,'Lista',36));
+      if(listId!==original.list_id)await this.listBoard(listId,userId);
+      const position=body.position===undefined?original.position:Number(body.position);
+      if(!Number.isFinite(position)||position<0)fail('Posição inválida.');
+      const expanded=body.mirror_expanded===undefined?original.mirror_expanded:body.mirror_expanded;
+      if(typeof expanded!=='boolean')fail('Estado do espelho inválido.');
+      return this.db.one('UPDATE cards SET list_id=$2,position=$3,mirror_expanded=$4,updated_at=now() WHERE id=$1 RETURNING *',[id,listId,position,expanded]);
+    }
+    const title=body.title===undefined?original.title as string:value(body.title,'Título',300);
+    const special=body.title===undefined||original.kind==='template'?null:await this.classifyTitle(title,userId);
+    const kind=special?.kind||original.kind as string;
+    if(['separator','board','link'].includes(kind)&&Object.keys(body).some(key=>!['title','list_id','position'].includes(key)))fail('Este tipo de cartão não possui detalhes editáveis.',409);
+    if(['separator','board','link'].includes(kind)&&original.kind!==kind){
+      const content=await this.db.one(`SELECT (c.description<>'' OR c.due_date IS NOT NULL OR c.start_date IS NOT NULL OR c.cover_color IS NOT NULL OR c.completed OR
+        EXISTS(SELECT 1 FROM checklists WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM attachments WHERE card_id=c.id) OR
+        EXISTS(SELECT 1 FROM card_labels WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM card_assignees WHERE card_id=c.id) OR
+        EXISTS(SELECT 1 FROM comments WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM card_custom_values WHERE card_id=c.id)) AS has_content FROM cards c WHERE c.id=$1`,[id]);
+      if(content?.has_content)fail('Crie um novo cartão para usar este tipo especial.',409);
+    }
+    const description=body.description===undefined?original.description as string:optionalText(body.description);
+    let dueDate: Date | null=body.due_date===undefined?original.due_date as Date | null:optionalDate(body.due_date);
+    let startDate: Date | null=body.start_date===undefined?original.start_date as Date | null:optionalDate(body.start_date);
+    if (body.title!==undefined && body.due_date===undefined && !dueDate && kind==='normal') dueDate=dueDateFromTitle(title);
+    const coverColor=body.cover_color===undefined?original.cover_color as string | null:body.cover_color===null?null:value(body.cover_color,'Cor',32);
     if (coverColor && !/^[a-z0-9-]+$/.test(coverColor)) fail('Cor inválida.');
-    const completed = body.completed === undefined ? null : Boolean(body.completed);
-    let listId: string | null = null;
-    if (body.list_id !== undefined) { listId = uuid(value(body.list_id, 'Lista', 36)); if ((await this.listBoard(listId,userId)) !== boardId) fail('A lista pertence a outro quadro.'); }
-    const position = body.position === undefined ? null : Number(body.position);
-    if (position !== null && !Number.isFinite(position)) fail('Posição inválida.');
-    const card=await this.db.one(`UPDATE cards SET title=COALESCE($2,title),description=COALESCE($3,description),
-      due_date=CASE WHEN $4::boolean THEN $5::timestamptz ELSE due_date END,
-      cover_color=CASE WHEN $6::boolean THEN $7::varchar ELSE cover_color END,
-      completed=COALESCE($8,completed),list_id=COALESCE($9,list_id),position=COALESCE($10,position),updated_at=now()
-      WHERE id=$1 RETURNING *`,[id,title,description,dueDate!==undefined,dueDate===undefined?null:dueDate,coverColor!==undefined,coverColor??null,completed,listId,position]);
-    const moved=Boolean(listId && listId!==original?.list_id);
-    if (title || description!==null || dueDate!==undefined || completed!==null || moved) {
-      const action=completed===true?'concluiu um cartão':moved?'moveu um cartão':title?`renomeou o cartão para ${title}`:dueDate!==undefined?'alterou a data de um cartão':'atualizou um cartão';
+    if (body.completed!==undefined && typeof body.completed!=='boolean') fail('Status inválido.');
+    let completed=body.completed===undefined?original.completed as boolean:body.completed as boolean;
+    const recurrence=body.recurrence===undefined?original.recurrence as string | null:body.recurrence===null||body.recurrence===''?null:value(body.recurrence,'Recorrência',16);
+    if (recurrence && !recurrenceOptions.has(recurrence)) fail('Recorrência inválida.');
+    let reminder=body.reminder_minutes===undefined?original.reminder_minutes as number | null:body.reminder_minutes;
+    if (reminder!==null && !reminderOptions.has(reminder as number)) fail('Lembrete inválido.');
+    if (!dueDate) { reminder=null; if (recurrence) fail('Defina um vencimento para repetir o cartão.'); }
+    if (startDate && dueDate && startDate>dueDate) fail('A data inicial deve preceder o vencimento.');
+    if (completed && body.completed===true && recurrence && dueDate) {
+      const next=nextOccurrence(dueDate,recurrence);
+      if (startDate) startDate=new Date(startDate.getTime()+next.getTime()-dueDate.getTime());
+      dueDate=next;
+      completed=false;
+    }
+    const listId=body.list_id===undefined?original.list_id as string:uuid(value(body.list_id,'Lista',36));
+    if (listId!==original.list_id && (await this.listBoard(listId,userId))!==boardId) fail('A lista pertence a outro quadro.');
+    const position=body.position===undefined?original.position as number:Number(body.position);
+    if (!Number.isFinite(position) || position<0) fail('Posição inválida.');
+    const card=await this.db.one(`UPDATE cards SET title=$2,description=$3,start_date=$4,due_date=$5,reminder_minutes=$6,
+      recurrence=$7,cover_color=$8,completed=$9,list_id=$10,position=$11,kind=$12,target_board_id=$13,link_url=$14,updated_at=now()
+      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,coverColor,completed,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url]);
+    const moved=listId!==original.list_id;
+    if (body.title!==undefined || body.description!==undefined || body.due_date!==undefined || body.start_date!==undefined || body.completed!==undefined || moved) {
+      const action=body.completed===true&&recurrence?'avançou o vencimento recorrente':body.completed===true?'concluiu um cartão':moved?'moveu um cartão':body.title!==undefined?`renomeou o cartão para ${title}`:body.due_date!==undefined?'alterou a data de um cartão':'atualizou um cartão';
       await this.features.record(userId,boardId,id,'card_updated',action);
+      await this.features.notifyAssignees(userId,boardId,id,'card_updated','Cartão atualizado',action);
     }
     return card;
   }
-  async deleteCard(id: string,userId: string) { await this.cardBoard(id,userId); await this.db.query('DELETE FROM cards WHERE id=$1',[id]); return {ok:true}; }
+  async deleteCard(id: string,userId: string) {
+    uuid(id);
+    const row=await this.db.one('SELECT c.archived_at,l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1',[id]);
+    if(!row)fail('Cartão não encontrado.',404);
+    await this.member(row!.board_id,userId);
+    if(!row!.archived_at)fail('Arquive o cartão antes de excluí-lo definitivamente.',409);
+    await this.db.query('DELETE FROM cards WHERE id=$1',[id]);return {ok:true};
+  }
   async cardDetails(id: string,userId: string) {
     await this.cardBoard(id,userId,true);
-    const comments = await this.db.query('SELECT c.id,c.body,c.created_at,u.id AS author_id,u.name AS author_name FROM comments c JOIN users u ON u.id=c.author_id WHERE c.card_id=$1 ORDER BY c.created_at DESC',[id]);
+    const comments = await this.db.query(`SELECT c.id,c.body,c.created_at,c.edited_at,u.id AS author_id,u.name AS author_name,
+      COALESCE((SELECT json_agg(json_build_object('id',a.id,'kind',a.kind,'name',a.name,'url',a.url,'target_id',a.target_id,'mime_type',a.mime_type,'size_bytes',a.size_bytes)) FROM comment_attachments a WHERE a.comment_id=c.id),'[]'::json) AS attachments
+      FROM comments c JOIN users u ON u.id=c.author_id WHERE c.card_id=$1 ORDER BY c.created_at DESC`,[id]);
     const checklist = await this.db.query('SELECT id,text,completed,position,assignee_id,due_date FROM checklist_items WHERE card_id=$1 ORDER BY position',[id]);
     return { comments, checklist };
   }
   async comment(id: string,userId: string,body: Payload) {
-    const boardId=await this.cardBoard(id,userId);
+    const boardId=await this.contentCard(id,userId);
     const text = value(body.body,'Comentário',5000);
+    if(body.attachments!==undefined&&(!Array.isArray(body.attachments)||body.attachments.length>10))fail('Anexos inválidos.');
     const comment=await this.db.one('INSERT INTO comments(card_id,author_id,body) VALUES($1,$2,$3) RETURNING *',[id,userId,text]);
+    for(const attachment of (body.attachments||[]) as unknown[])await this.addCommentAttachment(comment!.id,id,userId,attachment);
     await this.features.record(userId,boardId,id,'comment',`comentou: ${text.slice(0,180)}`);
     await this.features.mention(userId,boardId,id,text);
+    await this.features.notifyAssignees(userId,boardId,id,'comment','Novo comentário',text);
     return comment;
+  }
+  private async addCommentAttachment(commentId:string,cardId:string,userId:string,input:unknown){
+    if(!input||typeof input!=='object')fail('Anexo inválido.');const body=input as Payload;
+    const kind=value(body.kind,'Tipo',8);if(!['file','card','board'].includes(kind))fail('Tipo de anexo inválido.');
+    const name=value(body.name,'Nome',255);let url:string|null=null;let target:string|null=null;let mime:string|null=null;let buffer:Buffer|null=null;
+    if(kind==='file'){
+      mime=value(body.mime_type,'Formato',120).toLowerCase();const raw=body.data;
+      if(typeof raw!=='string'||raw.length>14_000_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))fail('Arquivo inválido ou maior que 10 MB.');
+      buffer=Buffer.from(raw as string,'base64');if(!buffer.length||buffer.length>10_000_000||buffer.toString('base64')!==raw)fail('Arquivo inválido ou maior que 10 MB.');
+    }else {target=uuid(value(body.target_id,'Referência',36));if(kind==='board'){await this.member(target,userId);url=`/board/${target}`;}else{const targetBoard=await this.cardBoard(target,userId);url=`/board/${targetBoard}?card=${target}`;}}
+    await this.db.query('INSERT INTO comment_attachments(comment_id,kind,name,url,target_id,mime_type,size_bytes,data) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[commentId,kind,name,url,target,mime,buffer?.length??null,buffer]);
+  }
+  async updateComment(id:string,userId:string,body:Payload){
+    uuid(id);const old=await this.db.one('SELECT c.author_id,c.card_id,l.board_id FROM comments c JOIN cards card ON card.id=c.card_id JOIN lists l ON l.id=card.list_id WHERE c.id=$1',[id]);
+    if(!old)fail('Comentário não encontrado.',404);await this.member(old!.board_id,userId);if(old!.author_id!==userId)fail('Você só pode editar seus comentários.',403);
+    const text=value(body.body,'Comentário',5000);const updated=await this.db.one('UPDATE comments SET body=$2,edited_at=now() WHERE id=$1 RETURNING *',[id,text]);
+    await this.features.record(userId,old!.board_id,old!.card_id,'comment_updated','editou um comentário');return updated;
   }
   async deleteComment(id: string,userId: string) {
     uuid(id);
@@ -307,13 +819,22 @@ class Service {
     if (row.author_id !== userId) fail('Você só pode excluir seus comentários.',403);
     await this.db.query('DELETE FROM comments WHERE id=$1',[id]); return {ok:true};
   }
+  async commentAttachmentContent(id:string,userId:string,response:Response){
+    uuid(id);const row=await this.db.one(`SELECT a.*,c.card_id FROM comment_attachments a JOIN comments c ON c.id=a.comment_id WHERE a.id=$1`,[id]);
+    if(!row)fail('Anexo não encontrado.',404);await this.contentCard(row!.card_id,userId);if(row!.kind!=='file'||!row!.data)fail('Arquivo indisponível.',404);
+    response.setHeader('Content-Type',row!.mime_type||'application/octet-stream');response.setHeader('Content-Length',row!.data.length);response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(row!.name)}`);response.send(row!.data);
+  }
+  async cardEmail(id:string,userId:string){await this.contentCard(id,userId);const domain=process.env.COMMENT_EMAIL_DOMAIN||'orbit.local';return {address:`card+${id}@${domain}`,enabled:Boolean(process.env.COMMENT_EMAIL_DOMAIN),instructions:'Configure your email provider to forward messages to the Orbit inbound endpoint.'};}
+  async inboundComment(body:Payload,token:string|undefined){if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN)fail('Canal de e-mail não autorizado.',401);const cardId=uuid(value(body.card_id,'Cartão',36));const row=await this.db.one('SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1',[cardId]);if(!row)fail('Cartão não encontrado.',404);const account=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);const text=value(body.body,'Comentário',5000);const comment=await this.db.one('INSERT INTO comments(card_id,author_id,body) VALUES($1,$2,$3) RETURNING *',[cardId,account!.id,text]);await this.features.record(account!.id,row!.board_id,cardId,'email_comment','comentou por e-mail');return comment;}
   async createChecklist(id: string,userId: string,body: Payload) {
-    const boardId=await this.cardBoard(id,userId);
+    const boardId=await this.contentCard(id,userId);
     const text = value(body.text,'Item',300);
     const assigned=body.assigned===true?userId:null;
     const dueDate=body.due_date?optionalDate(body.due_date):null;
     if (dueDate && Number.isNaN(dueDate.getTime())) fail('Data inválida.');
-    const item=await this.db.one('INSERT INTO checklist_items(card_id,text,position,assignee_id,due_date) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM checklist_items WHERE card_id=$1),0),$3,$4) RETURNING *',[id,text,assigned,dueDate]);
+    let group=await this.db.one('SELECT id FROM checklists WHERE card_id=$1 ORDER BY position LIMIT 1',[id]);
+    if(!group)group=await this.db.one("INSERT INTO checklists(card_id,title,position) VALUES($1,'Checklist',0) RETURNING id",[id]);
+    const item=await this.db.one('INSERT INTO checklist_items(card_id,checklist_id,text,position,assignee_id,due_date) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM checklist_items WHERE checklist_id=$2),0),$4,$5) RETURNING *',[id,group!.id,text,assigned,dueDate]);
     await this.features.record(userId,boardId,id,'checklist_created',`adicionou o item ${text}`);
     if (assigned) await this.features.notify(userId,boardId,id,'checklist','Item atribuído a você',text);
     return item;
@@ -322,7 +843,7 @@ class Service {
     uuid(id);
     const row = await this.db.one('SELECT ci.card_id FROM checklist_items ci WHERE ci.id=$1',[id]);
     if (!row) return fail('Item não encontrado.',404);
-    const boardId=await this.cardBoard(row.card_id,userId);
+    const boardId=await this.contentCard(row.card_id,userId);
     const dueDate=body.due_date===undefined?undefined:optionalDate(body.due_date);
     if (dueDate instanceof Date && Number.isNaN(dueDate.getTime())) fail('Data inválida.');
     const item=await this.db.one(`UPDATE checklist_items SET text=COALESCE($2,text),completed=COALESCE($3,completed),
@@ -336,18 +857,33 @@ class Service {
   }
   async deleteChecklist(id: string,userId: string) {
     uuid(id); const row = await this.db.one('SELECT card_id FROM checklist_items WHERE id=$1',[id]);
-    if (!row) return fail('Item não encontrado.',404); await this.cardBoard(row.card_id,userId);
+    if (!row) return fail('Item não encontrado.',404); await this.contentCard(row.card_id,userId);
     await this.db.query('DELETE FROM checklist_items WHERE id=$1',[id]); return {ok:true};
   }
   async createLabel(boardId: string,userId: string,body: Payload) {
     await this.member(boardId,userId);
-    const name = typeof body.name === 'string' ? body.name.slice(0,100) : '';
+    const name=body.name===undefined?'':optionalText(body.name,100).trim();
     const color = value(body.color,'Cor',32);
-    if (!/^[a-z0-9-]+$/.test(color)) fail('Cor inválida.');
+    if (!labelColorOptions.has(color)) fail('Cor inválida.');
     return this.db.one('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING *',[boardId,name,color]);
   }
+  async updateLabel(boardId: string,labelId: string,userId: string,body: Payload) {
+    await this.member(boardId,userId); uuid(labelId);
+    const name=body.name===undefined?null:optionalText(body.name,100).trim();
+    const color=body.color===undefined?null:value(body.color,'Cor',32);
+    if (color && !labelColorOptions.has(color)) fail('Cor inválida.');
+    const label=await this.db.one('UPDATE labels SET name=COALESCE($3,name),color=COALESCE($4,color) WHERE id=$1 AND board_id=$2 RETURNING *',[labelId,boardId,name,color]);
+    if (!label) return fail('Etiqueta não encontrada.',404);
+    return label;
+  }
+  async deleteLabel(boardId: string,labelId: string,userId: string) {
+    await this.member(boardId,userId); uuid(labelId);
+    const deleted=await this.db.one('DELETE FROM labels WHERE id=$1 AND board_id=$2 RETURNING id',[labelId,boardId]);
+    if (!deleted) fail('Etiqueta não encontrada.',404);
+    return {ok:true};
+  }
   async toggleLabel(cardId: string,labelId: string,userId: string) {
-    const boardId = await this.cardBoard(cardId,userId); uuid(labelId);
+    const boardId = await this.contentCard(cardId,userId); uuid(labelId);
     const label = await this.db.one('SELECT id FROM labels WHERE id=$1 AND board_id=$2',[labelId,boardId]);
     if (!label) fail('Etiqueta não encontrada.',404);
     const existing = await this.db.one('SELECT 1 FROM card_labels WHERE card_id=$1 AND label_id=$2',[cardId,labelId]);
@@ -377,29 +913,53 @@ class ApiController {
   @Delete('boards/:id/background') removeBackground(@Req() req: Request,@Param('id') id: string) { return this.service.removeBackgroundImage(id,this.service.user(req)); }
   @Post('boards/:id/members') invite(@Req() req: Request,@Param('id') id: string) { return this.service.invite(id,this.service.user(req)); }
   @Post('boards/:id/lists') createList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createList(id,this.service.user(req),body); }
+  @Get('boards/:id/lists/archived') archivedLists(@Req() req: Request,@Param('id') id: string) { return this.service.archivedLists(id,this.service.user(req)); }
   @Post('boards/:id/labels') createLabel(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createLabel(id,this.service.user(req),body); }
+  @Patch('boards/:id/labels/:labelId') updateLabel(@Req() req: Request,@Param('id') id: string,@Param('labelId') labelId: string,@Body() body: Payload) { return this.service.updateLabel(id,labelId,this.service.user(req),body); }
+  @Delete('boards/:id/labels/:labelId') deleteLabel(@Req() req: Request,@Param('id') id: string,@Param('labelId') labelId: string) { return this.service.deleteLabel(id,labelId,this.service.user(req)); }
   @Patch('lists/:id') updateList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateList(id,this.service.user(req),body); }
+  @Post('lists/:id/archive') archiveList(@Req() req: Request,@Param('id') id: string) { return this.service.archiveList(id,this.service.user(req)); }
+  @Post('lists/:id/restore') restoreList(@Req() req: Request,@Param('id') id: string) { return this.service.restoreList(id,this.service.user(req)); }
+  @Post('lists/:id/move') moveList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.moveList(id,this.service.user(req),body); }
+  @Post('lists/:id/copy') copyList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.copyList(id,this.service.user(req),body); }
+  @Post('lists/:id/cards/move-all') moveAllCards(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.moveAllCards(id,this.service.user(req),body); }
+  @Post('lists/:id/cards/archive-all') archiveAllCards(@Req() req: Request,@Param('id') id: string) { return this.service.archiveAllCards(id,this.service.user(req)); }
+  @Get('lists/:id/cards/archived') archivedCards(@Req() req: Request,@Param('id') id: string) { return this.service.archivedCards(id,this.service.user(req)); }
+  @Post('lists/:id/cards/sort') sortCards(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.sortCards(id,this.service.user(req),body); }
   @Delete('lists/:id') deleteList(@Req() req: Request,@Param('id') id: string) { return this.service.deleteList(id,this.service.user(req)); }
+  @Post('cards/:id/restore') restoreCard(@Req() req: Request,@Param('id') id: string) { return this.service.restoreCard(id,this.service.user(req)); }
+  @Post('cards/:id/archive') archiveCard(@Req() req: Request,@Param('id') id:string){return this.service.archiveCard(id,this.service.user(req))}
+  @Patch('cards/:id/template') templateCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.templateCard(id,this.service.user(req),body)}
+  @Post('cards/:id/mirror') mirrorCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.mirrorCard(id,this.service.user(req),body)}
+  @Post('cards/copy') copyCards(@Req() req:Request,@Body() body:Payload){return this.service.copyCards(this.service.user(req),body)}
+  @Post('cards/move') moveCards(@Req() req:Request,@Body() body:Payload){return this.service.moveCards(this.service.user(req),body)}
+  @Post('cards/merge') mergeCards(@Req() req:Request,@Body() body:Payload){return this.service.mergeCards(this.service.user(req),body)}
+  @Post('card-merges/:id/undo') undoMerge(@Req() req:Request,@Param('id') id:string){return this.service.undoMerge(id,this.service.user(req))}
   @Post('lists/:id/cards') createCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createCard(id,this.service.user(req),body); }
+  @Post('lists/:id/cards/bulk') createCardsBulk(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createCardsBulk(id,this.service.user(req),body); }
   @Patch('cards/:id') updateCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateCard(id,this.service.user(req),body); }
   @Delete('cards/:id') deleteCard(@Req() req: Request,@Param('id') id: string) { return this.service.deleteCard(id,this.service.user(req)); }
   @Get('cards/:id/details') cardDetails(@Req() req: Request,@Param('id') id: string) { return this.service.cardDetails(id,this.service.user(req)); }
   @Post('cards/:id/comments') comment(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.comment(id,this.service.user(req),body); }
+  @Get('cards/:id/comment-email') commentEmail(@Req() req:Request,@Param('id') id:string){return this.service.cardEmail(id,this.service.user(req));}
+  @Post('email/comments') inboundComment(@Req() req:Request,@Body() body:Payload){return this.service.inboundComment(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined)}
+  @Patch('comments/:id') updateComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateComment(id,this.service.user(req),body)}
   @Delete('comments/:id') deleteComment(@Req() req: Request,@Param('id') id: string) { return this.service.deleteComment(id,this.service.user(req)); }
+  @Get('comment-attachments/:id/content') commentAttachmentContent(@Req() req:Request,@Param('id') id:string,@Res() response:Response){return this.service.commentAttachmentContent(id,this.service.user(req),response)}
   @Post('cards/:id/checklist') createChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createChecklist(id,this.service.user(req),body); }
   @Patch('checklist/:id') updateChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateChecklist(id,this.service.user(req),body); }
   @Delete('checklist/:id') deleteChecklist(@Req() req: Request,@Param('id') id: string) { return this.service.deleteChecklist(id,this.service.user(req)); }
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service], controllers: [ApiController, FeaturesController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService], controllers: [ApiController, FeaturesController, CardExtensionsController] })
 class AppModule {}
 
 async function bootstrap() {
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('JWT_SECRET must contain at least 32 characters');
   const app = await NestFactory.create(AppModule);
   app.enableCors({ origin: process.env.WEB_ORIGIN || 'http://localhost:3000' });
-  app.use(json({limit:'3mb'}));
+  app.use(json({limit:'16mb'}));
   await app.listen(Number(process.env.API_PORT || 4000));
 }
 bootstrap();

@@ -5,14 +5,8 @@ import { Archive, Copy, History, ImagePlus, Info, Link2, MoreHorizontal, Paintbr
 import { Activity, api, Board, boardColors, send } from '@/lib/api';
 import { remember } from '@/lib/history';
 import { Modal } from './ui';
-
-export function RichText({ text }: { text: string }) {
-  return <span className="whitespace-pre-wrap break-words">{text.split(/(https?:\/\/[^\s]+|@[\w.-]+)/g).map((part, index) => {
-    if (/^https?:\/\//.test(part)) return <a key={index} href={part} target="_blank" rel="noopener noreferrer" className="text-[#0c66e4] underline" onClick={event=>event.stopPropagation()}>{part}</a>;
-    if (part.startsWith('@')) return <strong key={index} className="rounded bg-[#dfe1f8] px-0.5 text-[#403294]">{part}</strong>;
-    return <span key={index}>{part}</span>;
-  })}</span>;
-}
+import { RichText } from './rich-text';
+export { RichText } from './rich-text';
 
 type Panel = 'about' | 'activity' | 'background' | 'copy' | null;
 export function BoardTools({ board, onChanged, onClosed, onDeleted }: {board:Board;onChanged:()=>Promise<void>;onClosed:()=>void;onDeleted:()=>void}) {

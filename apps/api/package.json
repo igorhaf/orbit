@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "npm run lint && tsc -p tsconfig.json",
+    "test": "tsx --test src/card-rules.spec.ts",
     "lint": "eslint src --max-warnings 0",
     "lint:fix": "eslint src --fix --max-warnings 0",
     "start": "node dist/main.js",

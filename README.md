@@ -1,6 +1,6 @@
 # Orbit
 
-Orbit é uma aplicação Kanban inspirada no Trello, feita com Next.js, NestJS, PostgreSQL e Tailwind CSS. Roda diretamente na máquina, sem Docker.
+Orbit é uma aplicação Kanban feita com Next.js, NestJS, PostgreSQL e Tailwind CSS. Roda diretamente na máquina, sem Docker.
 
 ## Funcionalidades desta etapa
 
@@ -17,6 +17,25 @@ Orbit é uma aplicação Kanban inspirada no Trello, feita com Next.js, NestJS, 
 - Central de notificações por prazo e menção; alertas do navegador quando autorizados
 - Desfazer/refazer de ações compatíveis durante a sessão (títulos, favoritos, movimentação, conclusão, descrição e prazos)
 - Listas e cartões com arrastar e soltar, etiquetas, prazos, checklists, atribuições e comentários
+- Listas com criação em qualquer posição, cópia e movimentação entre quadros, cores, recolhimento e arquivo reversível
+- Ações em lote para mover, arquivar e ordenar cartões; restauração de cartões arquivados pela lista
+- Cartões criados em qualquer posição ou em massa por colagem, com interpretação de datas no título
+- Descrições em Markdown com barra de formatação e prévia de textos, links, listas, código e imagens
+- Etiquetas com 30 cores e opção sem cor, editáveis no quadro; atribuição de membros do quadro
+- Datas de início e vencimento com horário, lembrete opcional e recorrência diária, semanal, mensal ou anual
+- Filtro de cartões por status e indicador de conclusão na pesquisa global
+- Múltiplos checklists por cartão, cópia entre cartões do quadro, colagem em massa, arrastar itens entre grupos e conversão de item em cartão
+- Responsável e prazo independentes por item; cinco tipos de campos personalizados por quadro, com valores próprios por cartão
+- Arquivos no PostgreSQL, anexos por arraste ou colagem de imagem, links externos e internos, prévia, download e reordenação
+- Links reconhecidos de Orbit, GitHub, YouTube e Figma; capas com cor ou imagem em tamanho parcial ou completo
+- Cartões normais, modelos reutilizáveis, links de quadros, separadores, links externos com prévia visual e espelhos sincronizados com recolhimento próprio
+- Mover e copiar cartões entre listas, quadros e Inbox; cópia com escolha de descrição, datas, etiquetas, membros, checklists, anexos, campos, comentários e capa
+- Arquivar e restaurar cartões; exclusão definitiva somente após arquivar
+- Seleção de até 20 cartões com Ctrl/Cmd, Shift ou modo de seleção por toque para mover, copiar, arrastar em grupo, arquivar ou mesclar; mesclagens podem ser desfeitas por cinco minutos
+- Comentários editáveis com anexos de arquivos, cartões e quadros; links diretos, menções `@card` e `@board`, e acompanhamento de cartão, lista ou quadro
+- Cada cartão exibe um endereço de comentário por e-mail. O recebimento exige configurar `COMMENT_EMAIL_DOMAIN` e um provedor para encaminhar mensagens ao endpoint protegido do Orbit
+
+Arquivos podem ter até 10 MB; imagens para capa, até 2 MB. A prévia de links usa informações da URL; vídeos do YouTube também podem mostrar a miniatura pública. O link abre o serviço original.
 
 O cadastro e os convites estão desativados nesta etapa de conta única. Exclusões permanentes não entram no histórico de desfazer.
 
@@ -67,6 +86,7 @@ A migração guarda apenas o hash da senha e reconfigura esse acesso a cada exec
 | `npm run lint` | Verifica o código da API e do front, sem aceitar avisos |
 | `npm run lint:fix` | Corrige automaticamente os problemas de lint possíveis |
 | `npm run build` | Executa o lint e compila a API e o front |
+| `npm run test -w apps/api` | Executa os testes das regras de cartões |
 | `npm run db:migrate` | Aplica o esquema SQL e prepara a conta inicial |
 | `npm run start -w apps/api` | Inicia a API compilada |
 | `npm run start -w apps/web` | Inicia o front compilado |
