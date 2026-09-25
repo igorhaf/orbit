@@ -24,6 +24,16 @@ Orbit é uma aplicação Kanban feita com Next.js, NestJS, PostgreSQL e Tailwind
 - Etiquetas com 30 cores e opção sem cor, editáveis no quadro; atribuição de membros do quadro
 - Datas de início e vencimento com horário, lembrete opcional e recorrência diária, semanal, mensal ou anual
 - Filtro de cartões por status e indicador de conclusão na pesquisa global
+- Múltiplos checklists por cartão, cópia entre cartões do quadro, colagem em massa, arrastar itens entre grupos e conversão de item em cartão
+- Responsável e prazo independentes por item; cinco tipos de campos personalizados por quadro, com valores próprios por cartão
+- Arquivos no PostgreSQL, anexos por arraste ou colagem de imagem, links externos e internos, prévia, download e reordenação
+- Links reconhecidos de Orbit, GitHub, YouTube e Figma; capas com cor ou imagem em tamanho parcial ou completo
+- Cartões normais, modelos reutilizáveis, links de quadros, separadores, links externos com prévia visual e espelhos sincronizados com recolhimento próprio
+- Mover e copiar cartões entre listas, quadros e Inbox; cópia com escolha de descrição, datas, etiquetas, membros, checklists, anexos, campos, comentários e capa
+- Arquivar e restaurar cartões; exclusão definitiva somente após arquivar
+- Seleção de até 20 cartões com Ctrl/Cmd, Shift ou modo de seleção por toque para mover, copiar, arrastar em grupo, arquivar ou mesclar; mesclagens podem ser desfeitas por cinco minutos
+
+Arquivos podem ter até 10 MB; imagens para capa, até 2 MB. A prévia de links usa informações da URL; vídeos do YouTube também podem mostrar a miniatura pública. O link abre o serviço original.
 
 O cadastro e os convites estão desativados nesta etapa de conta única. Exclusões permanentes não entram no histórico de desfazer.
 

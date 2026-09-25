@@ -15,8 +15,21 @@ export type User = {
   role?: string;
 };
 export type Label = { id: string; name: string; color: string };
+export type CustomField = { id:string;board_id?:string;name:string;type:'text'|'number'|'date'|'dropdown'|'checkbox';options:string[];position:number;show_on_card:boolean };
+export type CustomValue = { field_id:string;name?:string;type?:CustomField['type'];value:string|number|boolean };
+export type ChecklistGroup = { id:string;card_id:string;title:string;position:number;items:ChecklistItem[] };
+export type Attachment = { id:string;card_id:string;kind:'file'|'url'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null;position:number;created_at:string };
+export type CardExtensions = { checklists:ChecklistGroup[];values:CustomValue[];attachments:Attachment[] };
 export type Card = {
   id: string;
+  kind?: 'normal'|'template'|'board'|'separator'|'link'|'mirror';
+  target_board_id?: string|null;
+  target_board_title?: string|null;
+  link_url?: string|null;
+  source_card_id?: string|null;
+  source_board_id?: string|null;
+  source_board_title?: string|null;
+  mirror_expanded?: boolean;
   list_id: string;
   title: string;
   description: string;
@@ -27,17 +40,23 @@ export type Card = {
   recurrence: 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
   overdue?: boolean;
   cover_color: string | null;
+  cover_attachment_id?: string | null;
+  cover_image?: string | null;
+  cover_size?: 'normal' | 'full';
   completed: boolean;
   assigned_to_me?: boolean;
   assignees?: User[];
   labels: Label[];
   comment_count: number;
+  attachment_count?: number;
   checklist_total: number;
   checklist_done: number;
+  custom_values?: CustomValue[];
 };
 export type List = { id: string; board_id: string; title: string; position: number; color: string | null; collapsed: boolean; archived_at?: string | null; card_count?: number; cards: Card[] };
 export type Board = {
   id: string;
+  is_inbox?: boolean;
   title: string;
   background: string;
   background_image?: string | null;
@@ -53,10 +72,11 @@ export type Board = {
   lists?: List[];
   labels?: Label[];
   members?: User[];
+  custom_fields?: CustomField[];
 };
 export type Workspace = { id: string; name: string; board_count: number };
 export type Comment = { id: string; body: string; created_at: string; author_id: string; author_name: string };
-export type ChecklistItem = { id: string; text: string; completed: boolean; position: number; assignee_id: string | null; due_date: string | null };
+export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string; text: string; completed: boolean; position: number; assignee_id: string | null; assignee_name?:string|null; due_date: string | null };
 export type CardDetails = { comments: Comment[]; checklist: ChecklistItem[] };
 export type Activity = { id: string; kind: string; body: string; created_at: string; card_id: string | null; card_title: string | null; board_id: string | null; board_title: string | null; actor_name: string };
 export type HomeCard = { id: string; title: string; description: string; due_date: string | null; overdue?: boolean; completed: boolean; board_id: string; board_title: string; list_title: string; assigned_to_me: boolean; background: string };
@@ -115,6 +135,19 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
 }
 export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown) =>
   api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+export async function attachmentBlob(id:string):Promise<Blob>{
+  const response=await fetch(`${BASE}/attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`}});
+  if(!response.ok)throw new Error('Não foi possível abrir o anexo.');
+  return response.blob();
+}
+export async function uploadCardFiles(cardId:string,files:FileList|File[]):Promise<void>{
+  for(const file of Array.from(files)){
+    if(file.size>10_000_000)throw new Error('O arquivo deve ter até 10 MB.');
+    if(file.type.startsWith('image/')&&file.size>2_000_000)throw new Error('A imagem deve ter até 2 MB.');
+    const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file)});
+    await send('/cards/'+cardId+'/attachments','POST',{kind:'file',name:file.name,mime_type:file.type||'application/octet-stream',data});
+  }
+}
 export const initials = (name: string) => name.split(' ').filter(Boolean).slice(0,2).map(n => n[0].toUpperCase()).join('');
 export const cardUrl = (boardId: string, cardId?: string | null) => `/board/${boardId}${cardId ? `?card=${cardId}` : ''}`;
 export const dateLabel = (date: string) => new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });

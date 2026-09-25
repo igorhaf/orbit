@@ -6,6 +6,20 @@ export const labelColorOptions = new Set([
     .flatMap(color=>[color,`${color}_light`,`${color}_dark`]),
 ]);
 
+export type TitleKind = {kind:'normal'|'separator'|'board'|'link';targetBoardId:string|null;linkUrl:string|null};
+export function cardKindFromTitle(title:string,appOrigin:string):TitleKind {
+  if(title.trim()==='---')return {kind:'separator',targetBoardId:null,linkUrl:null};
+  const candidate=title.trim();
+  if(!/^https?:\/\//i.test(candidate)&&!candidate.startsWith('/board/'))return {kind:'normal',targetBoardId:null,linkUrl:null};
+  try{
+    const url=new URL(candidate,appOrigin);
+    if(!['http:','https:'].includes(url.protocol))return {kind:'normal',targetBoardId:null,linkUrl:null};
+    const board=/^\/board\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(url.pathname);
+    if(url.origin===new URL(appOrigin).origin&&board&&!url.searchParams.has('card'))return {kind:'board',targetBoardId:board[1],linkUrl:null};
+    return {kind:'link',targetBoardId:null,linkUrl:url.toString()};
+  }catch{return {kind:'normal',targetBoardId:null,linkUrl:null}}
+}
+
 export function dueDateFromTitle(title: string): Date | null {
   const match=title.match(/\b(\d{4})-(\d{2})-(\d{2})\b/) || title.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
   if (!match) return null;

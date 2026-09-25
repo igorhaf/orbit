@@ -12,10 +12,10 @@ const colors: Record<string,string> = {
 };
 type Action = (action: string, payload?: Record<string,unknown>) => Promise<void>;
 
-export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,renderCard,query,statusFilter}: {
+export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,renderCard,query,statusFilter,fieldFilter}: {
   list:List; lists:List[]; boards:Board[]; onOpen:(card:Card)=>void;
   onAdd:(listId:string,text:string,position:number)=>Promise<void>; onRename:(listId:string,title:string)=>Promise<void>;
-  onAction:Action; renderCard:(card:Card)=>React.ReactNode; query:string; statusFilter:'all'|'open'|'completed';
+  onAction:Action; renderCard:(card:Card)=>React.ReactNode; query:string; statusFilter:'all'|'open'|'completed';fieldFilter:string;
 }) {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id:`list:${list.id}`,data:{type:'list',list}});
   const [adding,setAdding]=useState(false);
@@ -33,7 +33,7 @@ export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,rend
   const [archivedCards,setArchivedCards]=useState<{id:string;title:string}[]>([]);
   const [busy,setBusy]=useState(false);
   const [actionError,setActionError]=useState('');
-  const visible=list.cards.filter(card=>(statusFilter==='all'||card.completed===(statusFilter==='completed'))&&(card.title.toLowerCase().includes(query.toLowerCase())||card.description?.toLowerCase().includes(query.toLowerCase())));
+  const visible=list.cards.filter(card=>{const [fieldId,expected]=fieldFilter.split(':');const checkbox=fieldFilter===''||Boolean(card.custom_values?.find(value=>value.field_id===fieldId)?.value)===(expected==='true');return checkbox&&(statusFilter==='all'||card.completed===(statusFilter==='completed'))&&(card.title.toLowerCase().includes(query.toLowerCase())||card.description?.toLowerCase().includes(query.toLowerCase()))});
   const close=()=>{setMenu(false);setSection('main')};
   async function act(action:string,payload?:Record<string,unknown>) {
     setBusy(true);
@@ -92,7 +92,7 @@ export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,rend
       {section==='copy'&&<form onSubmit={e=>{e.preventDefault();if(copyTitle.trim())void act('copy',{board_id:targetBoard,title:copyTitle})}} className="space-y-2"><input value={copyTitle} onChange={e=>setCopyTitle(e.target.value)} maxLength={160} className="w-full rounded border p-2 text-sm"/><select value={targetBoard} onChange={e=>setTargetBoard(e.target.value)} className="w-full rounded border p-2 text-sm">{boards.map(board=><option key={board.id} value={board.id}>{board.title}</option>)}</select><button disabled={busy||!copyTitle.trim()} className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm text-white">Criar cópia</button></form>}
       {section==='cards'&&<><p className="mb-2 text-xs">Mover todos os cartões para:</p><select value={targetList} onChange={e=>setTargetList(e.target.value)} className="w-full rounded border p-2 text-sm"><option value="">Selecione a lista</option>{lists.filter(item=>item.id!==list.id).map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select><button disabled={busy||!targetList} onClick={()=>void act('moveCards',{list_id:targetList})} className="mt-2 w-full rounded bg-[#0c66e4] px-3 py-1.5 text-sm text-white">Mover todos</button>{menuButton('Arquivar todos os cartões',()=>{if(confirm('Arquivar todos os cartões desta lista?'))void act('archiveCards')},true)}</>}
       {section==='sort'&&<>{[['title','Título (A–Z)'],['due','Prazo mais próximo'],['newest','Mais recentes'],['oldest','Mais antigos']].map(([key,label])=><button key={key} onClick={()=>void act('sort',{by:key})} className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-[#e9eaed]">{label}</button>)}</>}
-      {section==='archived'&&<><p className="mb-2 text-xs">Cartões arquivados nesta lista</p>{archivedCards.length===0?<p className="text-xs text-[#626f86]">Nenhum cartão arquivado.</p>:archivedCards.map(card=><div key={card.id} className="flex items-center gap-2 border-t py-2 text-xs"><span className="min-w-0 flex-1 truncate">{card.title}</span><button onClick={()=>void act('restoreCard',{card_id:card.id})} className="text-[#0c66e4]">Restaurar</button></div>)}</>}
+      {section==='archived'&&<><p className="mb-2 text-xs">Cartões arquivados nesta lista</p>{archivedCards.length===0?<p className="text-xs text-[#626f86]">Nenhum cartão arquivado.</p>:archivedCards.map(card=><div key={card.id} className="flex items-center gap-2 border-t py-2 text-xs"><span className="min-w-0 flex-1 truncate">{card.title}</span><button onClick={()=>void act('restoreCard',{card_id:card.id})} className="text-[#0c66e4]">Restaurar</button><button onClick={()=>{if(confirm(`Excluir definitivamente “${card.title}”?`))void act('deleteCard',{card_id:card.id})}} className="text-[#ae2a19]">Excluir</button></div>)}</>}
       {section!=='main'&&menuButton('← Voltar',()=>setSection('main'))}
     </div>}
   </div>;

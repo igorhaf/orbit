@@ -37,10 +37,11 @@ export class FeaturesService {
 
   async cardBoard(cardId: string, userId: string): Promise<string> {
     validId(cardId);
-    const row = await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at AS card_archived FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
+    const row = await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at AS card_archived,c.kind FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
     if (!row) return bad('Cartão não encontrado.', 404);
     await this.member(row.board_id, userId);
     if (row.list_archived || row.card_archived) bad('Este cartão está arquivado.',409);
+    if(!['normal','template'].includes(row.kind))bad('Este tipo de cartão não possui detalhes editáveis.',409);
     return row.board_id;
   }
 

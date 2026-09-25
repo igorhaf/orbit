@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dueDateFromTitle, labelColorOptions, nextOccurrence, reminderOptions } from './card-rules';
+import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence, reminderOptions } from './card-rules';
 
 test('recognizes valid dates in titles without accepting impossible dates', () => {
   assert.equal(dueDateFromTitle('Entrega 25/12/2026')?.toISOString(),'2026-12-26T02:59:00.000Z');
@@ -20,4 +20,14 @@ test('supports thirty label colors, no color, and explicit reminder intervals', 
   assert.ok(reminderOptions.has(0));
   assert.ok(reminderOptions.has(10080));
   assert.ok(!reminderOptions.has(-1));
+});
+
+test('classifies separators, board links, external links and ordinary titles',()=>{
+  const origin='http://localhost:3000';
+  const board='8a624f24-03a6-4580-bbde-da7d6c984abd';
+  assert.equal(cardKindFromTitle('---',origin).kind,'separator');
+  assert.deepEqual(cardKindFromTitle(`${origin}/board/${board}`,origin),{kind:'board',targetBoardId:board,linkUrl:null});
+  assert.equal(cardKindFromTitle('https://github.com/igorhaf/orbit',origin).kind,'link');
+  assert.equal(cardKindFromTitle('Revisar https://example.com',origin).kind,'normal');
+  assert.equal(cardKindFromTitle('https://example.com/board/'+board,origin).kind,'link');
 });
