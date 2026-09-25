@@ -63,28 +63,28 @@ export type SearchResults = { boards: Board[]; cards: (HomeCard & { description:
 export type AppNotification = { id: string; kind: string; title: string; body: string; created_at: string; read_at: string | null; board_id: string | null; board_title: string | null; card_id: string | null };
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-export const getToken = () => typeof window === 'undefined' ? null : localStorage.getItem('trello_token');
+export const getToken = () => typeof window === 'undefined' ? null : localStorage.getItem('orbit_token');
 export const setSession = (token: string, user: User) => {
-  localStorage.setItem('trello_token', token);
-  localStorage.setItem('trello_user', JSON.stringify(user));
+  localStorage.setItem('orbit_token', token);
+  localStorage.setItem('orbit_user', JSON.stringify(user));
   applyTheme(user.preferences?.theme || 'light');
   document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
   window.dispatchEvent(new Event('account:changed'));
 };
 export const clearSession = () => {
-  localStorage.removeItem('trello_token');
-  localStorage.removeItem('trello_user');
+  localStorage.removeItem('orbit_token');
+  localStorage.removeItem('orbit_user');
   applyTheme('light');
   document.documentElement.dataset.compactCards = 'false';
   window.dispatchEvent(new Event('account:changed'));
 };
 export const getUser = (): User | null => {
   if (typeof window === 'undefined') return null;
-  try { return JSON.parse(localStorage.getItem('trello_user') || 'null'); }
+  try { return JSON.parse(localStorage.getItem('orbit_user') || 'null'); }
   catch { return null; }
 };
 export const setUser = (user: User) => {
-  localStorage.setItem('trello_user', JSON.stringify(user));
+  localStorage.setItem('orbit_user', JSON.stringify(user));
   applyTheme(user.preferences?.theme || 'light');
   document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
   window.dispatchEvent(new Event('account:changed'));

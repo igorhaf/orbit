@@ -87,7 +87,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   useEffect(() => {
     const accountChanged = () => updateUser(getUser());
     const historyChanged = () => setHistory(historyState());
-    const pinChanged = () => setPinned(localStorage.getItem('trello_sidebar_pinned') !== 'false');
+    const pinChanged = () => setPinned(localStorage.getItem('orbit_sidebar_pinned') !== 'false');
     window.addEventListener('account:changed', accountChanged);
     window.addEventListener('history:changed', historyChanged);
     window.addEventListener('sidebar:changed', pinChanged);
@@ -164,7 +164,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     setPanel(null);
   }
   function togglePin() {
-    localStorage.setItem('trello_sidebar_pinned', String(!pinned));
+    localStorage.setItem('orbit_sidebar_pinned', String(!pinned));
     window.dispatchEvent(new Event('sidebar:changed'));
   }
   function openBoard(id: string) { setPanel(null); router.push(`/board/${id}`); }
@@ -227,7 +227,7 @@ export function WorkspaceSidebar({ boards, activeId, onCreate, onChoose }: { boa
   const router = useRouter();
   const [pinned, setPinned] = useState(true);
   useEffect(() => {
-    const sync = () => setPinned(localStorage.getItem('trello_sidebar_pinned') !== 'false');
+    const sync = () => setPinned(localStorage.getItem('orbit_sidebar_pinned') !== 'false');
     sync(); window.addEventListener('sidebar:changed', sync);
     return () => window.removeEventListener('sidebar:changed', sync);
   }, []);

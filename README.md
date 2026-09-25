@@ -1,6 +1,6 @@
 # Orbit
 
-Orbit é uma aplicação Kanban inspirada no Trello, feita com Next.js, NestJS, PostgreSQL e Tailwind CSS. Roda diretamente na máquina, sem Docker.
+Orbit é uma aplicação Kanban feita com Next.js, NestJS, PostgreSQL e Tailwind CSS. Roda diretamente na máquina, sem Docker.
 
 ## Funcionalidades desta etapa
 
