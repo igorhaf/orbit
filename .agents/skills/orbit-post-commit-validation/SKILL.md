@@ -1,11 +1,11 @@
 ---
-name: mytrello-post-commit-validation
-description: Validate MyTrello after every user-requested commit by rebuilding, restarting the application, and running unit tests; repair failures and repeat until verification passes.
+name: orbit-post-commit-validation
+description: Validate Orbit after every user-requested commit by rebuilding, restarting the application, and running unit tests; repair failures and repeat until verification passes.
 ---
 
-# MyTrello post-commit validation
+# Orbit post-commit validation
 
-Use this skill after every commit the user explicitly requests in this repository. It does not authorize creating a commit, staging files, or changing branches. Follow `../mytrello-git-conventions/SKILL.md` for authorized Git actions.
+Use this skill after every commit the user explicitly requests in this repository. It does not authorize creating a commit, staging files, or changing branches. Follow `../orbit-git-conventions/SKILL.md` for authorized Git actions.
 
 ## Validation loop
 

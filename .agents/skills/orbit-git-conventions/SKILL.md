@@ -1,11 +1,11 @@
 ---
-name: mytrello-git-conventions
-description: Apply MyTrello's English branch naming and Conventional Commits rules when the user explicitly requests a branch or commit in this repository.
+name: orbit-git-conventions
+description: Apply Orbit's English branch naming and Conventional Commits rules when the user explicitly requests a branch or commit in this repository.
 ---
 
-# MyTrello Git conventions
+# Orbit Git conventions
 
-Use this skill only for Git branch and commit work in the MyTrello repository.
+Use this skill only for Git branch and commit work in the Orbit repository.
 
 ## Authorization
 

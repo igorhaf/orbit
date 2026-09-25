@@ -20,7 +20,7 @@ export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
   return <div className="min-h-screen bg-[#f8f9fb]">
     <div className="flex items-center justify-center gap-2 pt-10 text-[#172b4d]">
       <span className="flex h-9 w-9 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={24} strokeWidth={2.8}/></span>
-      <strong className="text-[30px] tracking-[-1.5px]">Trello</strong>
+      <strong className="text-[30px] tracking-[-1.5px]">Orbit</strong>
     </div>
     <div className="mx-auto mt-8 grid max-w-[1040px] items-center gap-12 px-4 pb-16 md:grid-cols-2 md:gap-16 md:px-10">
       <div className="hidden md:block">

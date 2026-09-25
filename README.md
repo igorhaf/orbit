@@ -1,6 +1,6 @@
-# MyTrello
+# Orbit
 
-Aplicação Kanban inspirada no Trello, feita com Next.js, NestJS, PostgreSQL e Tailwind CSS. Roda diretamente na máquina, sem Docker.
+Orbit é uma aplicação Kanban inspirada no Trello, feita com Next.js, NestJS, PostgreSQL e Tailwind CSS. Roda diretamente na máquina, sem Docker.
 
 ## Funcionalidades desta etapa
 
@@ -30,7 +30,7 @@ O cadastro e os convites estão desativados nesta etapa de conta única. Exclus�
 1. Crie um banco vazio no PostgreSQL. Exemplo, usando uma conta com permissão:
 
    ```bash
-   createdb mytrello
+   createdb orbit
    ```
 
 2. Instale as dependências e prepare as variáveis:
@@ -73,4 +73,4 @@ A migração guarda apenas o hash da senha e reconfigura esse acesso a cada exec
 
 O SQL fica em `apps/api/sql/schema.sql`.
 
-Antes de cada commit, o hook de Git executa `npm run build`. Se houver erro ou aviso de lint, corrija, execute o build novamente e só então faça o commit. O hook é instalado por `npm install` via Husky.
+Antes de cada commit, execute `npm run build`. Se houver erro ou aviso de lint, corrija e repita o build antes de criar o commit.

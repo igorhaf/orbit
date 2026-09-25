@@ -1,5 +1,5 @@
 {
-  "name": "mytrello",
+  "name": "orbit",
   "private": true,
   "workspaces": [
     "apps/*"
@@ -9,7 +9,6 @@
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
     "lint:fix": "npm run lint:fix -w apps/api && npm run lint:fix -w apps/web",
-    "prepare": "husky",
     "db:migrate": "npm run db:migrate -w apps/api"
   },
   "devDependencies": {
@@ -17,7 +16,6 @@
     "concurrently": "^9.2.1",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.6",
-    "husky": "^9.1.7",
     "typescript-eslint": "^8.70.1"
   }
 }

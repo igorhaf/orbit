@@ -174,7 +174,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   return <header className="relative z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
       <span className="flex h-7 w-7 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={19} strokeWidth={2.8}/></span>
-      <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">Trello</span>
+      <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">Orbit</span>
     </button>
     <nav className="ml-1 hidden items-center gap-1 md:flex">
       <button onClick={() => router.push('/')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
