@@ -71,6 +71,8 @@ O cadastro e os convites estão desativados nesta etapa de conta única. Exclus�
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 
+Para acessar pelo celular, conecte-o à mesma rede Wi-Fi da máquina e abra no navegador o endereço `http://IP-DA-MAQUINA:3000` (por exemplo, `http://192.168.68.57:3000`). O frontend usa um proxy local para encaminhar as chamadas à API, então não é necessário configurar o IP do celular.
+
 ## Conta inicial
 
 - E-mail: `igorhaf@gmail.com`

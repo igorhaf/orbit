@@ -88,7 +88,9 @@ export type HomeData = { upNext: HomeCard[]; highlights: Activity[]; yourItems: 
 export type SearchResults = { boards: Board[]; cards: (HomeCard & { description: string })[] };
 export type AppNotification = { id: string; kind: string; title: string; body: string; created_at: string; read_at: string | null; board_id: string | null; board_title: string | null; card_id: string | null };
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+// Keep API calls on the same origin by default. Next.js proxies /api to Nest,
+// which also makes the app work from another device on the local network.
+const BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 export const getToken = () => typeof window === 'undefined' ? null : localStorage.getItem('orbit_token');
 export const setSession = (token: string, user: User) => {
   localStorage.setItem('orbit_token', token);
