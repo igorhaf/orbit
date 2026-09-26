@@ -1,0 +1,14 @@
+project:
+  name: Orbit
+  type: software
+default_executor: codex
+agents: [developer, qa]
+plugins: [filesystem]
+permissions:
+  - filesystem.read
+  - filesystem.write
+  - process.execute
+  - execution.automatic
+workflow:
+  ready: developer
+  review: qa

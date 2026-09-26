@@ -2,12 +2,14 @@ import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
+import { migrateVersions } from './migrations';
 
 async function main() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
     await pool.query(readFileSync(resolve(__dirname, '../sql/schema.sql'), 'utf8'));
     await pool.query(readFileSync(resolve(__dirname, '../sql/automations.sql'), 'utf8'));
+    await migrateVersions(pool);
     const { rows: [user] } = await pool.query(
       `INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3)
        ON CONFLICT (email) DO UPDATE SET password_hash=EXCLUDED.password_hash

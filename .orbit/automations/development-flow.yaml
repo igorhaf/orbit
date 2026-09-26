@@ -1,0 +1,11 @@
+name: Run configured agent when card enters Ready
+trigger:
+  type: event
+  event: card.moved
+conditions:
+  - field: list
+    op: eq
+    value: Ready
+actions:
+  - type: run_agent
+    target: card

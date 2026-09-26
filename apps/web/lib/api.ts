@@ -21,6 +21,8 @@ export type ChecklistGroup = { id:string;card_id:string;title:string;position:nu
 export type CardExtensions = { checklists:ChecklistGroup[];values:CustomValue[] };
 export type Card = {
   id: string;
+  execution?: {enabled:boolean;agent:string|null;executor:string|null}|null;
+  result?: {status:string}|null;
   kind?: 'normal'|'template'|'board'|'separator'|'link'|'mirror';
   target_board_id?: string|null;
   target_board_title?: string|null;

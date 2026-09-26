@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "npm run lint && tsc -p tsconfig.json",
-    "test": "tsx --test src/card-rules.spec.ts src/automation-rules.spec.ts",
-    "test:integration": "tsx --test src/automations.integration.spec.ts",
-    "test:browser": "tsx --test src/automations.browser.spec.ts",
+    "test": "tsx --test src/card-rules.spec.ts src/automation-rules.spec.ts src/execution/execution.spec.ts",
+    "test:integration": "tsx --test --test-concurrency=1 src/automations.integration.spec.ts src/execution/execution.integration.spec.ts",
+    "test:browser": "tsx --test --test-concurrency=1 src/automations.browser.spec.ts src/execution/execution.browser.spec.ts",
     "lint": "eslint src --max-warnings 0",
     "lint:fix": "eslint src --fix --max-warnings 0",
     "start": "node dist/main.js",
@@ -17,6 +17,7 @@
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
+    "ajv": "^6.15.0",
     "bcryptjs": "^3.0.2",
     "dotenv": "^17.2.0",
     "jsonwebtoken": "^9.0.2",
@@ -24,7 +25,8 @@
     "pg": "^8.16.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "socket.io": "^4.8.4"
+    "socket.io": "^4.8.4",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
