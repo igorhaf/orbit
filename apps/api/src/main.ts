@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import 'dotenv/config';
-import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Res, HttpException } from '@nestjs/common';
+import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Res, HttpException, Inject } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Request, Response, json } from 'express';
 import * as bcrypt from 'bcryptjs';
@@ -10,6 +10,7 @@ import { Db } from './db';
 import { FeaturesController, FeaturesService, SINGLE_EMAIL } from './features';
 import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence, recurrenceOptions, reminderOptions } from './card-rules';
 import { CardExtensionsController, CardExtensionsService } from './card-extensions';
+import { AutomationsController, AutomationsService } from './automations';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;attachments:boolean;customFields:boolean};
@@ -39,7 +40,7 @@ const listColors = new Set(['blue','green','yellow','orange','red','purple','pin
 
 @Injectable()
 class Service {
-  constructor(private db: Db, private features: FeaturesService) {}
+  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService) {}
   private async classifyTitle(title:string,userId:string){
     const result=cardKindFromTitle(title,process.env.WEB_ORIGIN||'http://localhost:3000');
     if(result.targetBoardId)await this.member(result.targetBoardId,userId);
@@ -895,7 +896,7 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(private service: Service) {}
+  constructor(@Inject(Service) private service: Service) {}
   @Get('health') health() { return { status: 'ok' }; }
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
@@ -952,7 +953,7 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService], controllers: [ApiController, FeaturesController, CardExtensionsController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController] })
 class AppModule {}
 
 async function bootstrap() {

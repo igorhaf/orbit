@@ -9,6 +9,7 @@ import { CardDatesPanel, CardLabelsPanel, CardMembersPanel } from './card-extras
 import { CardSections } from './card-sections';
 import { CardOperations } from './card-operations';
 import { CardComments } from './card-comments';
+import { AutomationControls } from './automations';
 
 export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
   card: Card;
@@ -71,6 +72,7 @@ export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
         {(card.start_date||card.due_date)&&<div><h3 className="mb-2 text-xs font-semibold text-[#626f86]">Datas</h3><button onClick={()=>setPanel('date')} className="rounded bg-[#e9eaed] px-2 py-1 text-left text-xs">{card.start_date&&<span className="block">Início: {new Date(card.start_date).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}</span>}{card.due_date&&<span className="block">Vence: {new Date(card.due_date).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}</span>}{card.recurrence&&<span className="block text-[#0c66e4]">Recorrente: {({daily:'diário',weekly:'semanal',monthly:'mensal',yearly:'anual'} as const)[card.recurrence]}</span>}</button></div>}
       </div>
       <section><h3 className="mb-3 flex items-center gap-3 font-semibold"><AlignLeft size={21}/> Descrição</h3><div className="pl-0 sm:pl-8">{editingDescription?<div><MarkdownEditor value={description} onChange={setDescription} placeholder="Adicione contexto, links e imagens em Markdown..."/><div className="mt-2 flex gap-2"><button disabled={busy} onClick={async()=>{if(await updateCard({description},{description:card.description},'editar descrição'))setEditingDescription(false)}} className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white">Salvar</button><button onClick={()=>{setDescription(card.description||'');setEditingDescription(false)}} className="rounded px-3 py-1.5 text-sm hover:bg-[#e9eaed]">Cancelar</button></div></div>:<div className="min-h-16 rounded bg-[#e9eaed] p-3 text-sm"><button onClick={()=>setEditingDescription(true)} className="mb-2 text-xs font-semibold text-[#0c66e4]">Editar descrição</button>{description?<RichText text={description}/>:<p>Adicione uma descrição mais detalhada...</p>}</div>}</div></section>
+      <AutomationControls boardId={board.id} cardId={card.id} onChanged={onChanged}/>
       <CardSections key={card.id} card={card} board={board} onChanged={onChanged}/>
       <CardComments card={card} board={board} details={details} onChanged={onChanged} run={run} user={user}/>
     </div><aside className="space-y-4"><div><h4 className="mb-2 text-xs font-bold text-[#626f86]">Adicionar ao cartão</h4><div className="space-y-2">

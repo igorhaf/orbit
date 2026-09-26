@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, Injectable, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, Injectable, Inject, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { Db } from './db';
@@ -16,7 +16,7 @@ const bounded = (value: unknown, label: string, max: number) => {
 
 @Injectable()
 export class FeaturesService {
-  constructor(private db: Db) {}
+  constructor(@Inject(Db) private db: Db) {}
 
   user(req: Request): string {
     const token = req.headers.authorization?.replace(/^Bearer /i, '');
@@ -305,7 +305,7 @@ export class FeaturesService {
 
 @Controller()
 export class FeaturesController {
-  constructor(private features: FeaturesService) {}
+  constructor(@Inject(FeaturesService) private features: FeaturesService) {}
   @Get('account') account(@Req() req: Request) { return this.features.account(this.features.user(req)); }
   @Patch('account') updateAccount(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updateProfile(this.features.user(req),body); }
   @Patch('account/preferences') preferences(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updatePreferences(this.features.user(req),body); }

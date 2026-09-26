@@ -5,6 +5,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { Archive, ChevronLeft, ChevronRight, GripVertical, MoreHorizontal, Plus, X } from 'lucide-react';
 import { api, send, Board, Card, List } from '@/lib/api';
+import { AutomationControls } from './automations';
 
 const colors: Record<string,string> = {
   blue:'#579dff', green:'#4bce97', yellow:'#f5cd47', orange:'#fea362',
@@ -73,6 +74,7 @@ export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,rend
       <div className="mb-2 flex items-center justify-between border-b border-[#dfe1e6] pb-1"><strong className="truncate text-sm">{list.title}</strong><button onClick={close} aria-label="Fechar menu"><X size={16}/></button></div>
       {actionError&&<p role="alert" className="mb-2 rounded bg-[#ffebe6] p-2 text-xs text-[#ae2a19]">{actionError}</p>}
       {section==='main'&&<>
+        <AutomationControls boardId={list.board_id} listId={list.id}/>
         {menuButton('Renomear',()=>{setListTitle(list.title);setEditing(true);close()})}
         {menuButton('Adicionar cartão',()=>openComposer(list.cards.length))}
         {menuButton('Adicionar cartão no início',()=>openComposer(0))}
