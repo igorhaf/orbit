@@ -223,3 +223,49 @@ CREATE TABLE IF NOT EXISTS card_merges (
   created_at timestamptz NOT NULL DEFAULT now(),
   undone_at timestamptz
 );
+CREATE TABLE IF NOT EXISTS planner_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body text NOT NULL,
+  enabled boolean NOT NULL DEFAULT true,
+  proactive boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS focus_blocks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title varchar(300) NOT NULL,
+  starts_at timestamptz NOT NULL,
+  ends_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (ends_at > starts_at)
+);
+CREATE TABLE IF NOT EXISTS focus_block_cards (
+  focus_block_id uuid NOT NULL REFERENCES focus_blocks(id) ON DELETE CASCADE,
+  card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  PRIMARY KEY(focus_block_id,card_id)
+);
+CREATE TABLE IF NOT EXISTS planner_suggestions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  starts_at timestamptz NOT NULL,
+  ends_at timestamptz NOT NULL,
+  reason text NOT NULL DEFAULT '',
+  source varchar(24) NOT NULL,
+  status varchar(16) NOT NULL DEFAULT 'pending',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz,
+  CHECK (ends_at > starts_at),
+  CHECK (status IN ('pending','accepted','rejected'))
+);
+CREATE INDEX IF NOT EXISTS planner_suggestions_user_status_idx ON planner_suggestions(user_id,status,starts_at);
+CREATE TABLE IF NOT EXISTS email_sources (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  sender varchar(255),
+  subject varchar(500),
+  body text NOT NULL,
+  received_at timestamptz NOT NULL DEFAULT now()
+);

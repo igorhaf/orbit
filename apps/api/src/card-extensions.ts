@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpException, Injectable, Param, Patch, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param, Patch, Post, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Db } from './db';
 import { FeaturesService } from './features';
@@ -16,7 +16,7 @@ const safeUrl=(input:unknown)=>{const value=text(input,'URL',2000);let url:URL;t
 
 @Injectable()
 export class CardExtensionsService {
-  constructor(private db:Db,private features:FeaturesService) {}
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService) {}
   user(req:Request){return this.features.user(req)}
   async card(cardId:string,userId:string){
     const boardId=await this.features.cardBoard(id(cardId),userId);
@@ -199,7 +199,7 @@ export class CardExtensionsService {
 
 @Controller()
 export class CardExtensionsController {
-  constructor(private service:CardExtensionsService){}
+  constructor(@Inject(CardExtensionsService) private service:CardExtensionsService){}
   @Get('cards/:cardId/extensions') details(@Req() request:Request,@Param('cardId') cardId:string){return this.service.details(cardId,this.service.user(request))}
   @Get('boards/:boardId/checklists/catalog') catalog(@Req() request:Request,@Param('boardId') boardId:string){return this.service.catalog(boardId,this.service.user(request))}
   @Post('cards/:cardId/checklists') createChecklist(@Req() request:Request,@Param('cardId') cardId:string,@Body() body:Payload){return this.service.createChecklist(cardId,this.service.user(request),body)}
