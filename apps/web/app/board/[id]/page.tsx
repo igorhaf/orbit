@@ -101,10 +101,10 @@ export default function BoardPage({params}:{params:Promise<{id:string}>}) {
     try {
       const path=`/lists/${list.id}`;
       if(action==='insert') await send(`/boards/${id}/lists`,'POST',payload);
-      else if(action==='reorder'||action==='color'||action==='collapse') {
-        const body=action==='reorder'?{position:payload.position}:action==='color'?{color:payload.color}:{collapsed:payload.collapsed};
+      else if(action==='reorder'||action==='color'||action==='collapse'||action==='completion') {
+        const body=action==='reorder'?{position:payload.position}:action==='color'?{color:payload.color}:action==='completion'?{is_completion_list:payload.is_completion_list}:{collapsed:payload.collapsed};
         await send(path,'PATCH',body);
-        const old=action==='reorder'?{position:board?.lists?.findIndex(item=>item.id===list.id)??0}:action==='color'?{color:list.color}:{collapsed:list.collapsed};
+        const old=action==='reorder'?{position:board?.lists?.findIndex(item=>item.id===list.id)??0}:action==='color'?{color:list.color}:action==='completion'?{is_completion_list:list.is_completion_list}:{collapsed:list.collapsed};
         remember({label:'alterar lista',undo:[{path,method:'PATCH',body:old}],redo:[{path,method:'PATCH',body}]});
       }
       else if(action==='archive') { await send(`${path}/archive`,'POST'); remember({label:'arquivar lista',undo:[{path:`${path}/restore`,method:'POST'}],redo:[{path:`${path}/archive`,method:'POST'}]}); }

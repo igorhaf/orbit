@@ -23,7 +23,7 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
   const features=new FeaturesService(db),projects=new ProjectRegistry(db),dispatcher=new ActionDispatcher(),service=new CardExecutionService(db,features,projects,new OrbitEvents(),dispatcher),automations=new AutomationsService(db,features,dispatcher);
   try{
     await db.query(await readFile(resolve(__dirname,'../../sql/schema.sql'),'utf8'));await db.query(await readFile(resolve(__dirname,'../../sql/automations.sql'),'utf8'));
-    await migrateVersions(db.pool);await migrateVersions(db.pool);assert.equal((await db.one('SELECT count(*)::int n FROM schema_migrations'))?.n,1);
+    await migrateVersions(db.pool);await migrateVersions(db.pool);assert.equal((await db.one('SELECT count(*)::int n FROM schema_migrations'))?.n,2);
     const user=(await db.one("INSERT INTO users(name,email,password_hash) VALUES('Test',$1,'test') RETURNING id",[randomUUID()+'@example.invalid']))!.id;
     const board=(await db.one("INSERT INTO boards(title,owner_id) VALUES('Test',$1) RETURNING id",[user]))!.id;
     await db.query("INSERT INTO board_members(board_id,user_id,role) VALUES($1,$2,'owner')",[board,user]);
@@ -32,10 +32,11 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
     const card=(await db.one("INSERT INTO cards(list_id,title,description) VALUES($1,'Card','Description') RETURNING id",[list]))!.id;
     const project=(await db.one("INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,'Project',$2) RETURNING id",[user,root]))!.id;
     await mkdir(join(root,'agents'));await mkdir(join(root,'skills'));
-    await writeFile(join(root,'orbit.yaml'),'default_executor: fixture\nplugins: [filesystem]\npermissions: [filesystem.read, execution.automatic]\nagents: [developer, qa]\n');
+    await writeFile(join(root,'orbit.yaml'),'default_executor: fixture\nplugins: [filesystem]\npermissions: [filesystem.read, execution.automatic]\nagents: [developer, qa]\nexecution:\n  agent: developer\n  executor: fixture\n  action: analyze\n  skills: [review]\n  permissions: [filesystem.read]\n  context:\n    files: [selected.txt]\n');
     await writeFile(join(root,'agents/developer.md'),'---\nid: developer\nexecutor: fixture\nskills: [review]\npermissions: [filesystem.read]\n---\nDeveloper instructions');
     await writeFile(join(root,'agents/qa.md'),'---\nid: qa\nexecutor: fixture\naction: analyze\npermissions: [filesystem.read]\n---\nQA instructions');
     await writeFile(join(root,'skills/review.md'),'---\nid: review\n---\nReview');await writeFile(join(root,'selected.txt'),'Project content');
+    await db.query('UPDATE cards SET ai_project_id=$2 WHERE id=$1',[card,project]);
     service.executors.register({id:'fixture',name:'Fixture',actions:[{id:'analyze',name:'Analyze',permissions:[]},{id:'fail',name:'Fail',permissions:[]},{id:'wait',name:'Wait',permissions:[]}],async execute(input){
       if(input.action==='fail')throw new Error('Expected executor failure');
       if(input.action==='wait')await new Promise<void>(resolve=>input.signal.addEventListener('abort',()=>resolve(),{once:true}));
@@ -43,6 +44,13 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
     }});
     service.onModuleInit();automations.onModuleInit();
     const config={...emptyConfig(),enabled:true,project_id:project,agent:'developer',executor:'fixture',action:'analyze',permissions:['filesystem.read'],context:{files:['selected.txt']},integrations:[{plugin:'filesystem',action:'read',config:{path:'selected.txt'}}]};
+    await t.test('project defaults prefill card execution and can be published globally',async()=>{
+      const details=await service.details(card,user);assert.equal(details.execution.project_id,project);assert.equal(details.execution.agent,'developer');assert.deepEqual(details.execution.context.files,['selected.txt']);
+      await service.save(card,user,{...config,context:{knowledge:[],rules:[],files:['selected.txt'],instructions:'Shared context'},save_as_project_default:true});
+      assert.match(await readFile(join(root,'orbit.yaml'),'utf8'),/Shared context/);
+      const refreshed=await service.details(card,user);assert.equal(refreshed.execution.context.instructions,'Shared context');
+      await service.save(card,user,{...emptyConfig(),project_id:project});
+    });
     await t.test('normal card needs no execution configuration',async()=>{const data=await service.details(card,user);assert.equal(data.execution.enabled,false);assert.equal(data.result.status,'idle');assert.deepEqual(data.runs,[]);await assert.rejects(()=>service.enqueue(card,user,{}));assert.equal((await db.one('SELECT title FROM cards WHERE id=$1',[card]))?.title,'Card')});
     await t.test('permissions and paths are validated before persistence',async()=>{
       await assert.rejects(()=>service.save(card,user,{...config,permissions:['filesystem.write']}));
@@ -80,5 +88,14 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
       await service.tick();await automations.tick();assert.equal((await db.one("SELECT count(*)::int n FROM card_runs WHERE status='queued'"))?.n,0);
     });
     await t.test('invalid project YAML is visible but does not crash the catalog',async()=>{await writeFile(join(root,'orbit.yaml'),'permissions: [');const catalog=await service.catalog(user,project);assert.ok(catalog.project!.warnings.length);await assert.rejects(()=>service.save(card,user,config))});
+    await t.test('a board can have one completion list and it determines card completion',async()=>{
+      const done=(await db.one("INSERT INTO lists(board_id,title,position) VALUES($1,'Done',2) RETURNING id",[board]))!.id;
+      await db.query('UPDATE lists SET is_completion_list=true WHERE id=$1',[done]);
+      await db.query('UPDATE cards SET list_id=$2 WHERE id=$1',[card,done]);
+      assert.equal((await db.one('SELECT completed FROM cards WHERE id=$1',[card]))?.completed,true);
+      await assert.rejects(()=>db.query('UPDATE lists SET is_completion_list=true WHERE id=$1',[review]));
+      await db.query('UPDATE cards SET list_id=$2 WHERE id=$1',[card,list]);
+      assert.equal((await db.one('SELECT completed FROM cards WHERE id=$1',[card]))?.completed,false);
+    });
   }finally{service.onModuleDestroy();automations.onModuleDestroy();await db.query(`DROP SCHEMA ${schema} CASCADE`);await db.onModuleDestroy();await rm(root,{recursive:true,force:true})}
 });

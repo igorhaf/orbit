@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Archive, ChevronLeft, ChevronRight, GripVertical, MoreHorizontal, Plus, X } from 'lucide-react';
+import { Archive, CheckCircle2, ChevronLeft, ChevronRight, GripVertical, MoreHorizontal, Plus, X } from 'lucide-react';
 import { api, send, Board, Card, List } from '@/lib/api';
 import { AutomationControls } from './automations';
 
@@ -52,6 +52,7 @@ export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,rend
     <div className={`flex shrink-0 items-center gap-1 px-2 pb-2 pt-2 ${list.collapsed?'flex-col':''}`}>
       <button type="button" {...attributes} {...listeners} title="Arrastar lista" className="rounded p-1 text-[#626f86] hover:bg-[#dfe1e6]"><GripVertical size={16}/></button>
       {!list.collapsed&&(editing?<form className="min-w-0 flex-1" onSubmit={async e=>{e.preventDefault();if(listTitle.trim())await onRename(list.id,listTitle);setEditing(false)}}><input autoFocus value={listTitle} onChange={e=>setListTitle(e.target.value)} onBlur={()=>{if(listTitle.trim()&&listTitle!==list.title)void onRename(list.id,listTitle);setEditing(false)}} className="w-full rounded border border-[#388bff] px-2 py-1 text-sm font-semibold"/></form>:<button type="button" onClick={()=>{setListTitle(list.title);setEditing(true)}} className="min-w-0 flex-1 truncate px-1 text-left text-sm font-bold" title="Renomear lista">{list.title}</button>)}
+      {list.is_completion_list&&<span title="Coluna de conclusão" className="rounded bg-[#dffcf0] p-1 text-[#216e4e]"><CheckCircle2 size={15}/></span>}
       <button type="button" onClick={()=>void act('collapse',{collapsed:!list.collapsed})} title={list.collapsed?'Expandir lista':'Recolher lista'} className="rounded p-1 text-[#44546f] hover:bg-[#dfe1e6]">{list.collapsed?<ChevronRight size={17}/>:<ChevronLeft size={17}/>}</button>
       <button type="button" onClick={()=>setMenu(!menu)} aria-label={`Menu da lista ${list.title}`} className="rounded p-1 text-[#44546f] hover:bg-[#dfe1e6]"><MoreHorizontal size={18}/></button>
     </div>
@@ -86,6 +87,7 @@ export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,rend
         {menuButton('Copiar lista',()=>setSection('copy'))}
         {menuButton('Ações dos cartões',()=>setSection('cards'))}
         {menuButton('Ordenar cartões',()=>setSection('sort'))}
+        {menuButton(list.is_completion_list?'Remover coluna de conclusão':'Definir como coluna de conclusão',()=>void act('completion',{is_completion_list:!list.is_completion_list}))}
         {menuButton('Cartões arquivados',()=>void showArchived())}
         <div className="mt-2 border-t border-[#dfe1e6] pt-2"><p className="px-2 text-xs font-semibold">Cor da lista</p><div className="flex flex-wrap gap-1 p-2"><button onClick={()=>void act('color',{color:null})} title="Sem cor" className="h-6 w-6 rounded border border-[#8590a2] bg-white">×</button>{Object.entries(colors).map(([key,color])=><button key={key} onClick={()=>void act('color',{color:key})} title={key} className="h-6 w-6 rounded" style={{background:color,outline:list.color===key?'2px solid #172b4d':undefined}}/>)}</div></div>
         {menuButton('Arquivar lista',()=>void act('archive'),true)}

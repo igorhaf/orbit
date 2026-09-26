@@ -52,7 +52,7 @@ export type Card = {
   checklist_done: number;
   custom_values?: CustomValue[];
 };
-export type List = { id: string; board_id: string; title: string; position: number; color: string | null; collapsed: boolean; archived_at?: string | null; card_count?: number; cards: Card[] };
+export type List = { id: string; board_id: string; title: string; position: number; color: string | null; collapsed: boolean; is_completion_list?: boolean; archived_at?: string | null; card_count?: number; cards: Card[] };
 export type Board = {
   id: string;
   is_inbox?: boolean;

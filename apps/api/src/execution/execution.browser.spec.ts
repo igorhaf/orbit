@@ -15,12 +15,13 @@ test('optional execution config, real plugin run and history work on desktop and
   let project:string|undefined;
   const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   try{
-    await mkdir(root+'/.orbit');await writeFile(root+'/.orbit/orbit.yaml','plugins: [filesystem]\npermissions: [filesystem.read]\n');await writeFile(root+'/selected.txt','ORBIT_BROWSER_OK');
+    await mkdir(root+'/.orbit');await writeFile(root+'/.orbit/orbit.yaml','plugins: [filesystem]\npermissions: [filesystem.read]\nexecution:\n  executor: plugin\n  action: execute\n  permissions: [filesystem.read]\n');await writeFile(root+'/selected.txt','ORBIT_BROWSER_OK');
     project=(await db.one("INSERT INTO ai_projects(name,local_path,owner_id) VALUES('Execution browser fixture',$1,$2) RETURNING id",[root,user.id]))!.id;
     await db.query("INSERT INTO board_members(board_id,user_id,role) VALUES($1,$2,'owner')",[board,user.id]);
     const list=(await db.one("INSERT INTO lists(board_id,title,position) VALUES($1,'Tasks',0) RETURNING id",[board]))!.id;
     const review=(await db.one("INSERT INTO lists(board_id,title,position) VALUES($1,'Review',1) RETURNING id",[board]))!.id;
-    const card=(await db.one("INSERT INTO cards(list_id,title) VALUES($1,'Executable browser card') RETURNING id",[list]))!.id;
+    await db.query('UPDATE lists SET is_completion_list=true WHERE id=$1',[review]);
+    const card=(await db.one("INSERT INTO cards(list_id,title,ai_project_id) VALUES($1,'Executable browser card',$2) RETURNING id",[list,project]))!.id;
     const context=await browser.newContext({viewport:{width:1365,height:1000}});
     await context.addInitScript(({token,user})=>{localStorage.setItem('orbit_token',token);localStorage.setItem('orbit_user',JSON.stringify(user))},{token,user});
     const page=await context.newPage(),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
@@ -30,10 +31,8 @@ test('optional execution config, real plugin run and history work on desktop and
     await panel.waitFor();assert.equal(await panel.locator('details[open]').count(),0);
     await panel.getByText('Execução opcional',{exact:true}).click();
     await panel.getByLabel('Habilitar execução neste cartão').check();
-    await panel.getByLabel('Projeto',{exact:true}).selectOption(project!);
-    await panel.getByLabel('Executor',{exact:true}).selectOption('plugin');
-    await panel.getByLabel('Ação de execução').selectOption('execute');
-    await panel.getByLabel('Ler arquivos',{exact:true}).check();
+    await panel.getByText('Projeto: Execution browser fixture',{exact:false}).waitFor();
+    assert.equal(await panel.getByLabel('Projeto',{exact:true}).count(),0);
     await panel.locator('summary').filter({hasText:'Integrações'}).click();
     await panel.getByRole('button',{name:'Adicionar integração'}).click();
     await panel.getByLabel('path',{exact:true}).fill('selected.txt');
@@ -45,6 +44,7 @@ test('optional execution config, real plugin run and history work on desktop and
     await panel.locator('summary').filter({hasText:'Resultado'}).click();
     await panel.getByText('ORBIT_BROWSER_OK',{exact:true}).waitFor();
     assert.equal((await db.one('SELECT list_id FROM cards WHERE id=$1',[card]))?.list_id,review);
+    await page.getByText('definido pela coluna Review',{exact:false}).waitFor();
     await panel.locator('summary').filter({hasText:'Histórico de execuções (1)'}).click();
     await panel.getByRole('button').filter({hasText:'plugin · Concluído'}).click();
     await panel.getByText(/Run .* etapa:/).waitFor();

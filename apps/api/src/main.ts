@@ -227,12 +227,12 @@ class Service {
     await this.features.visit(boardId,userId);
     const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,is_inbox,ai_default_model,ai_default_effort,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=boards.id) AS background_image FROM boards WHERE id=$1`, [boardId]);
-    const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
+    const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed,is_completion_list FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
     const cards = await this.db.query(`SELECT slot.id,slot.list_id,slot.position,slot.kind,slot.target_board_id,slot.link_url,
       slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
       source_board.id AS source_board_id,source_board.title AS source_board_title,
       (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
-      c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.completed,c.ai_project_id,c.ai_model,c.ai_effort,c.created_at,c.updated_at,
+      c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,CASE WHEN EXISTS(SELECT 1 FROM lists completion WHERE completion.board_id=li.board_id AND completion.archived_at IS NULL AND completion.is_completion_list) THEN li.is_completion_list ELSE c.completed END AS completed,c.ai_project_id,c.ai_model,c.ai_effort,c.created_at,c.updated_at,
       (SELECT json_build_object('enabled',e.enabled,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
       (SELECT json_build_object('status',r.status) FROM card_runs r WHERE r.card_id=c.id ORDER BY r.created_at DESC LIMIT 1) AS result,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
@@ -409,21 +409,27 @@ class Service {
     const color=body.color===undefined ? undefined : body.color===null ? null : value(body.color,'Cor',32);
     if (color && !listColors.has(color)) fail('Cor inválida.');
     if (body.collapsed!==undefined && typeof body.collapsed!=='boolean') fail('Estado inválido.');
+    if (body.is_completion_list!==undefined && typeof body.is_completion_list!=='boolean') fail('Estado de conclusão inválido.');
     const client=await this.db.pool.connect();
     let list;
     try {
       await client.query('BEGIN');
       await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
+      if(body.is_completion_list===true){
+        await client.query('UPDATE lists SET is_completion_list=false WHERE board_id=$1 AND id<>$2',[boardId,id]);
+      }
       if (body.position!==undefined) {
         const order=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId])).rows.map(row=>row.id as string);
         const index=positionIndex(body.position,order.length-1);
         order.splice(order.indexOf(id),1); order.splice(index,0,id);
         for (let i=0;i<order.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[order[i],i]);
       }
-      list=(await client.query('UPDATE lists SET title=COALESCE($2,title),color=CASE WHEN $3::boolean THEN $4::varchar ELSE color END,collapsed=COALESCE($5,collapsed) WHERE id=$1 RETURNING *',[id,title,color!==undefined,color??null,body.collapsed??null])).rows[0];
+      list=(await client.query('UPDATE lists SET title=COALESCE($2,title),color=CASE WHEN $3::boolean THEN $4::varchar ELSE color END,collapsed=COALESCE($5,collapsed),is_completion_list=COALESCE($6,is_completion_list) WHERE id=$1 RETURNING *',[id,title,color!==undefined,color??null,body.collapsed??null,body.is_completion_list??null])).rows[0];
+      if(body.is_completion_list!==undefined)await client.query('UPDATE cards c SET completed=l.is_completion_list FROM lists l WHERE c.list_id=l.id AND l.board_id=$1',[boardId]);
       await client.query('COMMIT');
     } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     if (title) await this.features.record(userId,boardId,null,'list_renamed',`renomeou a lista para ${title}`);
+    if(body.is_completion_list!==undefined)await this.features.record(userId,boardId,null,'list_completion_changed',body.is_completion_list?'definiu uma coluna de conclusão':'removeu a coluna de conclusão');
     return list;
   }
   async archivedLists(boardId: string,userId: string) {
@@ -797,6 +803,7 @@ class Service {
     let startDate: Date | null=body.start_date===undefined?original.start_date as Date | null:optionalDate(body.start_date);
     if (body.title!==undefined && body.due_date===undefined && !dueDate && kind==='normal') dueDate=dueDateFromTitle(title);
     if (body.completed!==undefined && typeof body.completed!=='boolean') fail('Status inválido.');
+    if(body.completed!==undefined&&await this.db.one('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL AND is_completion_list',[boardId]))fail('Este quadro usa uma coluna de conclusão. Mova o cartão entre listas para alterar o status.',409);
     let completed=body.completed===undefined?original.completed as boolean:body.completed as boolean;
     const recurrence=body.recurrence===undefined?original.recurrence as string | null:body.recurrence===null||body.recurrence===''?null:value(body.recurrence,'Recorrência',16);
     if (recurrence && !recurrenceOptions.has(recurrence)) fail('Recorrência inválida.');

@@ -10,7 +10,7 @@ A nova capacidade reutiliza o cadastro de projetos locais existente em **Perfil*
 
 `npm run db:migrate` aplica os SQL anteriores e as migrations numeradas em `apps/api/sql/migrations/`. `schema_migrations` guarda versão e checksum; cada migration é transacional, protegida por advisory lock. Alterar uma migration já aplicada é rejeitado. Acrescente outra migration para evoluções futuras.
 
-`001_executable_cards.sql` acrescenta, sem remover dados ou alterar IDs:
+As migrations `001_executable_cards.sql` e `002_project_defaults_and_completion_lists.sql` acrescentam, sem remover dados ou alterar IDs:
 
 | Tabela | Responsabilidade |
 | --- | --- |
@@ -20,7 +20,13 @@ A nova capacidade reutiliza o cadastro de projetos locais existente em **Perfil*
 
 Campos consultáveis (estado, card, executor, projeto e datas) são colunas/indexes. Configurações e resultados extensíveis são JSONB. Nenhuma coluna específica de GitHub ou Codex é adicionada ao Card.
 
+O projeto do cartão é único e usa o vínculo já existente da **Sessão de prompt** (`ai_project_id`). A área de execução não repete um seletor de projeto. O projeto carrega `execution` de `orbit.yaml` como defaults para agente, executor, action, skills, diretório, permissões e contexto. O cartão persiste apenas diferenças em `overrides`; alterar o YAML atualiza automaticamente os campos que não foram personalizados no cartão. A opção **Salvar esta configuração como padrão do projeto** grava esses valores em `orbit.yaml`; destinos de automação continuam locais ao cartão, pois dependem das listas do quadro.
+
 Conceitualmente, o Card mantém seus campos e passa a ter `execution`, `context`, `integrations`, `automation`, `result` e `runs`. O detalhe de execução retorna a configuração completa; o Kanban carrega somente o resumo opcional de execução e o último estado. `result` é derivado do Run mais recente, não de comentários. Runs anteriores não são sobrescritos. A UI lista os últimos 50; os registros mais antigos permanecem no banco e acessíveis pelo ID.
+
+## Conclusão por coluna
+
+No menu de uma lista, **Definir como coluna de conclusão** marca a coluna com um ícone verde. Há no máximo uma coluna ativa por quadro, garantido no banco. Enquanto ela estiver ativa, o status de cada cartão é definido pela lista: cartões nela são concluídos e os demais estão em andamento. O diálogo mostra esse status e direciona a movimentação do cartão; o checkbox manual continua disponível apenas em quadros sem coluna de conclusão. O campo `cards.completed` foi preservado para compatibilidade e é sincronizado quando uma coluna de conclusão existe.
 
 ## Recursos do projeto
 
@@ -50,6 +56,15 @@ permissions: [filesystem.read, filesystem.write, process.execute, execution.auto
 workflow:
   ready: developer
   review: qa
+execution:
+  agent: developer
+  executor: codex
+  action: implement-feature
+  skills: [implement-feature, create-tests]
+  permissions: [filesystem.read, filesystem.write, process.execute]
+  context:
+    knowledge: [architecture]
+    rules: [coding, git]
 ```
 
 `workflow` é metadado validado, não dispara regras implicitamente. Para disparar, configure/importa uma automação. Sem política declarada, somente leitura e execução de processo podem ser concedidas explicitamente; escrita e execução automática exigem autorização no projeto. As permissões selecionadas no cartão também precisam caber nas permissões do agente.
@@ -100,9 +115,9 @@ No cartão, selecione destinos após sucesso/falha. Também é possível configu
 
 1. Execute migrations; mantenha API e web iniciados.
 2. Cadastre a pasta deste repositório no Perfil, ou use um projeto já cadastrado.
-3. Crie um cartão normal e abra **Execução opcional**.
-4. Habilite a capacidade, selecione projeto, agente `developer`, executor `codex`, action `implement-feature` e permissões leitura, escrita e processos.
-5. Deixe modo manual; selecione contexto adicional se necessário. As rules/skills/knowledge do agente entram automaticamente.
+3. Crie um cartão normal, defina o projeto na **Sessão de prompt** e abra **Execução opcional**.
+4. Os campos vêm de `execution` no projeto. Habilite a capacidade e ajuste somente o que for particular ao cartão.
+5. Marque **Salvar esta configuração como padrão do projeto** para publicar os ajustes no `orbit.yaml`; deixe desmarcado para manter o ajuste local. As rules/skills/knowledge do agente entram automaticamente.
 6. Em **Automações**, escolha `Review` como destino após sucesso. Salve capacidades.
 7. Clique **Executar**. Acompanhe **Resultado** e **Histórico de execuções**.
 8. Para automatizar o início, autorize modo automático e a permissão correspondente; importe `development-flow` e ative a regra após ajustar a condição `Ready` ao nome da lista. Para QA, crie a regra de sucesso com ação `run_agent`, valor `qa`.

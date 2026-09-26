@@ -1,4 +1,4 @@
-import {ExecutionConfig,emptyConfig,permissions} from './types';
+import {ExecutionConfig,ExecutionDefaults,emptyConfig,emptyDefaults,permissions} from './types';
 import {isId} from '../automation-rules';
 import {identifier,noSecrets} from './security';
 import {stringList} from './project-registry';
@@ -21,4 +21,27 @@ export function validateConfig(input:unknown):ExecutionConfig{
   for(const key of Object.keys(value.automation))if(!['on_success_list_id','on_failure_list_id'].includes(key)||!isId(value.automation[key as keyof typeof value.automation]))throw new Error('Destino da automação inválido.');
   // Persist only supported fields; arbitrary client fields never become execution options.
   return Object.fromEntries(Object.keys(emptyConfig()).map(key=>[key,value[key as keyof ExecutionConfig]])) as ExecutionConfig;
+}
+
+export function projectDefaults(input:unknown):ExecutionDefaults {
+  if(input===undefined)return emptyDefaults();
+  const config=validateConfig({...emptyConfig(),...(input as Record<string,unknown>),automation:{}});
+  delete (config as Partial<ExecutionConfig>).project_id;delete (config as Partial<ExecutionConfig>).enabled;
+  return config as ExecutionDefaults;
+}
+
+export function mergeConfig(projectId:string|null,enabled:boolean,defaults:ExecutionDefaults,overrides:Partial<ExecutionDefaults>):ExecutionConfig {
+  return {project_id:projectId,enabled,...defaults,...overrides,context:{...defaults.context,...overrides.context},automation:{...defaults.automation,...overrides.automation},integrations:overrides.integrations??defaults.integrations,skills:overrides.skills??defaults.skills,permissions:overrides.permissions??defaults.permissions};
+}
+
+const same=(left:unknown,right:unknown)=>JSON.stringify(left)===JSON.stringify(right);
+export function configOverrides(config:ExecutionConfig,defaults:ExecutionDefaults):Partial<ExecutionDefaults> {
+  const values={...config} as Partial<ExecutionConfig>;delete values.project_id;delete values.enabled;
+  return Object.fromEntries(Object.entries(values).filter(([key,value])=>!same(value,defaults[key as keyof ExecutionDefaults]))) as Partial<ExecutionDefaults>;
+}
+
+export function globalDefaults(config:ExecutionConfig):ExecutionDefaults {
+  const defaults=configOverrides(config,emptyDefaults());
+  delete defaults.automation;
+  return {...emptyDefaults(),...defaults,context:{...emptyDefaults().context,...defaults.context}};
 }

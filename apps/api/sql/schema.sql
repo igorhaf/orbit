@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS lists (
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS color varchar(32);
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS collapsed boolean NOT NULL DEFAULT false;
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+ALTER TABLE lists ADD COLUMN IF NOT EXISTS is_completion_list boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS lists_board_position_idx ON lists(board_id, position);
 CREATE TABLE IF NOT EXISTS cards (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
