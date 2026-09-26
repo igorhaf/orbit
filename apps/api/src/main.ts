@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import 'dotenv/config';
-import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Res, HttpException } from '@nestjs/common';
+import { Module, Injectable, Inject, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Res, HttpException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Request, Response, json } from 'express';
 import * as bcrypt from 'bcryptjs';
@@ -895,7 +895,7 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(private service: Service) {}
+  constructor(@Inject(Service) private service: Service) {}
   @Get('health') health() { return { status: 'ok' }; }
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
