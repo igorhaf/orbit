@@ -44,6 +44,9 @@ export type Card = {
   cover_image?: string | null;
   cover_size?: 'normal' | 'full';
   completed: boolean;
+  ai_project_id?: string | null;
+  ai_model?: string | null;
+  ai_effort?: AiEffort | null;
   assigned_to_me?: boolean;
   assignees?: User[];
   labels: Label[];
@@ -73,7 +76,15 @@ export type Board = {
   labels?: Label[];
   members?: User[];
   custom_fields?: CustomField[];
+  ai_default_model?: string | null;
+  ai_default_effort?: AiEffort | null;
 };
+export type AiModel = {id:string;name:string};
+export type AiEffort = 'low'|'medium'|'high'|'xhigh';
+export type AiProject = {id:string;name:string;local_path:string;created_at:string;updated_at:string};
+export type PromptRun = {id:string;model:string;effort?:AiEffort;status:'running'|'success'|'error';output?:string|null;error?:string|null;started_at:string;finished_at?:string|null};
+export type TrelloConnection = { id:string; trello_board_id:string; trello_board_name:string; enabled:boolean; last_synced_at:string|null; last_error:string|null; created_at:string };
+export type TrelloBoardOption = { id:string; name:string; url:string|null };
 export type Workspace = { id: string; name: string; board_count: number };
 export type CommentAttachment = {id:string;kind:'file'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null};
 export type Comment = { id: string; body: string; created_at: string; edited_at?:string|null; author_id: string; author_name: string; attachments?:CommentAttachment[] };

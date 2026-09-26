@@ -12,6 +12,10 @@ import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence,
 import { CardExtensionsController, CardExtensionsService } from './card-extensions';
 import { AutomationsController, AutomationsService } from './automations';
 import { CodexAiService } from './codex-ai';
+import { Server } from 'socket.io';
+import { OrbitEvents } from './orbit-events';
+import { TrelloSyncService } from './trello-sync';
+import { PromptSessionsService } from './prompt-sessions';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;attachments:boolean;customFields:boolean};
@@ -41,7 +45,7 @@ const listColors = new Set(['blue','green','yellow','orange','red','purple','pin
 
 @Injectable()
 class Service {
-  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Inject(CodexAiService) private codex: CodexAiService) {}
+  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Inject(CodexAiService) private codex: CodexAiService,@Inject(PromptSessionsService) private prompts:PromptSessionsService) {}
   async prepareDailySchedules(){const users=await this.db.query('SELECT DISTINCT user_id FROM planner_rules WHERE enabled AND proactive');for(const user of users){const exists=await this.db.one(`SELECT id FROM planner_suggestions WHERE user_id=$1 AND source='daily_schedule' AND created_at>=date_trunc('day',now()) LIMIT 1`,[user.user_id]);if(!exists)try{await this.aiSchedule(String(user.user_id),{mode:'daily_schedule'})}catch(error){console.error('Could not prepare daily planner suggestions.',error)}}}
   private async classifyTitle(title:string,userId:string){
     const result=cardKindFromTitle(title,process.env.WEB_ORIGIN||'http://localhost:3000');
@@ -143,12 +147,12 @@ class Service {
     const comments=await this.db.query('SELECT body FROM comments WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);
     const action=value(body.action,'Ação',40); const instruction=body.instruction===undefined?'':optionalText(body.instruction,2000);
     if(!['write','refine','summarize','shorten','action_items','checklist'].includes(action))fail('Ação de IA inválida.');
-    const output=await this.codex.complete(this.cardAiPrompt(action,instruction,card||{},comments));
+    const selected=await this.prompts.settingsForCard(cardId,userId);if(!selected.model)fail('Escolha um modelo.',409);const attachments=await this.prompts.attachments(cardId,userId);const output=await this.codex.complete(this.cardAiPrompt(action,instruction,card||{},comments),selected.model||undefined,selected.effort,attachments);
     await this.features.record(userId,boardId,cardId,'ai_suggestion',`gerou sugestão de IA: ${action}`);
     return {output,items:['checklist','action_items'].includes(action)?this.aiItems(output):[]};
   }
   async aiComment(cardId:string,userId:string,body:Payload){
-    const boardId=await this.contentCard(cardId,userId);const card=await this.db.one('SELECT title,description FROM cards WHERE id=$1',[cardId]);const comments=await this.db.query('SELECT body FROM comments WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);const action=value(body.action,'Ação',40);if(!['write','refine','summarize','shorten'].includes(action))fail('Ação de IA inválida.');const draft=body.draft===undefined?'':optionalText(body.draft,5000);const instruction=body.instruction===undefined?'':optionalText(body.instruction,2000);const output=await this.codex.complete(`${this.cardAiPrompt(action,instruction,card||{},comments)}\n\nCOMMENT DRAFT TO ${action==='write'?'WRITE':'TRANSFORM'}:\n${draft||'(empty)'}`);await this.features.record(userId,boardId,cardId,'ai_suggestion',`gerou sugestão de comentário: ${action}`);return {output};
+    const boardId=await this.contentCard(cardId,userId);const card=await this.db.one('SELECT title,description FROM cards WHERE id=$1',[cardId]);const comments=await this.db.query('SELECT body FROM comments WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);const action=value(body.action,'Ação',40);if(!['write','refine','summarize','shorten'].includes(action))fail('Ação de IA inválida.');const draft=body.draft===undefined?'':optionalText(body.draft,5000);const instruction=body.instruction===undefined?'':optionalText(body.instruction,2000);const selected=await this.prompts.settingsForCard(cardId,userId);if(!selected.model)fail('Escolha um modelo.',409);const attachments=await this.prompts.attachments(cardId,userId);const output=await this.codex.complete(`${this.cardAiPrompt(action,instruction,card||{},comments)}\n\nCOMMENT DRAFT TO ${action==='write'?'WRITE':'TRANSFORM'}:\n${draft||'(empty)'}`,selected.model||undefined,selected.effort,attachments);await this.features.record(userId,boardId,cardId,'ai_suggestion',`gerou sugestão de comentário: ${action}`);return {output};
   }
   async aiMerge(userId:string,body:Payload){
     const ids=this.selectedIds(body,2); const cards:Payload[]=[]; let boardId='';
@@ -230,14 +234,14 @@ class Service {
   async board(boardId: string, userId: string) {
     await this.member(boardId,userId,true);
     await this.features.visit(boardId,userId);
-    const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,is_inbox,
+    const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,is_inbox,ai_default_model,ai_default_effort,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=boards.id) AS background_image FROM boards WHERE id=$1`, [boardId]);
     const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
     const cards = await this.db.query(`SELECT slot.id,slot.list_id,slot.position,slot.kind,slot.target_board_id,slot.link_url,
       slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
       source_board.id AS source_board_id,source_board.title AS source_board_title,
       (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
-      c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.cover_color,c.cover_attachment_id,c.cover_size,c.completed,c.created_at,c.updated_at,
+      c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.cover_color,c.cover_attachment_id,c.cover_size,c.completed,c.ai_project_id,c.ai_model,c.ai_effort,c.created_at,c.updated_at,
       (SELECT 'data:'||a.mime_type||';base64,'||replace(encode(a.data,'base64'), E'\n', '') FROM attachments a WHERE a.id=c.cover_attachment_id AND a.size_bytes<=2000000) AS cover_image,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
       COALESCE((SELECT json_agg(json_build_object('id',label.id,'name',label.name,'color',label.color)) FROM card_labels cl JOIN labels label ON label.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
@@ -966,7 +970,7 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Service) private service: Service) {}
+  constructor(@Inject(Service) private service: Service,@Inject(TrelloSyncService) private trello:TrelloSyncService,@Inject(PromptSessionsService) private prompts:PromptSessionsService) {}
   @Get('health') health() { return { status: 'ok' }; }
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
@@ -985,6 +989,15 @@ class ApiController {
   @Post('planner/suggestions/:id/resolve') resolveSuggestion(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.resolveSuggestion(id,this.service.user(req),body);}
   @Post('cards/:id/ai') aiCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiCard(id,this.service.user(req),body);}
   @Post('cards/:id/comments/ai') aiComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiComment(id,this.service.user(req),body);}
+  @Get('ai/models') aiModels(){return this.prompts.models();}
+  @Get('ai/projects') aiProjects(@Req() req:Request){return this.prompts.projects(this.service.user(req));}
+  @Post('ai/projects') createAiProject(@Req() req:Request,@Body() body:Payload){return this.prompts.createProject(this.service.user(req),body);}
+  @Patch('ai/projects/:id') updateAiProject(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateProject(this.service.user(req),id,body);}
+  @Delete('ai/projects/:id') deleteAiProject(@Req() req:Request,@Param('id') id:string){return this.prompts.deleteProject(this.service.user(req),id);}
+  @Patch('boards/:id/prompt-settings') updateBoardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateBoard(id,this.service.user(req),body);}
+  @Patch('cards/:id/prompt-settings') updateCardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateCard(id,this.service.user(req),body);}
+  @Get('cards/:id/prompt-runs') promptRuns(@Req() req:Request,@Param('id') id:string){return this.prompts.runs(id,this.service.user(req));}
+  @Post('cards/:id/prompt-runs') executePrompt(@Req() req:Request,@Param('id') id:string){return this.prompts.execute(id,this.service.user(req));}
   @Get('boards') boards(@Req() req: Request,@Query('status') status='active') { return this.service.boards(this.service.user(req),status); }
   @Post('boards') createBoard(@Req() req: Request,@Body() body: Payload) { return this.service.createBoard(this.service.user(req),body); }
   @Get('boards/:id') board(@Req() req: Request,@Param('id') id: string) { return this.service.board(id,this.service.user(req)); }
@@ -996,6 +1009,11 @@ class ApiController {
   @Get('boards/:id/activity') boardActivity(@Req() req: Request,@Param('id') id: string,@Query('commentsOnly') commentsOnly='false') { return this.service.boardActivity(id,this.service.user(req),commentsOnly); }
   @Post('boards/:id/background') background(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.setBackgroundImage(id,this.service.user(req),body); }
   @Delete('boards/:id/background') removeBackground(@Req() req: Request,@Param('id') id: string) { return this.service.removeBackgroundImage(id,this.service.user(req)); }
+  @Get('boards/:id/trello') trelloConnections(@Req() req:Request,@Param('id') id:string){return this.trello.connections(id,this.service.user(req));}
+  @Get('boards/:id/trello/available') trelloAvailable(@Req() req:Request,@Param('id') id:string){return this.trello.available(id,this.service.user(req));}
+  @Post('boards/:id/trello') connectTrello(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.trello.connect(id,this.service.user(req),body.trello_board_id);}
+  @Post('boards/:id/trello/sync') syncTrello(@Req() req:Request,@Param('id') id:string){return this.trello.syncBoard(id,this.service.user(req));}
+  @Delete('boards/:id/trello/:connectionId') disconnectTrello(@Req() req:Request,@Param('id') id:string,@Param('connectionId') connectionId:string){return this.trello.disconnect(id,this.service.user(req),connectionId);}
   @Post('boards/:id/members') invite(@Req() req: Request,@Param('id') id: string) { return this.service.invite(id,this.service.user(req)); }
   @Post('boards/:id/lists') createList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createList(id,this.service.user(req),body); }
   @Get('boards/:id/lists/archived') archivedLists(@Req() req: Request,@Param('id') id: string) { return this.service.archivedLists(id,this.service.user(req)); }
@@ -1037,7 +1055,7 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1045,9 +1063,24 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({ origin: process.env.WEB_ORIGIN || 'http://localhost:3000' });
   app.use(json({limit:'16mb'}));
+  const events=app.get(OrbitEvents);
+  const features=app.get(FeaturesService);
+  const sockets=new Server(app.getHttpServer(),{cors:{origin:process.env.WEB_ORIGIN||'http://localhost:3000'}});
+  sockets.use((socket,next)=>{
+    try{const token=socket.handshake.auth.token;if(typeof token!=='string')throw new Error('Missing token');const payload=jwt.verify(token,process.env.JWT_SECRET!) as jwt.JwtPayload;if(typeof payload.sub!=='string')throw new Error('Missing subject');socket.data.userId=payload.sub;next();}catch{next(new Error('Não autorizado.'));}
+  });
+  sockets.on('connection',socket=>{
+    socket.on('board:join',(boardId:unknown)=>{if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId))void features.member(boardId,String(socket.data.userId)).then(()=>socket.join(`board:${boardId}`)).catch(()=>undefined);});
+    socket.on('board:leave',(boardId:unknown)=>{if(typeof boardId==='string')socket.leave(`board:${boardId}`);});
+  });
+  events.attach(sockets);
   await app.listen(Number(process.env.API_PORT || 4000), '0.0.0.0');
   const service=app.get(Service);
+  const trello=app.get(TrelloSyncService);
   void service.prepareDailySchedules();
+  void trello.connectDefault().catch(error=>console.error('Could not connect the default Trello board.',error));
   setInterval(()=>void service.prepareDailySchedules(),60*60*1000);
+  const trelloTimer=setInterval(()=>void trello.tick(),Number(process.env.TRELLO_SYNC_INTERVAL_MS||5000));
+  trelloTimer.unref();
 }
 bootstrap();
