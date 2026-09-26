@@ -10,6 +10,16 @@ input:focus, textarea:focus { outline: 2px solid #388bff; outline-offset: 0; }
 .board-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.45) transparent; }
 .shadow-card { box-shadow: 0 1px 1px #091e4226, 0 2px 4px #091e4226; }
 .shadow-dialog { box-shadow: 0 20px 60px #091e4250; }
+.rich-text > :first-child { margin-top: 0; }
+.rich-text > :last-child { margin-bottom: 0; }
+.rich-text p, .rich-text ul, .rich-text ol { margin: .45rem 0; }
+.rich-text h1 { font-size: 1.4rem; font-weight: 700; margin: .9rem 0 .4rem; }
+.rich-text h2 { font-size: 1.2rem; font-weight: 700; margin: .8rem 0 .4rem; }
+.rich-text h3 { font-size: 1.05rem; font-weight: 700; margin: .7rem 0 .3rem; }
+.rich-text ul { list-style: disc; padding-left: 1.35rem; }
+.rich-text ol { list-style: decimal; padding-left: 1.35rem; }
+.rich-text li { margin: .15rem 0; }
+.rich-text hr { border: 0; border-top: 1px solid #dfe1e6; margin: 1rem 0; }
 .fade-in { animation: fadeIn .18s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 html[data-theme="dark"] { color-scheme: dark; color: #dee4ea; background: #1d2125; }

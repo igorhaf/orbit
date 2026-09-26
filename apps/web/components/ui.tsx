@@ -1,11 +1,11 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
-  Bell, Check, ChevronDown, Home, LayoutDashboard, LogOut,
+  Bell, CalendarDays, Check, ChevronDown, Home, LayoutDashboard, LogOut,
   Moon, Plus, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
-  X, Pin, PinOff, CreditCard, Layers3, CheckSquare,
+  X, Pin, PinOff, CreditCard, Layers3, CheckSquare, Inbox,
 } from 'lucide-react';
 import {
   api, send, AppNotification, Board, SearchResults, User, Workspace,
@@ -20,14 +20,14 @@ export function Avatar({ name, url, size = 'md' }: { name: string; url?: string 
   </span>;
 }
 
-export function Modal({ children, onClose, wide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+export function Modal({ children, onClose, wide = false, extraWide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; extraWide?: boolean }) {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
   return <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#091e42a6] p-3 pt-[8vh] sm:p-6 sm:pt-[10vh]" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div className={`fade-in relative w-full ${wide ? 'max-w-[760px]' : 'max-w-[430px]'} rounded-xl bg-white shadow-dialog`} role="dialog" aria-modal="true">
+    <div className={`fade-in relative w-full ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[760px]' : 'max-w-[430px]'} rounded-xl bg-white shadow-dialog`} role="dialog" aria-modal="true">
       {children}
       <button aria-label="Fechar" onClick={onClose} className="absolute right-3 top-3 rounded-md p-2 text-[#626f86] hover:bg-[#091e4214]"><X size={18}/></button>
     </div>
@@ -87,7 +87,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   useEffect(() => {
     const accountChanged = () => updateUser(getUser());
     const historyChanged = () => setHistory(historyState());
-    const pinChanged = () => setPinned(localStorage.getItem('trello_sidebar_pinned') !== 'false');
+    const pinChanged = () => setPinned(localStorage.getItem('orbit_sidebar_pinned') !== 'false');
     window.addEventListener('account:changed', accountChanged);
     window.addEventListener('history:changed', historyChanged);
     window.addEventListener('sidebar:changed', pinChanged);
@@ -164,7 +164,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     setPanel(null);
   }
   function togglePin() {
-    localStorage.setItem('trello_sidebar_pinned', String(!pinned));
+    localStorage.setItem('orbit_sidebar_pinned', String(!pinned));
     window.dispatchEvent(new Event('sidebar:changed'));
   }
   function openBoard(id: string) { setPanel(null); router.push(`/board/${id}`); }
@@ -179,8 +179,27 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     <nav className="ml-1 hidden items-center gap-1 md:flex">
       <button onClick={() => router.push('/')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
       <button onClick={() => setPanel(panel === 'boards' ? null : 'boards')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
+      <button onClick={() => router.push('/planner')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Planner</button>
     </nav>
-    <button onClick={() => router.push('/boards')} className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden" title="Quadros"><LayoutDashboard size={19}/></button>
+<button
+  onClick={() => router.push('/planner')}
+  className="hidden rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4] md:block"
+>
+  Planner
+</button>
+<button
+  onClick={() => router.push('/inbox')}
+  className="hidden rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4] md:block"
+>
+  Inbox
+</button>
+<button
+  onClick={() => router.push('/boards')}
+  className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden"
+  title="Quadros"
+>
+  <LayoutDashboard size={19}/>
+</button>
     <button onClick={() => router.push('/')} className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden" title="Home"><Home size={19}/></button>
     <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="ml-1 rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
     <div className="flex-1"/>
@@ -196,7 +215,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         {results.boards.length > 0 && <p className="px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Quadros</p>}
         {results.boards.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-6 w-8 rounded" style={{background:boardColors[board.background]}}/><span className="flex-1 truncate">{board.title}</span><span className="truncate text-xs text-[#626f86]">{board.workspace_name}</span></button>)}
         {results.cards.length > 0 && <p className="mt-2 px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Cartões</p>}
-        {results.cards.map(card => <button key={card.id} onClick={() => { setPanel(null); router.push(cardUrl(card.board_id,card.id)); }} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><CreditCard size={16}/><span className="min-w-0 flex-1 truncate">{card.title}</span><span className="max-w-24 truncate text-xs text-[#626f86]">{card.board_title}</span></button>)}
+        {results.cards.map(card => <button key={card.id} onClick={() => { setPanel(null); router.push(cardUrl(card.board_id,card.id)); }} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><CreditCard size={16}/><span className="min-w-0 flex-1 truncate">{card.title}</span>{card.completed&&<span className="rounded bg-[#baf3db] px-1.5 py-0.5 text-[10px] text-[#216e4e]">Concluído</span>}<span className="max-w-24 truncate text-xs text-[#626f86]">{card.board_title}</span></button>)}
         {!results.boards.length && !results.cards.length && <p className="p-4 text-center text-xs text-[#626f86]">Nenhum resultado encontrado.</p>}
       </>}</div>
     </div>}
@@ -223,11 +242,23 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   </header>;
 }
 
+function InboxPanel({boards,onOpen}:{boards:Board[];onOpen:()=>void}) {
+  const [inbox,setInbox]=useState<Board|null>(null);
+  const [title,setTitle]=useState('');
+  const [error,setError]=useState('');
+  const box=boards.find(board=>board.is_inbox);
+  const load=useCallback(async()=>{if(!box)return;try{setInbox(await api<Board>(`/boards/${box.id}`));setError('')}catch(err){setError((err as Error).message)}},[box]);
+  useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
+  useEffect(()=>{const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card'))event.preventDefault()});document.addEventListener('drop',drop);return()=>document.removeEventListener('drop',drop)},[load]);
+  const cards=inbox?.lists?.flatMap(list=>list.cards)||[];
+  return <section className="mt-3 border-t border-[#dfe1e6] pt-3"><div className="flex items-center justify-between px-2"><strong className="flex items-center gap-2 text-sm"><Inbox size={17}/> Inbox</strong><button onClick={onOpen} className="text-xs text-[#0c66e4]">Abrir</button></div><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[42vh] space-y-2 overflow-y-auto px-2">{cards.map(card=><button key={card.id} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.effectAllowed='move'}} onClick={onOpen} className="w-full rounded bg-[#f1f2f4] px-2 py-2 text-left text-sm shadow-sm hover:bg-[#e9eaed]">{card.title}</button>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem rascunhos.</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste um cartão para qualquer lista deste quadro.</p></section>
+}
+
 export function WorkspaceSidebar({ boards, activeId, onCreate, onChoose }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {
   const router = useRouter();
   const [pinned, setPinned] = useState(true);
   useEffect(() => {
-    const sync = () => setPinned(localStorage.getItem('trello_sidebar_pinned') !== 'false');
+    const sync = () => setPinned(localStorage.getItem('orbit_sidebar_pinned') !== 'false');
     sync(); window.addEventListener('sidebar:changed', sync);
     return () => window.removeEventListener('sidebar:changed', sync);
   }, []);
@@ -238,9 +269,10 @@ export function WorkspaceSidebar({ boards, activeId, onCreate, onChoose }: { boa
     <button onClick={() => router.push('/')} className="mt-4 flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><Home size={17}/> Home</button>
     <button onClick={() => router.push('/boards')} className={`flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold ${!activeId && typeof window !== 'undefined' && window.location.pathname === '/boards' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'hover:bg-[#f1f2f4]'}`}><LayoutDashboard size={17}/> Quadros</button>
     <button onClick={() => router.push('/#your-items')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><CheckSquare size={17}/> Seus itens</button>
+    <InboxPanel boards={boards} onOpen={()=>router.push('/inbox')}/>
     <div className="mt-6 flex items-center justify-between px-2 text-[11px] font-bold uppercase tracking-wide text-[#626f86]"><span>Seus quadros</span><button onClick={onCreate} aria-label="Criar quadro" className="rounded p-1 hover:bg-[#f1f2f4]"><Plus size={16}/></button></div>
     {groups.length === 0 && <p className="px-2 py-3 text-xs text-[#626f86]">Crie seu primeiro quadro.</p>}
-    {groups.map(group => <div key={group} className="mt-3"><p className="mb-1 truncate px-2 text-[11px] font-semibold text-[#626f86]">{group}</p>{boards.filter(board => (board.workspace_name || 'Meu espaço de trabalho') === group).map(board =>
+    {groups.map(group => <div key={group} className="mt-3"><p className="mb-1 truncate px-2 text-[11px] font-semibold text-[#626f86]">{group}</p>{boards.filter(board => !board.is_inbox && (board.workspace_name || 'Meu espaço de trabalho') === group).map(board =>
       <button key={board.id} onClick={() => onChoose(board.id)} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm ${activeId === board.id ? 'bg-[#e9f2ff] font-semibold text-[#0c66e4]' : 'hover:bg-[#f1f2f4]'}`}><span className="h-5 w-7 shrink-0 rounded-[2px]" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}</div>)}
   </aside>;
 }
