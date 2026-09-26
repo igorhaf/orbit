@@ -215,6 +215,15 @@ DELETE FROM notifications WHERE kind='due' AND due_at IS NULL;
 DROP INDEX IF EXISTS notifications_due_once_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_due_occurrence_idx ON notifications(user_id, card_id, kind, due_at) WHERE kind = 'due';
 CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS focus_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title varchar(160) NOT NULL DEFAULT 'Focus time', starts_at timestamptz NOT NULL, ends_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(), CHECK (ends_at > starts_at)
+);
+CREATE TABLE IF NOT EXISTS focus_event_cards (
+  event_id uuid NOT NULL REFERENCES focus_events(id) ON DELETE CASCADE, card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  PRIMARY KEY(event_id,card_id)
+);
 CREATE TABLE IF NOT EXISTS card_merges (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
