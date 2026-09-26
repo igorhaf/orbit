@@ -122,6 +122,13 @@ class Service {
     if (!row || !(await bcrypt.compare(password, row.password_hash))) return fail('E-mail ou senha incorretos.', 401);
     return { user: { id: row.id, name: row.name, email: row.email, avatar_url: row.avatar_url, preferences: row.preferences }, token: jwt.sign({ sub: row.id, email: row.email }, process.env.JWT_SECRET!, { expiresIn: '14d' }) };
   }
+  async inboxEmail(body:Payload, token?:string) {
+    if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN) fail('Entrada de e-mail não autorizada.',401);
+    const subject=value(body.subject||body.title,'Assunto',300); const text=optionalText(body.body||'',10000);
+    const user=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);
+    const inbox=await this.db.one('SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL LIMIT 1',[user!.id]);
+    return this.createCard(inbox!.id,user!.id,{title:subject,description:text});
+  }
   async me(userId: string) { return this.features.account(userId); }
   async boards(userId: string, status: string) {
     if (status !== 'active' && status !== 'closed') fail('Filtro inválido.');
@@ -899,6 +906,7 @@ class ApiController {
   @Get('health') health() { return { status: 'ok' }; }
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
+  @Post('email/inbox') inboxEmail(@Req() req:Request,@Body() body:Payload) { return this.service.inboxEmail(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined); }
   @Get('auth/me') me(@Req() req: Request) { return this.service.me(this.service.user(req)); }
   @Get('boards') boards(@Req() req: Request,@Query('status') status='active') { return this.service.boards(this.service.user(req),status); }
   @Post('boards') createBoard(@Req() req: Request,@Body() body: Payload) { return this.service.createBoard(this.service.user(req),body); }
