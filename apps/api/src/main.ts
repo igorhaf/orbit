@@ -10,6 +10,7 @@ import { Db } from './db';
 import { FeaturesController, FeaturesService, SINGLE_EMAIL } from './features';
 import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence, recurrenceOptions, reminderOptions } from './card-rules';
 import { CardExtensionsController, CardExtensionsService } from './card-extensions';
+import { AutomationsController, AutomationsService } from './automations';
 import { CodexAiService } from './codex-ai';
 
 type Payload = Record<string, unknown>;
@@ -1036,7 +1037,7 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, CodexAiService], controllers: [ApiController, FeaturesController, CardExtensionsController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1044,7 +1045,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({ origin: process.env.WEB_ORIGIN || 'http://localhost:3000' });
   app.use(json({limit:'16mb'}));
-  await app.listen(Number(process.env.API_PORT || 4000));
+  await app.listen(Number(process.env.API_PORT || 4000), '0.0.0.0');
   const service=app.get(Service);
   void service.prepareDailySchedules();
   setInterval(()=>void service.prepareDailySchedules(),60*60*1000);

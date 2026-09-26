@@ -71,6 +71,8 @@ O cadastro e os convites estão desativados nesta etapa de conta única. Exclus�
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 
+Para acessar pelo celular, conecte-o à mesma rede Wi-Fi da máquina e abra no navegador o endereço `http://IP-DA-MAQUINA:3000` (por exemplo, `http://192.168.68.57:3000`). O frontend usa um proxy local para encaminhar as chamadas à API, então não é necessário configurar o IP do celular.
+
 ## Conta inicial
 
 - E-mail: `igorhaf@gmail.com`
@@ -86,11 +88,26 @@ A migração guarda apenas o hash da senha e reconfigura esse acesso a cada exec
 | `npm run lint` | Verifica o código da API e do front, sem aceitar avisos |
 | `npm run lint:fix` | Corrige automaticamente os problemas de lint possíveis |
 | `npm run build` | Executa o lint e compila a API e o front |
-| `npm run test -w apps/api` | Executa os testes das regras de cartões |
+| `npm run test -w apps/api` | Executa os testes das regras de cartões e automações |
+| `npm run test:integration -w apps/api` | Testa automações no PostgreSQL com dados temporários |
 | `npm run db:migrate` | Aplica o esquema SQL e prepara a conta inicial |
 | `npm run start -w apps/api` | Inicia a API compilada |
 | `npm run start -w apps/web` | Inicia o front compilado |
 
 O SQL fica em `apps/api/sql/schema.sql`.
+
+## Automação
+
+Abra **Automação** no cabeçalho do quadro ou **Automatizar lista** no menu de uma lista. Botões cadastrados aparecem no cabeçalho do quadro ou no detalhe do cartão. O editor oferece gatilhos por evento, vencimento, agenda e botões, condições combinadas, até 20 ações ordenadas, tags, cópias e histórico. Cópias para outros quadros exigem mapear listas, etiquetas, pessoas e campos e começam pausadas.
+
+`npm run db:migrate` aplica também `apps/api/sql/automations.sql`. Eventos são registrados na mesma transação que altera os cartões, inclusive em operações em massa. O worker da API consulta a fila a cada cinco segundos. Cada regra/evento tem chave única; falhas revertem todas as ações daquela execução e ficam no histórico. Cadeias são limitadas a cinco níveis e uma mesma regra não pode executar duas vezes na cadeia. Uma execução alcança até 500 cartões; referências de cascata são anexos de cartões do mesmo quadro. Separadores, links e espelhos não são alvos de operações em massa.
+
+Agendamentos diários e semanais usam o fuso configurado. Intervalos têm mínimo de cinco minutos. Após uma parada, um agendamento atrasado executa uma vez e calcula a próxima ocorrência; não reproduz todas as ocorrências perdidas. Regras de vencimento usam minutos relativos ao prazo: `-1440` significa um dia antes e `0` significa no vencimento. Uma ocorrência de prazo é processada uma vez por cartão/regra; erros ou condições não atendidas ficam registrados. Prazos anteriores à criação da regra não são recuperados.
+
+Textos aceitam `{{title}}`, `{{description}}`, `{{list}}`, `{{board}}`, `{{user}}`, `{{members}}`, `{{due_date}}` e `{{custom:ID_DO_CAMPO}}`. Cálculos de data aceitam `now + 2 days`, `due - 30 minutes` e `today + 3 business_days`; formatos de variável: `{{now + 2 days|date}}`, `{{now|time}}` ou `iso`. Cálculos usam UTC. Dias úteis excluem sábados e domingos, sem calendário de feriados. O editor exibe os identificadores dos campos. Sugestões surgem após três movimentos manuais para a mesma lista em trinta dias e sempre exigem revisão e salvamento.
+
+Relatórios disponíveis: Board Snapshot, Due Soon (sete dias), Overdue Cards, My Cards e personalizado com filtros, Markdown e variáveis. Destinatários, assunto e mensagem por cartão são configurados na ação; use um gatilho agendado para envio periódico. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_FROM`, `SMTP_USER` e `SMTP_PASSWORD` em `apps/api/.env`. O transporte exige TLS. Sem SMTP, as mensagens permanecem na fila e a falta de configuração aparece no histórico. Erros de envio são tentados até cinco vezes, com cinco minutos entre tentativas. SMTP não garante exatamente uma entrega se a conexão cair após o servidor aceitar a mensagem; cada mensagem tem um Message-ID estável.
+
+Para testes visuais, com API e web em execução e Chromium disponível, use `npm run test:browser -w apps/api`. Os testes criam um quadro temporário e removem seus dados ao terminar. Para instalar o navegador de teste: `npx playwright install chromium`.
 
 Antes de cada commit, execute `npm run build`. Se houver erro ou aviso de lint, corrija e repita o build antes de criar o commit.
