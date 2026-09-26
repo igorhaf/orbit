@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable } from '@nestjs/common';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,6 +28,22 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
+  private reportedError(line:string):string|null {
+    try {
+      const event=JSON.parse(line) as {type?:string;message?:unknown;error?:unknown};
+      if(event.type!=='error'&&event.type!=='turn.failed')return null;
+      if(typeof event.message==='string')return event.message;
+      if(typeof event.error==='string')return event.error;
+      if(event.error&&typeof event.error==='object'&&'message' in event.error&&typeof (event.error as {message?:unknown}).message==='string')return (event.error as {message:string}).message;
+    } catch { return null; }
+    return null;
+  }
+  private executionError(detail:string):never {
+    if(/(token|context).{0,80}(limit|exceed|quota|length|window)|(limit|exceed|quota).{0,80}(token|context)/i.test(detail))throw new HttpException('O limite de tokens desta execução foi excedido. Reduza o contexto ou a instrução e tente novamente.',429);
+    if(/rate.?limit|too many requests|\b429\b/i.test(detail))throw new HttpException('O limite temporário de requisições do Codex foi atingido. Aguarde um momento e tente novamente.',429);
+    if(/ENOENT/.test(detail))throw new HttpException('O executável local do Codex não foi encontrado. Configure CODEX_BIN no servidor.',503);
+    throw new HttpException('Não foi possível gerar a sugestão com o Codex local.',502);
+  }
   private async run(instruction: string, workingDirectory: string, sandbox: 'read-only'|'workspace-write', model?: string, effort?: string, progress?:Progress): Promise<string> {
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
@@ -50,7 +66,7 @@ export class CodexAiService {
         }, timeout);
         child.stdout?.on('data',(chunk:Buffer)=>{
           stdout+=chunk.toString();const lines=stdout.split(/\r?\n/);stdout=lines.pop()||'';
-          for(const line of lines){const message=this.progressMessage(line);if(message)progress?.(message.slice(0,2000));}
+          for(const line of lines){const reported=this.reportedError(line);if(reported)stderr=(stderr+'\n'+reported).slice(-2000);const message=this.progressMessage(line);if(message)progress?.(message.slice(0,2000));}
         });
         child.stderr?.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-2000); });
         child.on('error', error => { clearTimeout(timer); reject(error); });
@@ -64,9 +80,9 @@ export class CodexAiService {
       if (!text) throw new Error('O Codex não retornou conteúdo.');
       return text.slice(0, MAX_OUTPUT);
     } catch (error) {
+      if(error instanceof HttpException)throw error;
       const detail = error instanceof Error ? error.message : '';
-      if (/ENOENT/.test(detail)) throw new Error('O executável local do Codex não foi encontrado. Configure CODEX_BIN no servidor.');
-      throw new Error('Não foi possível gerar a sugestão com o Codex local.');
+      this.executionError(detail);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

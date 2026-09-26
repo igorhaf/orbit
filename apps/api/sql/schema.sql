@@ -289,6 +289,8 @@ CREATE TABLE IF NOT EXISTS ai_projects (
   owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name varchar(120) NOT NULL,
   local_path text NOT NULL,
+  ai_default_model varchar(100),
+  ai_default_effort varchar(16) CHECK(ai_default_effort IN ('low','medium','high','xhigh')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(owner_id, local_path)

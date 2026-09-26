@@ -1,5 +1,5 @@
 import Ajv from 'ajv';
-import {Executor,ExecutionInput,Integration,Output,Plugin,PluginAction} from './types';
+import {Executor,ExecutionInput,Integration,IntegrationPlugin,Output,Plugin,PluginAction} from './types';
 import {readResource,noSecrets} from './security';
 
 export class ExecutorRegistry {
@@ -10,8 +10,11 @@ export class ExecutorRegistry {
 }
 export class PluginRegistry {
   private items=new Map<string,Plugin>();
+  private integrations=new Map<string,IntegrationPlugin>();
   private ajv=new Ajv({allErrors:true});
   register(plugin:Plugin){if(this.items.has(plugin.id))throw new Error('Plugin duplicado.');for(const a of plugin.actions)this.ajv.compile(a.inputSchema);this.items.set(plugin.id,plugin)}
+  registerIntegration(plugin:IntegrationPlugin){if(this.integrations.has(plugin.id))throw new Error('Plugin de integração duplicado.');this.integrations.set(plugin.id,plugin)}
+  getIntegration<T extends IntegrationPlugin>(id:string){const plugin=this.integrations.get(id);if(!plugin)throw new Error(`Plugin de integração não registrado: ${id}`);return plugin as T}
   validate(integration:Integration,permissions:string[]):PluginAction{
     noSecrets(integration.config);
     const plugin=this.items.get(integration.plugin),action=plugin?.actions.find(a=>a.id===integration.action);
@@ -25,5 +28,6 @@ export class PluginRegistry {
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;
   }
   catalog(){return [...this.items.values()].map(p=>({id:p.id,name:p.name,actions:p.actions.map(({id,name,permissions,inputSchema,outputSchema})=>({id,name,permissions,inputSchema,outputSchema}))}))}
+  integrationCatalog(){return [...this.integrations.values()].map(({id,name,scope})=>({id,name,scope}))}
 }
 export function filesystemPlugin():Plugin{return {id:'filesystem',name:'Arquivos do projeto',actions:[{id:'read',name:'Ler arquivo',permissions:['filesystem.read'],inputSchema:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:1000}},required:['path'],additionalProperties:false},async execute(config,input){return {type:'text',label:String(config.path),value:await readResource(input.projectRoot,String(config.path))}}}]}}

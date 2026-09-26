@@ -8,7 +8,7 @@ import { OrbitEvents } from './orbit-events';
 
 type Payload = Record<string, unknown>;
 type Effort = 'low'|'medium'|'high'|'xhigh';
-type CardContext = { id:string; title:string; description:string; ai_project_id:string|null; ai_model:string|null; ai_effort:Effort|null; ai_default_model:string|null; ai_default_effort:Effort|null };
+type CardContext = { id:string; title:string; description:string; ai_project_id:string|null; ai_model:string|null; ai_effort:Effort|null; project_default_model:string|null; project_default_effort:Effort|null; ai_default_model:string|null; ai_default_effort:Effort|null };
 const catalog=[
   {id:'gpt-6-astra',name:'Astra'},
   {id:'gpt-6-luna',name:'Luna'},
@@ -27,7 +27,7 @@ const has=(body:Payload,key:string)=>Object.prototype.hasOwnProperty.call(body,k
 export class PromptSessionsService {
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents){}
   models(){return catalog;}
-  async projects(userId:string){return this.db.query('SELECT id,name,local_path,created_at,updated_at FROM ai_projects WHERE owner_id=$1 ORDER BY name',[userId]);}
+  async projects(userId:string){return this.db.query('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at FROM ai_projects WHERE owner_id=$1 ORDER BY name',[userId]);}
   private async localPath(value:unknown):Promise<string>{
     if(typeof value!=='string'||value.length>2000||!isAbsolute(value))fail('Informe uma pasta local absoluta.');const supplied=value as string;
     let resolved='';
@@ -36,15 +36,24 @@ export class PromptSessionsService {
     if(resolved===parse(resolved).root)fail('Não é permitido usar a raiz do sistema como projeto.');
     return resolved;
   }
+  private projectConflict(error:unknown):never{
+    if(error&&typeof error==='object'&&'code' in error&&(error as {code?:unknown}).code==='23505')fail('Esta pasta já está cadastrada em outro projeto.',409);
+    throw error;
+  }
   async createProject(userId:string,body:Payload){
     const rawName=body.name;if(typeof rawName!=='string'||!rawName.trim()||rawName.trim().length>120)fail('Nome inválido.');const name=rawName as string;
     const localPath=await this.localPath(body.local_path);
-    return this.db.one('INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,$2,$3) RETURNING id,name,local_path,created_at,updated_at',[userId,name.trim(),localPath]);
+    const model=body.ai_default_model===undefined||body.ai_default_model===null||body.ai_default_model===''?null:selectedModel(body.ai_default_model);
+    const effort=body.ai_default_effort===undefined||body.ai_default_effort===null||body.ai_default_effort===''?null:selectedEffort(body.ai_default_effort);
+    try{return await this.db.one('INSERT INTO ai_projects(owner_id,name,local_path,ai_default_model,ai_default_effort) VALUES($1,$2,$3,$4,$5) RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at',[userId,name.trim(),localPath,model,effort]);}catch(error){return this.projectConflict(error)}
   }
   async updateProject(userId:string,id:string,body:Payload){
     const rawName=body.name;const name=rawName===undefined?undefined:typeof rawName==='string'&&rawName.trim()&&rawName.trim().length<=120?rawName.trim():fail('Nome inválido.');
     const localPath=body.local_path===undefined?undefined:await this.localPath(body.local_path);
-    const project=await this.db.one('UPDATE ai_projects SET name=COALESCE($3,name),local_path=COALESCE($4,local_path),updated_at=now() WHERE id=$1 AND owner_id=$2 RETURNING id,name,local_path,created_at,updated_at',[uuid(id,'Projeto'),userId,name??null,localPath??null]);
+    const model=!has(body,'ai_default_model')?undefined:body.ai_default_model===null||body.ai_default_model===''?null:selectedModel(body.ai_default_model);
+    const effort=!has(body,'ai_default_effort')?undefined:body.ai_default_effort===null||body.ai_default_effort===''?null:selectedEffort(body.ai_default_effort);
+    let project;
+    try{project=await this.db.one('UPDATE ai_projects SET name=COALESCE($3,name),local_path=COALESCE($4,local_path),ai_default_model=CASE WHEN $5::boolean THEN $6 ELSE ai_default_model END,ai_default_effort=CASE WHEN $7::boolean THEN $8 ELSE ai_default_effort END,updated_at=now() WHERE id=$1 AND owner_id=$2 RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at',[uuid(id,'Projeto'),userId,name??null,localPath??null,has(body,'ai_default_model'),model??null,has(body,'ai_default_effort'),effort??null]);}catch(error){return this.projectConflict(error)}
     if(!project)fail('Projeto não encontrado.',404);return project;
   }
   async deleteProject(userId:string,id:string){const project=await this.db.one('DELETE FROM ai_projects WHERE id=$1 AND owner_id=$2 RETURNING id',[uuid(id,'Projeto'),userId]);if(!project)fail('Projeto não encontrado.',404);return {ok:true};}
@@ -58,10 +67,10 @@ export class PromptSessionsService {
   }
   private async card(cardId:string,userId:string):Promise<{boardId:string;card:CardContext}>{
     const boardId=await this.features.cardBoard(cardId,userId);
-    const card=await this.db.one<CardContext>('SELECT c.id,c.title,c.description,c.ai_project_id,c.ai_model,c.ai_effort,b.ai_default_model,b.ai_default_effort FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id WHERE c.id=$1',[cardId]);
+    const card=await this.db.one<CardContext>('SELECT c.id,c.title,c.description,c.ai_project_id,c.ai_model,c.ai_effort,p.ai_default_model AS project_default_model,p.ai_default_effort AS project_default_effort,b.ai_default_model,b.ai_default_effort FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id LEFT JOIN ai_projects p ON p.id=c.ai_project_id AND p.owner_id=$2 WHERE c.id=$1',[cardId,userId]);
     if(!card)fail('Cartão não encontrado.',404);return {boardId,card:card as CardContext};
   }
-  async settingsForCard(cardId:string,userId:string){const {card}=await this.card(cardId,userId);return {model:card.ai_model||card.ai_default_model||null,effort:card.ai_effort||card.ai_default_effort||'medium' as Effort};}
+  async settingsForCard(cardId:string,userId:string){const {card}=await this.card(cardId,userId);return {model:card.ai_model||card.project_default_model||card.ai_default_model||null,effort:card.ai_effort||card.project_default_effort||card.ai_default_effort||'medium' as Effort};}
   async updateCard(cardId:string,userId:string,body:Payload){
     const context=await this.card(cardId,userId);const card=context.card;
     const rawProject=body.ai_project_id;const projectId=rawProject===undefined?card.ai_project_id:rawProject===null||rawProject===''?null:uuid(rawProject,'Projeto');
@@ -73,7 +82,7 @@ export class PromptSessionsService {
   }
   async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,model,effort,status,output,error,started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY started_at DESC LIMIT 20',[cardId]);}
   async execute(cardId:string,userId:string){
-    const context=await this.card(cardId,userId);const card=context.card;const model=card.ai_model||card.ai_default_model;const effort=card.ai_effort||card.ai_default_effort||'medium' as Effort;
+    const context=await this.card(cardId,userId);const card=context.card;const model=card.ai_model||card.project_default_model||card.ai_default_model;const effort=card.ai_effort||card.project_default_effort||card.ai_default_effort||'medium' as Effort;
     if(!model)fail('Escolha um modelo.',409);if(!card.ai_project_id)fail('Selecione um projeto para executar.',409);
     const project=await this.db.one<{id:string;name:string;local_path:string}>('SELECT id,name,local_path FROM ai_projects WHERE id=$1 AND owner_id=$2',[card.ai_project_id,userId]);
     if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string};const localPath=await this.localPath(currentProject.local_path);

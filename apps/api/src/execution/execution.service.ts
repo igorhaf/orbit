@@ -17,10 +17,11 @@ import {redact,safePath} from './security';
 
 @Injectable()
 export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
-  readonly executors=new ExecutorRegistry();readonly plugins=new PluginRegistry();readonly runs:RunRepository;readonly context:ContextBuilder;
+  readonly executors=new ExecutorRegistry();readonly plugins:PluginRegistry;readonly runs:RunRepository;readonly context:ContextBuilder;
   private timer?:ReturnType<typeof setInterval>;private active=false;private stopping=false;
   private controllers=new Map<string,AbortController>();
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(ActionDispatcher) private actions:ActionDispatcher){
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(ActionDispatcher) private actions:ActionDispatcher,@Inject(PluginRegistry) plugins:PluginRegistry){
+    this.plugins=plugins;
     this.runs=new RunRepository(db);this.context=new ContextBuilder(db,projects);
     this.executors.register(new CodexExecutor());
     this.executors.register({id:'plugin',name:'Capacidade de plugin',actions:[{id:'execute',name:'Executar integrações',permissions:[]}],async execute(){return {summary:'Integrações executadas.',outputs:[]}}});

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { AlignLeft, Check, CheckSquare, Clock3, CreditCard, MoveRight, Palette, Printer, Plus, Tag, Trash2, X } from 'lucide-react';
 import { api, send, Board, Card, CardDetails, getUser, labelColors, labelTextColor } from '@/lib/api';
 import { remember } from '@/lib/history';
-import { Modal } from './ui';
+import { Modal, useConfirmModal } from './ui';
 import { MarkdownEditor, RichText } from './rich-text';
 import { CardDatesPanel, CardLabelsPanel } from './card-extras';
 import { CardSections } from './card-sections';
@@ -28,6 +28,7 @@ export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
   const [panel,setPanel]=useState<'labels'|'date'|'move'|null>(null);
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
+  const {confirm,confirmationModal}=useConfirmModal();
   const [previousCard,setPreviousCard]=useState(card);
   if (card !== previousCard) {
     setPreviousCard(card);
@@ -62,7 +63,7 @@ export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
     }
     return success;
   }
-  return <Modal onClose={onClose} extraWide><div className="max-h-[84vh] overflow-y-auto rounded-xl bg-[#f7f8fa] p-4 text-[#172b4d] sm:p-6">
+  return <><Modal onClose={onClose} extraWide><div className="max-h-[84vh] overflow-y-auto rounded-xl bg-[#f7f8fa] p-4 text-[#172b4d] sm:p-6">
     <div className="pr-9"><div className="flex items-start gap-3"><CreditCard size={22} className="mt-1 shrink-0"/><div className="min-w-0 flex-1">
       <input value={title} maxLength={300} onChange={e=>setTitle(e.target.value)} onBlur={()=>{if(title.trim()&&title!==card.title)updateCard({title},{title:card.title},'renomear cartão')}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}} className="w-full rounded bg-transparent px-1 py-0.5 text-xl font-semibold outline-none hover:bg-[#e9eaed] focus:bg-white" aria-label="Título do cartão"/>
       <p className="mt-1 text-sm text-[#626f86]">na lista <button onClick={()=>setPanel('move')} className="underline hover:text-[#172b4d]">{list?.title}</button>{card.kind==='template'&&<span className="ml-2 rounded bg-[#e9d8fd] px-1.5 py-0.5 text-xs text-[#6e44a3]">Modelo</span>}</p>
@@ -84,12 +85,12 @@ export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
       <button onClick={()=>setPanel(panel==='date'?null:'date')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Clock3 size={16}/> Datas</button>
       <button onClick={()=>document.getElementById('card-checklists')?.scrollIntoView({behavior:'smooth'})} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><CheckSquare size={16}/> Checklists</button>
       <button onClick={()=>document.getElementById('card-fields')?.scrollIntoView({behavior:'smooth'})} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Palette size={16}/> Campos</button>
-    </div></div><div><h4 className="mb-2 text-xs font-bold text-[#626f86]">Ações</h4><div className="space-y-2"><button onClick={()=>completionList?setPanel('move'):updateCard({completed:!card.completed},{completed:card.completed},card.completed?'reabrir cartão':'concluir cartão')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Check size={16}/>{completionList?'Mover para alterar status':card.completed?'Reabrir cartão':'Concluir cartão'}</button><button onClick={()=>setPanel(panel==='move'?null:'move')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><MoveRight size={16}/> Mover, copiar ou espelhar</button>{['normal','template'].includes(card.kind||'normal')&&<><button onClick={()=>run(()=>send(`/cards/${card.id}/template`,'PATCH',{template:card.kind!=='template'}))} className="w-full rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]">{card.kind==='template'?'Remover modelo':'Marcar como modelo'}</button>{card.kind==='template'&&<button onClick={()=>run(()=>send('/cards/copy','POST',{card_ids:[card.id],list_id:card.list_id}))} className="w-full rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]">Criar cartão deste modelo</button>}</>}<a href={`/board/${board.id}/print?card=${card.id}`} target="_blank" rel="noopener noreferrer" className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Printer size={16}/> Imprimir cartão</a><button onClick={async()=>{if(confirm(`Arquivar o cartão “${card.title}”?`)){try{await send(`/cards/${card.id}/archive`,'POST');await onDeleted()}catch(error){setError((error as Error).message)}}}} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm text-[#ae2a19] hover:bg-[#ffebe6]"><Trash2 size={16}/> Arquivar</button></div></div>
+    </div></div><div><h4 className="mb-2 text-xs font-bold text-[#626f86]">Ações</h4><div className="space-y-2"><button onClick={()=>completionList?setPanel('move'):updateCard({completed:!card.completed},{completed:card.completed},card.completed?'reabrir cartão':'concluir cartão')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Check size={16}/>{completionList?'Mover para alterar status':card.completed?'Reabrir cartão':'Concluir cartão'}</button><button onClick={()=>setPanel(panel==='move'?null:'move')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><MoveRight size={16}/> Mover, copiar ou espelhar</button>{['normal','template'].includes(card.kind||'normal')&&<><button onClick={()=>run(()=>send(`/cards/${card.id}/template`,'PATCH',{template:card.kind!=='template'}))} className="w-full rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]">{card.kind==='template'?'Remover modelo':'Marcar como modelo'}</button>{card.kind==='template'&&<button onClick={()=>run(()=>send('/cards/copy','POST',{card_ids:[card.id],list_id:card.list_id}))} className="w-full rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]">Criar cartão deste modelo</button>}</>}<a href={`/board/${board.id}/print?card=${card.id}`} target="_blank" rel="noopener noreferrer" className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Printer size={16}/> Imprimir cartão</a><button onClick={()=>confirm({title:'Arquivar cartão?',description:`O cartão “${card.title}” será movido para os arquivados e poderá ser restaurado depois.`,confirmLabel:'Arquivar'},async()=>{try{await send(`/cards/${card.id}/archive`,'POST');await onDeleted()}catch(error){setError((error as Error).message)}})} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm text-[#ae2a19] hover:bg-[#ffebe6]"><Trash2 size={16}/> Arquivar</button></div></div>
       {panel&&<div className="rounded-lg border border-[#dfe1e6] bg-white p-3 shadow-card"><div className="mb-3 flex items-center justify-between text-sm font-bold"><span>{panel==='labels'?'Etiquetas':panel==='date'?'Datas':'Mover cartão'}</span><button onClick={()=>setPanel(null)}><X size={15}/></button></div>
         {panel==='labels'&&<CardLabelsPanel board={board} card={card} run={run}/>}
         {panel==='date'&&<CardDatesPanel key={String(card.start_date)+String(card.due_date)+String(card.recurrence)+String(card.reminder_minutes)} card={card} update={updateCard}/>}
         {panel==='move'&&<CardOperations card={card} board={board} onChanged={onChanged} onMoved={onDeleted}/>}
       </div>}
     </aside></div>
-  </div></Modal>;
+  </div></Modal>{confirmationModal}</>;
 }

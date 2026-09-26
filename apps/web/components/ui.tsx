@@ -34,6 +34,22 @@ export function Modal({ children, onClose, wide = false, extraWide = false }: { 
   </div>;
 }
 
+type ConfirmationOptions = { title:string; description:string; confirmLabel?:string; destructive?:boolean };
+type ConfirmationRequest = ConfirmationOptions & { onConfirm:()=>void|Promise<void> };
+
+export function useConfirmModal() {
+  const [request,setRequest]=useState<ConfirmationRequest|null>(null);
+  const confirm=(options:ConfirmationOptions,onConfirm:()=>void|Promise<void>)=>setRequest({...options,onConfirm});
+  const modal=request?<ConfirmModal {...request} onClose={()=>setRequest(null)} onConfirm={async()=>{try{await request.onConfirm()}finally{setRequest(null)}}}/>:null;
+  return {confirm,confirmationModal:modal};
+}
+
+export function ConfirmModal({title,description,confirmLabel='Confirmar',destructive=true,onConfirm,onClose}:{title:string;description:string;confirmLabel?:string;destructive?:boolean;onConfirm:()=>void|Promise<void>;onClose:()=>void}) {
+  const [busy,setBusy]=useState(false);
+  async function proceed(){setBusy(true);try{await onConfirm()}finally{setBusy(false)}}
+  return <Modal onClose={busy?()=>{}:onClose}><div className="p-6 text-[#172b4d]"><h2 className="pr-8 text-lg font-bold">{title}</h2><p className="mt-2 text-sm text-[#626f86]">{description}</p><div className="mt-6 flex justify-end gap-2"><button type="button" disabled={busy} onClick={onClose} className="rounded bg-[#e9eaed] px-3 py-2 text-sm font-semibold disabled:opacity-50">Cancelar</button><button type="button" disabled={busy} onClick={()=>void proceed()} className={`rounded px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 ${destructive?'bg-[#ae2a19] hover:bg-[#8f1f15]':'bg-[#0c66e4] hover:bg-[#0055cc]'}`}>{busy?'Confirmando…':confirmLabel}</button></div></div></Modal>;
+}
+
 export function BoardTile({ board, onClick }: { board: Board; onClick: () => void }) {
   return <button onClick={onClick} className="group relative flex h-[112px] w-full flex-col overflow-hidden rounded-[5px] p-3 text-left text-white shadow-sm transition hover:brightness-90" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}>
     <strong className="relative z-10 max-w-[90%] text-[16px] leading-5">{board.title}</strong>

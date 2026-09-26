@@ -9,6 +9,7 @@ import { PoolClient } from 'pg';
 import { Db } from './db';
 import { ActionDispatcher } from './action-dispatcher';
 import { ProjectRegistry } from './execution/project-registry';
+import { PluginRegistry } from './execution/registries';
 import { CardExecutionService } from './execution/execution.service';
 import { CardExecutionController } from './execution/execution.controller';
 import { FeaturesController, FeaturesService, SINGLE_EMAIL } from './features';
@@ -18,7 +19,7 @@ import { AutomationsController, AutomationsService } from './automations';
 import { CodexAiService } from './codex-ai';
 import { Server } from 'socket.io';
 import { OrbitEvents } from './orbit-events';
-import { TrelloSyncService } from './trello-sync';
+import { TrelloPlugin } from './trello-sync';
 import { PromptSessionsService } from './prompt-sessions';
 
 type Payload = Record<string, unknown>;
@@ -960,7 +961,8 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Service) private service: Service,@Inject(TrelloSyncService) private trello:TrelloSyncService,@Inject(PromptSessionsService) private prompts:PromptSessionsService) {}
+  constructor(@Inject(Service) private service: Service,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(PromptSessionsService) private prompts:PromptSessionsService) {}
+  private trello(){return this.plugins.getIntegration<TrelloPlugin>('trello');}
   @Get('health') health() { return { status: 'ok' }; }
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
@@ -971,7 +973,7 @@ class ApiController {
   @Post('email/cards') createEmailCard(@Req() req:Request,@Body() body:Payload){return this.service.createEmailCard(this.service.user(req),body);}
   @Post('email/inbox') inboundEmailCard(@Req() req:Request,@Body() body:Payload){return this.service.inboundEmailCard(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined)}
   @Post('ai/schedule') aiSchedule(@Req() req:Request,@Body() body:Payload){return this.service.aiSchedule(this.service.user(req),body);}
-  @Get('planner') planner(@Req() req:Request){return this.service.planner(this.service.user(req));}
+  @Get('planner/assistant') planner(@Req() req:Request){return this.service.planner(this.service.user(req));}
   @Post('planner/rules') createPlannerRule(@Req() req:Request,@Body() body:Payload){return this.service.createPlannerRule(this.service.user(req),body);}
   @Patch('planner/rules/:id') updatePlannerRule(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updatePlannerRule(id,this.service.user(req),body);}
   @Delete('planner/rules/:id') deletePlannerRule(@Req() req:Request,@Param('id') id:string){return this.service.deletePlannerRule(id,this.service.user(req));}
@@ -999,11 +1001,14 @@ class ApiController {
   @Get('boards/:id/activity') boardActivity(@Req() req: Request,@Param('id') id: string,@Query('commentsOnly') commentsOnly='false') { return this.service.boardActivity(id,this.service.user(req),commentsOnly); }
   @Post('boards/:id/background') background(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.setBackgroundImage(id,this.service.user(req),body); }
   @Delete('boards/:id/background') removeBackground(@Req() req: Request,@Param('id') id: string) { return this.service.removeBackgroundImage(id,this.service.user(req)); }
-  @Get('boards/:id/trello') trelloConnections(@Req() req:Request,@Param('id') id:string){return this.trello.connections(id,this.service.user(req));}
-  @Get('boards/:id/trello/available') trelloAvailable(@Req() req:Request,@Param('id') id:string){return this.trello.available(id,this.service.user(req));}
-  @Post('boards/:id/trello') connectTrello(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.trello.connect(id,this.service.user(req),body.trello_board_id);}
-  @Post('boards/:id/trello/sync') syncTrello(@Req() req:Request,@Param('id') id:string){return this.trello.syncBoard(id,this.service.user(req));}
-  @Delete('boards/:id/trello/:connectionId') disconnectTrello(@Req() req:Request,@Param('id') id:string,@Param('connectionId') connectionId:string){return this.trello.disconnect(id,this.service.user(req),connectionId);}
+  @Get('boards/:id/trello') trelloConnections(@Req() req:Request,@Param('id') id:string){return this.trello().connections(id,this.service.user(req));}
+  @Get('boards/:id/trello/available') trelloAvailable(@Req() req:Request,@Param('id') id:string){return this.trello().available(id,this.service.user(req));}
+  @Post('boards/:id/trello') connectTrello(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.trello().connect(id,this.service.user(req),body.trello_board_id);}
+  @Get('boards/:id/trello/:connectionId/lists') trelloLists(@Req() req:Request,@Param('id') id:string,@Param('connectionId') connectionId:string){return this.trello().listOptions(id,this.service.user(req),connectionId);}
+  @Post('boards/:id/trello/:connectionId/lists') mapTrelloList(@Req() req:Request,@Param('id') id:string,@Param('connectionId') connectionId:string,@Body() body:Payload){return this.trello().mapList(id,this.service.user(req),connectionId,body);}
+  @Delete('boards/:id/trello/:connectionId/lists/:trelloListId') unmapTrelloList(@Req() req:Request,@Param('id') id:string,@Param('connectionId') connectionId:string,@Param('trelloListId') trelloListId:string){return this.trello().unmapList(id,this.service.user(req),connectionId,trelloListId);}
+  @Post('boards/:id/trello/sync') syncTrello(@Req() req:Request,@Param('id') id:string){return this.trello().syncBoard(id,this.service.user(req));}
+  @Delete('boards/:id/trello/:connectionId') disconnectTrello(@Req() req:Request,@Param('id') id:string,@Param('connectionId') connectionId:string){return this.trello().disconnect(id,this.service.user(req),connectionId);}
   @Post('boards/:id/members') invite(@Req() req: Request,@Param('id') id: string) { return this.service.invite(id,this.service.user(req)); }
   @Post('boards/:id/lists') createList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createList(id,this.service.user(req),body); }
   @Get('boards/:id/lists/archived') archivedLists(@Req() req: Request,@Param('id') id: string) { return this.service.archivedLists(id,this.service.user(req)); }
@@ -1045,7 +1050,7 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloPlugin, PromptSessionsService, ActionDispatcher, ProjectRegistry, {provide:PluginRegistry,useFactory:(trello:TrelloPlugin)=>{const registry=new PluginRegistry();registry.registerIntegration(trello);return registry;},inject:[TrelloPlugin]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1067,7 +1072,7 @@ async function bootstrap() {
   events.attach(sockets);
   await app.listen(Number(process.env.API_PORT || 4000), '0.0.0.0');
   const service=app.get(Service);
-  const trello=app.get(TrelloSyncService);
+  const trello=app.get(PluginRegistry).getIntegration<TrelloPlugin>('trello');
   void service.prepareDailySchedules();
   void trello.connectDefault().catch(error=>console.error('Could not connect the default Trello board.',error));
   setInterval(()=>void service.prepareDailySchedules(),60*60*1000);
