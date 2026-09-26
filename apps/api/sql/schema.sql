@@ -215,6 +215,15 @@ DELETE FROM notifications WHERE kind='due' AND due_at IS NULL;
 DROP INDEX IF EXISTS notifications_due_once_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_due_occurrence_idx ON notifications(user_id, card_id, kind, due_at) WHERE kind = 'due';
 CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS saved_searches (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name varchar(120) NOT NULL,
+  query jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS saved_searches_user_updated_idx ON saved_searches(user_id, updated_at DESC);
 CREATE TABLE IF NOT EXISTS card_merges (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,

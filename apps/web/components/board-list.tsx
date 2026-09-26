@@ -12,10 +12,10 @@ const colors: Record<string,string> = {
 };
 type Action = (action: string, payload?: Record<string,unknown>) => Promise<void>;
 
-export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,renderCard,query,statusFilter,fieldFilter}: {
+export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,renderCard,query,statusFilter,fieldFilter,labelFilter='',dueFilter=''}: {
   list:List; lists:List[]; boards:Board[]; onOpen:(card:Card)=>void;
   onAdd:(listId:string,text:string,position:number)=>Promise<void>; onRename:(listId:string,title:string)=>Promise<void>;
-  onAction:Action; renderCard:(card:Card)=>React.ReactNode; query:string; statusFilter:'all'|'open'|'completed';fieldFilter:string;
+  onAction:Action; renderCard:(card:Card)=>React.ReactNode; query:string; statusFilter:'all'|'open'|'completed';fieldFilter:string;labelFilter?:string;dueFilter?:string;
 }) {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging}=useSortable({id:`list:${list.id}`,data:{type:'list',list}});
   const [adding,setAdding]=useState(false);
@@ -33,7 +33,8 @@ export function BoardList({list,lists,boards,onOpen,onAdd,onRename,onAction,rend
   const [archivedCards,setArchivedCards]=useState<{id:string;title:string}[]>([]);
   const [busy,setBusy]=useState(false);
   const [actionError,setActionError]=useState('');
-  const visible=list.cards.filter(card=>{const [fieldId,expected]=fieldFilter.split(':');const checkbox=fieldFilter===''||Boolean(card.custom_values?.find(value=>value.field_id===fieldId)?.value)===(expected==='true');return checkbox&&(statusFilter==='all'||card.completed===(statusFilter==='completed'))&&(card.title.toLowerCase().includes(query.toLowerCase())||card.description?.toLowerCase().includes(query.toLowerCase()))});
+  const [now]=useState(()=>Date.now());
+  const visible=list.cards.filter(card=>{const [fieldId,expected]=fieldFilter.split(':');const checkbox=fieldFilter===''||Boolean(card.custom_values?.find(value=>value.field_id===fieldId)?.value)===(expected==='true');const label=!labelFilter||card.labels.some(label=>label.id===labelFilter);const due=card.due_date?new Date(card.due_date).getTime():null;const dueMatch=dueFilter==='all'||!dueFilter||(dueFilter==='overdue'?Boolean(due&&due<now&&!card.completed):dueFilter==='week'?Boolean(due&&due>=now&&due<=now+7*86400000):due===null);return checkbox&&label&&dueMatch&&(statusFilter==='all'||card.completed===(statusFilter==='completed'))&&(card.title.toLowerCase().includes(query.toLowerCase())||card.description?.toLowerCase().includes(query.toLowerCase()))});
   const close=()=>{setMenu(false);setSection('main')};
   async function act(action:string,payload?:Record<string,unknown>) {
     setBusy(true);

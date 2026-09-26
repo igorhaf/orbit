@@ -86,6 +86,8 @@ export type HomeItem = { id: string; text: string; completed: boolean; due_date:
 export type RecentConversation = { id: string; body: string; created_at: string; card_id: string; card_title: string; board_id: string; board_title: string; author_name: string };
 export type HomeData = { upNext: HomeCard[]; highlights: Activity[]; yourItems: HomeItem[]; recentBoards: Board[]; favorites: Board[]; recentConversations: RecentConversation[] };
 export type SearchResults = { boards: Board[]; cards: (HomeCard & { description: string })[] };
+export type AdvancedSearchCard = HomeCard & {list_id:string;updated_at:string;labels:Label[]};
+export type SavedSearch = {id:string;name:string;query:Record<string,string>;created_at:string;updated_at:string};
 export type AppNotification = { id: string; kind: string; title: string; body: string; created_at: string; read_at: string | null; board_id: string | null; board_title: string | null; card_id: string | null };
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';

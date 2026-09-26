@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, Injectable, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Injectable, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { Db } from './db';
@@ -270,6 +270,40 @@ export class FeaturesService {
     return { boards,cards };
   }
 
+  async advancedSearch(userId:string, filters:Record<string,string>) {
+    const term=(filters.q||'').trim().slice(0,100);
+    const values:unknown[]=[userId];
+    const where=['bm.user_id=$1'];
+    const add=(sql:string,value:unknown)=>{values.push(value);where.push(sql.replace('?',`$${values.length}`));};
+    if(term){values.push(`%${term}%`);const p=`$${values.length}`;where.push(`(c.title ILIKE ${p} OR c.description ILIKE ${p} OR EXISTS(SELECT 1 FROM comments cm WHERE cm.card_id=c.id AND cm.body ILIKE ${p}) OR EXISTS(SELECT 1 FROM checklist_items ci WHERE ci.card_id=c.id AND ci.text ILIKE ${p}))`);}
+    if(filters.board_id) add('b.id=?',validId(filters.board_id));
+    if(filters.list_id) add('l.id=?',validId(filters.list_id));
+    if(filters.label_id) { const id=validId(filters.label_id); values.push(id); where.push(`EXISTS(SELECT 1 FROM card_labels cl WHERE cl.card_id=c.id AND cl.label_id=$${values.length})`); }
+    if(filters.status==='completed') where.push('c.completed');
+    if(filters.status==='open') where.push('NOT c.completed');
+    if(filters.archived==='only') where.push('c.archived_at IS NOT NULL');
+    else if(filters.archived!=='all') where.push('c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL');
+    if(filters.due==='overdue') where.push('c.due_date<now() AND NOT c.completed');
+    if(filters.due==='week') where.push("c.due_date BETWEEN now() AND now()+interval '7 days'");
+    if(filters.due==='none') where.push('c.due_date IS NULL');
+    if(filters.comments==='yes') where.push('EXISTS(SELECT 1 FROM comments cm WHERE cm.card_id=c.id)');
+    if(filters.checklist==='yes') where.push('EXISTS(SELECT 1 FROM checklist_items ci WHERE ci.card_id=c.id)');
+    const sort=filters.sort==='created'?'c.created_at DESC':filters.sort==='due'?'c.due_date ASC NULLS LAST':'c.updated_at DESC';
+    const cards=await this.db.query(`SELECT c.id,c.title,c.description,c.due_date,c.completed,c.updated_at,b.id AS board_id,b.title AS board_title,l.id AS list_id,l.title AS list_title,
+      COALESCE((SELECT json_agg(json_build_object('id',la.id,'name',la.name,'color',la.color)) FROM labels la JOIN card_labels cl ON cl.label_id=la.id WHERE cl.card_id=c.id),'[]') AS labels
+      FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id
+      WHERE ${where.join(' AND ')} ORDER BY ${sort} LIMIT 100`,values);
+    return {cards};
+  }
+
+  async savedSearches(userId:string){ return this.db.query('SELECT id,name,query,created_at,updated_at FROM saved_searches WHERE user_id=$1 ORDER BY updated_at DESC',[userId]); }
+  async saveSearch(userId:string, body:Record<string,unknown>){
+    const name=bounded(body.name,'Nome',120); const query=body.query;
+    if(!query||typeof query!=='object'||Array.isArray(query)) bad('Pesquisa inválida.');
+    return this.db.one('INSERT INTO saved_searches(user_id,name,query) VALUES($1,$2,$3::jsonb) RETURNING id,name,query,created_at,updated_at',[userId,name,JSON.stringify(query)]);
+  }
+  async deleteSavedSearch(userId:string,id:string){validId(id);const result=await this.db.one('DELETE FROM saved_searches WHERE id=$1 AND user_id=$2 RETURNING id',[id,userId]);if(!result)bad('Pesquisa salva não encontrada.',404);return {ok:true};}
+
   async notifications(userId: string) {
     const account=await this.account(userId);
     await this.db.query(`DELETE FROM notifications n WHERE n.user_id=$1 AND n.kind='due'
@@ -322,6 +356,10 @@ export class FeaturesController {
   @Post('lists/:id/watch/toggle') watchList(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('list',id,this.features.user(req));}
   @Post('boards/:id/watch/toggle') watchBoard(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('board',id,this.features.user(req));}
   @Get('search') search(@Req() req: Request,@Query('q') q='') { return this.features.search(this.features.user(req),q); }
+  @Get('search/advanced') advancedSearch(@Req() req:Request,@Query() query:Record<string,string>){return this.features.advancedSearch(this.features.user(req),query);}
+  @Get('saved-searches') savedSearches(@Req() req:Request){return this.features.savedSearches(this.features.user(req));}
+  @Post('saved-searches') saveSearch(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.saveSearch(this.features.user(req),body);}
+  @Delete('saved-searches/:id') deleteSavedSearch(@Req() req:Request,@Param('id') id:string){return this.features.deleteSavedSearch(this.features.user(req),id);}
   @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
   @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }
   @Patch('notifications/:id/read') read(@Req() req: Request,@Param('id') id: string) { return this.features.markNotification(this.features.user(req),id); }

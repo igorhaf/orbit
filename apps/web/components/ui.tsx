@@ -198,6 +198,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         {results.cards.length > 0 && <p className="mt-2 px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Cartões</p>}
         {results.cards.map(card => <button key={card.id} onClick={() => { setPanel(null); router.push(cardUrl(card.board_id,card.id)); }} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><CreditCard size={16}/><span className="min-w-0 flex-1 truncate">{card.title}</span>{card.completed&&<span className="rounded bg-[#baf3db] px-1.5 py-0.5 text-[10px] text-[#216e4e]">Concluído</span>}<span className="max-w-24 truncate text-xs text-[#626f86]">{card.board_title}</span></button>)}
         {!results.boards.length && !results.cards.length && <p className="p-4 text-center text-xs text-[#626f86]">Nenhum resultado encontrado.</p>}
+        <button onClick={() => { setPanel(null); router.push(`/search?q=${encodeURIComponent(query)}`); }} className="mt-2 w-full border-t border-[#dfe1e6] px-3 py-2 text-left text-xs font-semibold text-[#0c66e4]">Abrir busca avançada</button>
       </>}</div>
     </div>}
     {panel === 'boards' && <div className="absolute left-32 top-12 z-40 w-72 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
