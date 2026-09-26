@@ -1,11 +1,12 @@
-import {Body,Controller,Delete,Get,HttpException,Inject,Injectable,OnModuleDestroy,OnModuleInit,Param,Patch,Post,Req} from '@nestjs/common';
+import {Body,Controller,Delete,Get,HttpException,Inject,Injectable,OnModuleDestroy,OnModuleInit,Optional,Param,Patch,Post,Req} from '@nestjs/common';
 import {Request} from 'express';
 import {randomUUID} from 'node:crypto';
 import {PoolClient,QueryResultRow} from 'pg';
 import nodemailer from 'nodemailer';
 import {Db} from './db';
 import {FeaturesService} from './features';
-import {AutomationAction,Context,Definition,interpolate,isId,matches,nextSchedule,dateExpression,validateDefinition} from './automation-rules';
+import {AutomationAction,Context,Definition,eventName,interpolate,isId,matches,nextSchedule,dateExpression,validateDefinition} from './automation-rules';
+import {ActionDispatcher} from './action-dispatcher';
 
 type Rule=QueryResultRow&{id:string;board_id:string;owner_id:string;name:string;definition:Definition;enabled:boolean;tags:string[];created_at:Date;next_run_at:Date|null};
 type Event=QueryResultRow&{id:string;board_id:string;card_id:string|null;kind:string;chain:string[];payload:{before?:Record<string,unknown>;after?:Record<string,unknown>}};
@@ -16,8 +17,12 @@ const checkId=(id:unknown)=>{if(!isId(id))bad('ID inválido.');return id as stri
 export class AutomationsService implements OnModuleInit,OnModuleDestroy {
   private timer?:ReturnType<typeof setInterval>;
   private ticking=false;
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService){}
-  onModuleInit(){this.timer=setInterval(()=>void this.tick(),5000);this.timer.unref();}
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Optional() @Inject(ActionDispatcher) private dispatcher:ActionDispatcher=new ActionDispatcher()){}
+  onModuleInit(){
+    for(const [alias,type] of Object.entries({add_label:'label_add',remove_label:'label_remove',add_comment:'comment'}))this.dispatcher.register(alias,async(request,client)=>{const c=await this.context(client,request.cardId);if(!c)throw new Error('Cartão indisponível.');await this.action(client,{id:'',name:alias,board_id:request.boardId,owner_id:request.userId} as Rule,{type:type as AutomationAction['type'],value:String(request.config.value||'')},c,new Date())});
+    this.dispatcher.register('create_card',async(request,client)=>{const list=(await client.query('SELECT l.id FROM lists l JOIN cards c ON c.list_id=l.id WHERE c.id=$1 AND l.board_id=$2 AND l.archived_at IS NULL',[request.cardId,request.boardId])).rows[0];if(!list)throw new Error('Lista indisponível.');const title=String(request.config.value||'').trim();if(!title||title.length>300)throw new Error('Título inválido.');await client.query('INSERT INTO cards(list_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1),0))',[list.id,title])});
+    this.timer=setInterval(()=>void this.tick(),5000);this.timer.unref();
+  }
   onModuleDestroy(){if(this.timer)clearInterval(this.timer)}
   async list(board:string,user:string){await this.features.member(board,user);return this.db.query('SELECT * FROM automations WHERE board_id=$1 ORDER BY created_at DESC',[board])}
   async status(board:string,user:string){await this.features.member(board,user);return this.db.one('SELECT max(r.created_at) AS last FROM automation_runs r JOIN automations a ON a.id=r.automation_id WHERE a.board_id=$1',[board])}
@@ -28,8 +33,8 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
     for(const c of d.conditions){if(c.field.startsWith('custom:'))refs.push({table:'custom_fields',id:c.field.slice(7)});if(['list_id','labels','members'].includes(c.field)&&c.value&&isId(c.value))refs.push({table:c.field==='list_id'?'lists':c.field==='labels'?'labels':'board_members',id:c.value,column:c.field==='members'?'user_id':'id'});}
     for(const a of d.actions){
       if(a.target==='list')refs.push({table:'lists',id:a.listId!});
-      if(a.type==='move')refs.push({table:'lists',id:a.value!});
-      if(a.type.startsWith('label_'))refs.push({table:'labels',id:a.value!});
+      if(['move','move_card'].includes(a.type))refs.push({table:'lists',id:a.value!});
+      if(a.type.startsWith('label_')||['add_label','remove_label'].includes(a.type))refs.push({table:'labels',id:a.value!});
       if(['assign','unassign'].includes(a.type))refs.push({table:'board_members',id:a.value!,column:'user_id'});
       if(a.type==='field')refs.push({table:'custom_fields',id:a.field!});
     }
@@ -58,7 +63,7 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
       const map=(value:string)=>{if(!isId(mapping[value]))bad(`Mapeie a referência ${value} para o quadro de destino.`);return mapping[value]};
       if(d.trigger.listId)d.trigger.listId=map(d.trigger.listId);
       for(const c of d.conditions){if(c.field.startsWith('custom:'))c.field='custom:'+map(c.field.slice(7));if(['list_id','labels','members'].includes(c.field)&&isId(c.value))c.value=map(c.value);if(c.value)c.value=c.value.replace(/custom:([\da-f-]{36})/gi,(_,id)=>'custom:'+map(id));}
-      for(const a of d.actions){if(a.listId)a.listId=map(a.listId);if(a.field)a.field=map(a.field);if(['move','label_add','label_remove','assign','unassign'].includes(a.type))a.value=map(a.value!);for(const key of ['value','subject','template'] as const)if(a[key])a[key]=a[key]!.replace(/custom:([\da-f-]{36})/gi,(_,id)=>'custom:'+map(id));}
+      for(const a of d.actions){if(a.listId)a.listId=map(a.listId);if(a.field)a.field=map(a.field);if(['move','move_card','label_add','label_remove','add_label','remove_label','assign','unassign'].includes(a.type))a.value=map(a.value!);for(const key of ['value','subject','template'] as const)if(a[key])a[key]=a[key]!.replace(/custom:([\da-f-]{36})/gi,(_,id)=>'custom:'+map(id));}
     }
     return this.save(board,user,{name:`${rule.name.slice(0,110)} (cópia)`,definition:d,tags:rule.tags,enabled:false});
   }
@@ -77,12 +82,18 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
     const target=action.target||(source?'card':'board');
     if(target==='card')return source?[source]:[];
     const {rows}=await client.query(`SELECT c.id FROM cards c JOIN lists l ON l.id=c.list_id WHERE l.board_id=$1 AND l.archived_at IS NULL AND c.archived_at IS NULL AND c.kind IN ('normal','template')
-      AND ($2::text<>'list' OR l.id=$3::uuid) ORDER BY c.id LIMIT 501`,[rule.board_id,target,action.listId||null]);
+      AND ($2::text<>'list' OR l.id=$3::uuid)
+      AND ($2::text<>'related' OR c.id IN (SELECT target_id FROM attachments WHERE card_id=$4 AND kind='card' UNION SELECT card_id FROM attachments WHERE target_id=$4 AND kind='card')) ORDER BY c.id LIMIT 501`,[rule.board_id,target,action.listId||null,source]);
     if(rows.length>500)throw new Error('A execução excede 500 cartões. Restrinja a lista alvo.');
     return rows.map(row=>row.id as string);
   }
   private async action(client:PoolClient,rule:Rule,action:AutomationAction,c:Context,now:Date){
     const text=interpolate(action.value||'',c,now),id=c.id as string;
+    if(this.dispatcher.has(action.type)){
+      const chain=(await client.query("SELECT COALESCE(NULLIF(current_setting('orbit.automation_chain',true),'')::uuid[],'{}'::uuid[]) AS chain")).rows[0].chain;
+      await this.dispatcher.dispatch({type:action.type,cardId:id,boardId:rule.board_id,userId:rule.owner_id,config:{value:text,list_id:text},chain},client);return;
+    }
+    if(['run_agent','run_skill','execute_plugin_action','move_card','add_label','remove_label','add_comment','create_card'].includes(action.type))throw new Error('Capacidade de automação indisponível.');
     switch(action.type){
       case 'move':{
         const destination=(await client.query('SELECT id FROM lists WHERE id=$1 AND board_id=$2 AND archived_at IS NULL FOR UPDATE',[text,rule.board_id])).rows[0];
@@ -209,7 +220,7 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
       const queue=(await client.query<Event>('SELECT * FROM automation_events WHERE processed_at IS NULL ORDER BY id LIMIT 100')).rows;
       for(const event of queue){
         await client.query('BEGIN');
-        for(const rule of rules){const t=rule.definition.trigger;if(rule.board_id!==event.board_id||t.type!=='event'||t.event!==event.kind||new Date(rule.created_at)>new Date(event.created_at as string))continue;
+        for(const rule of rules){const t=rule.definition.trigger;if(rule.board_id!==event.board_id||t.type!=='event'||eventName(t.event||'')!==eventName(event.kind)||new Date(rule.created_at)>new Date(event.created_at as string))continue;
           if(t.listId&&String(event.payload.after?.list_id||'')!==t.listId){const c=event.card_id?await this.context(client,event.card_id):null;if(event.kind==='card_moved'||c?.list_id!==t.listId)continue;}
           await this.execute(client,rule,'event:'+event.id,event.card_id,event.chain);
         }

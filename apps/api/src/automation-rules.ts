@@ -1,5 +1,6 @@
-export const events = ['card_created','card_moved','card_updated','card_completed','due_changed','label_changed','member_changed','comment_added','field_changed','checklist_changed'] as const;
-export const actionTypes = ['move','label_add','label_remove','assign','unassign','complete','archive','rename','description','comment','due','start','field','checklist_add','checklist_complete','sort','report'] as const;
+export const events = ['card_created','card_moved','card_updated','card_completed','due_changed','label_changed','member_changed','comment_added','field_changed','checklist_changed','card.created','card.updated','card.moved','card.completed','execution.queued','execution.started','execution.completed','execution.failed','execution.cancelled'] as const;
+export const eventName=(name:string)=>({'card.created':'card_created','card.updated':'card_updated','card.moved':'card_moved','card.completed':'card_completed'}[name]||name);
+export const actionTypes = ['move','label_add','label_remove','assign','unassign','complete','archive','rename','description','comment','due','start','field','checklist_add','checklist_complete','sort','report','run_agent','run_skill','execute_plugin_action','move_card','add_label','remove_label','add_comment','create_card'] as const;
 export type Condition = {field:string; op:'eq'|'neq'|'contains'|'not_contains'|'gt'|'lt'|'empty'|'not_empty'; value?:string};
 export type AutomationAction = {type:typeof actionTypes[number]; value?:string; field?:string; target?:'card'|'board'|'list'|'related'; listId?:string; report?:'snapshot'|'due_soon'|'overdue'|'my_cards'|'custom'; recipients?:string; subject?:string; template?:string};
 export type Definition = {
@@ -28,7 +29,7 @@ export function validateDefinition(input:unknown):Definition {
   }
   if(!Array.isArray(d.conditions)||d.conditions.length>30)throw new Error('Use até 30 condições.');
   for(const c of d.conditions){
-    if(!c||typeof c.field!=='string'||!['eq','neq','contains','not_contains','gt','lt','empty','not_empty'].includes(c.op)||!(['title','description','list_id','completed','due_date','labels','members','archived'].includes(c.field)||/^custom:[\da-f-]{36}$/i.test(c.field))|| (c.value!==undefined&&(typeof c.value!=='string'||c.value.length>1000)))throw new Error('Condição inválida.');
+    if(!c||typeof c.field!=='string'||!['eq','neq','contains','not_contains','gt','lt','empty','not_empty'].includes(c.op)||!(['title','description','list','list_id','completed','due_date','labels','members','archived'].includes(c.field)||/^custom:[\da-f-]{36}$/i.test(c.field))|| (c.value!==undefined&&(typeof c.value!=='string'||c.value.length>1000)))throw new Error('Condição inválida.');
   }
   if(!Array.isArray(d.actions)||d.actions.length<1||d.actions.length>20)throw new Error('Use entre 1 e 20 ações.');
   for(const a of d.actions){
@@ -36,11 +37,11 @@ export function validateDefinition(input:unknown):Definition {
     if(['scheduled','board_button'].includes(t.type)&&['card','related'].includes(a.target||''))throw new Error('Este gatilho exige uma lista ou o quadro como alvo.');
     for(const key of ['value','field','listId','recipients','subject','template'] as const)if(a[key]!==undefined&&(typeof a[key]!=='string'||a[key]!.length>10000))throw new Error('Texto de ação inválido.');
     if(a.target==='list'&&!isId(a.listId))throw new Error('Selecione a lista alvo.');
-    if(['move','label_add','label_remove','assign','unassign'].includes(a.type)&&!isId(a.value))throw new Error('Selecione o destino da ação.');
+    if(['move','move_card','label_add','label_remove','add_label','remove_label','assign','unassign'].includes(a.type)&&!isId(a.value))throw new Error('Selecione o destino da ação.');
     if(a.type==='field'&&!isId(a.field))throw new Error('Selecione o campo personalizado.');
     if(a.type==='sort'&&!['title','due_date','created_at'].includes(a.value||''))throw new Error('Ordenação inválida.');
     if(a.type==='complete'&&!['true','false'].includes(a.value||''))throw new Error('Status inválido.');
-    if(['rename','comment','checklist_add'].includes(a.type)&&!a.value?.trim())throw new Error('Informe o texto da ação.');
+    if(['rename','comment','add_comment','create_card','checklist_add'].includes(a.type)&&!a.value?.trim())throw new Error('Informe o texto da ação.');
     if(a.type==='report'){
       const recipients=(a.recipients||'').split(',').map(x=>x.trim());
       if(recipients.length>10||recipients.some(x=>!/^\S+@[^\s@]+\.[^\s@]+$/.test(x)||/[\r\n]/.test(x)))throw new Error('Informe de 1 a 10 e-mails separados por vírgula.');

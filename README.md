@@ -80,6 +80,12 @@ Para acessar pelo celular, conecte-o à mesma rede Wi-Fi da máquina e abra no n
 
 A migração guarda apenas o hash da senha e reconfigura esse acesso a cada execução. Altere a senha inicial antes de disponibilizar o sistema publicamente.
 
+## Cartões executáveis (opcional)
+
+Cartões comuns continuam funcionando sem configuração. Na seção **Execução opcional** do cartão, selecione projeto, agente, executor e contexto para executar uma tarefa e acompanhar resultados e histórico. O primeiro executor usa o Codex local com a sessão ChatGPT do servidor; integrações ficam atrás de um registry genérico. Automações podem reagir ao resultado.
+
+Consulte [arquitetura, migrations, permissões, APIs e exemplo funcional](docs/executable-cards.md). Recursos de exemplo ficam em `.orbit/`. Execute `npm run db:migrate` antes de iniciar a nova versão.
+
 ## Comandos
 
 | Comando | Função |
