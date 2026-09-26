@@ -77,8 +77,7 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
     const target=action.target||(source?'card':'board');
     if(target==='card')return source?[source]:[];
     const {rows}=await client.query(`SELECT c.id FROM cards c JOIN lists l ON l.id=c.list_id WHERE l.board_id=$1 AND l.archived_at IS NULL AND c.archived_at IS NULL AND c.kind IN ('normal','template')
-      AND ($2::text<>'list' OR l.id=$3::uuid)
-      AND ($2::text<>'related' OR c.id IN (SELECT target_id FROM attachments WHERE card_id=$4 AND kind='card' UNION SELECT card_id FROM attachments WHERE target_id=$4 AND kind='card')) ORDER BY c.id LIMIT 501`,[rule.board_id,target,action.listId||null,source]);
+      AND ($2::text<>'list' OR l.id=$3::uuid) ORDER BY c.id LIMIT 501`,[rule.board_id,target,action.listId||null]);
     if(rows.length>500)throw new Error('A execução excede 500 cartões. Restrinja a lista alvo.');
     return rows.map(row=>row.id as string);
   }

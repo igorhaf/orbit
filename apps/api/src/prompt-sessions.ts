@@ -1,7 +1,7 @@
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { realpath, stat } from 'node:fs/promises';
 import { isAbsolute, parse } from 'node:path';
-import { CodexAiService, PromptAttachment } from './codex-ai';
+import { CodexAiService } from './codex-ai';
 import { Db } from './db';
 import { FeaturesService } from './features';
 import { OrbitEvents } from './orbit-events';
@@ -62,22 +62,6 @@ export class PromptSessionsService {
     if(!card)fail('Cartão não encontrado.',404);return {boardId,card:card as CardContext};
   }
   async settingsForCard(cardId:string,userId:string){const {card}=await this.card(cardId,userId);return {model:card.ai_model||card.ai_default_model||null,effort:card.ai_effort||card.ai_default_effort||'medium' as Effort};}
-  async attachments(cardId:string,userId:string):Promise<PromptAttachment[]>{
-    await this.card(cardId,userId);
-    const rows=await this.db.query<{kind:string;name:string;url:string|null;target_id:string|null;mime_type:string|null;data:Buffer|null}>('SELECT kind,name,url,target_id,mime_type,data FROM attachments WHERE card_id=$1 ORDER BY position,id',[cardId]);
-    const attached:PromptAttachment[]=[];
-    for(const row of rows){
-      if(row.kind==='file'&&row.data){attached.push({name:row.name,data:row.data});continue;}
-      if(row.kind==='url'&&row.url){attached.push({name:row.name,reference:`Link anexado: ${row.url}`});continue;}
-      if(row.kind==='card'&&row.target_id){
-        try{await this.features.cardBoard(row.target_id,userId);const target=await this.db.one<{title:string;description:string}>('SELECT title,description FROM cards WHERE id=$1 AND archived_at IS NULL',[row.target_id]);if(target)attached.push({name:row.name,reference:`Cartão relacionado\nTítulo: ${target.title}\nDescrição:\n${target.description||''}`});}catch{continue;}
-      }
-      if(row.kind==='board'&&row.target_id){
-        try{await this.features.member(row.target_id,userId);const target=await this.db.one<{title:string;description:string}>('SELECT title,description FROM boards WHERE id=$1',[row.target_id]);if(target)attached.push({name:row.name,reference:`Quadro relacionado\nTítulo: ${target.title}\nDescrição:\n${target.description||''}`});}catch{continue;}
-      }
-    }
-    return attached;
-  }
   async updateCard(cardId:string,userId:string,body:Payload){
     const context=await this.card(cardId,userId);const card=context.card;
     const rawProject=body.ai_project_id;const projectId=rawProject===undefined?card.ai_project_id:rawProject===null||rawProject===''?null:uuid(rawProject,'Projeto');
@@ -96,7 +80,7 @@ export class PromptSessionsService {
     const prompt=`Você está executando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO:\n${card.description||card.title}`;
     const run=await this.db.one<{id:string}>('INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[cardId,currentProject.id,userId,model,effort,prompt]);
     this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message:`Iniciando ${model} com esforço ${effort}.`});
-    try { const attachments=await this.attachments(cardId,userId); const output=await this.codex.execute(prompt,localPath,model as string,effort,attachments,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})); await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,finished_at=now() WHERE id=$1",[run!.id,output]); await this.features.record(userId,context.boardId,cardId,'prompt_execution',`executou ${model} em ${currentProject.name}`); this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'}); return {id:run!.id,model,effort,status:'success' as const,output}; }
+    try { const output=await this.codex.execute(prompt,localPath,model as string,effort,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})); await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,finished_at=now() WHERE id=$1",[run!.id,output]); await this.features.record(userId,context.boardId,cardId,'prompt_execution',`executou ${model} em ${currentProject.name}`); this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'}); return {id:run!.id,model,effort,status:'success' as const,output}; }
     catch(error){const message=error instanceof Error?error.message:'A execução falhou.';await this.db.query("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1",[run!.id,message]);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'error',message});throw error;}
   }
 }
