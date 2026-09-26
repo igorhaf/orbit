@@ -1,48 +1,27 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, LoaderCircle, Sparkles } from 'lucide-react';
-import { Card, send } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, LoaderCircle, Play, Sparkles } from 'lucide-react';
+import { AiEffort, AiModel, AiProject, Board, Card, PromptRun, api, send } from '@/lib/api';
 import { RichText } from './rich-text';
 
 type Action = 'write'|'refine'|'summarize'|'shorten'|'action_items'|'checklist';
 type Result = { output:string; items:string[] };
+const actions: {id:Action;label:string}[] = [{id:'write',label:'Escrever descrição'},{id:'refine',label:'Refinar texto'},{id:'summarize',label:'Resumir'},{id:'shorten',label:'Encurtar'},{id:'action_items',label:'Encontrar ações'},{id:'checklist',label:'Criar checklist'}];
+const label=(id:string|null|undefined,models:AiModel[])=>models.find(item=>item.id===id)?.name||id||'';
+const efforts:{id:AiEffort;label:string}[]=[{id:'low',label:'Baixo'},{id:'medium',label:'Médio'},{id:'high',label:'Alto'},{id:'xhigh',label:'Muito alto'}];
+const effortIndex=(effort:AiEffort|null|undefined)=>Math.max(0,efforts.findIndex(item=>item.id===(effort||'medium')));
 
-const actions: {id:Action;label:string}[] = [
-  {id:'write',label:'Escrever descrição'}, {id:'refine',label:'Refinar texto'},
-  {id:'summarize',label:'Resumir'}, {id:'shorten',label:'Encurtar'},
-  {id:'action_items',label:'Encontrar ações'}, {id:'checklist',label:'Criar checklist'},
-];
-
-export function CardAi({card,onApply,onChanged}:{card:Card;onApply:(text:string)=>Promise<void>;onChanged:()=>Promise<void>}) {
-  const [action,setAction]=useState<Action>('refine');
-  const [instruction,setInstruction]=useState('');
-  const [result,setResult]=useState<Result|null>(null);
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
-
-  async function generate(){
-    setBusy(true);setError('');setResult(null);
-    try { setResult(await send<Result>(`/cards/${card.id}/ai`,'POST',{action,instruction})); }
-    catch (err) { setError((err as Error).message); }
-    finally { setBusy(false); }
-  }
-  async function createChecklist(){
-    if(!result?.items.length)return;
-    setBusy(true);setError('');
-    try {
-      const checklist=await send<{id:string}>(`/cards/${card.id}/checklists`,'POST',{title:'Checklist sugerido por IA'});
-      await send(`/checklists/${checklist.id}/items`,'POST',{text:result.items.join('\n')});
-      await onChanged();setResult(null);
-    } catch (err) { setError((err as Error).message); }
-    finally { setBusy(false); }
-  }
-  const itemsAction=action==='checklist'||action==='action_items';
-  return <section className="rounded-lg border border-[#c3b6f7] bg-[#f7f5ff] p-3"><h3 className="flex items-center gap-2 text-sm font-bold text-[#403294]"><Sparkles size={17}/> Assistente Codex</h3><p className="mt-1 text-xs text-[#5e5a87]">A sugestão só altera o cartão quando você aplicá-la.</p>
-    <div className="mt-3 flex flex-wrap gap-1.5">{actions.map(option=><button key={option.id} type="button" onClick={()=>{setAction(option.id);setResult(null)}} className={`rounded px-2 py-1 text-xs font-semibold ${action===option.id?'bg-[#6554c0] text-white':'bg-white text-[#403294] hover:bg-[#e9e5fa]'}`}>{option.label}</button>)}</div>
-    <textarea value={instruction} onChange={event=>setInstruction(event.target.value)} maxLength={2000} placeholder="Instrução opcional para a IA" className="mt-3 min-h-16 w-full rounded border border-[#b7b1d7] bg-white p-2 text-sm outline-none focus:border-[#6554c0]"/>
-    <button type="button" disabled={busy} onClick={()=>void generate()} className="mt-2 inline-flex items-center gap-2 rounded bg-[#6554c0] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">{busy?<LoaderCircle className="animate-spin" size={15}/>:<Sparkles size={15}/>} Gerar sugestão</button>
-    {error&&<p role="alert" className="mt-3 rounded bg-[#ffebe6] p-2 text-xs text-[#ae2a19]">{error}</p>}
-    {result&&<div className="mt-3 rounded border border-[#d8d2f5] bg-white p-3"><div className="max-h-56 overflow-y-auto text-sm">{itemsAction?<ul className="space-y-1">{result.items.map((item,index)=><li key={index} className="flex gap-2"><Check size={15} className="mt-0.5 shrink-0 text-[#6554c0]"/>{item}</li>)}</ul>:<RichText text={result.output}/>}</div><div className="mt-3 flex flex-wrap gap-2">{itemsAction?<button type="button" disabled={busy||!result.items.length} onClick={()=>void createChecklist()} className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">Criar checklist</button>:<button type="button" disabled={busy} onClick={()=>void onApply(result.output).then(()=>setResult(null)).catch(err=>setError((err as Error).message))} className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-bold text-white">Aplicar à descrição</button>}<button type="button" onClick={()=>setResult(null)} className="rounded bg-[#f1f2f4] px-3 py-1.5 text-xs font-semibold">Descartar</button></div></div>}
-  </section>;
+export function CardAi({card,board,onApply,onChanged,onExecutionStart}:{card:Card;board:Board;onApply:(text:string)=>Promise<void>;onChanged:()=>Promise<void>;onExecutionStart?:()=>void}) {
+  const [action,setAction]=useState<Action>('refine');const [instruction,setInstruction]=useState('');const [result,setResult]=useState<Result|null>(null);const [models,setModels]=useState<AiModel[]>([]);const [projects,setProjects]=useState<AiProject[]>([]);const [runs,setRuns]=useState<PromptRun[]>([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+  const effective=card.ai_model||board.ai_default_model;
+  const effectiveEffort=card.ai_effort||board.ai_default_effort||'medium';
+  const selectedProject=projects.find(project=>project.id===card.ai_project_id);
+  useEffect(()=>{let active=true;Promise.all([api<AiModel[]>('/ai/models'),api<AiProject[]>('/ai/projects'),api<PromptRun[]>(`/cards/${card.id}/prompt-runs`)]).then(([available,localProjects,history])=>{if(active){setModels(available);setProjects(localProjects);setRuns(history);}}).catch(err=>{if(active)setError((err as Error).message);});return()=>{active=false};},[card.id]);
+  async function configure(body:Record<string,unknown>){setBusy(true);setError('');try{await send(`/cards/${card.id}/prompt-settings`,'PATCH',body);await onChanged();}catch(err){setError((err as Error).message);}finally{setBusy(false);}}
+  async function generate(){if(!effective){setError('Escolha um modelo.');return;}setBusy(true);setError('');setResult(null);try{setResult(await send<Result>(`/cards/${card.id}/ai`,'POST',{action,instruction}));}catch(err){setError((err as Error).message);}finally{setBusy(false);}}
+  async function createChecklist(){if(!result?.items.length)return;setBusy(true);setError('');try{const checklist=await send<{id:string}>(`/cards/${card.id}/checklists`,'POST',{title:'Checklist sugerido por IA'});await send(`/checklists/${checklist.id}/items`,'POST',{text:result.items.join('\n')});await onChanged();setResult(null);}catch(err){setError((err as Error).message);}finally{setBusy(false);}}
+  async function execute(){if(!effective||!card.ai_project_id){setError(!effective?'Escolha um modelo.':'Selecione um projeto.');return;}onExecutionStart?.();setBusy(true);setError('');try{const run=await send<PromptRun>(`/cards/${card.id}/prompt-runs`,'POST');setRuns([run,...runs]);}catch(err){setError((err as Error).message);}finally{setBusy(false);}}
+  const modelHint=useMemo(()=>card.ai_model?`Modelo do cartão: ${label(card.ai_model,models)}`:board.ai_default_model?`Padrão do quadro: ${label(board.ai_default_model,models)}`:'Escolha um modelo',[board.ai_default_model,card.ai_model,models]);
+  return <section className="rounded-lg border border-[#c3b6f7] bg-[#f7f5ff] p-3"><h3 className="flex items-center gap-2 text-sm font-bold text-[#403294]"><Sparkles size={17}/> Sessão de prompt</h3><div className="mt-3 grid gap-2 sm:grid-cols-2"><label className="text-xs font-semibold text-[#5e5a87]">Projeto<select disabled={busy} value={card.ai_project_id||''} onChange={event=>void configure({ai_project_id:event.target.value||null})} className="mt-1 block w-full rounded border border-[#c3b6f7] bg-white p-2 text-sm text-[#172b4d]"><option value="">Sem projeto</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label className="text-xs font-semibold text-[#5e5a87]">Modelo<select disabled={busy} value={card.ai_model||''} onChange={event=>void configure({ai_model:event.target.value||null})} className="mt-1 block w-full rounded border border-[#c3b6f7] bg-white p-2 text-sm text-[#172b4d]"><option value="">{modelHint}</option>{models.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div><div className="mt-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-[#5e5a87]">Esforço{card.ai_effort?'':' · padrão do quadro'}</span><span className="text-xs text-[#5e5a87]">{efforts[effortIndex(effectiveEffort)].label}</span></div><input aria-label="Esforço de raciocínio" type="range" min="0" max={efforts.length-1} step="1" disabled={busy} value={effortIndex(effectiveEffort)} onChange={event=>void configure({ai_effort:efforts[Number(event.target.value)].id})} className="mt-1 w-full accent-[#6554c0]"/><div className="flex justify-between text-[10px] text-[#5e5a87]">{efforts.map(item=><span key={item.id}>{item.label}</span>)}</div>{card.ai_effort&&<button type="button" disabled={busy} onClick={()=>void configure({ai_effort:null})} className="mt-1 text-xs font-semibold text-[#403294]">Usar padrão do quadro</button>}</div>{selectedProject&&<p className="mt-2 truncate text-xs text-[#5e5a87]">Execução limitada a: {selectedProject.local_path}</p>}<div className="mt-3 flex flex-wrap gap-2"><select value={action} onChange={event=>setAction(event.target.value as Action)} className="rounded border border-[#c3b6f7] bg-white px-2 py-1.5 text-xs text-[#172b4d]">{actions.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select><button disabled={busy||!effective} onClick={()=>void generate()} className="rounded bg-[#6554c0] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{busy?<LoaderCircle size={14} className="animate-spin"/>:'Gerar'}</button><button disabled={busy||!effective||!card.ai_project_id} onClick={()=>void execute()} className="flex items-center gap-1 rounded bg-[#403294] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><Play size={13}/> Executar</button></div><textarea value={instruction} onChange={event=>setInstruction(event.target.value)} maxLength={2000} rows={2} placeholder="Instrução adicional (opcional)" className="mt-2 w-full rounded border border-[#c3b6f7] bg-white p-2 text-xs text-[#172b4d]"/>{error&&<p role="alert" className="mt-2 text-xs text-[#ae2a19]">{error}</p>}{result&&<div className="mt-3 rounded bg-white p-3 text-sm"><RichText text={result.output}/>{result.items.length>0&&<div className="mt-3"><button onClick={()=>void createChecklist()} className="rounded bg-[#e9e5fa] px-2 py-1 text-xs font-semibold text-[#403294]"><Check size={13} className="mr-1 inline"/>Adicionar checklist</button></div>}<button onClick={()=>void onApply(result.output)} className="mt-3 rounded bg-[#6554c0] px-2 py-1 text-xs font-semibold text-white">Aplicar à descrição</button></div>}{runs[0]&&<div className="mt-3 rounded bg-white p-2 text-xs"><strong>Última execução · {label(runs[0].model,models)} · {efforts[effortIndex(runs[0].effort)].label}</strong><span className="ml-2 text-[#626f86]">{runs[0].status==='success'?'concluída':'falhou'}</span>{runs[0].output&&<p className="mt-1 whitespace-pre-wrap text-[#44546f]">{runs[0].output}</p>}{runs[0].error&&<p className="mt-1 text-[#ae2a19]">{runs[0].error}</p>}</div>}</section>;
 }

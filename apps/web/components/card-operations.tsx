@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { api, send, Board, Card } from '@/lib/api';
 
 type Mode='move'|'copy'|'mirror';
-const defaults={description:true,dates:true,labels:true,members:true,checklists:true,attachments:true,customFields:true,comments:false,cover:true};
-const labels:Record<keyof typeof defaults,string>={description:'Descrição',dates:'Datas',labels:'Etiquetas',members:'Membros',checklists:'Checklists',attachments:'Anexos',customFields:'Campos personalizados',comments:'Comentários',cover:'Capa'};
+const defaults={description:true,dates:true,labels:true,members:true,checklists:true,customFields:true,comments:false};
+const labels:Record<keyof typeof defaults,string>={description:'Descrição',dates:'Datas',labels:'Etiquetas',members:'Membros',checklists:'Checklists',customFields:'Campos personalizados',comments:'Comentários'};
 export function CardOperations({card,board,onChanged,onMoved}: {card:Card;board:Board;onChanged:()=>Promise<void>;onMoved:()=>Promise<void>}) {
   const [boards,setBoards]=useState<Board[]>([]);
   const [mode,setMode]=useState<Mode|null>(null);

@@ -12,9 +12,13 @@ import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence,
 import { CardExtensionsController, CardExtensionsService } from './card-extensions';
 import { AutomationsController, AutomationsService } from './automations';
 import { CodexAiService } from './codex-ai';
+import { Server } from 'socket.io';
+import { OrbitEvents } from './orbit-events';
+import { TrelloSyncService } from './trello-sync';
+import { PromptSessionsService } from './prompt-sessions';
 
 type Payload = Record<string, unknown>;
-type CopyParts = {checklists:boolean;attachments:boolean;customFields:boolean};
+type CopyParts = {checklists:boolean;customFields:boolean};
 const fail = (message: string, code = 400): never => { throw new HttpException({ message }, code); };
 const value = (v: unknown, name: string, max = 300) => {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max) fail(`${name} inválido.`);
@@ -41,14 +45,14 @@ const listColors = new Set(['blue','green','yellow','orange','red','purple','pin
 
 @Injectable()
 class Service {
-  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Inject(CodexAiService) private codex: CodexAiService) {}
+  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Inject(CodexAiService) private codex: CodexAiService,@Inject(PromptSessionsService) private prompts:PromptSessionsService) {}
   async prepareDailySchedules(){const users=await this.db.query('SELECT DISTINCT user_id FROM planner_rules WHERE enabled AND proactive');for(const user of users){const exists=await this.db.one(`SELECT id FROM planner_suggestions WHERE user_id=$1 AND source='daily_schedule' AND created_at>=date_trunc('day',now()) LIMIT 1`,[user.user_id]);if(!exists)try{await this.aiSchedule(String(user.user_id),{mode:'daily_schedule'})}catch(error){console.error('Could not prepare daily planner suggestions.',error)}}}
   private async classifyTitle(title:string,userId:string){
     const result=cardKindFromTitle(title,process.env.WEB_ORIGIN||'http://localhost:3000');
     if(result.targetBoardId)await this.member(result.targetBoardId,userId);
     return result;
   }
-  private async copyCardContent(client:PoolClient,sourceCard:string,targetCard:string,sourceBoard:string,targetBoard:string,fieldMap=new Map<string,string>(),parts:CopyParts={checklists:true,attachments:true,customFields:true}) {
+  private async copyCardContent(client:PoolClient,sourceCard:string,targetCard:string,sourceBoard:string,targetBoard:string,fieldMap=new Map<string,string>(),parts:CopyParts={checklists:true,customFields:true}) {
     if(parts.checklists){
       const groups=(await client.query('SELECT id,title,position FROM checklists WHERE card_id=$1 ORDER BY position',[sourceCard])).rows;
       const start=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM checklists WHERE card_id=$1',[targetCard])).rows[0].next);
@@ -58,19 +62,6 @@ class Service {
         await client.query(`INSERT INTO checklist_items(card_id,checklist_id,text,completed,position,assignee_id,due_date)
           SELECT $1,$2,text,completed,position,assignee_id,due_date FROM checklist_items WHERE checklist_id=$3`,[targetCard,copy.id,group.id]);
       }
-    }
-    if(parts.attachments){
-      const oldAttachments=(await client.query('SELECT * FROM attachments WHERE card_id=$1 ORDER BY position',[sourceCard])).rows;
-      const attachmentMap=new Map<string,string>();
-      const start=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM attachments WHERE card_id=$1',[targetCard])).rows[0].next);
-      let offset=0;
-      for(const attachment of oldAttachments){
-        const copy=(await client.query(`INSERT INTO attachments(card_id,kind,name,url,target_id,mime_type,size_bytes,data,position)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,[targetCard,attachment.kind,attachment.name,attachment.url,attachment.target_id,attachment.mime_type,attachment.size_bytes,attachment.data,start+offset++])).rows[0];
-        attachmentMap.set(attachment.id,copy.id);
-      }
-      const source=(await client.query('SELECT cover_attachment_id FROM cards WHERE id=$1',[sourceCard])).rows[0];
-      if(source?.cover_attachment_id&&attachmentMap.has(source.cover_attachment_id))await client.query('UPDATE cards SET cover_attachment_id=$2 WHERE id=$1',[targetCard,attachmentMap.get(source.cover_attachment_id)]);
     }
     if(!parts.customFields)return;
     const values=(await client.query('SELECT v.field_id,v.value,f.name,f.type,f.options,f.show_on_card FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1',[sourceCard])).rows;
@@ -143,12 +134,12 @@ class Service {
     const comments=await this.db.query('SELECT body FROM comments WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);
     const action=value(body.action,'Ação',40); const instruction=body.instruction===undefined?'':optionalText(body.instruction,2000);
     if(!['write','refine','summarize','shorten','action_items','checklist'].includes(action))fail('Ação de IA inválida.');
-    const output=await this.codex.complete(this.cardAiPrompt(action,instruction,card||{},comments));
+    const selected=await this.prompts.settingsForCard(cardId,userId);if(!selected.model)fail('Escolha um modelo.',409);const output=await this.codex.complete(this.cardAiPrompt(action,instruction,card||{},comments),selected.model||undefined,selected.effort);
     await this.features.record(userId,boardId,cardId,'ai_suggestion',`gerou sugestão de IA: ${action}`);
     return {output,items:['checklist','action_items'].includes(action)?this.aiItems(output):[]};
   }
   async aiComment(cardId:string,userId:string,body:Payload){
-    const boardId=await this.contentCard(cardId,userId);const card=await this.db.one('SELECT title,description FROM cards WHERE id=$1',[cardId]);const comments=await this.db.query('SELECT body FROM comments WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);const action=value(body.action,'Ação',40);if(!['write','refine','summarize','shorten'].includes(action))fail('Ação de IA inválida.');const draft=body.draft===undefined?'':optionalText(body.draft,5000);const instruction=body.instruction===undefined?'':optionalText(body.instruction,2000);const output=await this.codex.complete(`${this.cardAiPrompt(action,instruction,card||{},comments)}\n\nCOMMENT DRAFT TO ${action==='write'?'WRITE':'TRANSFORM'}:\n${draft||'(empty)'}`);await this.features.record(userId,boardId,cardId,'ai_suggestion',`gerou sugestão de comentário: ${action}`);return {output};
+    const boardId=await this.contentCard(cardId,userId);const card=await this.db.one('SELECT title,description FROM cards WHERE id=$1',[cardId]);const comments=await this.db.query('SELECT body FROM comments WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);const action=value(body.action,'Ação',40);if(!['write','refine','summarize','shorten'].includes(action))fail('Ação de IA inválida.');const draft=body.draft===undefined?'':optionalText(body.draft,5000);const instruction=body.instruction===undefined?'':optionalText(body.instruction,2000);const selected=await this.prompts.settingsForCard(cardId,userId);if(!selected.model)fail('Escolha um modelo.',409);const output=await this.codex.complete(`${this.cardAiPrompt(action,instruction,card||{},comments)}\n\nCOMMENT DRAFT TO ${action==='write'?'WRITE':'TRANSFORM'}:\n${draft||'(empty)'}`,selected.model||undefined,selected.effort);await this.features.record(userId,boardId,cardId,'ai_suggestion',`gerou sugestão de comentário: ${action}`);return {output};
   }
   async aiMerge(userId:string,body:Payload){
     const ids=this.selectedIds(body,2); const cards:Payload[]=[]; let boardId='';
@@ -166,7 +157,7 @@ class Service {
   async createEmailCard(userId:string,body:Payload){
     const email=optionalText(body.email,20_000);const sender=body.sender===undefined?null:optionalText(body.sender,255);const subject=body.subject===undefined?null:optionalText(body.subject,500);let listId:string|undefined;
     if(body.list_id!==undefined)listId=uuid(value(body.list_id,'Lista',36));else {const inbox=await this.db.one(`SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL ORDER BY l.position LIMIT 1`,[userId]);listId=typeof inbox?.id==='string'?inbox.id:undefined}if(!listId)fail('Inbox não encontrada.',404);const targetListId=listId as string;await this.listBoard(targetListId,userId);
-    const proposal=await this.aiEmailSummary(userId,{email});const created=await this.createCards(targetListId,userId,[proposal.title],undefined);const cardId=created[0].id;await this.db.query('UPDATE cards SET description=$2,due_date=$3,updated_at=now() WHERE id=$1',[cardId,proposal.summary,proposal.due_date]);const group=await this.db.one(`INSERT INTO checklists(card_id,title,position) VALUES($1,'Checklist do e-mail',0) RETURNING id`,[cardId]);for(let index=0;index<proposal.items.length;index++)await this.db.query('INSERT INTO checklist_items(card_id,checklist_id,text,position) VALUES($1,$2,$3,$4)',[cardId,group!.id,proposal.items[index],index]);await this.db.query('INSERT INTO email_sources(card_id,sender,subject,body) VALUES($1,$2,$3,$4)',[cardId,sender,subject,email]);await this.db.query(`INSERT INTO attachments(card_id,kind,name,mime_type,size_bytes,data,position) VALUES($1,'file',$2,'text/plain',$3,$4,0)`,[cardId,`E-mail original${subject?`: ${subject}`:''}.txt`,Buffer.byteLength(email),Buffer.from(email)]);return {card_id:cardId,...proposal};
+    const proposal=await this.aiEmailSummary(userId,{email});const created=await this.createCards(targetListId,userId,[proposal.title],undefined);const cardId=created[0].id;await this.db.query('UPDATE cards SET description=$2,due_date=$3,updated_at=now() WHERE id=$1',[cardId,proposal.summary,proposal.due_date]);const group=await this.db.one(`INSERT INTO checklists(card_id,title,position) VALUES($1,'Checklist do e-mail',0) RETURNING id`,[cardId]);for(let index=0;index<proposal.items.length;index++)await this.db.query('INSERT INTO checklist_items(card_id,checklist_id,text,position) VALUES($1,$2,$3,$4)',[cardId,group!.id,proposal.items[index],index]);await this.db.query('INSERT INTO email_sources(card_id,sender,subject,body) VALUES($1,$2,$3,$4)',[cardId,sender,subject,email]);return {card_id:cardId,...proposal};
   }
   async inboundEmailCard(body:Payload,token:string|undefined){if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN)fail('Canal de e-mail não autorizado.',401);const account=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);if(!account)fail('Conta não encontrada.',404);return this.createEmailCard(String((account as Payload).id),{email:body.body,sender:body.sender,subject:body.subject,list_id:body.list_id})}
   private async plannerCards(userId:string){return this.db.query(`SELECT c.id,c.title,c.description,c.due_date,b.title AS board_title,COALESCE((SELECT string_agg(label.name,', ') FROM card_labels cl JOIN labels label ON label.id=cl.label_id WHERE cl.card_id=c.id),'') AS labels
@@ -230,19 +221,17 @@ class Service {
   async board(boardId: string, userId: string) {
     await this.member(boardId,userId,true);
     await this.features.visit(boardId,userId);
-    const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,is_inbox,
+    const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,is_inbox,ai_default_model,ai_default_effort,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=boards.id) AS background_image FROM boards WHERE id=$1`, [boardId]);
     const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
     const cards = await this.db.query(`SELECT slot.id,slot.list_id,slot.position,slot.kind,slot.target_board_id,slot.link_url,
       slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
       source_board.id AS source_board_id,source_board.title AS source_board_title,
       (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
-      c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.cover_color,c.cover_attachment_id,c.cover_size,c.completed,c.created_at,c.updated_at,
-      (SELECT 'data:'||a.mime_type||';base64,'||replace(encode(a.data,'base64'), E'\n', '') FROM attachments a WHERE a.id=c.cover_attachment_id AND a.size_bytes<=2000000) AS cover_image,
+      c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.completed,c.ai_project_id,c.ai_model,c.ai_effort,c.created_at,c.updated_at,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
       COALESCE((SELECT json_agg(json_build_object('id',label.id,'name',label.name,'color',label.color)) FROM card_labels cl JOIN labels label ON label.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
       (SELECT count(*)::int FROM comments cm WHERE cm.card_id=c.id) AS comment_count,
-      (SELECT count(*)::int FROM attachments a WHERE a.card_id=c.id) AS attachment_count,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id) AS checklist_total,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id AND ci.completed) AS checklist_done,
       COALESCE((SELECT json_agg(json_build_object('field_id',v.field_id,'name',f.name,'type',f.type,'value',v.value)) FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=c.id AND f.show_on_card),'[]'::json) AS custom_values,
@@ -367,8 +356,8 @@ class Service {
         const {rows:[newList]}=await client.query('INSERT INTO lists(board_id,title,position,color,collapsed) VALUES($1,$2,$3,$4,$5) RETURNING id',[copy.id,list.title,list.position,list.color,list.collapsed]);
         const cards=await client.query('SELECT * FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[list.id]);
         for (const card of cards.rows) {
-          const {rows:[newCard]}=await client.query(`INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,cover_color,cover_size,completed,kind,target_board_id,link_url,mirror_source_id,mirror_expanded)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,[newList.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.cover_color,card.cover_size,card.completed,card.kind,card.target_board_id,card.link_url,card.mirror_source_id,card.mirror_expanded]);
+          const {rows:[newCard]}=await client.query(`INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,completed,kind,target_board_id,link_url,mirror_source_id,mirror_expanded)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[newList.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.completed,card.kind,card.target_board_id,card.link_url,card.mirror_source_id,card.mirror_expanded]);
           cardMap.set(card.id,newCard.id);
           const cardLabels=await client.query('SELECT label_id FROM card_labels WHERE card_id=$1',[card.id]);
           for (const item of cardLabels.rows) await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2)',[newCard.id,labelMap.get(item.label_id)]);
@@ -513,7 +502,7 @@ class Service {
       const cards=(await client.query('SELECT * FROM cards WHERE list_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[id])).rows;
       const cardMap=new Map<string,string>();
       for (const card of cards) {
-        const newCard=(await client.query('INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,cover_color,cover_size,completed,kind,target_board_id,link_url,mirror_source_id,mirror_expanded) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id',[copy.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.cover_color,card.cover_size,card.completed,card.kind,card.target_board_id,card.link_url,card.mirror_source_id,card.mirror_expanded])).rows[0];
+        const newCard=(await client.query('INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,completed,kind,target_board_id,link_url,mirror_source_id,mirror_expanded) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id',[copy.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.completed,card.kind,card.target_board_id,card.link_url,card.mirror_source_id,card.mirror_expanded])).rows[0];
         cardMap.set(card.id,newCard.id);
         await this.copyCardContent(client,card.id,newCard.id,sourceBoard,targetBoard);
         await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2',[newCard.id,card.id]);
@@ -648,16 +637,10 @@ class Service {
         if(!card)fail('Origem do espelho indisponível.',409);
         await this.listBoard(card.list_id,userId);
         const kind=card.kind==='template'?'normal':card.kind;
-        const next=(await client.query(`INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,cover_color,cover_size,completed,kind,target_board_id,link_url)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[target.id,card.title,enabled('description')?card.description:'',current.length+copied.length,enabled('dates')?card.start_date:null,enabled('dates')?card.due_date:null,enabled('dates')?card.reminder_minutes:null,enabled('dates')?card.recurrence:null,enabled('cover')?card.cover_color:null,enabled('cover')?card.cover_size:'normal',card.completed,kind,card.target_board_id,card.link_url])).rows[0];
+        const next=(await client.query(`INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,completed,kind,target_board_id,link_url)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,[target.id,card.title,enabled('description')?card.description:'',current.length+copied.length,enabled('dates')?card.start_date:null,enabled('dates')?card.due_date:null,enabled('dates')?card.reminder_minutes:null,enabled('dates')?card.recurrence:null,card.completed,kind,card.target_board_id,card.link_url])).rows[0];
         copied.push(next.id);
-        await this.copyCardContent(client,card.id,next.id,card.board_id,target.board_id,new Map(),{checklists:enabled('checklists'),attachments:enabled('attachments'),customFields:enabled('customFields')});
-        if(enabled('cover')&&!enabled('attachments')&&card.cover_attachment_id){
-          const cover=(await client.query(`INSERT INTO attachments(card_id,kind,name,url,target_id,mime_type,size_bytes,data,position)
-            SELECT $1,kind,name,url,target_id,mime_type,size_bytes,data,0 FROM attachments WHERE id=$2 RETURNING id`,[next.id,card.cover_attachment_id])).rows[0];
-          if(cover)await client.query('UPDATE cards SET cover_attachment_id=$2 WHERE id=$1',[next.id,cover.id]);
-        }
-        if(!enabled('cover'))await client.query('UPDATE cards SET cover_attachment_id=NULL WHERE id=$1',[next.id]);
+        await this.copyCardContent(client,card.id,next.id,card.board_id,target.board_id,new Map(),{checklists:enabled('checklists'),customFields:enabled('customFields')});
         if(enabled('labels'))await this.copyLabels(client,card.id,next.id,target.board_id);
         if(enabled('members'))await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,ca.user_id FROM card_assignees ca JOIN board_members bm ON bm.user_id=ca.user_id AND bm.board_id=$3 WHERE ca.card_id=$2',[next.id,card.id,target.board_id]);
         if(include.comments===true)await client.query('INSERT INTO comments(card_id,author_id,body,created_at) SELECT $1,author_id,body,created_at FROM comments WHERE card_id=$2',[next.id,card.id]);
@@ -797,8 +780,8 @@ class Service {
     const kind=special?.kind||original.kind as string;
     if(['separator','board','link'].includes(kind)&&Object.keys(body).some(key=>!['title','list_id','position'].includes(key)))fail('Este tipo de cartão não possui detalhes editáveis.',409);
     if(['separator','board','link'].includes(kind)&&original.kind!==kind){
-      const content=await this.db.one(`SELECT (c.description<>'' OR c.due_date IS NOT NULL OR c.start_date IS NOT NULL OR c.cover_color IS NOT NULL OR c.completed OR
-        EXISTS(SELECT 1 FROM checklists WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM attachments WHERE card_id=c.id) OR
+      const content=await this.db.one(`SELECT (c.description<>'' OR c.due_date IS NOT NULL OR c.start_date IS NOT NULL OR c.completed OR
+        EXISTS(SELECT 1 FROM checklists WHERE card_id=c.id) OR
         EXISTS(SELECT 1 FROM card_labels WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM card_assignees WHERE card_id=c.id) OR
         EXISTS(SELECT 1 FROM comments WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM card_custom_values WHERE card_id=c.id)) AS has_content FROM cards c WHERE c.id=$1`,[id]);
       if(content?.has_content)fail('Crie um novo cartão para usar este tipo especial.',409);
@@ -807,8 +790,6 @@ class Service {
     let dueDate: Date | null=body.due_date===undefined?original.due_date as Date | null:optionalDate(body.due_date);
     let startDate: Date | null=body.start_date===undefined?original.start_date as Date | null:optionalDate(body.start_date);
     if (body.title!==undefined && body.due_date===undefined && !dueDate && kind==='normal') dueDate=dueDateFromTitle(title);
-    const coverColor=body.cover_color===undefined?original.cover_color as string | null:body.cover_color===null?null:value(body.cover_color,'Cor',32);
-    if (coverColor && !/^[a-z0-9-]+$/.test(coverColor)) fail('Cor inválida.');
     if (body.completed!==undefined && typeof body.completed!=='boolean') fail('Status inválido.');
     let completed=body.completed===undefined?original.completed as boolean:body.completed as boolean;
     const recurrence=body.recurrence===undefined?original.recurrence as string | null:body.recurrence===null||body.recurrence===''?null:value(body.recurrence,'Recorrência',16);
@@ -828,8 +809,8 @@ class Service {
     const position=body.position===undefined?original.position as number:Number(body.position);
     if (!Number.isFinite(position) || position<0) fail('Posição inválida.');
     const card=await this.db.one(`UPDATE cards SET title=$2,description=$3,start_date=$4,due_date=$5,reminder_minutes=$6,
-      recurrence=$7,cover_color=$8,completed=$9,list_id=$10,position=$11,kind=$12,target_board_id=$13,link_url=$14,updated_at=now()
-      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,coverColor,completed,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url]);
+      recurrence=$7,completed=$8,list_id=$9,position=$10,kind=$11,target_board_id=$12,link_url=$13,updated_at=now()
+      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,completed,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url]);
     const moved=listId!==original.list_id;
     if (body.title!==undefined || body.description!==undefined || body.due_date!==undefined || body.start_date!==undefined || body.completed!==undefined || moved) {
       const action=body.completed===true&&recurrence?'avançou o vencimento recorrente':body.completed===true?'concluiu um cartão':moved?'moveu um cartão':body.title!==undefined?`renomeou o cartão para ${title}`:body.due_date!==undefined?'alterou a data de um cartão':'atualizou um cartão';
@@ -966,7 +947,7 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Service) private service: Service) {}
+  constructor(@Inject(Service) private service: Service,@Inject(TrelloSyncService) private trello:TrelloSyncService,@Inject(PromptSessionsService) private prompts:PromptSessionsService) {}
   @Get('health') health() { return { status: 'ok' }; }
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
@@ -985,6 +966,15 @@ class ApiController {
   @Post('planner/suggestions/:id/resolve') resolveSuggestion(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.resolveSuggestion(id,this.service.user(req),body);}
   @Post('cards/:id/ai') aiCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiCard(id,this.service.user(req),body);}
   @Post('cards/:id/comments/ai') aiComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiComment(id,this.service.user(req),body);}
+  @Get('ai/models') aiModels(){return this.prompts.models();}
+  @Get('ai/projects') aiProjects(@Req() req:Request){return this.prompts.projects(this.service.user(req));}
+  @Post('ai/projects') createAiProject(@Req() req:Request,@Body() body:Payload){return this.prompts.createProject(this.service.user(req),body);}
+  @Patch('ai/projects/:id') updateAiProject(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateProject(this.service.user(req),id,body);}
+  @Delete('ai/projects/:id') deleteAiProject(@Req() req:Request,@Param('id') id:string){return this.prompts.deleteProject(this.service.user(req),id);}
+  @Patch('boards/:id/prompt-settings') updateBoardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateBoard(id,this.service.user(req),body);}
+  @Patch('cards/:id/prompt-settings') updateCardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateCard(id,this.service.user(req),body);}
+  @Get('cards/:id/prompt-runs') promptRuns(@Req() req:Request,@Param('id') id:string){return this.prompts.runs(id,this.service.user(req));}
+  @Post('cards/:id/prompt-runs') executePrompt(@Req() req:Request,@Param('id') id:string){return this.prompts.execute(id,this.service.user(req));}
   @Get('boards') boards(@Req() req: Request,@Query('status') status='active') { return this.service.boards(this.service.user(req),status); }
   @Post('boards') createBoard(@Req() req: Request,@Body() body: Payload) { return this.service.createBoard(this.service.user(req),body); }
   @Get('boards/:id') board(@Req() req: Request,@Param('id') id: string) { return this.service.board(id,this.service.user(req)); }
@@ -996,6 +986,11 @@ class ApiController {
   @Get('boards/:id/activity') boardActivity(@Req() req: Request,@Param('id') id: string,@Query('commentsOnly') commentsOnly='false') { return this.service.boardActivity(id,this.service.user(req),commentsOnly); }
   @Post('boards/:id/background') background(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.setBackgroundImage(id,this.service.user(req),body); }
   @Delete('boards/:id/background') removeBackground(@Req() req: Request,@Param('id') id: string) { return this.service.removeBackgroundImage(id,this.service.user(req)); }
+  @Get('boards/:id/trello') trelloConnections(@Req() req:Request,@Param('id') id:string){return this.trello.connections(id,this.service.user(req));}
+  @Get('boards/:id/trello/available') trelloAvailable(@Req() req:Request,@Param('id') id:string){return this.trello.available(id,this.service.user(req));}
+  @Post('boards/:id/trello') connectTrello(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.trello.connect(id,this.service.user(req),body.trello_board_id);}
+  @Post('boards/:id/trello/sync') syncTrello(@Req() req:Request,@Param('id') id:string){return this.trello.syncBoard(id,this.service.user(req));}
+  @Delete('boards/:id/trello/:connectionId') disconnectTrello(@Req() req:Request,@Param('id') id:string,@Param('connectionId') connectionId:string){return this.trello.disconnect(id,this.service.user(req),connectionId);}
   @Post('boards/:id/members') invite(@Req() req: Request,@Param('id') id: string) { return this.service.invite(id,this.service.user(req)); }
   @Post('boards/:id/lists') createList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createList(id,this.service.user(req),body); }
   @Get('boards/:id/lists/archived') archivedLists(@Req() req: Request,@Param('id') id: string) { return this.service.archivedLists(id,this.service.user(req)); }
@@ -1037,7 +1032,7 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1045,9 +1040,24 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({ origin: process.env.WEB_ORIGIN || 'http://localhost:3000' });
   app.use(json({limit:'16mb'}));
+  const events=app.get(OrbitEvents);
+  const features=app.get(FeaturesService);
+  const sockets=new Server(app.getHttpServer(),{cors:{origin:process.env.WEB_ORIGIN||'http://localhost:3000'}});
+  sockets.use((socket,next)=>{
+    try{const token=socket.handshake.auth.token;if(typeof token!=='string')throw new Error('Missing token');const payload=jwt.verify(token,process.env.JWT_SECRET!) as jwt.JwtPayload;if(typeof payload.sub!=='string')throw new Error('Missing subject');socket.data.userId=payload.sub;next();}catch{next(new Error('Não autorizado.'));}
+  });
+  sockets.on('connection',socket=>{
+    socket.on('board:join',(boardId:unknown)=>{if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId))void features.member(boardId,String(socket.data.userId)).then(()=>socket.join(`board:${boardId}`)).catch(()=>undefined);});
+    socket.on('board:leave',(boardId:unknown)=>{if(typeof boardId==='string')socket.leave(`board:${boardId}`);});
+  });
+  events.attach(sockets);
   await app.listen(Number(process.env.API_PORT || 4000), '0.0.0.0');
   const service=app.get(Service);
+  const trello=app.get(TrelloSyncService);
   void service.prepareDailySchedules();
+  void trello.connectDefault().catch(error=>console.error('Could not connect the default Trello board.',error));
   setInterval(()=>void service.prepareDailySchedules(),60*60*1000);
+  const trelloTimer=setInterval(()=>void trello.tick(),Number(process.env.TRELLO_SYNC_INTERVAL_MS||5000));
+  trelloTimer.unref();
 }
 bootstrap();

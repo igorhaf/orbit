@@ -27,6 +27,8 @@ ALTER TABLE boards ADD COLUMN IF NOT EXISTS favorite_position double precision;
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT '';
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS closed_at timestamptz;
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS is_inbox boolean NOT NULL DEFAULT false;
+ALTER TABLE boards ADD COLUMN IF NOT EXISTS ai_default_model varchar(100);
+ALTER TABLE boards ADD COLUMN IF NOT EXISTS ai_default_effort varchar(16);
 CREATE UNIQUE INDEX IF NOT EXISTS boards_owner_inbox_idx ON boards(owner_id) WHERE is_inbox;
 CREATE TABLE IF NOT EXISTS board_media (
   board_id uuid PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
@@ -74,6 +76,9 @@ ALTER TABLE cards ADD COLUMN IF NOT EXISTS target_board_id uuid REFERENCES board
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS link_url text;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS mirror_source_id uuid REFERENCES cards(id) ON DELETE CASCADE;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS mirror_expanded boolean NOT NULL DEFAULT true;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_project_id uuid;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_model varchar(100);
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_effort varchar(16);
 CREATE INDEX IF NOT EXISTS cards_mirror_source_idx ON cards(mirror_source_id) WHERE mirror_source_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS cards_list_position_idx ON cards(list_id, position);
 CREATE TABLE IF NOT EXISTS labels (
@@ -278,3 +283,61 @@ CREATE TABLE IF NOT EXISTS email_sources (
   body text NOT NULL,
   received_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS ai_projects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name varchar(120) NOT NULL,
+  local_path text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(owner_id, local_path)
+);
+ALTER TABLE cards DROP CONSTRAINT IF EXISTS cards_ai_project_id_fkey;
+ALTER TABLE cards ADD CONSTRAINT cards_ai_project_id_fkey FOREIGN KEY (ai_project_id) REFERENCES ai_projects(id) ON DELETE SET NULL;
+CREATE TABLE IF NOT EXISTS card_ai_runs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES ai_projects(id) ON DELETE RESTRICT,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  model varchar(100) NOT NULL,
+  effort varchar(16) NOT NULL DEFAULT 'medium',
+  prompt text NOT NULL,
+  output text,
+  status varchar(16) NOT NULL DEFAULT 'running' CHECK(status IN ('running','success','error')),
+  error text,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz
+);
+ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';
+CREATE INDEX IF NOT EXISTS card_ai_runs_card_started_idx ON card_ai_runs(card_id, started_at DESC);
+CREATE TABLE IF NOT EXISTS trello_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  trello_board_id varchar(64) NOT NULL,
+  trello_board_name varchar(160) NOT NULL,
+  enabled boolean NOT NULL DEFAULT true,
+  created_by uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_synced_at timestamptz,
+  last_error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(board_id, trello_board_id)
+);
+CREATE TABLE IF NOT EXISTS trello_list_mappings (
+  connection_id uuid NOT NULL REFERENCES trello_connections(id) ON DELETE CASCADE,
+  trello_list_id varchar(64) NOT NULL,
+  trello_list_name varchar(160),
+  orbit_list_id uuid NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+  PRIMARY KEY(connection_id, trello_list_id),
+  UNIQUE(connection_id, orbit_list_id)
+);
+ALTER TABLE trello_list_mappings ADD COLUMN IF NOT EXISTS trello_list_name varchar(160);
+CREATE TABLE IF NOT EXISTS trello_card_mappings (
+  connection_id uuid NOT NULL REFERENCES trello_connections(id) ON DELETE CASCADE,
+  trello_card_id varchar(64) NOT NULL,
+  orbit_card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  last_trello_activity timestamptz,
+  last_orbit_update timestamptz,
+  PRIMARY KEY(connection_id, trello_card_id),
+  UNIQUE(connection_id, orbit_card_id)
+);
+CREATE INDEX IF NOT EXISTS trello_connections_board_idx ON trello_connections(board_id);

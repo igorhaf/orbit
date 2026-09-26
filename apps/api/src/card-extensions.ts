@@ -1,8 +1,7 @@
-import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param, Patch, Post, Req, Res } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param, Patch, Post, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { Db } from './db';
 import { FeaturesService } from './features';
-import { labelColorOptions } from './card-rules';
 
 type Payload = Record<string, unknown>;
 type ChecklistRow = { [key:string]:unknown; id:string; card_id:string; title:string; position:number };
@@ -12,7 +11,6 @@ const id=(value:string)=>{if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 const text=(value:unknown,label:string,max:number)=>{if(typeof value!=='string'||!value.trim()||value.trim().length>max)bad(`${label} inválido.`);return (value as string).trim()};
 const date=(value:unknown)=>{if(value===null||value==='')return null;if(typeof value!=='string'||!Number.isFinite(Date.parse(value)))bad('Data inválida.');return new Date(value as string)};
 const types=new Set(['text','number','date','dropdown','checkbox']);
-const safeUrl=(input:unknown)=>{const value=text(input,'URL',2000);let url:URL;try{url=new URL(value)}catch{return bad('URL inválida.')};if(!['http:','https:'].includes(url.protocol))bad('Use uma URL HTTP ou HTTPS.');return url.toString()};
 
 @Injectable()
 export class CardExtensionsService {
@@ -39,13 +37,12 @@ export class CardExtensionsService {
   }
   async details(cardId:string,userId:string){
     const boardId=await this.card(cardId,userId);
-    const [checklists,items,values,attachments]=await Promise.all([
+    const [checklists,items,values]=await Promise.all([
       this.db.query('SELECT * FROM checklists WHERE card_id=$1 ORDER BY position,id',[cardId]),
       this.db.query('SELECT ci.id,ci.card_id,ci.checklist_id,ci.text,ci.completed,ci.position,ci.assignee_id,ci.due_date,u.name AS assignee_name FROM checklist_items ci LEFT JOIN users u ON u.id=ci.assignee_id WHERE ci.card_id=$1 ORDER BY ci.position,ci.id',[cardId]),
       this.db.query('SELECT v.field_id,v.value FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1 AND f.board_id=$2',[cardId,boardId]),
-      this.db.query('SELECT id,card_id,kind,name,url,target_id,mime_type,size_bytes,position,created_at FROM attachments WHERE card_id=$1 ORDER BY position,id',[cardId]),
     ]);
-    return {checklists:checklists.map(checklist=>({...checklist,items:items.filter(item=>item.checklist_id===checklist.id)})),values,attachments};
+    return {checklists:checklists.map(checklist=>({...checklist,items:items.filter(item=>item.checklist_id===checklist.id)})),values};
   }
   async catalog(boardId:string,userId:string){await this.board(boardId,userId);return this.db.query(`SELECT cl.id,cl.title,c.title AS card_title FROM checklists cl JOIN cards c ON c.id=cl.card_id JOIN lists l ON l.id=c.list_id WHERE l.board_id=$1 AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.title,cl.position`,[boardId])}
   async createChecklist(cardId:string,userId:string,body:Payload){
@@ -165,36 +162,6 @@ export class CardExtensionsService {
     else if(typeof input!=='boolean')bad('Valor booleano inválido.');
     return this.db.one('INSERT INTO card_custom_values(card_id,field_id,value) VALUES($1,$2,$3) ON CONFLICT(card_id,field_id) DO UPDATE SET value=excluded.value RETURNING *',[cardId,fieldId,JSON.stringify(value)]);
   }
-  async attachment(attachmentId:string,userId:string){const row=await this.db.one('SELECT * FROM attachments WHERE id=$1',[id(attachmentId)]);if(!row)bad('Anexo não encontrado.',404);await this.card(row!.card_id,userId);return row!}
-  async addAttachment(cardId:string,userId:string,body:Payload){const boardId=await this.card(cardId,userId);const kind=text(body.kind,'Tipo',8);if(!['file','url','card','board'].includes(kind))bad('Tipo de anexo inválido.');const name=text(body.name,'Nome',255);
-    let url:string|null=null,target:string|null=null,mime:string|null=null,buffer:Buffer|null=null;
-    if(kind==='url')url=safeUrl(body.url);
-    else if(kind==='card'||kind==='board'){
-      target=id(String(body.target_id));
-      if(kind==='board'){await this.board(target,userId);url=`/board/${target}`}
-      else {const targetBoard=await this.card(target,userId);url=`/board/${targetBoard}?card=${target}`}
-    }else{
-      mime=text(body.mime_type,'Formato',120).toLowerCase();
-      const raw=body.data;
-      if(typeof raw!=='string'||raw.length>14000000||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))bad('Arquivo inválido ou maior que 10 MB.');
-      buffer=Buffer.from(raw as string,'base64');if(!buffer.length||buffer.length>10_000_000||buffer.toString('base64')!==raw)bad('Arquivo inválido ou maior que 10 MB.');
-      if(mime.startsWith('image/')&&buffer.length>2_000_000)bad('Imagens devem ter até 2 MB para uso como capa.');
-      if(mime.startsWith('image/')&&!['image/png','image/jpeg','image/webp','image/gif'].includes(mime))bad('Formato de imagem não suportado.');
-      const signatures:Record<string,boolean>={'image/png':buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),'image/jpeg':buffer[0]===255&&buffer[1]===216,'image/webp':buffer.toString('ascii',0,4)==='RIFF'&&buffer.toString('ascii',8,12)==='WEBP','image/gif':buffer.toString('ascii',0,3)==='GIF'};
-      if(mime.startsWith('image/')&&!signatures[mime])bad('O arquivo não corresponde ao formato informado.');
-    }
-    const attachment=await this.db.one(`INSERT INTO attachments(card_id,kind,name,url,target_id,mime_type,size_bytes,data,position)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,COALESCE((SELECT max(position)+1 FROM attachments WHERE card_id=$1),0)) RETURNING id,card_id,kind,name,url,target_id,mime_type,size_bytes,position,created_at`,[cardId,kind,name,url,target,mime,buffer?.length??null,buffer]);
-    if(kind==='file'&&mime?.startsWith('image/'))await this.db.query('UPDATE cards SET cover_attachment_id=$2 WHERE id=$1 AND cover_attachment_id IS NULL AND cover_color IS NULL',[cardId,attachment!.id]);
-    await this.features.record(userId,boardId,cardId,'attachment',`anexou ${name}`);
-    return attachment;
-  }
-  async updateAttachment(attachmentId:string,userId:string,body:Payload){const attachment=await this.attachment(attachmentId,userId);const name=body.name===undefined?attachment.name:text(body.name,'Nome',255);
-    if(body.position!==undefined){const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query('SELECT id FROM cards WHERE id=$1 FOR UPDATE',[attachment.card_id]);const ids=(await client.query('SELECT id FROM attachments WHERE card_id=$1 ORDER BY position,id',[attachment.card_id])).rows.map(row=>row.id as string);const target=Number(body.position);if(!Number.isInteger(target)||target<0||target>=ids.length)bad('Posição inválida.');ids.splice(ids.indexOf(attachmentId),1);ids.splice(target,0,attachmentId);for(let i=0;i<ids.length;i++)await client.query('UPDATE attachments SET position=$2 WHERE id=$1',[ids[i],i]);await client.query('COMMIT')}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}}
-    return this.db.one('UPDATE attachments SET name=$2 WHERE id=$1 RETURNING id,card_id,kind,name,url,target_id,mime_type,size_bytes,position,created_at',[attachmentId,name])}
-  async deleteAttachment(attachmentId:string,userId:string){await this.attachment(attachmentId,userId);await this.db.query('DELETE FROM attachments WHERE id=$1',[attachmentId]);return {ok:true}}
-  async cover(cardId:string,userId:string,body:Payload){await this.card(cardId,userId);const size=body.size===undefined?'normal':body.size;if(!['normal','full'].includes(String(size)))bad('Tamanho inválido.');let attachmentId:null|string=null;if(body.attachment_id!==undefined&&body.attachment_id!==null){attachmentId=id(String(body.attachment_id));const file=await this.attachment(attachmentId,userId);if(file.card_id!==cardId||file.kind!=='file'||!file.mime_type?.startsWith('image/'))bad('Escolha uma imagem deste cartão.')}const color=body.color===undefined?null:body.color;if(color!==null&&(typeof color!=='string'||color==='none'||!labelColorOptions.has(color)))bad('Cor inválida.');return this.db.one('UPDATE cards SET cover_attachment_id=$2,cover_color=$3,cover_size=$4 WHERE id=$1 RETURNING id,cover_attachment_id,cover_color,cover_size',[cardId,attachmentId,color,size])}
-  async content(attachmentId:string,userId:string,response:Response){const attachment=await this.attachment(attachmentId,userId);if(attachment.kind!=='file'||!attachment.data)bad('Arquivo indisponível.',404);const mime=attachment.mime_type||'application/octet-stream';const inline=['image/png','image/jpeg','image/webp','image/gif','application/pdf','text/plain'].includes(mime);response.setHeader('Content-Type',mime);response.setHeader('Content-Length',attachment.data.length);response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Content-Disposition',`${inline?'inline':'attachment'}; filename*=UTF-8''${encodeURIComponent(attachment.name)}`);response.send(attachment.data)}
 }
 
 @Controller()
@@ -214,9 +181,4 @@ export class CardExtensionsController {
   @Patch('boards/:boardId/custom-fields/:id') updateField(@Req() request:Request,@Param('boardId') boardId:string,@Param('id') id:string,@Body() body:Payload){return this.service.updateField(boardId,id,this.service.user(request),body)}
   @Delete('boards/:boardId/custom-fields/:id') deleteField(@Req() request:Request,@Param('boardId') boardId:string,@Param('id') id:string){return this.service.deleteField(boardId,id,this.service.user(request))}
   @Post('cards/:cardId/custom-fields/:id') setValue(@Req() request:Request,@Param('cardId') cardId:string,@Param('id') id:string,@Body() body:Payload){return this.service.setValue(cardId,id,this.service.user(request),body)}
-  @Post('cards/:cardId/attachments') addAttachment(@Req() request:Request,@Param('cardId') cardId:string,@Body() body:Payload){return this.service.addAttachment(cardId,this.service.user(request),body)}
-  @Patch('attachments/:id') updateAttachment(@Req() request:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateAttachment(id,this.service.user(request),body)}
-  @Delete('attachments/:id') deleteAttachment(@Req() request:Request,@Param('id') id:string){return this.service.deleteAttachment(id,this.service.user(request))}
-  @Get('attachments/:id/content') content(@Req() request:Request,@Param('id') id:string,@Res() response:Response){return this.service.content(id,this.service.user(request),response)}
-  @Patch('cards/:cardId/cover') cover(@Req() request:Request,@Param('cardId') cardId:string,@Body() body:Payload){return this.service.cover(cardId,this.service.user(request),body)}
 }
