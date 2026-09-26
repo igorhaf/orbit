@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, Inject, Injectable, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Injectable, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { Db } from './db';
@@ -270,6 +270,18 @@ export class FeaturesService {
     return { boards,cards };
   }
 
+  async planner(userId:string, boardId?:string) {
+    const boardFilter=boardId?` AND b.id=$2`:''; const params=boardId?[userId,validId(boardId)]:[userId];
+    const cards=await this.db.query(`SELECT c.id,c.title,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
+      FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id
+      LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1 WHERE bm.user_id=$1 AND (ca.user_id=$1 OR b.is_inbox) AND c.due_date IS NOT NULL AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL${boardFilter} ORDER BY c.due_date`,params);
+    const events=await this.db.query(`SELECT e.id,e.title,e.starts_at,e.ends_at,COALESCE(json_agg(json_build_object('id',c.id,'title',c.title,'board_id',b.id)) FILTER(WHERE c.id IS NOT NULL),'[]') AS cards FROM focus_events e LEFT JOIN focus_event_cards fec ON fec.event_id=e.id LEFT JOIN cards c ON c.id=fec.card_id LEFT JOIN lists l ON l.id=c.list_id LEFT JOIN boards b ON b.id=l.board_id WHERE e.user_id=$1 GROUP BY e.id ORDER BY e.starts_at`,[userId]);
+    return {cards,events};
+  }
+  async createFocus(userId:string,body:Record<string,unknown>){const title=body.title===undefined?'Focus time':bounded(body.title,'Título',160);const start=new Date(bounded(body.starts_at,'Início',40)),end=new Date(bounded(body.ends_at,'Fim',40));if(Number.isNaN(+start)||Number.isNaN(+end)||end<=start)bad('Intervalo inválido.');return this.db.one('INSERT INTO focus_events(user_id,title,starts_at,ends_at) VALUES($1,$2,$3,$4) RETURNING *',[userId,title,start,end]);}
+  async linkFocus(userId:string,eventId:string,cardId:string){validId(eventId);await this.cardBoard(cardId,userId);const event=await this.db.one('SELECT id FROM focus_events WHERE id=$1 AND user_id=$2',[eventId,userId]);if(!event)bad('Bloco de foco não encontrado.',404);await this.db.query('INSERT INTO focus_event_cards(event_id,card_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[eventId,validId(cardId)]);return {ok:true};}
+  async unlinkFocus(userId:string,eventId:string,cardId:string){validId(eventId);await this.db.query('DELETE FROM focus_event_cards fec USING focus_events e WHERE fec.event_id=$1 AND fec.card_id=$2 AND e.id=fec.event_id AND e.user_id=$3',[eventId,validId(cardId),userId]);return {ok:true};}
+
   async notifications(userId: string) {
     const account=await this.account(userId);
     await this.db.query(`DELETE FROM notifications n WHERE n.user_id=$1 AND n.kind='due'
@@ -322,6 +334,10 @@ export class FeaturesController {
   @Post('lists/:id/watch/toggle') watchList(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('list',id,this.features.user(req));}
   @Post('boards/:id/watch/toggle') watchBoard(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('board',id,this.features.user(req));}
   @Get('search') search(@Req() req: Request,@Query('q') q='') { return this.features.search(this.features.user(req),q); }
+  @Get('planner') planner(@Req() req:Request,@Query('board_id') boardId?:string){return this.features.planner(this.features.user(req),boardId);}
+  @Post('planner/focus-events') focus(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.createFocus(this.features.user(req),body);}
+  @Post('planner/focus-events/:id/cards/:cardId') linkFocus(@Req() req:Request,@Param('id') id:string,@Param('cardId') cardId:string){return this.features.linkFocus(this.features.user(req),id,cardId);}
+  @Delete('planner/focus-events/:id/cards/:cardId') unlinkFocus(@Req() req:Request,@Param('id') id:string,@Param('cardId') cardId:string){return this.features.unlinkFocus(this.features.user(req),id,cardId);}
   @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
   @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }
   @Patch('notifications/:id/read') read(@Req() req: Request,@Param('id') id: string) { return this.features.markNotification(this.features.user(req),id); }

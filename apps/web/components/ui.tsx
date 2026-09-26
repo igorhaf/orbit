@@ -181,7 +181,25 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => setPanel(panel === 'boards' ? null : 'boards')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
       <button onClick={() => router.push('/planner')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Planner</button>
     </nav>
-    <button onClick={() => router.push('/inbox')} className="hidden rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4] md:block">Inbox</button><button onClick={() => router.push('/boards')} className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden" title="Quadros"><LayoutDashboard size={19}/></button>
+<button
+  onClick={() => router.push('/planner')}
+  className="hidden rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4] md:block"
+>
+  Planner
+</button>
+<button
+  onClick={() => router.push('/inbox')}
+  className="hidden rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4] md:block"
+>
+  Inbox
+</button>
+<button
+  onClick={() => router.push('/boards')}
+  className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden"
+  title="Quadros"
+>
+  <LayoutDashboard size={19}/>
+</button>
     <button onClick={() => router.push('/')} className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden" title="Home"><Home size={19}/></button>
     <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="ml-1 rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
     <div className="flex-1"/>
