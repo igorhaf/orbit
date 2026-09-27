@@ -36,11 +36,15 @@ export class PluginRegistry {
     const plugin=this.items.get(integration.plugin),action=plugin?.actions?.find(a=>a.id===integration.action);
     if(!plugin||!action||!action.execute)throw new Error(`Capacidade não registrada: ${integration.plugin}.${integration.action}`);
     for(const permission of action.permissions||[])if(!permissions.includes(permission))throw new Error(`Permissão necessária: ${permission}`);
+    for(const capabilityId of action.requiredCapabilities||[]){
+      const capability=this.getCapability(integration.plugin,capabilityId);
+      for(const permission of capability.permissions||[])if(!permissions.includes(permission))throw new Error(`Permissão necessária: ${permission}`);
+    }
     if(!this.ajv.validate(action.inputSchema,integration.config||{}))throw new Error(`Configuração inválida de ${plugin!.name}: ${this.ajv.errorsText()}`);
     return action as PluginAction;
   }
   async execute(integration:Integration,input:ExecutionInput):Promise<Output>{
-    const action=this.validate(integration,input.permissions),output=await action.execute(integration.config||{},{cardId:input.cardId,runId:input.runId,execution:input});
+    const action=this.validate(integration,input.permissions),output=await action.execute(integration.config||{},{userId:input.userId,projectId:input.projectId,cardId:input.cardId,runId:input.runId,connectionId:integration.connection_id,execution:input,logger:{info(){},warn(){}}});
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;
   }
   catalog(){return [...this.items.values()].map(p=>({id:p.id,name:p.name,version:p.version,capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),triggers:p.triggers,connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}

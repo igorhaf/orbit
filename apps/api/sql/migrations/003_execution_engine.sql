@@ -1,0 +1,1 @@
+ALTER TABLE card_runs ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}';

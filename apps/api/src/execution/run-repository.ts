@@ -24,7 +24,8 @@ export class RunRepository {
       if(locked.cancel_requested)status='cancelled';
       await client.query("SELECT set_config('orbit.automation_chain',$1,true)",['{'+run.chain.join(',')+'}']);
       if(status==='success'&&after)await after(client);
-      await client.query('UPDATE card_runs SET status=$2,output=$3,error=$4,finished_at=now(),heartbeat_at=now() WHERE id=$1',[run.id,status,output?JSON.stringify(scrub(output)):null,error?redact(error):null]);
+      await client.query(`UPDATE card_runs SET status=$2,output=$3,error=$4,metadata=metadata||$5::jsonb,
+        finished_at=now(),heartbeat_at=now() WHERE id=$1`,[run.id,status,output?JSON.stringify(scrub(output)):null,error?redact(error):null,JSON.stringify({outputCount:output?.outputs.length||0,terminalStatus:status})]);
       if(status==='success'&&output){
         const outputs=scrub(output.outputs) as Output[];
         for(let position=0;position<outputs.length;position++){

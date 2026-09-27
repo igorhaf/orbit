@@ -17,11 +17,12 @@ import {ProjectRegistry} from './project-registry';
 import {CardExecutionService} from './execution.service';
 import {emptyConfig} from './types';
 import {PluginRegistry} from './registries';
+import {defineAction,defineCapability,definePlugin} from '../plugins/sdk';
 
 test('executable cards preserve normal cards and persist audited runs',async t=>{
   const db=new Db(),schema='execution_test_'+randomUUID().replaceAll('-',''),root=await mkdtemp(join(tmpdir(),'orbit-execution-test-'));
   await db.query(`CREATE SCHEMA ${schema}`);await db.pool.end();db.pool=new Pool({connectionString:process.env.DATABASE_URL,options:`-c search_path=${schema},public`});
-  const features=new FeaturesService(db),projects=new ProjectRegistry(db),dispatcher=new ActionDispatcher(),service=new CardExecutionService(db,features,projects,new OrbitEvents(),dispatcher,new PluginRegistry()),automations=new AutomationsService(db,features,dispatcher);
+  const features=new FeaturesService(db),projects=new ProjectRegistry(db),dispatcher=new ActionDispatcher(),plugins=new PluginRegistry(),service=new CardExecutionService(db,features,projects,new OrbitEvents(),dispatcher,plugins),automations=new AutomationsService(db,features,dispatcher);
   try{
     await db.query(await readFile(resolve(__dirname,'../../sql/schema.sql'),'utf8'));await db.query(await readFile(resolve(__dirname,'../../sql/automations.sql'),'utf8'));
     await migrateVersions(db.pool);await migrateVersions(db.pool);assert.ok(((await db.one('SELECT count(*)::int n FROM schema_migrations'))?.n as number)>=2);
@@ -33,7 +34,7 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
     const card=(await db.one("INSERT INTO cards(list_id,title,description) VALUES($1,'Card','Description') RETURNING id",[list]))!.id;
     const project=(await db.one("INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,'Project',$2) RETURNING id",[user,root]))!.id;
     await mkdir(join(root,'agents'));await mkdir(join(root,'skills'));
-    await writeFile(join(root,'orbit.yaml'),'default_executor: fixture\nplugins: [filesystem]\npermissions: [filesystem.read, execution.automatic]\nagents: [developer, qa]\n');
+    await writeFile(join(root,'orbit.yaml'),'default_executor: fixture\nplugins: [filesystem, fixture-plugin]\npermissions: [filesystem.read, execution.automatic]\nagents: [developer, qa]\n');
     await writeFile(join(root,'agents/developer.md'),'---\nid: developer\nexecutor: fixture\nskills: [review]\npermissions: [filesystem.read]\n---\nDeveloper instructions');
     await writeFile(join(root,'agents/qa.md'),'---\nid: qa\nexecutor: fixture\naction: analyze\npermissions: [filesystem.read]\n---\nQA instructions');
     await writeFile(join(root,'skills/review.md'),'---\nid: review\n---\nReview');await writeFile(join(root,'selected.txt'),'Project content');
@@ -42,6 +43,7 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
       if(input.action==='wait')await new Promise<void>(resolve=>input.signal.addEventListener('abort',()=>resolve(),{once:true}));
       return {summary:'Done',outputs:[{type:'json',value:{ok:true,token:'do-not-expose'}}]};
     }});
+    plugins.register(definePlugin({id:'fixture-plugin',name:'Fixture plugin',version:'1.0.0',capabilities:[defineCapability({id:'project.read',name:'Read project',permissions:['filesystem.read']})],actions:[defineAction({id:'inspect',name:'Inspect',requiredCapabilities:['project.read'],inputSchema:{type:'object',properties:{subject:{type:'string'}},required:['subject'],additionalProperties:false},outputSchema:{type:'object',required:['type','value']},async execute(input,context){return {type:'json',label:'Plugin result',value:{subject:input.subject,userId:context.userId,projectId:context.projectId,cardId:context.cardId}}}})]}));
     service.onModuleInit();automations.onModuleInit();
     const config={...emptyConfig(),enabled:true,project_id:project,agent:'developer',executor:'fixture',action:'analyze',permissions:['filesystem.read'],context:{files:['selected.txt']},integrations:[{plugin:'filesystem',action:'read',config:{path:'selected.txt'}}]};
     await t.test('normal card needs no execution configuration',async()=>{const data=await service.details(card,user);assert.equal(data.execution.enabled,false);assert.equal(data.result.status,'idle');assert.deepEqual(data.runs,[]);await assert.rejects(()=>service.enqueue(card,user,{}));assert.equal((await db.one('SELECT title FROM cards WHERE id=$1',[card]))?.title,'Card')});
@@ -67,7 +69,13 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
       await db.query("INSERT INTO external_resources(owner_id,plugin_id,connection_id,resource_type,external_id,orbit_entity_type,orbit_entity_id) VALUES($1,'fixture',$2,'event','external-1','card',$3)",[user,connection,card]);
       assert.equal((await db.one("SELECT count(*)::int n FROM external_resources WHERE orbit_entity_type='card' AND orbit_entity_id=$1",[card]))?.n,1);
     });
-    await t.test('failures preserve history, error and stage',async()=>{await service.save(card,user,{...config,action:'fail'});const run=await service.enqueue(card,user,{});await service.tick();const data=await service.runDetail(run.id,user);assert.equal(data.status,'failed');assert.equal(data.stage,'executor');assert.match(String((data as unknown as {error:string}).error),/Expected executor failure/);assert.equal((await service.details(card,user)).runs.length,2)});
+    await t.test('plugin actions execute through the registry with normalized context and outputs',async()=>{
+      await service.save(card,user,{...config,executor:'plugin',action:'execute',integrations:[{plugin:'fixture-plugin',action:'inspect',config:{subject:'card'}}]});
+      const run=await service.enqueue(card,user,{});await service.tick();const detail=await service.runDetail(run.id,user);
+      assert.equal(detail.status,'success');assert.equal(detail.outputs.length,1);assert.equal(detail.outputs[0].value.cardId,card);assert.equal(detail.outputs[0].value.userId,user);
+      assert.equal((detail as unknown as {metadata:{outputCount:number}}).metadata.outputCount,1);
+    });
+    await t.test('failures preserve history, error and stage',async()=>{await service.save(card,user,{...config,action:'fail'});const run=await service.enqueue(card,user,{});await service.tick();const data=await service.runDetail(run.id,user);assert.equal(data.status,'failed');assert.equal(data.stage,'executor');assert.match(String((data as unknown as {error:string}).error),/Expected executor failure/);assert.equal((await service.details(card,user)).runs.length,3)});
     await t.test('queued and running cancellation persist terminal state',async()=>{
       await service.save(card,user,config);const queued=await service.enqueue(card,user,{});await service.cancel(queued.id,user);assert.equal((await service.runDetail(queued.id,user)).status,'cancelled');
       await service.save(card,user,{...config,action:'wait'});const running=await service.enqueue(card,user,{}),task=service.tick();

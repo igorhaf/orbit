@@ -14,6 +14,7 @@ import {Run,RunRepository} from './run-repository';
 import {emptyConfig,ExecutionConfig,ExecutionInput,ExecutionResult,permissions} from './types';
 import {validateConfig} from './config';
 import {redact,safePath} from './security';
+import {PluginActionExecutor} from './plugin-action-executor';
 
 @Injectable()
 export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
@@ -24,7 +25,7 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
     this.plugins=plugins;
     this.runs=new RunRepository(db);this.context=new ContextBuilder(db,projects);
     this.executors.register(new CodexExecutor());
-    this.executors.register({id:'plugin',name:'Capacidade de plugin',actions:[{id:'execute',name:'Executar integrações',permissions:[]}],async execute(){return {summary:'Integrações executadas.',outputs:[]}}});
+    this.executors.register(new PluginActionExecutor(this.plugins));
     this.plugins.register(filesystemPlugin());
   }
   onModuleInit(){
@@ -117,11 +118,11 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
       const {project,context,executor}=await this.resolved(run.input.config,run.input.card,run.user_id);
       await this.db.query('UPDATE card_runs SET input=input || $2::jsonb WHERE id=$1',[run.id,JSON.stringify({resources:context.resources})]);
       await this.runs.stage(run.id,'resources',`Recursos carregados: ${context.resources.map(x=>x.kind+':'+x.id).join(', ')||'apenas o cartão'}.`);
-      const input:ExecutionInput={runId:run.id,cardId:run.card_id,title:run.input.card.title,prompt:context.prompt,workingDirectory:context.workingDirectory,projectRoot:project.root,permissions:run.input.config.permissions,action:run.action,signal:controller.signal};
+      const input:ExecutionInput={runId:run.id,cardId:run.card_id,userId:run.user_id,projectId:project.id,title:run.input.card.title,prompt:context.prompt,workingDirectory:context.workingDirectory,projectRoot:project.root,permissions:run.input.config.permissions,action:run.action,integrations:run.input.config.integrations,signal:controller.signal};
       await this.runs.stage(run.id,'executor',`Iniciando ${run.executor}.${run.action}.`);
       if(controller.signal.aborted)throw new Error('Execução cancelada.');
       const result:ExecutionResult=await executor.execute(input);
-      for(const integration of run.input.config.integrations){if(controller.signal.aborted)throw new Error('Execução cancelada.');await this.runs.stage(run.id,'plugin',`Executando ${integration.plugin}.${integration.action}.`);result.outputs.push(await this.plugins.execute(integration,input))}
+      if(run.executor!=='plugin')for(const integration of run.input.config.integrations){if(controller.signal.aborted)throw new Error('Execução cancelada.');await this.runs.stage(run.id,'plugin',`Executando ${integration.plugin}.${integration.action}.`);result.outputs.push(await this.plugins.execute(integration,input))}
       if(!result||typeof result.summary!=='string'||!Array.isArray(result.outputs)||result.outputs.length>30||JSON.stringify(result).length>200000)throw new Error('Resultado do executor inválido.');
       await this.runs.stage(run.id,'result','Persistindo resultado.');
       const destination=run.input.config.automation.on_success_list_id;
