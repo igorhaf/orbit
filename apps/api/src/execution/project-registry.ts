@@ -37,7 +37,7 @@ export class ProjectRegistry {
     let config:Record<string,unknown>={},warnings:string[]=[];
     try{config=parseYaml(await readResource(resourcesRoot,'orbit.yaml'))}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')warnings=[(error as Error).message]}
     try{
-      for(const key of ['agents','plugins','permissions'])stringList(config[key],key);
+      for(const key of ['agents','skills','rules','knowledge','plugins','permissions'])stringList(config[key],key);
       if(config.default_executor!==undefined&&!identifier(config.default_executor))throw new Error('Executor padrão inválido.');
       if(config.permissions&&stringList(config.permissions,'permissions').some(x=>!permissions.includes(x as typeof permissions[number])))throw new Error('Permissão de projeto desconhecida.');
       if(config.workflow!==undefined&&(!config.workflow||typeof config.workflow!=='object'||Array.isArray(config.workflow)||Object.values(config.workflow).some(x=>!identifier(x))))throw new Error('Workflow inválido.');
@@ -46,21 +46,37 @@ export class ProjectRegistry {
     for(const kind of ['agents','skills','rules','knowledge','plugins','automations'] as ResourceKind[]){
       try{
         const directory=await safePath(resourcesRoot,kind,'directory');
-        for(const entry of (await readdir(directory,{withFileTypes:true})).slice(0,100)){
+        const entries=await readdir(directory,{withFileTypes:true});
+        if(entries.length>100)warnings.push(`${kind}: limite de 100 recursos excedido.`);
+        for(const entry of entries.slice(0,100)){
           const id=entry.name.replace(/\.(md|ya?ml)$/,'');
-          if(entry.isFile()&&identifier(id)&&/\.(md|yaml)$/.test(entry.name))resources.push({id,name:id,kind});
+          if(entry.isFile()&&identifier(id)&&/\.(md|ya?ml)$/.test(entry.name))resources.push({id,name:id,kind,file:entry.name});
         }
       }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')warnings.push(`${kind}: ${(error as Error).message}`)}
     }
-    return {id:row.id,name:row.name,root,resourcesRoot,config,resources,warnings};
+    const project={id:row.id,name:row.name,root,resourcesRoot,config,resources,warnings},invalid=new Set<string>();
+    for(const resource of resources){
+      try{const document=await this.document(project,resource.kind,resource.id);resource.name=document.name}
+      catch(error){invalid.add(`${resource.kind}/${resource.id}`);warnings.push(`${resource.kind}/${resource.id}: ${(error as Error).message}`)}
+    }
+    const exists=(kind:ResourceKind,id:string)=>resources.some(resource=>resource.kind===kind&&resource.id===id);
+    for(const kind of ['agents','skills','rules','knowledge'] as ResourceKind[])for(const id of stringList(config[kind],kind))if(!exists(kind,id))warnings.push(`${kind}: recurso ${id} não encontrado.`);
+    for(const resource of resources.filter(item=>item.kind==='agents'&&!invalid.has(`agents/${item.id}`))){
+      const agent=await this.document(project,'agents',resource.id);for(const kind of ['skills','rules','knowledge'] as ResourceKind[])for(const id of stringList(agent.metadata[kind],kind))if(!exists(kind,id))warnings.push(`agents/${resource.id}: ${kind}/${id} não encontrado.`)
+    }
+    return project;
   }
   async document(project:Project,kind:ResourceKind,id:string):Promise<DocumentResource>{
     if(!identifier(id)||!project.resources.some(x=>x.id===id&&x.kind===kind))throw new Error(`${kind}: recurso ${id} não encontrado.`);
-    const text=await readResource(project.resourcesRoot,`${kind}/${id}.${kind==='automations'||kind==='plugins'?'yaml':'md'}`);
-    const parsed=kind==='automations'||kind==='plugins'?{metadata:parseYaml(text),body:''}:parseMarkdown(text);
+    const resource=project.resources.find(item=>item.id===id&&item.kind===kind)!;
+    const text=await readResource(project.resourcesRoot,`${kind}/${resource.file||id+'.'+(kind==='automations'||kind==='plugins'?'yaml':'md')}`);
+    const parsed=/\.ya?ml$/.test(resource.file||'')||kind==='automations'||kind==='plugins'?{metadata:parseYaml(text),body:''}:parseMarkdown(text);
     if(parsed.metadata.id!==undefined&&parsed.metadata.id!==id)throw new Error(`${kind}/${id}: ID não corresponde ao arquivo.`);
     for(const field of ['skills','rules','knowledge','permissions'])stringList(parsed.metadata[field],field);
     if(parsed.metadata.executor!==undefined&&!identifier(parsed.metadata.executor))throw new Error('Executor do agente inválido.');
+    if(parsed.metadata.action!==undefined&&!identifier(parsed.metadata.action))throw new Error('Action do agente inválida.');
+    if(parsed.metadata.name!==undefined&&(typeof parsed.metadata.name!=='string'||parsed.metadata.name.length>200))throw new Error('Nome do recurso inválido.');
+    if(stringList(parsed.metadata.permissions,'permissions').some(value=>!permissions.includes(value as typeof permissions[number])))throw new Error('Permissão do recurso desconhecida.');
     return {id,kind,name:typeof parsed.metadata.name==='string'?parsed.metadata.name:id,...parsed,hash:createHash('sha256').update(text).digest('hex')};
   }
 }

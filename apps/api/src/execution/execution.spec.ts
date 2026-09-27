@@ -51,6 +51,22 @@ test('resource registries build selected context and reject traversal and symlin
     await assert.rejects(()=>new ContextBuilder({} as Db,registry).build(project,{...config,permissions:['filesystem.write']},{id:'id',title:'Task',description:''},'user'));
   }finally{await rm(root,{recursive:true,force:true})}
 });
+test('project resources support optional directories, yml files and actionable diagnostics',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'orbit-project-registry-'));
+  try{
+    await mkdir(join(root,'.orbit'));await mkdir(join(root,'.orbit','agents'));await mkdir(join(root,'.orbit','skills'));
+    await writeFile(join(root,'.orbit','orbit.yaml'),'agents: [developer]\nskills: [missing]\n');
+    await writeFile(join(root,'.orbit','agents','developer.md'),'---\nid: developer\nname: Developer\nskills: [review]\n---\nAgent');
+    await writeFile(join(root,'.orbit','skills','review.yml'),'id: review\nname: Review\n');
+    const registry=new ProjectRegistry({one:async()=>({id:'project',name:'Project',local_path:root})} as unknown as Db),project=await registry.get('project','user');
+    assert.equal(project.resources.find(resource=>resource.id==='developer')?.name,'Developer');
+    assert.equal((await registry.document(project,'skills','review')).name,'Review');
+    assert.ok(project.warnings.some(warning=>warning.includes('skills: recurso missing')));
+    assert.ok(!project.warnings.some(warning=>warning.includes('rules')));
+    await writeFile(join(root,'.orbit','agents','broken.md'),'---\nid: broken');
+    const refreshed=await registry.get('project','user');assert.ok(refreshed.warnings.some(warning=>warning.includes('agents/broken')));
+  }finally{await rm(root,{recursive:true,force:true})}
+});
 test('plugin and executor registries enforce schemas, capabilities and permissions',async()=>{
   const plugins=new PluginRegistry();plugins.register(filesystemPlugin());
   assert.throws(()=>plugins.validate({plugin:'filesystem',action:'read',config:{path:'file'}},[]));

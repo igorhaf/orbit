@@ -25,7 +25,10 @@ export class ContextBuilder {
     if(agent)add('agent',agent.id,agent.body,agent.hash);
     for(const id of skills){const skill=await new SkillRegistry(this.projects).resolve(project,id);for(const permission of stringList(skill.metadata.permissions,'permissions'))if(!config.permissions.includes(permission))throw new Error(`Skill ${id} exige ${permission}.`);add('skill',id,skill.body,skill.hash)}
     for(const kind of ['rules','knowledge'] as const)for(const id of kind==='rules'?rules:knowledge){const doc=await this.projects.document(project,kind,id);add(kind,id,doc.body,doc.hash)}
-    if(config.context.include_agents_md){try{add('instructions','AGENTS.md',await readResource(project.root,'AGENTS.md'))}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error}}
+    if(config.context.include_agents_md){
+      try{add('instructions','AGENTS.md',await readResource(project.resourcesRoot,'AGENTS.md'))}
+      catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;try{add('instructions','AGENTS.md',await readResource(project.root,'AGENTS.md'))}catch(fallback){if((fallback as NodeJS.ErrnoException).code!=='ENOENT')throw fallback}}
+    }
     for(const path of config.context.files||[]){if(!config.permissions.includes('filesystem.read'))throw new Error('Leitura de arquivos não autorizada.');add('file',path,await readResource(project.root,path))}
     for(const id of config.context.cards||[]){
       const referenced=await this.db.one(`SELECT c.title,c.description FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members m ON m.board_id=b.id WHERE c.id=$1 AND m.user_id=$2 AND b.closed_at IS NULL AND c.archived_at IS NULL`,[id,user]);

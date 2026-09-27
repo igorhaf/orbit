@@ -1,6 +1,6 @@
 export type RunStatus='idle'|'queued'|'running'|'success'|'failed'|'cancelled';
 export type ResourceKind='agents'|'skills'|'rules'|'knowledge'|'plugins'|'automations';
-export type Resource={id:string;name:string;kind:ResourceKind};
+export type Resource={id:string;name:string;kind:ResourceKind;file?:string};
 export type DocumentResource=Resource&{body:string;metadata:Record<string,unknown>;hash:string};
 export type CardContext={knowledge?:string[];rules?:string[];files?:string[];cards?:string[];instructions?:string;include_agents_md?:boolean};
 export type Integration={plugin:string;action:string;connection_id?:string;config?:Record<string,unknown>};
