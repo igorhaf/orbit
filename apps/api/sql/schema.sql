@@ -79,6 +79,10 @@ ALTER TABLE cards ADD COLUMN IF NOT EXISTS mirror_expanded boolean NOT NULL DEFA
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_project_id uuid;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_model varchar(100);
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_effort varchar(16);
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_start_at timestamptz;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_end_at timestamptz;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_all_day boolean NOT NULL DEFAULT false;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_time_zone varchar(100);
 CREATE INDEX IF NOT EXISTS cards_mirror_source_idx ON cards(mirror_source_id) WHERE mirror_source_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS cards_list_position_idx ON cards(list_id, position);
 CREATE TABLE IF NOT EXISTS labels (

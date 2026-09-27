@@ -1,6 +1,6 @@
 import {PoolClient} from 'pg';
 import {Db} from '../db';
-import {ExecutionConfig,ExecutionResult} from './types';
+import {ExecutionConfig,ExecutionResult,Output} from './types';
 import {redact,scrub} from './security';
 export type Run={id:string;card_id:string;project_id:string;user_id:string;agent:string|null;executor:string;action:string;status:string;stage:string;input:{config:ExecutionConfig;card:{id:string;title:string;description:string};resources?:unknown};chain:string[];cancel_requested:boolean};
 
@@ -25,6 +25,15 @@ export class RunRepository {
       await client.query("SELECT set_config('orbit.automation_chain',$1,true)",['{'+run.chain.join(',')+'}']);
       if(status==='success'&&after)await after(client);
       await client.query('UPDATE card_runs SET status=$2,output=$3,error=$4,finished_at=now(),heartbeat_at=now() WHERE id=$1',[run.id,status,output?JSON.stringify(scrub(output)):null,error?redact(error):null]);
+      if(status==='success'&&output){
+        const outputs=scrub(output.outputs) as Output[];
+        for(let position=0;position<outputs.length;position++){
+          const item=outputs[position];
+          await client.query(`INSERT INTO card_outputs(card_id,run_id,position,type,label,value)
+            VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(run_id,position) DO UPDATE
+            SET type=EXCLUDED.type,label=EXCLUDED.label,value=EXCLUDED.value`,[run.card_id,run.id,position,item.type,item.label||null,JSON.stringify(item.value??null)]);
+        }
+      }
       await this.log(client,run.id,status,error||`Execução ${status}.`);
       await this.event(client,run.card_id,status==='success'?'execution.completed':`execution.${status}`,run.id,run.chain);await client.query('COMMIT');
     }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}

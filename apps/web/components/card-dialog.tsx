@@ -20,7 +20,7 @@ export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
   onChanged: () => Promise<void>;
   onDeleted: () => Promise<void>;
 }) {
-  const [details,setDetails]=useState<CardDetails>({comments:[],checklist:[]});
+  const [details,setDetails]=useState<CardDetails>({comments:[],checklist:[],externalResources:[]});
   const [title,setTitle]=useState(card.title);
   const [description,setDescription]=useState(card.description||'');
   const [editingDescription,setEditingDescription]=useState(false);

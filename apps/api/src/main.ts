@@ -234,6 +234,7 @@ class Service {
       source_board.id AS source_board_id,source_board.title AS source_board_title,
       (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
       c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.completed,c.ai_project_id,c.ai_model,c.ai_effort,c.created_at,c.updated_at,
+      CASE WHEN c.schedule_start_at IS NULL THEN NULL ELSE json_build_object('startAt',c.schedule_start_at,'endAt',c.schedule_end_at,'allDay',c.schedule_all_day,'timeZone',c.schedule_time_zone) END AS schedule,
       (SELECT json_build_object('enabled',e.enabled,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
       (SELECT json_build_object('status',r.status) FROM card_runs r WHERE r.card_id=c.id ORDER BY r.created_at DESC LIMIT 1) AS result,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
@@ -794,6 +795,26 @@ class Service {
       if(content?.has_content)fail('Crie um novo cartão para usar este tipo especial.',409);
     }
     const description=body.description===undefined?original.description as string:optionalText(body.description);
+    let scheduleStart=original.schedule_start_at as Date|null;
+    let scheduleEnd=original.schedule_end_at as Date|null;
+    let scheduleAllDay=original.schedule_all_day as boolean;
+    let scheduleTimeZone=original.schedule_time_zone as string|null;
+    if(body.schedule!==undefined){
+      if(body.schedule===null){scheduleStart=null;scheduleEnd=null;scheduleAllDay=false;scheduleTimeZone=null}
+      else{
+        if(typeof body.schedule!=='object'||Array.isArray(body.schedule))fail('Agendamento inválido.');
+        const schedule=body.schedule as Payload;
+        scheduleStart=optionalDate(schedule.startAt);
+        if(!scheduleStart)fail('Informe o início do agendamento.');
+        const requiredStart=scheduleStart as Date;
+        scheduleEnd=optionalDate(schedule.endAt);
+        if(scheduleEnd&&scheduleEnd<requiredStart)fail('O fim do agendamento deve ser posterior ao início.');
+        if(schedule.allDay!==undefined&&typeof schedule.allDay!=='boolean')fail('Tipo de agendamento inválido.');
+        scheduleAllDay=schedule.allDay===true;
+        scheduleTimeZone=schedule.timeZone===undefined||schedule.timeZone===null||schedule.timeZone===''?null:value(schedule.timeZone,'Fuso horário',100);
+        if(scheduleTimeZone){try{Intl.DateTimeFormat('pt-BR',{timeZone:scheduleTimeZone})}catch{fail('Fuso horário inválido.')}}
+      }
+    }
     let dueDate: Date | null=body.due_date===undefined?original.due_date as Date | null:optionalDate(body.due_date);
     let startDate: Date | null=body.start_date===undefined?original.start_date as Date | null:optionalDate(body.start_date);
     if (body.title!==undefined && body.due_date===undefined && !dueDate && kind==='normal') dueDate=dueDateFromTitle(title);
@@ -816,8 +837,9 @@ class Service {
     const position=body.position===undefined?original.position as number:Number(body.position);
     if (!Number.isFinite(position) || position<0) fail('Posição inválida.');
     const card=await this.db.one(`UPDATE cards SET title=$2,description=$3,start_date=$4,due_date=$5,reminder_minutes=$6,
-      recurrence=$7,completed=$8,list_id=$9,position=$10,kind=$11,target_board_id=$12,link_url=$13,updated_at=now()
-      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,completed,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url]);
+      recurrence=$7,completed=$8,list_id=$9,position=$10,kind=$11,target_board_id=$12,link_url=$13,
+      schedule_start_at=$14,schedule_end_at=$15,schedule_all_day=$16,schedule_time_zone=$17,updated_at=now()
+      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,completed,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url,scheduleStart,scheduleEnd,scheduleAllDay,scheduleTimeZone]);
     const moved=listId!==original.list_id;
     if (body.title!==undefined || body.description!==undefined || body.due_date!==undefined || body.start_date!==undefined || body.completed!==undefined || moved) {
       const action=body.completed===true&&recurrence?'avançou o vencimento recorrente':body.completed===true?'concluiu um cartão':moved?'moveu um cartão':body.title!==undefined?`renomeou o cartão para ${title}`:body.due_date!==undefined?'alterou a data de um cartão':'atualizou um cartão';
@@ -840,7 +862,9 @@ class Service {
       COALESCE((SELECT json_agg(json_build_object('id',a.id,'kind',a.kind,'name',a.name,'url',a.url,'target_id',a.target_id,'mime_type',a.mime_type,'size_bytes',a.size_bytes)) FROM comment_attachments a WHERE a.comment_id=c.id),'[]'::json) AS attachments
       FROM comments c JOIN users u ON u.id=c.author_id WHERE c.card_id=$1 ORDER BY c.created_at DESC`,[id]);
     const checklist = await this.db.query('SELECT id,text,completed,position,assignee_id,due_date FROM checklist_items WHERE card_id=$1 ORDER BY position',[id]);
-    return { comments, checklist };
+    const externalResources=await this.db.query(`SELECT id,plugin_id,connection_id,resource_type,external_id,external_parent_id,url,etag,metadata,created_at,updated_at
+      FROM external_resources WHERE owner_id=$2 AND orbit_entity_type='card' AND orbit_entity_id=$1 ORDER BY created_at`,[id,userId]);
+    return { comments, checklist, externalResources };
   }
   async comment(id: string,userId: string,body: Payload) {
     const boardId=await this.contentCard(id,userId);

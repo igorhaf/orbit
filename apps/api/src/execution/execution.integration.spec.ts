@@ -24,7 +24,7 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
   const features=new FeaturesService(db),projects=new ProjectRegistry(db),dispatcher=new ActionDispatcher(),service=new CardExecutionService(db,features,projects,new OrbitEvents(),dispatcher,new PluginRegistry()),automations=new AutomationsService(db,features,dispatcher);
   try{
     await db.query(await readFile(resolve(__dirname,'../../sql/schema.sql'),'utf8'));await db.query(await readFile(resolve(__dirname,'../../sql/automations.sql'),'utf8'));
-    await migrateVersions(db.pool);await migrateVersions(db.pool);assert.equal((await db.one('SELECT count(*)::int n FROM schema_migrations'))?.n,1);
+    await migrateVersions(db.pool);await migrateVersions(db.pool);assert.ok(((await db.one('SELECT count(*)::int n FROM schema_migrations'))?.n as number)>=2);
     const user=(await db.one("INSERT INTO users(name,email,password_hash) VALUES('Test',$1,'test') RETURNING id",[randomUUID()+'@example.invalid']))!.id;
     const board=(await db.one("INSERT INTO boards(title,owner_id) VALUES('Test',$1) RETURNING id",[user]))!.id;
     await db.query("INSERT INTO board_members(board_id,user_id,role) VALUES($1,$2,'owner')",[board,user]);
@@ -58,6 +58,14 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
       assert.equal((await service.enqueue(card,user,{request_key:run.request_key})).id,run.id);
       await service.tick();const data=await service.runDetail(run.id,user);assert.equal(data.status,'success');assert.ok(data.logs.some(x=>x.stage==='resources'));
       const result=(await service.details(card,user)).result;assert.ok(result.outputs.some((x:{type:string})=>x.type==='text'));assert.ok(!JSON.stringify(result).includes('do-not-expose'));
+      const outputs=await db.query('SELECT type,value FROM card_outputs WHERE run_id=$1 ORDER BY position',[run.id]);assert.equal(outputs.length,2);assert.ok(!JSON.stringify(outputs).includes('do-not-expose'));
+    });
+    await t.test('legacy cards remain valid and generic scheduling and links stay provider-neutral',async()=>{
+      const legacy=await db.one('SELECT schedule_start_at FROM cards WHERE id=$1',[card]);assert.equal(legacy?.schedule_start_at,null);
+      await db.query("UPDATE cards SET schedule_start_at='2026-10-01T12:00:00Z',schedule_end_at='2026-10-01T13:00:00Z',schedule_time_zone='America/Recife' WHERE id=$1",[card]);
+      const connection=(await db.one("INSERT INTO integration_connections(owner_id,plugin_id,label) VALUES($1,'fixture','Fixture') RETURNING id",[user]))!.id;
+      await db.query("INSERT INTO external_resources(owner_id,plugin_id,connection_id,resource_type,external_id,orbit_entity_type,orbit_entity_id) VALUES($1,'fixture',$2,'event','external-1','card',$3)",[user,connection,card]);
+      assert.equal((await db.one("SELECT count(*)::int n FROM external_resources WHERE orbit_entity_type='card' AND orbit_entity_id=$1",[card]))?.n,1);
     });
     await t.test('failures preserve history, error and stage',async()=>{await service.save(card,user,{...config,action:'fail'});const run=await service.enqueue(card,user,{});await service.tick();const data=await service.runDetail(run.id,user);assert.equal(data.status,'failed');assert.equal(data.stage,'executor');assert.match(String((data as unknown as {error:string}).error),/Expected executor failure/);assert.equal((await service.details(card,user)).runs.length,2)});
     await t.test('queued and running cancellation persist terminal state',async()=>{

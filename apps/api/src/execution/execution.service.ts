@@ -61,9 +61,10 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
   async details(id:string,user:string){
     await this.card(id,user);
     const config=await this.config(id),runs=await this.db.query(`SELECT id,agent,executor,action,status,stage,output,error,created_at,started_at,finished_at,cancel_requested FROM card_runs WHERE card_id=$1 ORDER BY created_at DESC LIMIT 50`,[id]);
-    return {execution:config,result:runs[0]?{status:runs[0].status,...runs[0].output,error:runs[0].error}:{status:'idle'},runs};
+    const outputs=await this.db.query('SELECT id,run_id,position,type,label,value,created_at FROM card_outputs WHERE card_id=$1 ORDER BY created_at DESC,position',[id]);
+    return {execution:config,result:runs[0]?{status:runs[0].status,...runs[0].output,error:runs[0].error}:{status:'idle'},runs,outputs};
   }
-  async runDetail(id:string,user:string){if(!isId(id))throw new HttpException('Run inválido.',400);const run=await this.db.one<Run>('SELECT * FROM card_runs WHERE id=$1',[id]);if(!run)throw new HttpException('Run não encontrado.',404);await this.card(run.card_id,user);return {...run,logs:await this.db.query('SELECT stage,message,created_at FROM card_run_logs WHERE run_id=$1 ORDER BY id',[id])}}
+  async runDetail(id:string,user:string){if(!isId(id))throw new HttpException('Run inválido.',400);const run=await this.db.one<Run>('SELECT * FROM card_runs WHERE id=$1',[id]);if(!run)throw new HttpException('Run não encontrado.',404);await this.card(run.card_id,user);return {...run,logs:await this.db.query('SELECT stage,message,created_at FROM card_run_logs WHERE run_id=$1 ORDER BY id',[id]),outputs:await this.db.query('SELECT id,position,type,label,value,created_at FROM card_outputs WHERE run_id=$1 ORDER BY position',[id])}}
   private async resolved(config:ExecutionConfig,card:{id:string;title:string;description:string},user:string){
     if(!config.project_id)throw new Error('Selecione um projeto.');
     const project=await this.projects.get(config.project_id,user);
