@@ -31,6 +31,7 @@ export class PluginRegistry {
   getTrigger(pluginId:string,triggerId:string):TriggerDefinition{const trigger=(this.getById(pluginId).triggers||[]).find(item=>item.id===triggerId);if(!trigger)throw new Error(`Trigger não registrado: ${pluginId}.${triggerId}`);return trigger}
   getCapability(pluginId:string,capabilityId:string):CapabilityDefinition{const capability=(this.getById(pluginId).capabilities||[]).find(item=>item.id===capabilityId);if(!capability)throw new Error(`Capability não registrada: ${pluginId}.${capabilityId}`);return capability}
   connectionProviders(){return this.list().flatMap(plugin=>plugin.connectionProvider?[{pluginId:plugin.id,...plugin.connectionProvider}]:[])}
+  automationTriggers(){return this.list().flatMap(plugin=>(plugin.triggers||[]).map(trigger=>({pluginId:plugin.id,id:typeof trigger.metadata?.event==='string'?trigger.metadata.event:`${plugin.id}.${trigger.id}`,name:trigger.name,schema:trigger.eventSchema})))}
   validate(integration:Integration,permissions:string[]):PluginAction{
     noSecrets(integration.config);
     const plugin=this.items.get(integration.plugin),action=plugin?.actions?.find(a=>a.id===integration.action);

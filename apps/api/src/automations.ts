@@ -5,8 +5,9 @@ import {PoolClient,QueryResultRow} from 'pg';
 import nodemailer from 'nodemailer';
 import {Db} from './db';
 import {FeaturesService} from './features';
-import {AutomationAction,Context,Definition,eventName,interpolate,isId,matches,nextSchedule,dateExpression,validateDefinition} from './automation-rules';
+import {AutomationAction,Context,Definition,actionTypes,dateExpression,eventName,events,interpolate,isId,matches,nextSchedule,validateDefinition} from './automation-rules';
 import {ActionDispatcher} from './action-dispatcher';
+import {PluginRegistry} from './execution/registries';
 
 type Rule=QueryResultRow&{id:string;board_id:string;owner_id:string;name:string;definition:Definition;enabled:boolean;tags:string[];created_at:Date;next_run_at:Date|null};
 type Event=QueryResultRow&{id:string;board_id:string;card_id:string|null;kind:string;chain:string[];payload:{before?:Record<string,unknown>;after?:Record<string,unknown>}};
@@ -17,7 +18,7 @@ const checkId=(id:unknown)=>{if(!isId(id))bad('ID inválido.');return id as stri
 export class AutomationsService implements OnModuleInit,OnModuleDestroy {
   private timer?:ReturnType<typeof setInterval>;
   private ticking=false;
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Optional() @Inject(ActionDispatcher) private dispatcher:ActionDispatcher=new ActionDispatcher()){}
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Optional() @Inject(ActionDispatcher) private dispatcher:ActionDispatcher=new ActionDispatcher(),@Optional() @Inject(PluginRegistry) private plugins:PluginRegistry=new PluginRegistry()){}
   onModuleInit(){
     for(const [alias,type] of Object.entries({add_label:'label_add',remove_label:'label_remove',add_comment:'comment'}))this.dispatcher.register(alias,async(request,client)=>{const c=await this.context(client,request.cardId);if(!c)throw new Error('Cartão indisponível.');await this.action(client,{id:'',name:alias,board_id:request.boardId,owner_id:request.userId} as Rule,{type:type as AutomationAction['type'],value:String(request.config.value||'')},c,new Date())});
     this.dispatcher.register('create_card',async(request,client)=>{const list=(await client.query('SELECT l.id FROM lists l JOIN cards c ON c.list_id=l.id WHERE c.id=$1 AND l.board_id=$2 AND l.archived_at IS NULL',[request.cardId,request.boardId])).rows[0];if(!list)throw new Error('Lista indisponível.');const title=String(request.config.value||'').trim();if(!title||title.length>300)throw new Error('Título inválido.');await client.query('INSERT INTO cards(list_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1),0))',[list.id,title])});
@@ -26,6 +27,7 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
   onModuleDestroy(){if(this.timer)clearInterval(this.timer)}
   async list(board:string,user:string){await this.features.member(board,user);return this.db.query('SELECT * FROM automations WHERE board_id=$1 ORDER BY created_at DESC',[board])}
   async status(board:string,user:string){await this.features.member(board,user);return this.db.one('SELECT max(r.created_at) AS last FROM automation_runs r JOIN automations a ON a.id=r.automation_id WHERE a.board_id=$1',[board])}
+  async catalog(board:string,user:string){await this.features.member(board,user);return {events:[...new Set([...events,...this.plugins.automationTriggers().map(trigger=>trigger.id)])],actions:[...new Set([...actionTypes,...this.dispatcher.list()])],pluginTriggers:this.plugins.automationTriggers()}}
   async access(id:string,user:string){const rule=await this.db.one<Rule>('SELECT * FROM automations WHERE id=$1',[checkId(id)]);if(!rule)bad('Automação não encontrada.',404);await this.features.member(rule!.board_id,user);return rule!}
   private async references(board:string,d:Definition){
     const refs:{table:string;id:string;column?:string}[]=[];
@@ -46,7 +48,7 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
     if(body.enabled!==undefined&&typeof body.enabled!=='boolean')bad('Status inválido.');
     if(body.tags!==undefined&&(!Array.isArray(body.tags)||body.tags.length>20||body.tags.some(x=>typeof x!=='string'||x.length>40)))bad('Use até 20 tags de até 40 caracteres.');
     let definition:Definition;
-    try{definition=validateDefinition(body.definition)}catch(e){return bad((e as Error).message)}
+    try{definition=validateDefinition(body.definition,{events:this.plugins.automationTriggers().map(trigger=>trigger.id),actions:this.dispatcher.list()})}catch(e){return bad((e as Error).message)}
     await this.references(board,definition);
     const next=definition.trigger.type==='scheduled'?nextSchedule(definition.trigger):null;
     if(id)return this.db.one('UPDATE automations SET name=$2,definition=$3,tags=$4,enabled=$5,next_run_at=$6,updated_at=now() WHERE id=$1 RETURNING *',[id,body.name,JSON.stringify(definition),body.tags||[],body.enabled??true,next]);
@@ -185,12 +187,12 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
         }
         for(const id of ids){const c=await this.context(client,id);if(!c||c.board_id!==rule.board_id||c.archived)continue;await this.action(client,rule,action,c,now);affected++;}
       }
-      await client.query('UPDATE automation_runs SET details=$2 WHERE id=$1',[inserted.rows[0].id,JSON.stringify({actions:rule.definition.actions.length,affected})]);
+      await client.query('UPDATE automation_runs SET details=$2,finished_at=now() WHERE id=$1',[inserted.rows[0].id,JSON.stringify({trigger:rule.definition.trigger,actions:rule.definition.actions.map(action=>action.type),affected})]);
       await client.query('RELEASE SAVEPOINT automation_run');return {status:'success',affected};
     }catch(error){
       await client.query('ROLLBACK TO SAVEPOINT automation_run');
       const message=(error as Error).message;
-      await client.query("INSERT INTO automation_runs(automation_id,event_key,status,details) VALUES($1,$2,'error',$3) ON CONFLICT DO NOTHING",[rule.id,key,JSON.stringify({error:message})]);
+      await client.query("INSERT INTO automation_runs(automation_id,event_key,status,details,finished_at) VALUES($1,$2,'error',$3,now()) ON CONFLICT DO NOTHING",[rule.id,key,JSON.stringify({trigger:rule.definition.trigger,actions:rule.definition.actions.map(action=>action.type),error:message})]);
       await client.query('RELEASE SAVEPOINT automation_run');return {status:'error',error:message};
     }
   }
@@ -262,6 +264,7 @@ export class AutomationsController {
   constructor(@Inject(AutomationsService) private service:AutomationsService,@Inject(FeaturesService) private features:FeaturesService){}
   @Get('boards/:board/automations') list(@Param('board') board:string,@Req() req:Request){return this.service.list(board,this.features.user(req))}
   @Get('boards/:board/automation-status') status(@Param('board') board:string,@Req() req:Request){return this.service.status(board,this.features.user(req))}
+  @Get('boards/:board/automation-catalog') catalog(@Param('board') board:string,@Req() req:Request){return this.service.catalog(board,this.features.user(req))}
   @Post('boards/:board/automations') create(@Param('board') board:string,@Req() req:Request,@Body() body:Record<string,unknown>){return this.service.save(board,this.features.user(req),body)}
   @Get('boards/:board/automation-suggestions') suggestions(@Param('board') board:string,@Req() req:Request){return this.service.suggestions(board,this.features.user(req))}
   @Patch('automations/:id') update(@Param('id') id:string,@Req() req:Request,@Body() body:Record<string,unknown>){return this.service.update(id,this.features.user(req),body)}

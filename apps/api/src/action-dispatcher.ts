@@ -7,5 +7,6 @@ export class ActionDispatcher {
   private handlers=new Map<string,Handler>();
   register(type:string,handler:Handler){if(this.handlers.has(type))throw new Error(`Ação duplicada: ${type}`);this.handlers.set(type,handler)}
   has(type:string){return this.handlers.has(type)}
+  list(){return [...this.handlers.keys()].sort()}
   async dispatch(request:ActionRequest,client:PoolClient){const handler=this.handlers.get(request.type);if(!handler)throw new Error('Ação não registrada: '+request.type);await handler(request,client)}
 }

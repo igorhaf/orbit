@@ -18,10 +18,15 @@ CREATE TABLE IF NOT EXISTS automation_events (
   kind text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}',
   chain uuid[] NOT NULL DEFAULT '{}',
+  source_plugin varchar(100),
+  operation_id varchar(200),
   created_at timestamptz NOT NULL DEFAULT now(),
   processed_at timestamptz
 );
+ALTER TABLE automation_events ADD COLUMN IF NOT EXISTS source_plugin varchar(100);
+ALTER TABLE automation_events ADD COLUMN IF NOT EXISTS operation_id varchar(200);
 CREATE INDEX IF NOT EXISTS automation_events_pending_idx ON automation_events(id) WHERE processed_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS automation_events_operation_idx ON automation_events(operation_id) WHERE operation_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS automation_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   automation_id uuid NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
@@ -29,8 +34,12 @@ CREATE TABLE IF NOT EXISTS automation_runs (
   status text NOT NULL CHECK(status IN ('success','skipped','error')),
   details jsonb NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz,
   UNIQUE(automation_id,event_key)
 );
+ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS started_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE automation_runs ADD COLUMN IF NOT EXISTS finished_at timestamptz;
 CREATE TABLE IF NOT EXISTS automation_mail (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   automation_id uuid NOT NULL REFERENCES automations(id) ON DELETE CASCADE,

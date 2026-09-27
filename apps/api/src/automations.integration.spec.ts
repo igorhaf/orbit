@@ -10,9 +10,13 @@ import {Db} from './db';
 import {FeaturesService} from './features';
 import {AutomationsService} from './automations';
 import {Definition} from './automation-rules';
+import {ActionDispatcher} from './action-dispatcher';
+import {PluginRegistry} from './execution/registries';
+import {definePlugin,defineTrigger} from './plugins/sdk';
+import {OrbitEvents} from './orbit-events';
 
 test('automation engine persists events, rolls back errors and isolates boards',async t=>{
-  const db=new Db(),service=new AutomationsService(db,new FeaturesService(db));
+  const db=new Db(),dispatcher=new ActionDispatcher(),plugins=new PluginRegistry(),service=new AutomationsService(db,new FeaturesService(db),dispatcher,plugins);
   const schema='automation_test_'+randomUUID().replaceAll('-','');
   await db.query(`CREATE SCHEMA ${schema}`);
   await db.pool.end();
@@ -75,6 +79,14 @@ test('automation engine persists events, rolls back errors and isolates boards',
       await db.query("UPDATE cards SET title='Start' WHERE id=$1",[card]);await service.tick();await service.tick();
       assert.equal((await db.one('SELECT title FROM cards WHERE id=$1',[card]))?.title,'Finished');
       assert.equal((await db.one("SELECT count(*)::int AS n FROM automation_runs WHERE automation_id=$1 AND status='success'",[rule]))?.n,1);
+    });
+    await t.test('accepts plugin triggers from the registry and dispatches plugin actions',async()=>{
+      plugins.register(definePlugin({id:'calendar-fixture',name:'Calendar fixture',version:'1.0.0',triggers:[defineTrigger({id:'event.created',name:'Event created',eventSchema:{type:'object'},metadata:{event:'calendar.event.created'}})]}));
+      dispatcher.register('execute_plugin_action',async(request,client)=>{await client.query('INSERT INTO comments(card_id,author_id,body) VALUES($1,$2,$3)',[request.cardId,request.userId,String(request.config.value)])});
+      const rule=await make('Plugin event',{trigger:{type:'event',event:'calendar.event.created'},conditions:[],actions:[{type:'execute_plugin_action',value:'Plugin handled {{title}}'}]});
+      await new OrbitEvents(db).publish({boardId:board,cardId:card,kind:'calendar.event.created',payload:{sourceId:'fixture'},sourcePlugin:'calendar-fixture',operationId:'fixture-event-1'});
+      await service.tick();assert.equal((await db.one("SELECT count(*)::int n FROM comments WHERE card_id=$1 AND body='Plugin handled Finished'",[card]))?.n,1);
+      assert.ok((await service.catalog(board,user)).events.includes('calendar.event.created'));assert.equal((await service.logs(rule,user)).runs[0].details.actions[0],'execute_plugin_action');
     });
     await t.test('scheduled, due and reports use persistent occurrence keys',async()=>{
       const scheduled=await make('Schedule',{trigger:{type:'scheduled',frequency:'interval',intervalMinutes:60},conditions:[{field:'list_id',op:'eq',value:dest}],actions:[{type:'comment',target:'board',value:'Scheduled'}]});

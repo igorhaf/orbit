@@ -23,7 +23,7 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
   private controllers=new Map<string,AbortController>();
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(ActionDispatcher) private actions:ActionDispatcher,@Inject(PluginRegistry) plugins:PluginRegistry){
     this.plugins=plugins;
-    this.runs=new RunRepository(db);this.context=new ContextBuilder(db,projects);
+    this.runs=new RunRepository(db,events);this.context=new ContextBuilder(db,projects);
     this.executors.register(new CodexExecutor());
     this.executors.register(new PluginActionExecutor(this.plugins));
     this.plugins.register(filesystemPlugin());

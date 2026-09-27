@@ -1,4 +1,4 @@
-export const events = ['card_created','card_moved','card_updated','card_completed','due_changed','label_changed','member_changed','comment_added','field_changed','checklist_changed','card.created','card.updated','card.moved','card.completed','execution.queued','execution.started','execution.completed','execution.failed','execution.cancelled'] as const;
+export const events = ['card_created','card_moved','card_updated','card_completed','due_changed','label_changed','member_changed','comment_added','field_changed','checklist_changed','card.created','card.updated','card.moved','card.completed','execution.queued','execution.started','execution.completed','execution.failed','execution.cancelled','external_resource.created','external_resource.updated','calendar.event.created','calendar.event.updated','calendar.event.deleted'] as const;
 export const eventName=(name:string)=>({'card.created':'card_created','card.updated':'card_updated','card.moved':'card_moved','card.completed':'card_completed'}[name]||name);
 export const actionTypes = ['move','label_add','label_remove','assign','unassign','complete','archive','rename','description','comment','due','start','field','checklist_add','checklist_complete','sort','report','run_agent','run_skill','execute_plugin_action','move_card','add_label','remove_label','add_comment','create_card'] as const;
 export type Condition = {field:string; op:'eq'|'neq'|'contains'|'not_contains'|'gt'|'lt'|'empty'|'not_empty'; value?:string};
@@ -10,11 +10,12 @@ export type Definition = {
 export type Context = {title:string;description:string;list_id:string;list:string;board:string;completed:boolean;due_date:string|null;labels:string[];members:string[];fields:Record<string,unknown>;user:string;[key:string]:unknown};
 const idPattern=/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 export function isId(value:unknown):value is string {return typeof value==='string'&&idPattern.test(value)}
-export function validateDefinition(input:unknown):Definition {
+export function validateDefinition(input:unknown,options:{events?:Iterable<string>;actions?:Iterable<string>}={}):Definition {
   const d=input as Definition;
   if(!d||!d.trigger||!['event','card_button','board_button','scheduled','due'].includes(d.trigger.type))throw new Error('Gatilho inválido.');
   const t=d.trigger;
-  if(t.type==='event'&&!events.includes(t.event as typeof events[number]))throw new Error('Evento inválido.');
+  const allowedEvents=new Set([...events,...(options.events||[])]);
+  if(t.type==='event'&&!allowedEvents.has(t.event||''))throw new Error('Evento inválido.');
   if(t.listId&&!isId(t.listId))throw new Error('Lista inválida.');
   if(t.type==='due'&&(!Number.isInteger(t.offsetMinutes)||Math.abs(t.offsetMinutes!)>525600))throw new Error('Informe os minutos em relação ao vencimento.');
   if(t.type==='scheduled'){
@@ -33,7 +34,8 @@ export function validateDefinition(input:unknown):Definition {
   }
   if(!Array.isArray(d.actions)||d.actions.length<1||d.actions.length>20)throw new Error('Use entre 1 e 20 ações.');
   for(const a of d.actions){
-    if(!a||!actionTypes.includes(a.type)||!['card','board','list','related'].includes(a.target||'card'))throw new Error('Ação inválida.');
+    const allowedActions=new Set<string>([...actionTypes,...(options.actions||[])]);
+    if(!a||!allowedActions.has(a.type)||!['card','board','list','related'].includes(a.target||'card'))throw new Error('Ação inválida.');
     if(['scheduled','board_button'].includes(t.type)&&['card','related'].includes(a.target||''))throw new Error('Este gatilho exige uma lista ou o quadro como alvo.');
     for(const key of ['value','field','listId','recipients','subject','template'] as const)if(a[key]!==undefined&&(typeof a[key]!=='string'||a[key]!.length>10000))throw new Error('Texto de ação inválido.');
     if(a.target==='list'&&!isId(a.listId))throw new Error('Selecione a lista alvo.');
