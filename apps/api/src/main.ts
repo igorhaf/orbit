@@ -21,6 +21,11 @@ import { OrbitEvents } from './orbit-events';
 import { TrelloSyncService, trelloPluginDefinition } from './trello-sync';
 import { PromptSessionsService } from './prompt-sessions';
 import { PluginRegistry } from './execution/registries';
+import { CalendarController, CalendarService } from './calendar/calendar.service';
+import { CalendarSourceRegistry } from './calendar/source-registry';
+import { OrbitCardCalendarSource } from './calendar/orbit-card-provider';
+import { GoogleCalendarController, GoogleCalendarPlugin, googleCalendarPluginDefinition } from './calendar/google-calendar.plugin';
+import { SecretVault } from './secrets';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;customFields:boolean};
@@ -234,6 +239,7 @@ class Service {
       source_board.id AS source_board_id,source_board.title AS source_board_title,
       (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
       c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,c.completed,c.ai_project_id,c.ai_model,c.ai_effort,c.created_at,c.updated_at,
+      c.schedule_start_at,c.schedule_end_at,c.schedule_all_day,c.schedule_time_zone,
       CASE WHEN c.schedule_start_at IS NULL THEN NULL ELSE json_build_object('startAt',c.schedule_start_at,'endAt',c.schedule_end_at,'allDay',c.schedule_all_day,'timeZone',c.schedule_time_zone) END AS schedule,
       (SELECT json_build_object('enabled',e.enabled,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
       (SELECT json_build_object('status',r.status) FROM card_runs r WHERE r.card_id=c.id ORDER BY r.created_at DESC LIMIT 1) AS result,
@@ -817,6 +823,12 @@ class Service {
     }
     let dueDate: Date | null=body.due_date===undefined?original.due_date as Date | null:optionalDate(body.due_date);
     let startDate: Date | null=body.start_date===undefined?original.start_date as Date | null:optionalDate(body.start_date);
+    if(body.schedule_start_at!==undefined)scheduleStart=optionalDate(body.schedule_start_at);
+    if(body.schedule_end_at!==undefined)scheduleEnd=optionalDate(body.schedule_end_at);
+    if(body.schedule_all_day!==undefined){if(typeof body.schedule_all_day!=='boolean')fail('Configuração all-day inválida.');scheduleAllDay=body.schedule_all_day as boolean}
+    if(body.schedule_time_zone!==undefined)scheduleTimeZone=body.schedule_time_zone===null||body.schedule_time_zone===''?null:optionalText(body.schedule_time_zone,100);
+    if(scheduleStart&&scheduleEnd&&scheduleEnd<scheduleStart)fail('O fim do agendamento deve ser posterior ao início.');
+    if(scheduleTimeZone)try{new Intl.DateTimeFormat('pt-BR',{timeZone:scheduleTimeZone}).format()}catch{fail('Fuso horário inválido.');}
     if (body.title!==undefined && body.due_date===undefined && !dueDate && kind==='normal') dueDate=dueDateFromTitle(title);
     if (body.completed!==undefined && typeof body.completed!=='boolean') fail('Status inválido.');
     let completed=body.completed===undefined?original.completed as boolean:body.completed as boolean;
@@ -978,8 +990,9 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Service) private service: Service,@Inject(TrelloSyncService) private trello:TrelloSyncService,@Inject(PromptSessionsService) private prompts:PromptSessionsService) {}
+  constructor(@Inject(Service) private service: Service,@Inject(TrelloSyncService) private trello:TrelloSyncService,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry) {}
   @Get('health') health() { return { status: 'ok' }; }
+  @Get('plugins') pluginsCatalog(){return {plugins:this.plugins.catalog()}}
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
   @Post('email/inbox') inboxEmail(@Req() req:Request,@Body() body:Payload) { return this.service.inboxEmail(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined); }
@@ -1063,8 +1076,9 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry,
-  {provide:PluginRegistry,useFactory:()=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);return registry;}},CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, SecretVault, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService,
+  {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin]},
+  {provide:PluginRegistry,useFactory:(google:GoogleCalendarPlugin)=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));return registry;},inject:[GoogleCalendarPlugin]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController] })
 class AppModule {}
 
 async function bootstrap() {

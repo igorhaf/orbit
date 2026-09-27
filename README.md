@@ -86,6 +86,12 @@ Cartões comuns continuam funcionando sem configuração. Na seção **Execuçã
 
 Consulte [arquitetura, migrations, permissões, APIs e exemplo funcional](docs/executable-cards.md). Recursos de exemplo ficam em `.orbit/`. Execute `npm run db:migrate` antes de iniciar a nova versão.
 
+## Calendar Workspace
+
+Abra **Calendário** para combinar Cards agendados e qualquer quantidade de contas/calendários Google nas views de mês, semana, dia, agenda e timeline. O Workspace funciona sem Google; providers são desacoplados pelo Calendar Source Registry e os eventos externos são lidos do mirror local.
+
+Consulte [arquitetura, OAuth, sync incremental, watch channels, ExternalResources e automações](docs/calendar-workspace.md). Configure as variáveis Google somente no backend e execute `npm run db:migrate`.
+
 ## Comandos
 
 | Comando | Função |

@@ -159,14 +159,15 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
     if(/[\r\n]/.test(subject))throw new Error('Assunto inválido.');
     for(const recipient of action.recipients!.split(',').map(s=>s.trim()))await client.query('INSERT INTO automation_mail(automation_id,recipient,subject,body) VALUES($1,$2,$3,$4)',[rule.id,recipient,subject,body]);
   }
-  private async execute(client:PoolClient,rule:Rule,key:string,source:string|null,chain:string[],now=new Date()){
+  private async execute(client:PoolClient,rule:Rule,key:string,source:string|null,chain:string[],now=new Date(),eventContext?:Record<string,unknown>){
     if(chain.includes(rule.id)||chain.length>=5){await client.query("INSERT INTO automation_runs(automation_id,event_key,status,details) VALUES($1,$2,'skipped',$3) ON CONFLICT DO NOTHING",[rule.id,key,JSON.stringify({reason:'Proteção contra ciclo: máximo de 5 níveis e uma execução por regra na cadeia'})]);return {status:'skipped',reason:'Proteção contra ciclo'}}
     await client.query('SAVEPOINT automation_run');
     try{
       const inserted=await client.query("INSERT INTO automation_runs(automation_id,event_key,status) VALUES($1,$2,'success') ON CONFLICT DO NOTHING RETURNING id",[rule.id,key]);
       if(!inserted.rowCount){await client.query('RELEASE SAVEPOINT automation_run');return {status:'skipped',reason:'Evento já processado'}}
       await client.query("SELECT set_config('orbit.automation_chain',$1,true)",['{'+[...chain,rule.id].join(',')+'}']);
-      const sourceContext=source?await this.context(client,source):null;
+      const baseContext=source?await this.context(client,source):null;
+      const sourceContext=baseContext&&eventContext?{...baseContext,...eventContext}:baseContext;
       if(source&&(!sourceContext||sourceContext.archived||sourceContext.board_id!==rule.board_id||!matches(sourceContext,rule.definition.conditions,now))){
         await client.query("UPDATE automation_runs SET status='skipped',details=$2 WHERE id=$1",[inserted.rows[0].id,JSON.stringify({reason:'Condições não atendidas ou cartão indisponível'})]);
         await client.query('RELEASE SAVEPOINT automation_run');return {status:'skipped'};
@@ -224,7 +225,7 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
         await client.query('BEGIN');
         for(const rule of rules){const t=rule.definition.trigger;if(rule.board_id!==event.board_id||t.type!=='event'||eventName(t.event||'')!==eventName(event.kind)||new Date(rule.created_at)>new Date(event.created_at as string))continue;
           if(t.listId&&String(event.payload.after?.list_id||'')!==t.listId){const c=event.card_id?await this.context(client,event.card_id):null;if(event.kind==='card_moved'||c?.list_id!==t.listId)continue;}
-          await this.execute(client,rule,'event:'+event.id,event.card_id,event.chain);
+          await this.execute(client,rule,'event:'+event.id,event.card_id,event.chain,new Date(),event.payload.after);
         }
         await client.query('UPDATE automation_events SET processed_at=now() WHERE id=$1',[event.id]);await client.query('COMMIT');
       }

@@ -34,6 +34,16 @@ export function Modal({ children, onClose, wide = false, extraWide = false }: { 
   </div>;
 }
 
+export function useConfirmModal() {
+  type Options={title:string;description:string;confirmLabel?:string;destructive?:boolean};
+  const [request,setRequest]=useState<{options:Options;action:()=>Promise<void>}|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const confirm=useCallback((options:Options,action:()=>Promise<void>)=>{setError('');setRequest({options,action})},[]);
+  const close=useCallback(()=>{if(!busy)setRequest(null)},[busy]);
+  const run=useCallback(async()=>{if(!request)return;setBusy(true);setError('');try{await request.action();setRequest(null)}catch(value){setError((value as Error).message)}finally{setBusy(false)}},[request]);
+  const confirmationModal=request?<Modal onClose={close}><div className="p-6"><h2 className="pr-8 text-lg font-bold">{request.options.title}</h2><p className="mt-3 whitespace-pre-wrap text-sm text-[#44546f]">{request.options.description}</p>{error&&<p role="alert" className="mt-3 text-sm text-[#ae2a19]">{error}</p>}<div className="mt-6 flex justify-end gap-2"><button disabled={busy} onClick={close} className="rounded bg-[#e9eaed] px-4 py-2 text-sm font-semibold disabled:opacity-50">Cancelar</button><button disabled={busy} onClick={()=>void run()} className={`rounded px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${request.options.destructive===false?'bg-[#0c66e4]':'bg-[#c9372c]'}`}>{busy?'Aguarde…':request.options.confirmLabel||'Confirmar'}</button></div></div></Modal>:null;
+  return {confirm,confirmationModal};
+}
+
 export function BoardTile({ board, onClick }: { board: Board; onClick: () => void }) {
   return <button onClick={onClick} className="group relative flex h-[112px] w-full flex-col overflow-hidden rounded-[5px] p-3 text-left text-white shadow-sm transition hover:brightness-90" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}>
     <strong className="relative z-10 max-w-[90%] text-[16px] leading-5">{board.title}</strong>
@@ -180,6 +190,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => router.push('/')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
       <button onClick={() => setPanel(panel === 'boards' ? null : 'boards')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
       <button onClick={() => router.push('/planner')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Planner</button>
+      <button onClick={() => router.push('/calendar')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Calendário</button>
     </nav>
 <button
   onClick={() => router.push('/planner')}
@@ -269,6 +280,7 @@ export function WorkspaceSidebar({ boards, activeId, onCreate, onChoose }: { boa
     <button onClick={() => router.push('/')} className="mt-4 flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><Home size={17}/> Home</button>
     <button onClick={() => router.push('/boards')} className={`flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold ${!activeId && typeof window !== 'undefined' && window.location.pathname === '/boards' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'hover:bg-[#f1f2f4]'}`}><LayoutDashboard size={17}/> Quadros</button>
     <button onClick={() => router.push('/#your-items')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><CheckSquare size={17}/> Seus itens</button>
+    <button onClick={() => router.push('/calendar')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={17}/> Calendário</button>
     <InboxPanel boards={boards} onOpen={()=>router.push('/inbox')}/>
     <div className="mt-6 flex items-center justify-between px-2 text-[11px] font-bold uppercase tracking-wide text-[#626f86]"><span>Seus quadros</span><button onClick={onCreate} aria-label="Criar quadro" className="rounded p-1 hover:bg-[#f1f2f4]"><Plus size={16}/></button></div>
     {groups.length === 0 && <p className="px-2 py-3 text-xs text-[#626f86]">Crie seu primeiro quadro.</p>}
