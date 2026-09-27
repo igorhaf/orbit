@@ -13,7 +13,7 @@ export type Capability={id:string;name:string;permissions:string[]};
 export interface Executor {id:string;name:string;actions:Capability[];execute(input:ExecutionInput):Promise<ExecutionResult>}
 export type PluginAction=Capability&{inputSchema:Record<string,unknown>;outputSchema?:Record<string,unknown>;execute:(config:Record<string,unknown>,input:ExecutionInput)=>Promise<Output>};
 export interface Plugin {id:string;name:string;actions:PluginAction[]}
-export interface IntegrationPlugin {id:string;name:string;scope:'board'|'workspace'|'account'}
+export interface IntegrationPlugin {id:string;name:string;scope:'board'|'workspace'|'account';contributions?:import('../calendar/types').PluginContribution}
 export const permissions=['filesystem.read','filesystem.write','process.execute','execution.automatic'] as const;
 export const emptyConfig=():ExecutionConfig=>({project_id:null,enabled:false,agent:null,executor:null,action:null,skills:[],working_directory:'.',mode:'manual',permissions:[],context:{},integrations:[],automation:{}});
 export const emptyDefaults=():ExecutionDefaults=>{const config=emptyConfig();delete (config as Partial<ExecutionConfig>).project_id;delete (config as Partial<ExecutionConfig>).enabled;return config as ExecutionDefaults};

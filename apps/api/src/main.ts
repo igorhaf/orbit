@@ -21,6 +21,11 @@ import { Server } from 'socket.io';
 import { OrbitEvents } from './orbit-events';
 import { TrelloPlugin } from './trello-sync';
 import { PromptSessionsService } from './prompt-sessions';
+import { CalendarController, CalendarService } from './calendar/calendar.service';
+import { CalendarSourceRegistry } from './calendar/source-registry';
+import { OrbitCardCalendarSource } from './calendar/orbit-card-provider';
+import { GoogleCalendarController, GoogleCalendarPlugin } from './calendar/google-calendar.plugin';
+import { SecretVault } from './secrets';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;customFields:boolean};
@@ -802,6 +807,13 @@ class Service {
     const description=body.description===undefined?original.description as string:optionalText(body.description);
     let dueDate: Date | null=body.due_date===undefined?original.due_date as Date | null:optionalDate(body.due_date);
     let startDate: Date | null=body.start_date===undefined?original.start_date as Date | null:optionalDate(body.start_date);
+    const scheduleStart=body.schedule_start_at===undefined?original.schedule_start_at as Date|null:optionalDate(body.schedule_start_at);
+    const scheduleEnd=body.schedule_end_at===undefined?original.schedule_end_at as Date|null:optionalDate(body.schedule_end_at);
+    const scheduleAllDay=body.schedule_all_day===undefined?Boolean(original.schedule_all_day):body.schedule_all_day;
+    if(typeof scheduleAllDay!=='boolean')fail('Configuração all-day inválida.');
+    const scheduleTimeZone=body.schedule_time_zone===undefined?original.schedule_time_zone as string|null:body.schedule_time_zone===null||body.schedule_time_zone===''?null:optionalText(body.schedule_time_zone,100);
+    if(scheduleStart&&scheduleEnd&&scheduleEnd<scheduleStart)fail('O fim do agendamento deve ser posterior ao início.');
+    if(scheduleTimeZone)try{new Intl.DateTimeFormat('pt-BR',{timeZone:scheduleTimeZone}).format()}catch{fail('Fuso horário inválido.');}
     if (body.title!==undefined && body.due_date===undefined && !dueDate && kind==='normal') dueDate=dueDateFromTitle(title);
     if (body.completed!==undefined && typeof body.completed!=='boolean') fail('Status inválido.');
     if(body.completed!==undefined&&await this.db.one('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL AND is_completion_list',[boardId]))fail('Este quadro usa uma coluna de conclusão. Mova o cartão entre listas para alterar o status.',409);
@@ -823,8 +835,9 @@ class Service {
     const position=body.position===undefined?original.position as number:Number(body.position);
     if (!Number.isFinite(position) || position<0) fail('Posição inválida.');
     const card=await this.db.one(`UPDATE cards SET title=$2,description=$3,start_date=$4,due_date=$5,reminder_minutes=$6,
-      recurrence=$7,completed=$8,list_id=$9,position=$10,kind=$11,target_board_id=$12,link_url=$13,updated_at=now()
-      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,completed,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url]);
+      recurrence=$7,completed=$8,list_id=$9,position=$10,kind=$11,target_board_id=$12,link_url=$13,
+      schedule_start_at=$14,schedule_end_at=$15,schedule_all_day=$16,schedule_time_zone=$17,updated_at=now()
+      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,completed,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url,scheduleStart,scheduleEnd,scheduleAllDay,scheduleTimeZone]);
     const moved=listId!==original.list_id;
     if (body.title!==undefined || body.description!==undefined || body.due_date!==undefined || body.start_date!==undefined || body.completed!==undefined || moved) {
       const action=body.completed===true&&recurrence?'avançou o vencimento recorrente':body.completed===true?'concluiu um cartão':moved?'moveu um cartão':body.title!==undefined?`renomeou o cartão para ${title}`:body.due_date!==undefined?'alterou a data de um cartão':'atualizou um cartão';
@@ -964,6 +977,7 @@ class ApiController {
   constructor(@Inject(Service) private service: Service,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(PromptSessionsService) private prompts:PromptSessionsService) {}
   private trello(){return this.plugins.getIntegration<TrelloPlugin>('trello');}
   @Get('health') health() { return { status: 'ok' }; }
+  @Get('plugins') pluginsCatalog(){return {integrations:this.plugins.integrationCatalog(),actions:this.plugins.catalog()}}
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
   @Post('email/inbox') inboxEmail(@Req() req:Request,@Body() body:Payload) { return this.service.inboxEmail(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined); }
@@ -1050,7 +1064,9 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloPlugin, PromptSessionsService, ActionDispatcher, ProjectRegistry, {provide:PluginRegistry,useFactory:(trello:TrelloPlugin)=>{const registry=new PluginRegistry();registry.registerIntegration(trello);return registry;},inject:[TrelloPlugin]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloPlugin, PromptSessionsService, ActionDispatcher, ProjectRegistry, SecretVault, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService,
+  {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin]},
+  {provide:PluginRegistry,useFactory:(trello:TrelloPlugin,google:GoogleCalendarPlugin)=>{const registry=new PluginRegistry();registry.registerIntegration(trello);registry.registerIntegration(google);return registry;},inject:[TrelloPlugin,GoogleCalendarPlugin]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController] })
 class AppModule {}
 
 async function bootstrap() {

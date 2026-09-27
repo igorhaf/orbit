@@ -28,6 +28,6 @@ export class PluginRegistry {
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;
   }
   catalog(){return [...this.items.values()].map(p=>({id:p.id,name:p.name,actions:p.actions.map(({id,name,permissions,inputSchema,outputSchema})=>({id,name,permissions,inputSchema,outputSchema}))}))}
-  integrationCatalog(){return [...this.integrations.values()].map(({id,name,scope})=>({id,name,scope}))}
+  integrationCatalog(){return [...this.integrations.values()].map(({id,name,scope,contributions})=>({id,name,scope,contributions:contributions||{}}))}
 }
 export function filesystemPlugin():Plugin{return {id:'filesystem',name:'Arquivos do projeto',actions:[{id:'read',name:'Ler arquivo',permissions:['filesystem.read'],inputSchema:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:1000}},required:['path'],additionalProperties:false},async execute(config,input){return {type:'text',label:String(config.path),value:await readResource(input.projectRoot,String(config.path))}}}]}}

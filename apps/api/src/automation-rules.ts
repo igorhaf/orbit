@@ -1,6 +1,6 @@
-export const events = ['card_created','card_moved','card_updated','card_completed','due_changed','label_changed','member_changed','comment_added','field_changed','checklist_changed','card.created','card.updated','card.moved','card.completed','execution.queued','execution.started','execution.completed','execution.failed','execution.cancelled'] as const;
+export const events = ['card_created','card_moved','card_updated','card_completed','due_changed','label_changed','member_changed','comment_added','field_changed','checklist_changed','card.created','card.updated','card.moved','card.completed','execution.queued','execution.started','execution.completed','execution.failed','execution.cancelled','calendar.event.created','calendar.event.updated','calendar.event.deleted','calendar.event.starting'] as const;
 export const eventName=(name:string)=>({'card.created':'card_created','card.updated':'card_updated','card.moved':'card_moved','card.completed':'card_completed'}[name]||name);
-export const actionTypes = ['move','label_add','label_remove','assign','unassign','complete','archive','rename','description','comment','due','start','field','checklist_add','checklist_complete','sort','report','run_agent','run_skill','execute_plugin_action','move_card','add_label','remove_label','add_comment','create_card'] as const;
+export const actionTypes = ['move','label_add','label_remove','assign','unassign','complete','archive','rename','description','comment','due','start','field','checklist_add','checklist_complete','sort','report','run_agent','run_skill','execute_plugin_action','move_card','add_label','remove_label','add_comment','create_card','google_calendar.create_event','google_calendar.update_event','google_calendar.delete_event'] as const;
 export type Condition = {field:string; op:'eq'|'neq'|'contains'|'not_contains'|'gt'|'lt'|'empty'|'not_empty'; value?:string};
 export type AutomationAction = {type:typeof actionTypes[number]; value?:string; field?:string; target?:'card'|'board'|'list'|'related'; listId?:string; report?:'snapshot'|'due_soon'|'overdue'|'my_cards'|'custom'; recipients?:string; subject?:string; template?:string};
 export type Definition = {
@@ -29,7 +29,7 @@ export function validateDefinition(input:unknown):Definition {
   }
   if(!Array.isArray(d.conditions)||d.conditions.length>30)throw new Error('Use até 30 condições.');
   for(const c of d.conditions){
-    if(!c||typeof c.field!=='string'||!['eq','neq','contains','not_contains','gt','lt','empty','not_empty'].includes(c.op)||!(['title','description','list','list_id','completed','due_date','labels','members','archived'].includes(c.field)||/^custom:[\da-f-]{36}$/i.test(c.field))|| (c.value!==undefined&&(typeof c.value!=='string'||c.value.length>1000)))throw new Error('Condição inválida.');
+    if(!c||typeof c.field!=='string'||!['eq','neq','contains','not_contains','gt','lt','empty','not_empty'].includes(c.op)||!(['title','description','list','list_id','completed','due_date','labels','members','archived','source_id','provider_id','resource_type'].includes(c.field)||/^custom:[\da-f-]{36}$/i.test(c.field))|| (c.value!==undefined&&(typeof c.value!=='string'||c.value.length>1000)))throw new Error('Condição inválida.');
   }
   if(!Array.isArray(d.actions)||d.actions.length<1||d.actions.length>20)throw new Error('Use entre 1 e 20 ações.');
   for(const a of d.actions){

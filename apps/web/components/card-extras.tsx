@@ -20,12 +20,18 @@ export function CardDatesPanel({card,update}: {card:Card;update:Update}) {
   const [due,setDue]=useState(toLocal(card.due_date));
   const [reminder,setReminder]=useState(card.reminder_minutes===null?'':String(card.reminder_minutes));
   const [recurrence,setRecurrence]=useState(card.recurrence||'');
+  const [scheduledStart,setScheduledStart]=useState(toLocal(card.schedule_start_at||null));
+  const [scheduledEnd,setScheduledEnd]=useState(toLocal(card.schedule_end_at||null));
+  const [allDay,setAllDay]=useState(Boolean(card.schedule_all_day));
+  const [timeZone,setTimeZone]=useState(card.schedule_time_zone||Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [error,setError]=useState('');
   async function save() {
     if(start&&due&&new Date(start)>new Date(due)){setError('A data inicial deve preceder o vencimento.');return}
+    if(scheduledStart&&scheduledEnd&&new Date(scheduledStart)>new Date(scheduledEnd)){setError('O fim do agendamento deve ser posterior ao início.');return}
     const body={start_date:start?new Date(start).toISOString():null,due_date:due?new Date(due).toISOString():null,
-      reminder_minutes:due&&reminder!==''?Number(reminder):null,recurrence:due&&recurrence?recurrence:null};
-    const undo={start_date:card.start_date,due_date:card.due_date,reminder_minutes:card.reminder_minutes,recurrence:card.recurrence};
+      reminder_minutes:due&&reminder!==''?Number(reminder):null,recurrence:due&&recurrence?recurrence:null,
+      schedule_start_at:scheduledStart?new Date(scheduledStart).toISOString():null,schedule_end_at:scheduledEnd?new Date(scheduledEnd).toISOString():null,schedule_all_day:allDay,schedule_time_zone:scheduledStart?timeZone:null};
+    const undo={start_date:card.start_date,due_date:card.due_date,reminder_minutes:card.reminder_minutes,recurrence:card.recurrence,schedule_start_at:card.schedule_start_at,schedule_end_at:card.schedule_end_at,schedule_all_day:card.schedule_all_day,schedule_time_zone:card.schedule_time_zone};
     if(await update(body,undo,'alterar datas'))setError('');
   }
   return <div className="space-y-3 text-xs">
@@ -33,6 +39,11 @@ export function CardDatesPanel({card,update}: {card:Card;update:Update}) {
     <label className="block">Vencimento<input type="datetime-local" value={due} onChange={e=>setDue(e.target.value)} className="mt-1 w-full rounded border border-[#8590a2] p-1.5"/></label>
     <label className="block">Lembrete<select value={reminder} onChange={e=>setReminder(e.target.value)} disabled={!due} className="mt-1 w-full rounded border border-[#8590a2] p-1.5"><option value="">Sem lembrete</option><option value="0">No vencimento</option><option value="5">5 minutos antes</option><option value="10">10 minutos antes</option><option value="15">15 minutos antes</option><option value="30">30 minutos antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option><option value="2880">2 dias antes</option><option value="10080">1 semana antes</option></select></label>
     <label className="block">Repetir ao concluir<select value={recurrence} onChange={e=>setRecurrence(e.target.value)} disabled={!due} className="mt-1 w-full rounded border border-[#8590a2] p-1.5"><option value="">Não repetir</option><option value="daily">Diariamente</option><option value="weekly">Semanalmente</option><option value="monthly">Mensalmente</option><option value="yearly">Anualmente</option></select></label>
+    <div className="border-t border-[#dfe1e6] pt-3"><p className="font-semibold">Agendamento no calendário</p><p className="mt-1 text-[#626f86]">Independente do prazo e da recorrência do cartão.</p></div>
+    <label className="block">Início no calendário<input type={allDay?'date':'datetime-local'} value={allDay?scheduledStart.slice(0,10):scheduledStart} onChange={e=>setScheduledStart(e.target.value)} className="mt-1 w-full rounded border border-[#8590a2] p-1.5"/></label>
+    <label className="block">Fim no calendário<input type={allDay?'date':'datetime-local'} value={allDay?scheduledEnd.slice(0,10):scheduledEnd} onChange={e=>setScheduledEnd(e.target.value)} className="mt-1 w-full rounded border border-[#8590a2] p-1.5"/></label>
+    <label className="flex items-center gap-2"><input type="checkbox" checked={allDay} onChange={e=>setAllDay(e.target.checked)}/> Dia inteiro</label>
+    <label className="block">Fuso horário<input value={timeZone} onChange={e=>setTimeZone(e.target.value)} disabled={!scheduledStart} className="mt-1 w-full rounded border border-[#8590a2] p-1.5"/></label>
     {error&&<p role="alert" className="text-[#ae2a19]">{error}</p>}
     <button onClick={()=>void save()} className="w-full rounded bg-[#0c66e4] py-1.5 font-semibold text-white">Salvar datas</button>
   </div>;
