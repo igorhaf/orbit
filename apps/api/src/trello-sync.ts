@@ -3,6 +3,17 @@ import { config as loadEnv } from 'dotenv';
 import { Db } from './db';
 import { FeaturesService } from './features';
 import { OrbitEvents } from './orbit-events';
+import { PluginDefinition } from './plugins/contract';
+
+export const trelloPluginDefinition:PluginDefinition={
+  id:'trello',name:'Trello',version:'1.0.0',scope:'board',
+  capabilities:[
+    {id:'cards.external.read',name:'Ler Cards externos'},
+    {id:'cards.external.write',name:'Gravar Cards externos'},
+  ],
+  connectionProvider:{id:'trello',name:'Trello',supportsMultiple:true,capabilities:['cards.external.read','cards.external.write']},
+  contributions:{settings:[{id:'trello-board-settings',surface:'board'}],cardActions:[{id:'open-trello-card'}]},
+};
 
 type Connection = { id:string; board_id:string; trello_board_id:string; trello_board_name:string; created_by:string; created_at:Date };
 type TrelloBoard = { id:string; name:string; closed?:boolean; url?:string };

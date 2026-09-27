@@ -16,11 +16,12 @@ import {migrateVersions} from '../migrations';
 import {ProjectRegistry} from './project-registry';
 import {CardExecutionService} from './execution.service';
 import {emptyConfig} from './types';
+import {PluginRegistry} from './registries';
 
 test('executable cards preserve normal cards and persist audited runs',async t=>{
   const db=new Db(),schema='execution_test_'+randomUUID().replaceAll('-',''),root=await mkdtemp(join(tmpdir(),'orbit-execution-test-'));
   await db.query(`CREATE SCHEMA ${schema}`);await db.pool.end();db.pool=new Pool({connectionString:process.env.DATABASE_URL,options:`-c search_path=${schema},public`});
-  const features=new FeaturesService(db),projects=new ProjectRegistry(db),dispatcher=new ActionDispatcher(),service=new CardExecutionService(db,features,projects,new OrbitEvents(),dispatcher),automations=new AutomationsService(db,features,dispatcher);
+  const features=new FeaturesService(db),projects=new ProjectRegistry(db),dispatcher=new ActionDispatcher(),service=new CardExecutionService(db,features,projects,new OrbitEvents(),dispatcher,new PluginRegistry()),automations=new AutomationsService(db,features,dispatcher);
   try{
     await db.query(await readFile(resolve(__dirname,'../../sql/schema.sql'),'utf8'));await db.query(await readFile(resolve(__dirname,'../../sql/automations.sql'),'utf8'));
     await migrateVersions(db.pool);await migrateVersions(db.pool);assert.equal((await db.one('SELECT count(*)::int n FROM schema_migrations'))?.n,1);

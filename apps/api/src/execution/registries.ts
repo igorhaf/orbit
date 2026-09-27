@@ -1,5 +1,6 @@
 import Ajv from 'ajv';
 import {Executor,ExecutionInput,Integration,Output,Plugin,PluginAction} from './types';
+import {ActionDefinition,CapabilityDefinition,PluginDefinition,TriggerDefinition} from '../plugins/contract';
 import {readResource,noSecrets} from './security';
 
 export class ExecutorRegistry {
@@ -11,19 +12,37 @@ export class ExecutorRegistry {
 export class PluginRegistry {
   private items=new Map<string,Plugin>();
   private ajv=new Ajv({allErrors:true});
-  register(plugin:Plugin){if(this.items.has(plugin.id))throw new Error('Plugin duplicado.');for(const a of plugin.actions)this.ajv.compile(a.inputSchema);this.items.set(plugin.id,plugin)}
+  private id(value:string,label:string){if(!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(value))throw new Error(`${label} inválido: ${value}`)}
+  private unique<T extends {id:string}>(items:T[],label:string){const ids=new Set<string>();for(const item of items){this.id(item.id,label);if(ids.has(item.id))throw new Error(`${label} duplicado: ${item.id}`);ids.add(item.id)}}
+  register(plugin:Plugin){
+    this.id(plugin.id,'Plugin');if(this.items.has(plugin.id))throw new Error('Plugin duplicado.');
+    if(!plugin.version||!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(plugin.version))throw new Error(`Versão inválida para ${plugin.id}.`);
+    const capabilities=plugin.capabilities||[],actions=plugin.actions||[],triggers=plugin.triggers||[];
+    this.unique(capabilities,'Capability');this.unique(actions,'Action');this.unique(triggers,'Trigger');
+    const known=new Set(capabilities.map(item=>item.id));
+    for(const action of actions){for(const capability of action.requiredCapabilities||[])if(!known.has(capability))throw new Error(`Capability não registrada: ${capability}`);this.ajv.compile(action.inputSchema);if(action.outputSchema)this.ajv.compile(action.outputSchema)}
+    for(const trigger of triggers)this.ajv.compile(trigger.eventSchema);
+    if(plugin.connectionProvider){this.id(plugin.connectionProvider.id,'Connection provider');for(const capability of plugin.connectionProvider.capabilities)if(!known.has(capability))throw new Error(`Capability não registrada: ${capability}`)}
+    this.items.set(plugin.id,{...plugin,capabilities,actions,triggers});
+  }
+  getById(id:string){const plugin=this.items.get(id);if(!plugin)throw new Error(`Plugin não registrado: ${id}`);return plugin}
+  list(){return [...this.items.values()]}
+  getAction(pluginId:string,actionId:string):ActionDefinition{const action=(this.getById(pluginId).actions||[]).find(item=>item.id===actionId);if(!action)throw new Error(`Action não registrada: ${pluginId}.${actionId}`);return action}
+  getTrigger(pluginId:string,triggerId:string):TriggerDefinition{const trigger=(this.getById(pluginId).triggers||[]).find(item=>item.id===triggerId);if(!trigger)throw new Error(`Trigger não registrado: ${pluginId}.${triggerId}`);return trigger}
+  getCapability(pluginId:string,capabilityId:string):CapabilityDefinition{const capability=(this.getById(pluginId).capabilities||[]).find(item=>item.id===capabilityId);if(!capability)throw new Error(`Capability não registrada: ${pluginId}.${capabilityId}`);return capability}
+  connectionProviders(){return this.list().flatMap(plugin=>plugin.connectionProvider?[{pluginId:plugin.id,...plugin.connectionProvider}]:[])}
   validate(integration:Integration,permissions:string[]):PluginAction{
     noSecrets(integration.config);
-    const plugin=this.items.get(integration.plugin),action=plugin?.actions.find(a=>a.id===integration.action);
-    if(!action)throw new Error(`Capacidade não registrada: ${integration.plugin}.${integration.action}`);
-    for(const permission of action.permissions)if(!permissions.includes(permission))throw new Error(`Permissão necessária: ${permission}`);
+    const plugin=this.items.get(integration.plugin),action=plugin?.actions?.find(a=>a.id===integration.action);
+    if(!plugin||!action||!action.execute)throw new Error(`Capacidade não registrada: ${integration.plugin}.${integration.action}`);
+    for(const permission of action.permissions||[])if(!permissions.includes(permission))throw new Error(`Permissão necessária: ${permission}`);
     if(!this.ajv.validate(action.inputSchema,integration.config||{}))throw new Error(`Configuração inválida de ${plugin!.name}: ${this.ajv.errorsText()}`);
-    return action;
+    return action as PluginAction;
   }
   async execute(integration:Integration,input:ExecutionInput):Promise<Output>{
-    const action=this.validate(integration,input.permissions),output=await action.execute(integration.config||{},input);
+    const action=this.validate(integration,input.permissions),output=await action.execute(integration.config||{},{cardId:input.cardId,runId:input.runId,execution:input});
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;
   }
-  catalog(){return [...this.items.values()].map(p=>({id:p.id,name:p.name,actions:p.actions.map(({id,name,permissions,inputSchema,outputSchema})=>({id,name,permissions,inputSchema,outputSchema}))}))}
+  catalog(){return [...this.items.values()].map(p=>({id:p.id,name:p.name,version:p.version,capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),triggers:p.triggers,connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}
 }
-export function filesystemPlugin():Plugin{return {id:'filesystem',name:'Arquivos do projeto',actions:[{id:'read',name:'Ler arquivo',permissions:['filesystem.read'],inputSchema:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:1000}},required:['path'],additionalProperties:false},async execute(config,input){return {type:'text',label:String(config.path),value:await readResource(input.projectRoot,String(config.path))}}}]}}
+export function filesystemPlugin():PluginDefinition{return {id:'filesystem',name:'Arquivos do projeto',version:'1.0.0',capabilities:[{id:'filesystem.read',name:'Ler arquivos',permissions:['filesystem.read']}],actions:[{id:'read',name:'Ler arquivo',permissions:['filesystem.read'],requiredCapabilities:['filesystem.read'],inputSchema:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:1000}},required:['path'],additionalProperties:false},async execute(config,context){const input=context.execution;if(!input)throw new Error('Contexto de execução ausente.');return {type:'text',label:String(config.path),value:await readResource(input.projectRoot,String(config.path))}}}]}}

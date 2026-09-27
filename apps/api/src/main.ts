@@ -18,8 +18,9 @@ import { AutomationsController, AutomationsService } from './automations';
 import { CodexAiService } from './codex-ai';
 import { Server } from 'socket.io';
 import { OrbitEvents } from './orbit-events';
-import { TrelloSyncService } from './trello-sync';
+import { TrelloSyncService, trelloPluginDefinition } from './trello-sync';
 import { PromptSessionsService } from './prompt-sessions';
+import { PluginRegistry } from './execution/registries';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;customFields:boolean};
@@ -1038,7 +1039,8 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController] })
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry,
+  {provide:PluginRegistry,useFactory:()=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);return registry;}},CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController] })
 class AppModule {}
 
 async function bootstrap() {

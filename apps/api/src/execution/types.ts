@@ -10,7 +10,7 @@ export type ExecutionResult={summary:string;outputs:Output[]};
 export type ExecutionInput={runId:string;cardId:string;title:string;prompt:string;workingDirectory:string;projectRoot:string;permissions:string[];action:string;signal:AbortSignal};
 export type Capability={id:string;name:string;permissions:string[]};
 export interface Executor {id:string;name:string;actions:Capability[];execute(input:ExecutionInput):Promise<ExecutionResult>}
-export type PluginAction=Capability&{inputSchema:Record<string,unknown>;outputSchema?:Record<string,unknown>;execute:(config:Record<string,unknown>,input:ExecutionInput)=>Promise<Output>};
-export interface Plugin {id:string;name:string;actions:PluginAction[]}
+export type PluginAction=import('../plugins/contract').ActionDefinition&{execute:(config:Record<string,unknown>,context:import('../plugins/contract').PluginActionContext)=>Promise<Output>};
+export type Plugin=import('../plugins/contract').PluginDefinition;
 export const permissions=['filesystem.read','filesystem.write','process.execute','execution.automatic'] as const;
 export const emptyConfig=():ExecutionConfig=>({project_id:null,enabled:false,agent:null,executor:null,action:null,skills:[],working_directory:'.',mode:'manual',permissions:[],context:{},integrations:[],automation:{}});
