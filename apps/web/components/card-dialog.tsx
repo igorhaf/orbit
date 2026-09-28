@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { AlignLeft, Check, CheckSquare, Clock3, CreditCard, MoveRight, Palette, Printer, Plus, Tag, Trash2, X } from 'lucide-react';
+import { AlignLeft, Check, CheckSquare, Clock3, CreditCard, ExternalLink, Mail, MoveRight, Palette, Printer, Plus, Tag, Trash2, X } from 'lucide-react';
 import { api, send, Board, Card, CardDetails, getUser, labelColors, labelTextColor } from '@/lib/api';
 import { remember } from '@/lib/history';
 import { Modal } from './ui';
@@ -78,6 +78,7 @@ export function CardDialog({ card, board, onClose, onChanged, onDeleted }: {
       <CardAi card={card} board={board} onExecutionStart={()=>setContentTab('execution')} onChanged={onChanged} onApply={async text=>{const changed=await updateCard({description:text},{description:card.description},'aplicar sugestão de IA');if(changed){setDescription(text);await onChanged();}}}/>
       <CardSections key={card.id} card={card} board={board} onChanged={onChanged}/>
       <CardExecutionPanel key={'execution:'+card.id} card={card} board={board} onChanged={onChanged}/>
+      {details.externalResources.length>0&&<section><h3 className="mb-3 flex items-center gap-2 text-sm font-bold"><ExternalLink size={17}/> Recursos externos</h3><div className="space-y-2">{details.externalResources.map(resource=>{const metadata=resource.metadata||{},mail=resource.resource_type==='mail_thread'||resource.resource_type==='mail_message';return <a key={resource.id} href={resource.url||undefined} target={resource.url?'_blank':undefined} rel="noopener noreferrer" className="block rounded-lg border border-[#dfe1e6] bg-white p-3 hover:bg-[#f1f2f4]"><div className="flex items-center gap-2 text-sm font-semibold">{mail?<Mail size={16}/>:<ExternalLink size={16}/>}<span className="min-w-0 flex-1 truncate">{String(metadata.subject||resource.resource_type)}</span><span className="rounded bg-[#e9eaed] px-1.5 py-0.5 text-[10px] uppercase">{resource.plugin_id.replace('_',' ')}</span></div>{Boolean(metadata.preview)&&<p className="mt-1 line-clamp-2 text-xs text-[#626f86]">{String(metadata.preview)}</p>}{Boolean(metadata.sender)&&typeof metadata.sender==='object'&&<p className="mt-1 truncate text-[11px] text-[#626f86]">De: {String((metadata.sender as {name?:string;address?:string}).name||(metadata.sender as {address?:string}).address||'')}</p>}</a>})}</div></section>}
     </div><aside className="min-w-0 space-y-6 border-l border-[#dfe1e6] pl-0 xl:pl-7"><CardComments card={card} board={board} details={details} onChanged={onChanged} run={run} user={user}/><div><h4 className="mb-2 text-xs font-bold text-[#626f86]">Mais opções</h4><div className="space-y-2">
       <button onClick={()=>setPanel(panel==='labels'?null:'labels')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Tag size={16}/> Etiquetas</button>
       <button onClick={()=>setPanel(panel==='date'?null:'date')} className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"><Clock3 size={16}/> Datas</button>

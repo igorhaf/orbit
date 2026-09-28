@@ -26,6 +26,11 @@ import { CalendarSourceRegistry } from './calendar/source-registry';
 import { OrbitCardCalendarSource } from './calendar/orbit-card-provider';
 import { GoogleCalendarController, GoogleCalendarPlugin, googleCalendarPluginDefinition } from './calendar/google-calendar.plugin';
 import { SecretVault } from './secrets';
+import { GmailProvider } from './mail/gmail.plugin';
+import { OutlookMailProvider } from './mail/outlook-mail.plugin';
+import { MailProviderRegistry } from './mail/provider-registry';
+import { MailConnectionClient } from './mail/connection-client';
+import { MailController, MailService, mailPluginDefinition } from './mail/mail.service';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;customFields:boolean};
@@ -1076,9 +1081,10 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, SecretVault, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService,
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, SecretVault, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService,
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin]},
-  {provide:PluginRegistry,useFactory:(google:GoogleCalendarPlugin)=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));return registry;},inject:[GoogleCalendarPlugin]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController] })
+  {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
+  {provide:PluginRegistry,useFactory:(google:GoogleCalendarPlugin,mail:MailService)=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));return registry;},inject:[GoogleCalendarPlugin,MailService]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController, MailController] })
 class AppModule {}
 
 async function bootstrap() {
