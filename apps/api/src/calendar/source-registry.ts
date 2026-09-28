@@ -15,7 +15,7 @@ export class CalendarSourceRegistry {
     return provider as T;
   }
   catalog() {
-    return [...this.providers.values()].map((provider) => ({ id:provider.id, name:provider.name, connectable:Boolean(provider.getConnectUrl) }));
+    return [...this.providers.values()].map((provider) => ({ id:provider.id, name:provider.name, connectable:Boolean(provider.getConnectUrl), connectOptions:provider.connectOptions||[] }));
   }
   all() {
     return [...this.providers.values()];

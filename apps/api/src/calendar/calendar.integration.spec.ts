@@ -81,13 +81,28 @@ test("calendar migration persists multiple accounts, sources, mirror items and s
       ))!.count,
       3,
     );
+    const microsoft = (await db.one<{ id: string }>(
+      "INSERT INTO integration_connections(owner_id,plugin_id,external_account_id,display_name,credentials_encrypted,capabilities) VALUES($1,'microsoft','tenant:user','Microsoft',$2,$3) RETURNING id",
+      [user, sealed, JSON.stringify({outlookCalendar:true,teamsOnlineMeetings:true})],
+    ))!.id;
+    const outlookSource = (await db.one<{id:string}>(
+      "INSERT INTO calendar_sources(owner_id,provider_id,connection_id,external_id,name,selected) VALUES($1,'outlook_calendar',$2,'personal','Outlook',true) RETURNING id",
+      [user,microsoft],
+    ))!.id;
+    await db.query(
+      "INSERT INTO external_resources(owner_id,plugin_id,connection_id,resource_type,external_id) VALUES($1,'outlook_calendar',$2,'calendar_event','event-1')",
+      [user,microsoft],
+    );
+    assert.equal((await db.one<{count:number}>("SELECT count(*)::int count FROM external_resources WHERE owner_id=$1 AND external_id='event-1'",[user]))!.count,1);
+    assert.notEqual(outlookSource,sources[0].id);
+    assert.equal((await db.one<{count:number}>("SELECT count(*)::int count FROM calendar_sources WHERE owner_id=$1 AND selected",[user]))!.count,5);
     await db.query(
       "INSERT INTO external_resources(owner_id,plugin_id,connection_id,resource_type,external_id,orbit_entity_type,orbit_entity_id) VALUES($1,'google_calendar',$2,'calendar_event','event-1','card',$3)",
       [user, first, card],
     );
     assert.equal(
       (await db.one<{ orbit_entity_id: string }>(
-        "SELECT orbit_entity_id FROM external_resources WHERE owner_id=$1 AND external_id=$2",
+        "SELECT orbit_entity_id FROM external_resources WHERE owner_id=$1 AND plugin_id='google_calendar' AND external_id=$2",
         [user, "event-1"],
       ))!.orbit_entity_id,
       card,

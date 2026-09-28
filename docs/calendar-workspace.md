@@ -1,6 +1,6 @@
 # Calendar Workspace e providers
 
-O Calendar Workspace é uma capacidade do Orbit, não uma tela específica do Google. Ele agrega `CalendarItem` normalizado através do `CalendarSourceRegistry`. O provider interno `orbit_cards` expõe Cards com `schedule`; o plugin `google_calendar` implementa o mesmo contrato. Views de mês, semana, dia, agenda e timeline consultam o mesmo endpoint e o mesmo mirror.
+O Calendar Workspace é uma capacidade do Orbit, não uma tela específica de provider. Ele agrega `CalendarItem` normalizado através do `CalendarSourceRegistry`. O provider interno `orbit_cards` expõe Cards com `schedule`; os plugins `google_calendar` e `outlook_calendar` implementam o mesmo contrato. Views de mês, semana, dia, agenda e timeline consultam o mesmo endpoint e o mesmo mirror.
 
 ## Modelo
 
@@ -27,3 +27,7 @@ Após OAuth, o plugin usa CalendarList, cria fontes normalizadas e sincroniza as
 Cards possuem agenda opcional independente de início/vencimento. Eventos podem criar Cards ou vincular Cards existentes via `ExternalResource`. Auto-mirror é desligado por padrão e configurado por calendário, incluindo Board/List, atualização, cancelamento e estratégia de recorrência.
 
 O plugin publica actions e triggers normalizados no manifest. Triggers entram no Automation Engine existente como `calendar.event.created`, `updated`, `deleted` e `starting`; o payload contém IDs e `CalendarItem` normalizado, nunca o payload bruto do Google.
+
+## Microsoft 365
+
+Outlook Calendar é outro provider do mesmo registry e compartilha uma conexão Microsoft com Teams e Outlook Mail. A UI, o Card e o Automation Engine não conhecem IDs ou payloads do Graph. Consulte [Microsoft 365](integrations/microsoft.md) para configuração, delta sync, subscriptions, disponibilidade e Teams.

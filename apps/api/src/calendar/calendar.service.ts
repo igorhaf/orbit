@@ -61,7 +61,7 @@ export class CalendarService {
     );
   }
   catalog(){return this.registry.catalog()}
-  async connect(ownerId:string,providerId:string){const provider=this.registry.get(providerId);if(!provider.getConnectUrl)return bad('Este provider não possui conexão interativa.',409);return provider.getConnectUrl(ownerId)}
+  async connect(ownerId:string,providerId:string,option?:string){const provider=this.registry.get(providerId);if(!provider.getConnectUrl)return bad('Este provider não possui conexão interativa.',409);if(option&&provider.connectOptions&&!provider.connectOptions.some(item=>item.id===option))return bad('Capability de conexão inválida.');return provider.getConnectUrl(ownerId,option)}
   async sync(ownerId:string,sourceId:string){const provider=await this.provider(ownerId,sourceId);if(!provider.syncSource)return bad('Esta fonte não possui sincronização manual.',409);await provider.syncSource(sourceId);return {ok:true}}
   async updateSource(
     ownerId: string,
@@ -394,7 +394,7 @@ export class CalendarController {
     return this.service.sources(this.service.user(req));
   }
   @Get("catalog") catalog(){return this.service.catalog()}
-  @Get("providers/:provider/connect") connect(@Req() req:Request,@Param("provider") provider:string){return this.service.connect(this.service.user(req),provider)}
+  @Get("providers/:provider/connect") connect(@Req() req:Request,@Param("provider") provider:string,@Query("option") option?:string){return this.service.connect(this.service.user(req),provider,option)}
   @Post("sources/:id/sync") sync(@Req() req:Request,@Param("id") id:string){return this.service.sync(this.service.user(req),id)}
   @Patch("sources/:id") updateSource(
     @Req() req: Request,

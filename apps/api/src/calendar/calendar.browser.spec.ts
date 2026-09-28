@@ -33,6 +33,11 @@ test("Calendar Workspace renders all views and scheduled Cards on desktop and mo
     "INSERT INTO cards(list_id,title,schedule_start_at,schedule_end_at,schedule_time_zone) VALUES($1,'Scheduled browser card',now(),now()+interval '1 hour','America/Recife')",
     [list],
   );
+  const googleConnection=(await db.one<{id:string}>("INSERT INTO integration_connections(owner_id,plugin_id,external_account_id,display_name,credentials_encrypted,enabled) VALUES($1,'google_calendar',$2,'Google browser','test',false) RETURNING id",[user.id,`browser-google-${board}`]))!.id,
+    microsoftConnection=(await db.one<{id:string}>("INSERT INTO integration_connections(owner_id,plugin_id,external_account_id,display_name,credentials_encrypted,enabled) VALUES($1,'microsoft',$2,'Microsoft browser','test',false) RETURNING id",[user.id,`browser-microsoft-${board}`]))!.id,
+    googleSource=(await db.one<{id:string}>("INSERT INTO calendar_sources(owner_id,provider_id,connection_id,external_id,name,color,selected) VALUES($1,'google_calendar',$2,'same-id','Google Personal','#4285f4',true) RETURNING id",[user.id,googleConnection]))!.id,
+    outlookSource=(await db.one<{id:string}>("INSERT INTO calendar_sources(owner_id,provider_id,connection_id,external_id,name,color,selected) VALUES($1,'outlook_calendar',$2,'same-id','Microsoft Meada','#6264a7',true) RETURNING id",[user.id,microsoftConnection]))!.id;
+  await db.query("INSERT INTO calendar_items(owner_id,source_id,resource_type,external_id,title,start_at,end_at,conference) VALUES($1,$2,'event','same-event','Google provider event',now(),now()+interval '1 hour',NULL),($1,$3,'event','same-event','Outlook Teams event',now()+interval '2 hours',now()+interval '3 hours',$4)",[user.id,googleSource,outlookSource,JSON.stringify({provider:'microsoft_teams',joinUrl:'https://teams.microsoft.com/join/test'})]);
   const browser = await chromium.launch({
     headless: true,
     args: ["--no-sandbox"],
@@ -56,7 +61,12 @@ test("Calendar Workspace renders all views and scheduled Cards on desktop and mo
     );
     await page.getByRole("heading", { name: "Calendário", exact: true }).waitFor();
     await page.waitForTimeout(500);
-    assert.match(await page.locator("body").innerText(),/Scheduled browser card/);
+    const body=await page.locator("body").innerText();
+    assert.match(body,/Scheduled browser card/);
+    assert.match(body,/Google provider event/);
+    assert.match(body,/Outlook Teams event/);
+    assert.match(body,/Google Personal/);
+    assert.match(body,/Microsoft Meada/);
     for (const name of ["Semana", "Dia", "Agenda", "Timeline", "Mês"]) {
       await page.getByRole("button", { name, exact: true }).click();
       await page
@@ -74,6 +84,7 @@ test("Calendar Workspace renders all views and scheduled Cards on desktop and mo
     await context.close();
   } finally {
     await browser.close();
+    await db.query("DELETE FROM integration_connections WHERE id=ANY($1::uuid[])",[[googleConnection,microsoftConnection]]);
     await db.query("DELETE FROM boards WHERE id=$1", [board]);
     await db.onModuleDestroy();
   }

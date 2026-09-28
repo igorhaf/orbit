@@ -97,7 +97,8 @@ export interface CalendarSourceProvider {
   ): Promise<Availability[]>;
   syncSource?(sourceId: string): Promise<void>;
   sourceSelectionChanged?(sourceId: string, selected: boolean): Promise<void>;
-  getConnectUrl?(ownerId: string): Promise<{url:string}>;
+  getConnectUrl?(ownerId: string, option?: string): Promise<{url:string}>;
+  readonly connectOptions?: Array<{id:string;label:string}>;
 }
 
 export type PluginContribution = {

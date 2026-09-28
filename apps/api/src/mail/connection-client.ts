@@ -8,6 +8,7 @@ type Credentials = {
   expires_at?: number;
   scope?: string;
   token_type?: string;
+  capability_tokens?: { mail?: Credentials };
 };
 type Connection = {
   id: string;
@@ -36,7 +37,10 @@ export class MailConnectionClient {
       connectionId,
       family === "google" ? ["google", "google_calendar", "gmail"] : ["microsoft", "outlook_calendar", "outlook_mail", "teams"],
     );
-    const credentials = this.vault.open<Credentials>(connection.credentials_encrypted);
+    const envelope = this.vault.open<Credentials>(connection.credentials_encrypted);
+    const credentials = family === "microsoft" && envelope.capability_tokens?.mail
+      ? envelope.capability_tokens.mail
+      : envelope;
     if (!credentials.access_token) throw new HttpException("Credencial da conexão inválida.", 401);
     if (!credentials.expires_at || credentials.expires_at > Date.now() + 60_000) return credentials.access_token;
     if (!credentials.refresh_token) throw new HttpException("Reconecte a conta para renovar o acesso.", 401);
@@ -44,9 +48,12 @@ export class MailConnectionClient {
       family === "google"
         ? await this.refreshGoogle(credentials)
         : await this.refreshMicrosoft(credentials, connection.metadata);
+    const stored = family === "microsoft" && envelope.capability_tokens
+      ? { ...envelope, ...refreshed, capability_tokens: { ...envelope.capability_tokens, mail: refreshed } }
+      : refreshed;
     await this.db.query(
       "UPDATE integration_connections SET credentials_encrypted=$2,updated_at=now() WHERE id=$1 AND owner_id=$3",
-      [connectionId, this.vault.seal(refreshed), ownerId],
+      [connectionId, this.vault.seal(stored), ownerId],
     );
     return refreshed.access_token;
   }

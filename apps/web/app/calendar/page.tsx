@@ -28,7 +28,7 @@ import {
 import { AppHeader, Modal, useConfirmModal } from "@/components/ui";
 
 type View = "month" | "week" | "day" | "agenda" | "timeline";
-type CalendarProvider = {id:string;name:string;connectable:boolean};
+type CalendarProvider = {id:string;name:string;connectable:boolean;connectOptions?:Array<{id:string;label:string}>};
 const views: Record<View, string> = {
   month: "Mês",
   week: "Semana",
@@ -78,6 +78,7 @@ export default function CalendarPage() {
     [sources, setSources] = useState<CalendarSource[]>([]),
     [providers,setProviders]=useState<CalendarProvider[]>([]),
     [items, setItems] = useState<CalendarItem[]>([]),
+    [providerMenu,setProviderMenu]=useState(false),
     [view, setView] = useState<View>("month"),
     [anchor, setAnchor] = useState(new Date()),
     [selected, setSelected] = useState<CalendarItem | null>(null),
@@ -140,10 +141,10 @@ export default function CalendarPage() {
       view === "month" ? 32 : view === "week" ? 7 : view === "day" ? 1 : 30;
     setAnchor(addDays(anchor, direction * amount));
   }
-  async function connectProvider(providerId:string) {
+  async function connectProvider(providerId:string,option?:string) {
     try {
       const { url } = await api<{ url: string }>(
-        `/calendar/providers/${providerId}/connect`,
+        `/calendar/providers/${providerId}/connect${option?`?option=${encodeURIComponent(option)}`:''}`,
       );
       window.location.assign(url);
     } catch (e) {
@@ -197,13 +198,14 @@ export default function CalendarPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-bold">Calendários</h2>
             <button
-              onClick={() => {const provider=providers.find(item=>item.connectable);if(provider)void connectProvider(provider.id)}}
+              onClick={() => setProviderMenu(!providerMenu)}
               title="Conectar calendário"
               className="rounded bg-[#e9f2ff] p-1.5 text-[#0c66e4]"
             >
               <Plus size={16} />
             </button>
           </div>
+          {providerMenu&&<div className="mt-2 rounded border border-[#dfe1e6] bg-white p-2 shadow-sm">{providers.filter(item=>item.connectable).flatMap(provider=>provider.connectOptions?.length?provider.connectOptions.map(option=><button key={`${provider.id}:${option.id}`} onClick={()=>void connectProvider(provider.id,option.id)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#f1f2f4]">{option.label}</button>):[<button key={provider.id} onClick={()=>void connectProvider(provider.id)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#f1f2f4]">Conectar {provider.name}</button>])}</div>}
           <div className="mt-4 space-y-5">
             {Array.from(new Set(sources.map(sourceGroup))).map((group) => (
               <section key={group}>
@@ -918,6 +920,7 @@ function EventDetail({
   ) => void;
 }) {
   const router = useRouter();
+  const conference = item.conference && typeof item.conference === 'object' ? item.conference as {joinUrl?:string;provider?:string} : null;
   const [linking, setLinking] = useState(false),
     [editing, setEditing] = useState(false),
     [editTitle, setEditTitle] = useState(item.title),
@@ -997,6 +1000,7 @@ function EventDetail({
             {Boolean(item.conference) && (
               <p className="mt-2">Conferência disponível</p>
             )}
+            {conference?.joinUrl&&<a href={conference.joinUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block rounded bg-[#e9f2ff] px-3 py-2 text-sm font-semibold text-[#0c66e4]">Entrar na reunião{conference.provider==='microsoft_teams'?' Teams':''}</a>}
           </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-2">

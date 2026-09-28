@@ -33,6 +33,10 @@ import { MailConnectionClient } from './mail/connection-client';
 import { MailController, MailService, mailPluginDefinition } from './mail/mail.service';
 import { GitHubClient } from './github/github.client';
 import { GitHubController, GitHubPlugin, githubPluginDefinition } from './github/github.plugin';
+import { MicrosoftGraphClient } from './calendar/microsoft-graph';
+import { MicrosoftGraphSubscriptionManager } from './calendar/microsoft-subscriptions';
+import { OutlookCalendarController, OutlookCalendarPlugin, outlookCalendarPluginDefinition } from './calendar/outlook-calendar.plugin';
+import { MicrosoftTeamsPlugin, microsoftTeamsPluginDefinition } from './calendar/microsoft-teams.plugin';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;customFields:boolean};
@@ -1083,10 +1087,10 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, SecretVault, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin,
-  {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin]},
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, SecretVault, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin,
+  {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:(google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin)=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));return registry;},inject:[GoogleCalendarPlugin,MailService,GitHubPlugin]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController, MailController, GitHubController] })
+  {provide:PluginRegistry,useFactory:(google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin)=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));return registry;},inject:[GoogleCalendarPlugin,MailService,GitHubPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController, OutlookCalendarController, MailController, GitHubController] })
 class AppModule {}
 
 async function bootstrap() {
