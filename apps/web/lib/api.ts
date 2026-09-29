@@ -90,6 +90,9 @@ export type TrelloConnection = { id:string; trello_board_id:string; trello_board
 export type TrelloBoardOption = { id:string; name:string; url:string|null };
 export type TrelloListOption = {connection_id:string;trello_board_name:string;mapped_list_id:string|null;lists:{id:string;name:string}[]};
 export type Workspace = { id: string; name: string; board_count: number };
+export type Notebook = {id:string;title:string;content_html:string;created_at:string;updated_at:string};
+export type VaultItem = {id:string;title:string;category:string;notes:string;created_at:string;updated_at:string};
+export type VaultItemDetail = VaultItem & {fields:Record<string,string>};
 export type CommentAttachment = {id:string;kind:'file'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null};
 export type Comment = { id: string; body: string; created_at: string; edited_at?:string|null; author_id: string; author_name: string; attachments?:CommentAttachment[] };
 export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string; text: string; completed: boolean; position: number; assignee_id: string | null; assignee_name?:string|null; due_date: string | null };
@@ -107,6 +110,8 @@ export type SavedSearch = {id:string;name:string;query:Record<string,string>;cre
 export type AppNotification = { id: string; kind: string; title: string; body: string; created_at: string; read_at: string | null; board_id: string | null; board_title: string | null; card_id: string | null };
 export type CalendarSource = {id:string;provider_id:string;connection_id:string|null;connection_name?:string|null;external_id:string;name:string;time_zone:string|null;color:string|null;access_role:string|null;is_primary:boolean;selected:boolean;visible:boolean;is_default:boolean;capabilities:Record<string,boolean>;metadata:Record<string,unknown>;settings:Record<string,unknown>};
 export type CalendarItem = {id:string;sourceId:string;resourceType:'event'|'card';title:string;description?:string|null;start:string;end?:string|null;allDay:boolean;timeZone?:string|null;location?:string|null;externalResourceId?:string|null;cardId?:string|null;externalUrl?:string|null;status?:string;recurrence?:unknown[];attendees?:unknown[];conference?:unknown;metadata:Record<string,unknown>};
+export type PluginCatalogAction = {id:string;name:string;permissions?:string[];requiredCapabilities?:string[];inputSchema?:Record<string,unknown>;outputSchema?:Record<string,unknown>};
+export type PluginCatalogItem = {id:string;name:string;version:string;capabilities:{id:string;name:string;permissions?:string[]}[];actions:PluginCatalogAction[];triggers?:unknown[];connectionProvider?:unknown;contributions?:Record<string,unknown>};
 
 // Keep API calls on the same origin by default. Next.js proxies /api to Nest,
 // which also makes the app work from another device on the local network.

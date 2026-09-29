@@ -441,7 +441,7 @@ export function CardDialog({
                             <ExternalLink size={16} />
                           )}
                           <span className="min-w-0 flex-1 truncate">
-                            {String(metadata.subject || resource.resource_type)}
+                            {String(metadata.subject || metadata.name || resource.resource_type)}
                           </span>
                           <span className="rounded bg-[#e9eaed] px-1.5 py-0.5 text-[10px] uppercase">
                             {resource.plugin_id.replace("_", " ")}

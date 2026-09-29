@@ -7,6 +7,7 @@ import {
   Clock3,
   FolderKanban,
   ImagePlus,
+  Link2,
   Moon,
   Palette,
   UserRound,
@@ -34,12 +35,14 @@ import {
 } from "@/components/ui";
 import { useHydrated } from "@/lib/use-hydrated";
 
-type Tab = "profile" | "activity" | "cards" | "projects" | "settings";
+type DropboxStatus = { configured: boolean; connections: Array<{ id: string; display_name: string; label: string; status: string; metadata: { email?: string | null } }> };
+type Tab = "profile" | "activity" | "cards" | "projects" | "integrations" | "settings";
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "profile", label: "Perfil", icon: UserRound },
   { id: "activity", label: "Atividade", icon: ActivityIcon },
   { id: "cards", label: "Cartões atribuídos", icon: CheckSquare },
   { id: "projects", label: "Projetos", icon: FolderKanban },
+  { id: "integrations", label: "Integrações", icon: Link2 },
   { id: "settings", label: "Configurações", icon: Palette },
 ];
 export default function ProfilePage() {
@@ -52,6 +55,7 @@ export default function ProfilePage() {
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [projectName, setProjectName] = useState("");
   const [projectPath, setProjectPath] = useState("");
+  const [dropbox, setDropbox] = useState<DropboxStatus | null>(null);
   const ready = useHydrated();
   const [tab, setTab] = useState<Tab>("profile");
   const [name, setName] = useState("");
@@ -60,13 +64,14 @@ export default function ProfilePage() {
   const [create, setCreate] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [account, all, activity, assigned, projectList] = await Promise.all(
+      const [account, all, activity, assigned, projectList, dropboxStatus] = await Promise.all(
         [
           api<User>("/account"),
           api<Board[]>("/boards"),
           api<Activity[]>("/account/activity"),
           api<HomeCard[]>("/account/cards"),
           api<AiProject[]>("/ai/projects"),
+          api<DropboxStatus>("/dropbox/status"),
         ],
       );
       setCurrentUser(account);
@@ -76,6 +81,7 @@ export default function ProfilePage() {
       setActivities(activity);
       setCards(assigned);
       setProjects(projectList);
+      setDropbox(dropboxStatus);
       setError("");
     } catch (err) {
       setError((err as Error).message);
@@ -176,6 +182,14 @@ export default function ProfilePage() {
       setProjectPath("");
       setNotice("Projeto adicionado.");
       setError("");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  async function connectDropbox() {
+    try {
+      const { url } = await api<{ url: string }>("/dropbox/oauth/start");
+      window.location.assign(url);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -510,6 +524,27 @@ export default function ProfilePage() {
                 </button>
               </form>
             </div>
+          )}
+          {tab === "integrations" && (
+            <section className="max-w-2xl rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
+              <div className="flex items-start gap-4">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#e9f2ff] text-[#0c66e4]"><Link2 size={21} /></span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg font-bold">Dropbox</h2>
+                  <p className="mt-1 text-sm leading-6 text-[#626f86]">Pesquise seus arquivos, gere links compartilháveis e vincule arquivos a cartões sem duplicá-los no Orbit.</p>
+                </div>
+              </div>
+              {!dropbox?.configured ? (
+                <div className="mt-5 rounded-lg bg-[#fff7d6] p-3 text-sm text-[#7f5f01]">A integração ainda não foi configurada no servidor. Defina as credenciais do App Dropbox e reinicie a API.</div>
+              ) : dropbox.connections.length === 0 ? (
+                <button onClick={() => void connectDropbox()} className="mt-5 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]">Conectar Dropbox</button>
+              ) : (
+                <div className="mt-5 space-y-3">
+                  {dropbox.connections.map((connection) => <div key={connection.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#dfe1e6] p-4"><div><strong className="block text-sm">{connection.display_name || connection.label}</strong><span className="text-xs text-[#626f86]">{connection.metadata?.email || "Conta Dropbox"} · {connection.status === "active" ? "Conectada" : connection.status}</span></div><span className="rounded-full bg-[#e3fcef] px-2 py-1 text-xs font-semibold text-[#216e4e]">Ativa</span></div>)}
+                  <button onClick={() => void connectDropbox()} className="text-sm font-semibold text-[#0c66e4] hover:underline">Conectar outra conta</button>
+                </div>
+              )}
+            </section>
           )}
           {tab === "settings" && (
             <div className="grid gap-6 md:grid-cols-2">

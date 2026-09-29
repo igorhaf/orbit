@@ -6,7 +6,6 @@ import {
   ArrowDown,
   ArrowUp,
   Clock3,
-  Layers3,
   LayoutDashboard,
   Plus,
   RotateCcw,
@@ -19,7 +18,6 @@ import {
   send,
   Board,
   User,
-  Workspace,
   clearSession,
   getToken,
   setUser,
@@ -29,7 +27,6 @@ import {
   AppHeader,
   BoardTile,
   CreateBoardModal,
-  Modal,
   useConfirmModal,
   WorkspaceSidebar,
 } from "@/components/ui";
@@ -41,23 +38,18 @@ export default function BoardsPage() {
   const [user, setCurrentUser] = useState<User | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [closedBoards, setClosedBoards] = useState<Board[]>([]);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const ready = useHydrated();
   const [query, setQuery] = useState("");
   const [create, setCreate] = useState(false);
-  const [createWorkspace, setCreateWorkspace] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState("");
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
-      const [list, closed, spaces] = await Promise.all([
+      const [list, closed] = await Promise.all([
         api<Board[]>("/boards"),
         api<Board[]>("/boards?status=closed"),
-        api<Workspace[]>("/workspaces"),
       ]);
       setBoards(list);
       setClosedBoards(closed);
-      setWorkspaces(spaces);
       setError("");
     } catch (err) {
       setError((err as Error).message);
@@ -75,7 +67,6 @@ export default function BoardsPage() {
         setUser(account);
         load();
         if (params.has("create")) setCreate(true);
-        if (params.has("createWorkspace")) setCreateWorkspace(true);
       })
       .catch(() => {
         clearSession();
@@ -96,18 +87,6 @@ export default function BoardsPage() {
       workspace_id: workspaceId,
     });
     router.push(`/board/${board.id}`);
-  }
-  async function addWorkspace(event: React.FormEvent) {
-    event.preventDefault();
-    if (!workspaceName.trim()) return;
-    try {
-      await send("/workspaces", "POST", { name: workspaceName });
-      setWorkspaceName("");
-      setCreateWorkspace(false);
-      await load();
-    } catch (err) {
-      setError((err as Error).message);
-    }
   }
   async function toggleStar(board: Board) {
     try {
@@ -149,7 +128,7 @@ export default function BoardsPage() {
     );
   }
   async function moveFavorite(index: number, direction: -1 | 1) {
-    const favorites = boards.filter((board) => board.starred);
+    const favorites = boards.filter((board) => board.starred && !board.is_inbox);
     const target = index + direction;
     if (target < 0 || target >= favorites.length) return;
     const previous = favorites.map((board) => board.id);
@@ -184,7 +163,8 @@ export default function BoardsPage() {
   }
   if (!ready) return <div className="min-h-screen bg-[#f7f8fa]" />;
   if (!user) return null;
-  const filtered = boards.filter((board) =>
+  const visibleBoards = boards.filter((board) => !board.is_inbox);
+  const filtered = visibleBoards.filter((board) =>
     board.title.toLowerCase().includes(query.toLowerCase()),
   );
   const favorites = filtered.filter((board) => board.starred);
@@ -208,7 +188,7 @@ export default function BoardsPage() {
           <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="mb-1 text-xs font-bold uppercase tracking-[.12em] text-[#626f86]">
-                ÁREAS DE TRABALHO
+                QUADROS
               </p>
               <h1 className="text-[26px] font-bold tracking-tight sm:text-[30px]">
                 Seus quadros
@@ -218,13 +198,6 @@ export default function BoardsPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => setCreateWorkspace(true)}
-                className="flex items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-sm font-semibold hover:bg-[#dfe1e6]"
-              >
-                <Layers3 size={16} />{" "}
-                <span className="hidden sm:inline">Nova área</span>
-              </button>
               <button
                 onClick={() => setCreate(true)}
                 className="flex items-center gap-2 rounded bg-[#0c66e4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]"
@@ -306,28 +279,10 @@ export default function BoardsPage() {
           )}
           <section>
             <h2 className="mb-4 flex items-center gap-2 text-base font-bold">
-              <LayoutDashboard size={19} /> Áreas de trabalho e quadros
+              <LayoutDashboard size={19} /> Todos os quadros
             </h2>
-            {workspaces.map((workspace) => (
-              <div key={workspace.id} className="mb-8">
-                <div className="mb-3 flex items-center gap-3 border-b border-[#dfe1e6] pb-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded bg-[#dfe1f8] font-bold text-[#403294]">
-                    {workspace.name[0].toUpperCase()}
-                  </span>
-                  <h3 className="flex-1 font-semibold">{workspace.name}</h3>
-                  <span className="text-xs text-[#626f86]">
-                    {
-                      filtered.filter(
-                        (board) => board.workspace_id === workspace.id,
-                      ).length
-                    }{" "}
-                    quadros
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-                  {filtered
-                    .filter((board) => board.workspace_id === workspace.id)
-                    .map((board) => (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              {filtered.filter((board) => !board.is_inbox).map((board) => (
                       <div key={board.id} className="relative">
                         <BoardTile
                           board={board}
@@ -349,16 +304,14 @@ export default function BoardsPage() {
                         </button>
                       </div>
                     ))}
-                  <button
-                    onClick={() => setCreate(true)}
-                    className="flex h-[112px] items-center justify-center gap-2 rounded bg-[#dfe1e6] p-3 text-center text-sm font-semibold text-[#44546f] hover:bg-[#cdd3db]"
-                  >
-                    <Plus size={18} /> Criar novo quadro
-                  </button>
-                </div>
-              </div>
-            ))}
-            {boards.length > 0 && filtered.length === 0 && (
+              <button
+                onClick={() => setCreate(true)}
+                className="flex h-[112px] items-center justify-center gap-2 rounded bg-[#dfe1e6] p-3 text-center text-sm font-semibold text-[#44546f] hover:bg-[#cdd3db]"
+              >
+                <Plus size={18} /> Criar novo quadro
+              </button>
+            </div>
+            {visibleBoards.length > 0 && filtered.length === 0 && (
               <p className="py-8 text-sm text-[#626f86]">
                 Nenhum quadro encontrado para “{query}”.
               </p>
@@ -420,38 +373,6 @@ export default function BoardsPage() {
           onClose={() => setCreate(false)}
           onCreate={createBoard}
         />
-      )}
-      {createWorkspace && (
-        <Modal onClose={() => setCreateWorkspace(false)}>
-          <form onSubmit={addWorkspace} className="p-6">
-            <h2 className="mb-4 text-lg font-bold">Nova área de trabalho</h2>
-            <p className="mb-4 text-sm text-[#626f86]">
-              Agrupe seus quadros por projeto ou tema.
-            </p>
-            <label
-              htmlFor="workspace-name"
-              className="mb-1 block text-xs font-bold"
-            >
-              Nome
-            </label>
-            <input
-              id="workspace-name"
-              autoFocus
-              required
-              maxLength={120}
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              placeholder="Ex.: Projetos pessoais"
-              className="mb-4 w-full rounded border border-[#8590a2] px-3 py-2 text-sm"
-            />
-            <button
-              disabled={!workspaceName.trim()}
-              className="w-full rounded bg-[#0c66e4] px-3 py-2 text-sm font-semibold text-white"
-            >
-              Criar área de trabalho
-            </button>
-          </form>
-        </Modal>
       )}
       {confirmationModal}
     </div>

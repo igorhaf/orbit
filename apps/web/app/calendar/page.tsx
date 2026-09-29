@@ -837,7 +837,7 @@ function SourceSettings({
                 }}
                 className="mt-1 w-full rounded border p-2 text-sm"
               >
-                {boards.map((item) => (
+                {boards.filter((item) => !item.is_inbox).map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.title}
                   </option>
@@ -1168,7 +1168,7 @@ function EventDetail({
               onChange={(e) => setBoard(e.target.value)}
               className="mr-2 rounded border p-2 text-sm"
             >
-              {boards.map((b) => (
+              {boards.filter((b) => !b.is_inbox).map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.title}
                 </option>

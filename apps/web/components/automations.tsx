@@ -1297,7 +1297,7 @@ function AutomationManager({
               options={{
                 "": "Selecione",
                 ...entries(
-                  boards.filter((b) => b.id !== boardId && !b.closed_at),
+                  boards.filter((b) => b.id !== boardId && !b.closed_at && !b.is_inbox),
                 ),
               }}
               onChange={(id) => {

@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "npm run lint && tsc -p tsconfig.json",
-    "test": "tsx --test src/card-rules.spec.ts src/automation-rules.spec.ts src/execution/execution.spec.ts src/plugins/contract.spec.ts src/plugins/sdk.spec.ts src/calendar/calendar.spec.ts src/calendar/microsoft-calendar.spec.ts src/mail/mail.spec.ts src/github/github.spec.ts src/pending-fixes.spec.ts",
-    "test:integration": "tsx --test --test-concurrency=1 src/automations.integration.spec.ts src/execution/execution.integration.spec.ts src/calendar/calendar.integration.spec.ts",
+    "test": "tsx --test src/card-rules.spec.ts src/automation-rules.spec.ts src/execution/execution.spec.ts src/plugins/contract.spec.ts src/plugins/sdk.spec.ts src/calendar/calendar.spec.ts src/calendar/microsoft-calendar.spec.ts src/mail/mail.spec.ts src/github/github.spec.ts src/dropbox/dropbox.spec.ts src/pending-fixes.spec.ts",
+    "test:integration": "tsx --test --test-concurrency=1 src/automations.integration.spec.ts src/execution/execution.integration.spec.ts src/calendar/calendar.integration.spec.ts src/planner/planner.integration.spec.ts",
     "test:browser": "tsx --test --test-concurrency=1 src/automations.browser.spec.ts src/execution/execution.browser.spec.ts src/calendar/calendar.browser.spec.ts src/pending-fixes.browser.spec.ts",
     "lint": "eslint src --max-warnings 0",
     "lint:fix": "eslint src --fix --max-warnings 0",

@@ -565,7 +565,7 @@ export function BoardList({
                 onChange={(e) => setTargetBoard(e.target.value)}
                 className="w-full rounded border p-2 text-sm"
               >
-                {boards.map((board) => (
+                {boards.filter((board) => !board.is_inbox).map((board) => (
                   <option key={board.id} value={board.id}>
                     {board.title}
                   </option>

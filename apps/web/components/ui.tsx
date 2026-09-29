@@ -5,10 +5,10 @@ import Image from 'next/image';
 import {
   Bell, CalendarDays, Check, ChevronDown, Home, LayoutDashboard, LogOut,
   Moon, Plus, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
-  X, Pin, PinOff, CreditCard, Layers3, CheckSquare, Inbox,
+  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault,
 } from 'lucide-react';
 import {
-  api, send, AppNotification, Board, SearchResults, User, Workspace,
+  api, send, AppNotification, Board, SearchResults, User,
   boardColors, cardUrl, clearSession, getUser, initials, setUser,
 } from '@/lib/api';
 import { historyState, redo, undo } from '@/lib/history';
@@ -47,7 +47,6 @@ export function useConfirmModal() {
 export function BoardTile({ board, onClick }: { board: Board; onClick: () => void }) {
   return <button onClick={onClick} className="group relative flex h-[112px] w-full flex-col overflow-hidden rounded-[5px] p-3 text-left text-white shadow-sm transition hover:brightness-90" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}>
     <strong className="relative z-10 max-w-[90%] text-[16px] leading-5">{board.title}</strong>
-    {board.workspace_name && <span className="relative z-10 mt-auto truncate text-xs text-white/80">{board.workspace_name}</span>}
     <span className="absolute -bottom-6 -right-6 h-28 w-28 rounded-full bg-white/10"/>
     <span className="absolute -top-10 right-8 h-28 w-28 rounded-full bg-white/5"/>
     {board.starred && <Star size={15} fill="currentColor" className="absolute bottom-3 right-3"/>}
@@ -85,11 +84,12 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<{query:string; data:SearchResults}>({query:'',data:{boards:[],cards:[]}});
   const results = panel === 'search' && query.trim().length >= 2 && searchResponse.query === query
-    ? searchResponse.data : {boards:[],cards:[]};
+    ? {...searchResponse.data,boards:searchResponse.data.boards.filter(board=>!board.is_inbox)} : {boards:[],cards:[]};
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [pinned, setPinned] = useState(true);
   const [history, setHistory] = useState(historyState());
   const [message, setMessage] = useState('');
+  const [pluginNavigation, setPluginNavigation] = useState<Array<{id:string;label:string;href:string}>>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const initializedNotifications = useRef(false);
   const knownNotifications = useRef(new Set<string>());
@@ -108,6 +108,27 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       window.removeEventListener('sidebar:changed', pinChanged);
     };
   }, []);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    api<{plugins:Array<{contributions?:{navigation?:Array<{id?:unknown;label?:unknown;href?:unknown}>}}>}>('/plugins')
+      .then(({plugins}) => {
+        if (!active) return;
+        const reserved = new Set(['/','/boards','/calendar','/plugins']);
+        const seen = new Set<string>();
+        setPluginNavigation(plugins.flatMap(plugin => plugin.contributions?.navigation || [])
+          .filter((item): item is {id:string;label:string;href:string} =>
+            typeof item.id === 'string' && typeof item.label === 'string' &&
+            typeof item.href === 'string' && /^\/[a-z0-9/-]+$/.test(item.href))
+          .filter(item => {
+            if (reserved.has(item.href) || seen.has(item.href)) return false;
+            seen.add(item.href);
+            return true;
+          }));
+      })
+      .catch(() => { if (active) setPluginNavigation([]); });
+    return () => { active = false; };
+  }, [user]);
   useEffect(() => {
     if (panel !== 'search' || query.trim().length < 2) return;
     const timer = window.setTimeout(() => api<SearchResults>(`/search?q=${encodeURIComponent(query)}`)
@@ -179,7 +200,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   }
   function openBoard(id: string) { setPanel(null); router.push(`/board/${id}`); }
   const unread = notifications.filter(item => !item.read_at).length;
-  const boardMatches = boards.filter(board => board.title.toLowerCase().includes(query.toLowerCase())).slice(0,8);
+  const boardMatches = boards.filter(board => !board.is_inbox && board.title.toLowerCase().includes(query.toLowerCase())).slice(0,8);
 
   return <header className="relative z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
@@ -189,21 +210,12 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     <nav className="ml-1 hidden items-center gap-1 md:flex">
       <button onClick={() => router.push('/')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
       <button onClick={() => setPanel(panel === 'boards' ? null : 'boards')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
-      <button onClick={() => router.push('/planner')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Planner</button>
       <button onClick={() => router.push('/calendar')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Calendário</button>
+      {pluginNavigation.map(item => <button key={item.id} onClick={() => router.push(item.href)} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{item.label}</button>)}
+      <button onClick={() => router.push('/notebooks')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={15} className="mr-1 inline"/>Cadernos</button>
+      <button onClick={() => router.push('/vault')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={15} className="mr-1 inline"/>Cofre</button>
+      <button onClick={() => router.push('/plugins')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Plugins</button>
     </nav>
-<button
-  onClick={() => router.push('/planner')}
-  className="hidden rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4] md:block"
->
-  Planner
-</button>
-<button
-  onClick={() => router.push('/inbox')}
-  className="hidden rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4] md:block"
->
-  Inbox
-</button>
 <button
   onClick={() => router.push('/boards')}
   className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden"
@@ -224,7 +236,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <div className="flex items-center gap-2 border-b border-[#dfe1e6] px-3 py-2"><Search size={17} className="text-[#626f86]"/><input ref={searchRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Pesquisar cartões e quadros..." className="min-w-0 flex-1 border-0 bg-transparent py-1 text-sm outline-none"/><button onClick={() => setPanel(null)}><X size={17}/></button></div>
       <div className="scrollbar-thin max-h-[380px] overflow-y-auto p-2">{query.trim().length < 2 ? <p className="p-4 text-center text-xs text-[#626f86]">Digite pelo menos 2 caracteres para buscar em todos os quadros.</p> : <>
         {results.boards.length > 0 && <p className="px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Quadros</p>}
-        {results.boards.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-6 w-8 rounded" style={{background:boardColors[board.background]}}/><span className="flex-1 truncate">{board.title}</span><span className="truncate text-xs text-[#626f86]">{board.workspace_name}</span></button>)}
+        {results.boards.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-6 w-8 rounded" style={{background:boardColors[board.background]}}/><span className="flex-1 truncate">{board.title}</span></button>)}
         {results.cards.length > 0 && <p className="mt-2 px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Cartões</p>}
         {results.cards.map(card => <button key={card.id} onClick={() => { setPanel(null); router.push(cardUrl(card.board_id,card.id)); }} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><CreditCard size={16}/><span className="min-w-0 flex-1 truncate">{card.title}</span>{card.completed&&<span className="rounded bg-[#baf3db] px-1.5 py-0.5 text-[10px] text-[#216e4e]">Concluído</span>}<span className="max-w-24 truncate text-xs text-[#626f86]">{card.board_title}</span></button>)}
         {!results.boards.length && !results.cards.length && <p className="p-4 text-center text-xs text-[#626f86]">Nenhum resultado encontrado.</p>}
@@ -239,7 +251,6 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     </div>}
     {panel === 'create' && <div className="absolute left-20 top-12 z-40 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:left-96">
       <button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>
-      <button onClick={() => { setPanel(null); router.push('/boards?createWorkspace=1'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><Layers3 size={16}/> Criar área de trabalho</button>
     </div>}
     {panel === 'notifications' && <NotificationPanel items={notifications} onRead={id => markRead(id).catch(() => {})} onReadAll={() => markAll().catch(() => {})} onChoose={chooseNotification}/>}
     {panel === 'account' && <div className="absolute right-3 top-12 z-40 w-64 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
@@ -274,34 +285,32 @@ export function WorkspaceSidebar({ boards, activeId, onCreate, onChoose }: { boa
     sync(); window.addEventListener('sidebar:changed', sync);
     return () => window.removeEventListener('sidebar:changed', sync);
   }, []);
-  const groups = Array.from(new Set(boards.map(board => board.workspace_name || 'Meu espaço de trabalho')));
   if (!pinned) return null;
   return <aside className="scrollbar-thin hidden w-[245px] shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white px-3 py-5 lg:block">
-    <button onClick={() => router.push('/')} className="flex w-full items-center gap-3 border-b border-[#dfe1e6] px-2 pb-4 text-left hover:opacity-80"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-gradient-to-br from-[#0c66e4] to-[#6e5dc6] font-bold text-white">T</div><div><div className="text-sm font-bold">Meu espaço de trabalho</div><div className="text-xs text-[#626f86]">Área de trabalho</div></div></button>
-    <button onClick={() => router.push('/')} className="mt-4 flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><Home size={17}/> Home</button>
+    <button onClick={() => router.push('/')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><Home size={17}/> Home</button>
     <button onClick={() => router.push('/boards')} className={`flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold ${!activeId && typeof window !== 'undefined' && window.location.pathname === '/boards' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'hover:bg-[#f1f2f4]'}`}><LayoutDashboard size={17}/> Quadros</button>
     <button onClick={() => router.push('/#your-items')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><CheckSquare size={17}/> Seus itens</button>
     <button onClick={() => router.push('/calendar')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={17}/> Calendário</button>
+    <button onClick={() => router.push('/notebooks')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={17}/> Cadernos</button>
+    <button onClick={() => router.push('/vault')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={17}/> Cofre</button>
     <InboxPanel boards={boards} onOpen={()=>router.push('/inbox')}/>
     <div className="mt-6 flex items-center justify-between px-2 text-[11px] font-bold uppercase tracking-wide text-[#626f86]"><span>Seus quadros</span><button onClick={onCreate} aria-label="Criar quadro" className="rounded p-1 hover:bg-[#f1f2f4]"><Plus size={16}/></button></div>
-    {groups.length === 0 && <p className="px-2 py-3 text-xs text-[#626f86]">Crie seu primeiro quadro.</p>}
-    {groups.map(group => <div key={group} className="mt-3"><p className="mb-1 truncate px-2 text-[11px] font-semibold text-[#626f86]">{group}</p>{boards.filter(board => !board.is_inbox && (board.workspace_name || 'Meu espaço de trabalho') === group).map(board =>
-      <button key={board.id} onClick={() => onChoose(board.id)} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm ${activeId === board.id ? 'bg-[#e9f2ff] font-semibold text-[#0c66e4]' : 'hover:bg-[#f1f2f4]'}`}><span className="h-5 w-7 shrink-0 rounded-[2px]" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}</div>)}
+    {boards.filter(board => !board.is_inbox).length === 0 && <p className="px-2 py-3 text-xs text-[#626f86]">Crie seu primeiro quadro.</p>}
+    <div className="mt-3">{boards.filter(board => !board.is_inbox).map(board =>
+      <button key={board.id} onClick={() => onChoose(board.id)} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm ${activeId === board.id ? 'bg-[#e9f2ff] font-semibold text-[#0c66e4]' : 'hover:bg-[#f1f2f4]'}`}><span className="h-5 w-7 shrink-0 rounded-[2px]" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}
+    </div>
   </aside>;
 }
 
 export function CreateBoardModal({ onClose, onCreate }: { onClose:()=>void; onCreate:(title:string,background:string,workspaceId?:string)=>Promise<void> }) {
   const [title,setTitle]=useState('');
   const [background,setBackground]=useState('blue');
-  const [workspaceId,setWorkspaceId]=useState('');
-  const [workspaces,setWorkspaces]=useState<Workspace[]>([]);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
-  useEffect(() => { api<Workspace[]>('/workspaces').then(items => {setWorkspaces(items);setWorkspaceId(items[0]?.id || '')}).catch(() => {}); }, []);
   async function create(event: React.FormEvent) {
     event.preventDefault(); if (!title.trim()) return;
     setBusy(true); setError('');
-    try { await onCreate(title,background,workspaceId || undefined); onClose(); }
+    try { await onCreate(title,background); onClose(); }
     catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   }
@@ -309,7 +318,6 @@ export function CreateBoardModal({ onClose, onCreate }: { onClose:()=>void; onCr
     <div className="mx-auto mb-5 flex h-28 max-w-[240px] items-center justify-center rounded text-xl font-bold text-white shadow" style={{background:boardColors[background]}}>▦</div>
     <p className="mb-2 text-xs font-bold">Plano de fundo</p><div className="mb-5 grid grid-cols-8 gap-1.5">{Object.entries(boardColors).map(([key,color]) => <button type="button" key={key} onClick={() => setBackground(key)} aria-label={key} className={`h-8 rounded ${background===key?'ring-2 ring-[#0c66e4] ring-offset-2':''}`} style={{background:color}}/>)}</div>
     <label className="mb-2 block text-xs font-bold" htmlFor="board-title">Título do quadro <span className="text-red-500">*</span></label><input id="board-title" autoFocus maxLength={160} value={title} onChange={e=>setTitle(e.target.value)} className="mb-4 w-full rounded border border-[#8590a2] px-3 py-2 text-sm" placeholder="Ex.: Projeto de lançamento"/>
-    {workspaces.length > 0 && <><label htmlFor="board-workspace" className="mb-2 block text-xs font-bold">Área de trabalho</label><select id="board-workspace" value={workspaceId} onChange={e=>setWorkspaceId(e.target.value)} className="mb-5 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm">{workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}</select></>}
     {error && <p role="alert" className="mb-3 rounded bg-[#ffebe6] p-2 text-xs text-[#ae2a19]">{error}</p>}
     <button disabled={busy || !title.trim()} className="w-full rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]">{busy ? 'Criando...' : 'Criar quadro'}</button>
   </form></Modal>;
