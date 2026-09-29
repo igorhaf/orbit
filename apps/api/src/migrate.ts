@@ -12,7 +12,7 @@ async function main() {
     await migrateVersions(pool);
     const { rows: [user] } = await pool.query(
       `INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3)
-       ON CONFLICT (email) DO UPDATE SET password_hash=EXCLUDED.password_hash
+       ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name
        RETURNING id`,
       ['Igor', 'igorhaf@gmail.com', '$2b$12$87GMGtpzEwEEjmfwVIjFMu0U5Bq8.5N9xI/NHO4JBHcorA7pHJDG2'],
     );
