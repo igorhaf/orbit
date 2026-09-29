@@ -8,7 +8,7 @@ import { OrbitEvents } from './orbit-events';
 
 type Payload = Record<string, unknown>;
 type Effort = 'low'|'medium'|'high'|'xhigh';
-type CardContext = { id:string; title:string; description:string; ai_project_id:string|null; ai_model:string|null; ai_effort:Effort|null; ai_default_model:string|null; ai_default_effort:Effort|null };
+type CardContext = { id:string; title:string; description:string; ai_project_id:string|null; ai_model:string|null; ai_effort:Effort|null; ai_default_project_id:string|null; ai_default_model:string|null; ai_default_effort:Effort|null };
 const catalog=[
   {id:'gpt-6-astra',name:'Astra'},
   {id:'gpt-6-luna',name:'Luna'},
@@ -39,7 +39,8 @@ export class PromptSessionsService {
   async createProject(userId:string,body:Payload){
     const rawName=body.name;if(typeof rawName!=='string'||!rawName.trim()||rawName.trim().length>120)fail('Nome inválido.');const name=rawName as string;
     const localPath=await this.localPath(body.local_path);
-    return this.db.one('INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,$2,$3) RETURNING id,name,local_path,created_at,updated_at',[userId,name.trim(),localPath]);
+    const project=await this.db.one('INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,$2,$3) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,created_at,updated_at',[userId,name.trim(),localPath]);
+    if(!project)fail('Esta pasta já está cadastrada como projeto.',409);return project;
   }
   async updateProject(userId:string,id:string,body:Payload){
     const rawName=body.name;const name=rawName===undefined?undefined:typeof rawName==='string'&&rawName.trim()&&rawName.trim().length<=120?rawName.trim():fail('Nome inválido.');
@@ -50,18 +51,21 @@ export class PromptSessionsService {
   async deleteProject(userId:string,id:string){const project=await this.db.one('DELETE FROM ai_projects WHERE id=$1 AND owner_id=$2 RETURNING id',[uuid(id,'Projeto'),userId]);if(!project)fail('Projeto não encontrado.',404);return {ok:true};}
   async updateBoard(boardId:string,userId:string,body:Payload){
     await this.features.member(boardId,userId);const member=await this.db.one<{role:string}>('SELECT role FROM board_members WHERE board_id=$1 AND user_id=$2',[boardId,userId]);if(!member||member.role!=='owner')fail('Apenas o proprietário pode configurar a IA do quadro.',403);
-    const board=await this.db.one<{ai_default_model:string|null;ai_default_effort:Effort|null}>('SELECT ai_default_model,ai_default_effort FROM boards WHERE id=$1',[boardId]);
-    if(!board)fail('Quadro não encontrado.',404);const current=board as {ai_default_model:string|null;ai_default_effort:Effort|null};
+    const board=await this.db.one<{ai_default_project_id:string|null;ai_default_model:string|null;ai_default_effort:Effort|null}>('SELECT ai_default_project_id,ai_default_model,ai_default_effort FROM boards WHERE id=$1',[boardId]);
+    if(!board)fail('Quadro não encontrado.',404);const current=board as {ai_default_project_id:string|null;ai_default_model:string|null;ai_default_effort:Effort|null};
+    const rawProject=body.ai_default_project_id;
+    const projectId=rawProject===undefined?current.ai_default_project_id:rawProject===null||rawProject===''?null:uuid(rawProject,'Projeto');
+    if(projectId&&!await this.db.one('SELECT id FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]))fail('Projeto não encontrado.',404);
     const model=!has(body,'ai_default_model')?current.ai_default_model:body.ai_default_model===null||body.ai_default_model===''?null:selectedModel(body.ai_default_model);
     const effort=!has(body,'ai_default_effort')?current.ai_default_effort:body.ai_default_effort===null||body.ai_default_effort===''?null:selectedEffort(body.ai_default_effort);
-    return this.db.one('UPDATE boards SET ai_default_model=$2,ai_default_effort=$3 WHERE id=$1 RETURNING ai_default_model,ai_default_effort',[boardId,model,effort]);
+    return this.db.one('UPDATE boards SET ai_default_project_id=$2,ai_default_model=$3,ai_default_effort=$4 WHERE id=$1 RETURNING ai_default_project_id,ai_default_model,ai_default_effort',[boardId,projectId,model,effort]);
   }
   private async card(cardId:string,userId:string):Promise<{boardId:string;card:CardContext}>{
     const boardId=await this.features.cardBoard(cardId,userId);
-    const card=await this.db.one<CardContext>('SELECT c.id,c.title,c.description,c.ai_project_id,c.ai_model,c.ai_effort,b.ai_default_model,b.ai_default_effort FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id WHERE c.id=$1',[cardId]);
+    const card=await this.db.one<CardContext>('SELECT c.id,c.title,c.description,c.ai_project_id,c.ai_model,c.ai_effort,b.ai_default_project_id,b.ai_default_model,b.ai_default_effort FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id WHERE c.id=$1',[cardId]);
     if(!card)fail('Cartão não encontrado.',404);return {boardId,card:card as CardContext};
   }
-  async settingsForCard(cardId:string,userId:string){const {card}=await this.card(cardId,userId);return {model:card.ai_model||card.ai_default_model||null,effort:card.ai_effort||card.ai_default_effort||'medium' as Effort};}
+  async settingsForCard(cardId:string,userId:string){const {card}=await this.card(cardId,userId);return {projectId:card.ai_project_id||card.ai_default_project_id||null,model:card.ai_model||card.ai_default_model||null,effort:card.ai_effort||card.ai_default_effort||'medium' as Effort};}
   async updateCard(cardId:string,userId:string,body:Payload){
     const context=await this.card(cardId,userId);const card=context.card;
     const rawProject=body.ai_project_id;const projectId=rawProject===undefined?card.ai_project_id:rawProject===null||rawProject===''?null:uuid(rawProject,'Projeto');
@@ -73,9 +77,9 @@ export class PromptSessionsService {
   }
   async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,model,effort,status,output,error,started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY started_at DESC LIMIT 20',[cardId]);}
   async execute(cardId:string,userId:string){
-    const context=await this.card(cardId,userId);const card=context.card;const model=card.ai_model||card.ai_default_model;const effort=card.ai_effort||card.ai_default_effort||'medium' as Effort;
-    if(!model)fail('Escolha um modelo.',409);if(!card.ai_project_id)fail('Selecione um projeto para executar.',409);
-    const project=await this.db.one<{id:string;name:string;local_path:string}>('SELECT id,name,local_path FROM ai_projects WHERE id=$1 AND owner_id=$2',[card.ai_project_id,userId]);
+    const context=await this.card(cardId,userId);const card=context.card;const model=card.ai_model||card.ai_default_model;const effort=card.ai_effort||card.ai_default_effort||'medium' as Effort;const projectId=card.ai_project_id||card.ai_default_project_id;
+    if(!model)fail('Escolha um modelo.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
+    const project=await this.db.one<{id:string;name:string;local_path:string}>('SELECT id,name,local_path FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
     if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string};const localPath=await this.localPath(currentProject.local_path);
     const prompt=`Você está executando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO:\n${card.description||card.title}`;
     const client=await this.db.pool.connect();let run:{id:string};

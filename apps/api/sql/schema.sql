@@ -298,6 +298,7 @@ CREATE TABLE IF NOT EXISTS ai_projects (
 );
 ALTER TABLE cards DROP CONSTRAINT IF EXISTS cards_ai_project_id_fkey;
 ALTER TABLE cards ADD CONSTRAINT cards_ai_project_id_fkey FOREIGN KEY (ai_project_id) REFERENCES ai_projects(id) ON DELETE SET NULL;
+ALTER TABLE boards ADD COLUMN IF NOT EXISTS ai_default_project_id uuid REFERENCES ai_projects(id) ON DELETE SET NULL;
 CREATE TABLE IF NOT EXISTS card_ai_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,

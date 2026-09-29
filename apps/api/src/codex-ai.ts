@@ -6,6 +6,13 @@ import { spawn } from 'node:child_process';
 
 const MAX_OUTPUT = 20_000;
 type Progress = (message:string)=>void;
+export const codexErrorMessage=(detail:string) => {
+  if (/ENOENT/.test(detail)) return 'O executável local do Codex não foi encontrado. Configure CODEX_BIN no servidor.';
+  if (/tempo limite/i.test(detail)) return detail;
+  if (/(?:usage limit|rate limit|quota|insufficient_quota|too many requests|credits? exhausted)/i.test(detail)) return 'O limite de uso ou de tokens da conta do Codex foi excedido. Verifique sua cota e tente novamente mais tarde.';
+  if (/(?:context length|context window|maximum.*tokens|too many tokens|token limit)/i.test(detail)) return 'A solicitação excedeu o limite de tokens do modelo. Reduza o conteúdo ou divida a tarefa em partes menores.';
+  return 'Não foi possível gerar a sugestão com o Codex local.';
+};
 
 @Injectable()
 export class CodexAiService {
@@ -65,8 +72,7 @@ export class CodexAiService {
       return text.slice(0, MAX_OUTPUT);
     } catch (error) {
       const detail = error instanceof Error ? error.message : '';
-      if (/ENOENT/.test(detail)) throw new Error('O executável local do Codex não foi encontrado. Configure CODEX_BIN no servidor.');
-      throw new Error('Não foi possível gerar a sugestão com o Codex local.');
+      throw new Error(codexErrorMessage(detail));
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

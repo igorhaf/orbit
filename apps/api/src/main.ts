@@ -242,7 +242,7 @@ class Service {
   async board(boardId: string, userId: string) {
     await this.member(boardId,userId,true);
     await this.features.visit(boardId,userId);
-    const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,is_inbox,ai_default_model,ai_default_effort,
+    const board = await this.db.one(`SELECT id,title,background,description,closed_at,starred,owner_id,created_at,workspace_id,favorite_position,is_inbox,ai_default_project_id,ai_default_model,ai_default_effort,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=boards.id) AS background_image FROM boards WHERE id=$1`, [boardId]);
     const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
     const cards = await this.db.query(`SELECT slot.id,slot.list_id,slot.position,slot.kind,slot.target_board_id,slot.link_url,
@@ -1046,6 +1046,8 @@ class ApiController {
   @Post('boards/:id/trello') connectTrello(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.trello.connect(id,this.service.user(req),body.trello_board_id);}
   @Post('boards/:id/trello/sync') syncTrello(@Req() req:Request,@Param('id') id:string){return this.trello.syncBoard(id,this.service.user(req));}
   @Delete('boards/:id/trello/:connectionId') disconnectTrello(@Req() req:Request,@Param('id') id:string,@Param('connectionId') connectionId:string){return this.trello.disconnect(id,this.service.user(req),connectionId);}
+  @Get('lists/:id/trello') trelloListOptions(@Req() req:Request,@Param('id') id:string){return this.trello.listOptions(id,this.service.user(req));}
+  @Patch('lists/:id/trello') mapTrelloList(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.trello.mapList(id,this.service.user(req),body.connection_id,body.trello_list_id);}
   @Post('boards/:id/members') invite(@Req() req: Request,@Param('id') id: string) { return this.service.invite(id,this.service.user(req)); }
   @Post('boards/:id/lists') createList(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createList(id,this.service.user(req),body); }
   @Get('boards/:id/lists/archived') archivedLists(@Req() req: Request,@Param('id') id: string) { return this.service.archivedLists(id,this.service.user(req)); }
