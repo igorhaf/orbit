@@ -29,4 +29,6 @@ Use this skill only for Git branch and commit work in the Orbit repository.
 
 - Write pull request titles in English using the same Conventional Commits format as commit messages: `<type>: <short description>`.
 - Every pull request must include a short description in English summarizing the change. Start the description with the matching conventional type, such as `feat:` or `fix:`.
+- Write the description as a concise, user-facing summary of the behavior or outcome delivered. Mention the main change and its practical effect; avoid implementation inventories, unrelated context, and generic claims.
+- Prefer one or two complete sentences. Example: `feat: Add a global Inbox drawer to board pages, keeping drafts available across boards and letting users drag them into a list.`
 - Start any agent-authored pull request comment with the matching conventional type, such as `feat:` or `fix:`. Keep descriptions and comments concise and focused on the change.

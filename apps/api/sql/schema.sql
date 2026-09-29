@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS lists (
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS color varchar(32);
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS collapsed boolean NOT NULL DEFAULT false;
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+ALTER TABLE lists ADD COLUMN IF NOT EXISTS is_completion_list boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS lists_board_position_idx ON lists(board_id, position);
 CREATE TABLE IF NOT EXISTS cards (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -292,6 +293,8 @@ CREATE TABLE IF NOT EXISTS ai_projects (
   owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name varchar(120) NOT NULL,
   local_path text NOT NULL,
+  ai_default_model varchar(100),
+  ai_default_effort varchar(16) CHECK(ai_default_effort IN ('low','medium','high','xhigh')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(owner_id, local_path)

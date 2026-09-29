@@ -1,8 +1,8 @@
 import {Inject,Injectable} from '@nestjs/common';
-import {readdir,realpath,stat} from 'node:fs/promises';
-import {parse as parsePath} from 'node:path';
+import {mkdir,readdir,realpath,stat,writeFile} from 'node:fs/promises';
+import {join,parse as parsePath} from 'node:path';
 import {createHash} from 'node:crypto';
-import {parseDocument} from 'yaml';
+import {parseDocument,stringify} from 'yaml';
 import {Db} from '../db';
 import {DocumentResource,Resource,ResourceKind,permissions} from './types';
 import {identifier,readResource,safePath} from './security';
@@ -78,6 +78,13 @@ export class ProjectRegistry {
     if(parsed.metadata.name!==undefined&&(typeof parsed.metadata.name!=='string'||parsed.metadata.name.length>200))throw new Error('Nome do recurso inválido.');
     if(stringList(parsed.metadata.permissions,'permissions').some(value=>!permissions.includes(value as typeof permissions[number])))throw new Error('Permissão do recurso desconhecida.');
     return {id,kind,name:typeof parsed.metadata.name==='string'?parsed.metadata.name:id,...parsed,hash:createHash('sha256').update(text).digest('hex')};
+  }
+  async saveExecutionDefaults(project:Project,user:string,defaults:Record<string,unknown>){
+    const next={...project.config,execution:defaults};
+    const target=project.resourcesRoot===project.root?join(project.root,'orbit.yaml'):join(project.resourcesRoot,'orbit.yaml');
+    await mkdir(project.resourcesRoot,{recursive:true});
+    await writeFile(target,stringify(next),'utf8');
+    return this.get(project.id,user);
   }
 }
 export class AgentRegistry {constructor(private projects:ProjectRegistry){}resolve(project:Project,id:string){return this.projects.document(project,'agents',id)}}

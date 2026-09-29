@@ -2,6 +2,17 @@ project:
   name: Orbit
   type: software
 default_executor: codex
+execution:
+  agent: developer
+  executor: codex
+  action: implement-feature
+  skills: [implement-feature, create-tests]
+  working_directory: .
+  mode: manual
+  permissions: [filesystem.read, filesystem.write, process.execute]
+  context:
+    knowledge: [architecture]
+    rules: [coding, git]
 agents: [developer, qa]
 plugins: [filesystem]
 permissions:
