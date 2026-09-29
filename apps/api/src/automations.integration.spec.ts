@@ -88,6 +88,17 @@ test('automation engine persists events, rolls back errors and isolates boards',
       await service.tick();assert.equal((await db.one("SELECT count(*)::int n FROM comments WHERE card_id=$1 AND body='Plugin handled Finished'",[card]))?.n,1);
       assert.ok((await service.catalog(board,user)).events.includes('calendar.event.created'));assert.equal((await service.logs(rule,user)).runs[0].details.actions[0],'execute_plugin_action');
     });
+    await t.test('calendar events evaluate normalized source conditions and create one Card in the selected list',async()=>{
+      const rule=await make('Calendar to Card',{trigger:{type:'event',event:'calendar.event.created'},conditions:[{field:'source_id',op:'eq',value:'development'}],actions:[{type:'create_card',target:'list',listId:dest,value:'Meeting: {{title}}'}]});
+      const events=new OrbitEvents(db);
+      await events.publish({boardId:board,kind:'calendar.event.created',sourcePlugin:'google_calendar',operationId:'calendar-event-match',payload:{after:{source_id:'development',provider_id:'google_calendar',item:{id:'event-1',title:'Architecture review',resourceType:'event',start:'2026-10-01T13:00:00.000Z'}}}});
+      await service.tick();
+      assert.equal((await db.one<{title:string}>('SELECT title FROM cards WHERE list_id=$1 AND title=$2',[dest,'Meeting: Architecture review']))?.title,'Meeting: Architecture review');
+      await events.publish({boardId:board,kind:'calendar.event.created',sourcePlugin:'google_calendar',operationId:'calendar-event-no-match',payload:{after:{source_id:'family',provider_id:'google_calendar',item:{id:'event-2',title:'Family dinner',resourceType:'event'}}}});
+      await service.tick();
+      assert.equal((await db.one<{n:number}>('SELECT count(*)::int AS n FROM cards WHERE list_id=$1 AND title LIKE \'Meeting:%\'',[dest]))?.n,1);
+      assert.equal((await service.logs(rule,user)).runs.filter((run)=>run.status==='skipped').length,1);
+    });
     await t.test('scheduled, due and reports use persistent occurrence keys',async()=>{
       const scheduled=await make('Schedule',{trigger:{type:'scheduled',frequency:'interval',intervalMinutes:60},conditions:[{field:'list_id',op:'eq',value:dest}],actions:[{type:'comment',target:'board',value:'Scheduled'}]});
       await db.query("UPDATE automations SET next_run_at=now()-interval '1 minute' WHERE id=$1",[scheduled]);

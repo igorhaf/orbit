@@ -370,7 +370,7 @@ export class OutlookCalendarPlugin
         }),
       ],
     );
-    if (!operationId && (!old || old.etag !== etag))
+    if (!old || old.etag !== etag)
       await this.afterChange(
         source,
         row!,
@@ -425,7 +425,7 @@ export class OutlookCalendarPlugin
     } else if (cardId && settings?.update_linked_cards) {
       const fields = (settings.field_mapping || {}) as Record<string, boolean>;
       await this.db.query(
-        `UPDATE cards SET title=CASE WHEN $2 THEN $3 ELSE title END,description=CASE WHEN $4 THEN $5 ELSE description END,schedule_start_at=$6,schedule_end_at=$7,schedule_all_day=$8,schedule_time_zone=$9,archived_at=CASE WHEN $10 AND $11 THEN now() ELSE archived_at END,updated_at=now() WHERE id=$1`,
+        `UPDATE cards SET title=CASE WHEN $2 THEN $3 ELSE title END,description=CASE WHEN $4 THEN $5 ELSE description END,schedule_start_at=$6,schedule_end_at=$7,schedule_all_day=$8,schedule_time_zone=$9,archived_at=CASE WHEN $10 AND $11 THEN now() ELSE archived_at END,updated_at=now() WHERE id=$1 AND (($2 AND title IS DISTINCT FROM $3) OR ($4 AND description IS DISTINCT FROM $5) OR schedule_start_at IS DISTINCT FROM $6 OR schedule_end_at IS DISTINCT FROM $7 OR schedule_all_day IS DISTINCT FROM $8 OR schedule_time_zone IS DISTINCT FROM $9 OR ($10 AND $11 AND archived_at IS NULL))`,
         [
           cardId,
           fields.title !== false,
@@ -730,7 +730,7 @@ export class OutlookCalendarPlugin
     operationId = randomUUID(),
   ) {
     const row = await this.db.one<Record<string, unknown>>(
-      "SELECT i.*,s.connection_id,s.external_id AS calendar_external_id FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE i.id=$1 AND i.owner_id=$2 AND s.provider_id=$3",
+      "SELECT i.*,s.connection_id,s.external_id AS calendar_external_id,s.owner_id,s.name,s.time_zone AS source_time_zone,s.color,s.selected,s.metadata AS source_metadata FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE i.id=$1 AND i.owner_id=$2 AND s.provider_id=$3",
       [itemId, ownerId, this.id],
     );
     if (!row) return bad("Evento não encontrado.", 404);
@@ -746,10 +746,18 @@ export class OutlookCalendarPlugin
         headers: row.etag ? { "If-Match": String(row.etag) } : {},
       },
     );
-    await this.db.query(
-      "UPDATE calendar_items SET status='cancelled',operation_id=$2,updated_at=now() WHERE id=$1",
+    const cancelled = await this.db.one<Record<string, unknown>>(
+      "UPDATE calendar_items SET status='cancelled',operation_id=$2,updated_at=now() WHERE id=$1 RETURNING *",
       [itemId, operationId],
     );
+    if (cancelled) await this.afterChange({
+      id: String(row.source_id), owner_id: ownerId,
+      connection_id: String(row.connection_id),
+      external_id: String(row.calendar_external_id), name: String(row.name),
+      time_zone: row.source_time_zone as string | null,
+      color: row.color as string | null, selected: Boolean(row.selected),
+      metadata: (row.source_metadata || {}) as Record<string, unknown>,
+    }, cancelled, "calendar.event.deleted");
   }
 
   async getAvailability(
@@ -862,6 +870,25 @@ export class OutlookCalendarPlugin
     );
     for (const connection of connections)
       await this.discover(connection.owner_id, connection.id).catch(() => undefined);
+    const starting = await this.db.query<Record<string, unknown>>(
+      `SELECT i.*,s.owner_id,s.connection_id,s.external_id AS source_external_id,s.name AS source_name,s.time_zone AS source_time_zone,s.color,s.selected,s.metadata AS source_metadata FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE s.provider_id=$1 AND s.selected AND i.status<>'cancelled' AND i.start_at>now() AND i.start_at<=now()+interval '30 minutes' AND NOT (i.metadata ? 'startingPublishedAt')`,
+      [this.id],
+    );
+    for (const item of starting) {
+      const source: Source = {
+        id: String(item.source_id), owner_id: String(item.owner_id),
+        connection_id: String(item.connection_id),
+        external_id: String(item.source_external_id), name: String(item.source_name),
+        time_zone: item.source_time_zone as string | null,
+        color: item.color as string | null, selected: Boolean(item.selected),
+        metadata: (item.source_metadata || {}) as Record<string, unknown>,
+      };
+      await this.afterChange(source, item, "calendar.event.starting");
+      await this.db.query(
+        "UPDATE calendar_items SET metadata=metadata||jsonb_build_object('startingPublishedAt',now()::text) WHERE id=$1",
+        [item.id],
+      );
+    }
   }
 }
 

@@ -21,7 +21,6 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Optional() @Inject(ActionDispatcher) private dispatcher:ActionDispatcher=new ActionDispatcher(),@Optional() @Inject(PluginRegistry) private plugins:PluginRegistry=new PluginRegistry()){}
   onModuleInit(){
     for(const [alias,type] of Object.entries({add_label:'label_add',remove_label:'label_remove',add_comment:'comment'}))this.dispatcher.register(alias,async(request,client)=>{const c=await this.context(client,request.cardId);if(!c)throw new Error('Cartão indisponível.');await this.action(client,{id:'',name:alias,board_id:request.boardId,owner_id:request.userId} as Rule,{type:type as AutomationAction['type'],value:String(request.config.value||'')},c,new Date())});
-    this.dispatcher.register('create_card',async(request,client)=>{const list=(await client.query('SELECT l.id FROM lists l JOIN cards c ON c.list_id=l.id WHERE c.id=$1 AND l.board_id=$2 AND l.archived_at IS NULL',[request.cardId,request.boardId])).rows[0];if(!list)throw new Error('Lista indisponível.');const title=String(request.config.value||'').trim();if(!title||title.length>300)throw new Error('Título inválido.');await client.query('INSERT INTO cards(list_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1),0))',[list.id,title])});
     this.timer=setInterval(()=>void this.tick(),5000);this.timer.unref();
   }
   onModuleDestroy(){if(this.timer)clearInterval(this.timer)}
@@ -167,14 +166,37 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
       if(!inserted.rowCount){await client.query('RELEASE SAVEPOINT automation_run');return {status:'skipped',reason:'Evento já processado'}}
       await client.query("SELECT set_config('orbit.automation_chain',$1,true)",['{'+[...chain,rule.id].join(',')+'}']);
       const baseContext=source?await this.context(client,source):null;
-      const sourceContext=baseContext&&eventContext?{...baseContext,...eventContext}:baseContext;
-      if(source&&(!sourceContext||sourceContext.archived||sourceContext.board_id!==rule.board_id||!matches(sourceContext,rule.definition.conditions,now))){
+      const eventItem=eventContext?.item&&typeof eventContext.item==='object'?eventContext.item as Record<string,unknown>:{};
+      const normalizedEventContext:Record<string,unknown>|null=eventContext?{
+        ...eventItem,
+        ...eventContext,
+        title:String(eventItem.title??eventContext.title??baseContext?.title??''),
+        description:String(eventItem.description??eventContext.description??baseContext?.description??''),
+        source_id:eventContext.source_id??eventItem.sourceId,
+        provider_id:eventContext.provider_id??eventItem.providerId,
+        resource_type:eventItem.resourceType??eventContext.resource_type,
+        start:eventItem.start??eventContext.start,
+        end:eventItem.end??eventContext.end,
+      }:null;
+      const sourceContext:Context|null=baseContext&&normalizedEventContext?{...baseContext,...normalizedEventContext}:baseContext||(normalizedEventContext as Context|null);
+      if((source&&(!sourceContext||sourceContext.archived||sourceContext.board_id!==rule.board_id))||
+        (sourceContext&&!matches(sourceContext,rule.definition.conditions,now))){
         await client.query("UPDATE automation_runs SET status='skipped',details=$2 WHERE id=$1",[inserted.rows[0].id,JSON.stringify({reason:'Condições não atendidas ou cartão indisponível'})]);
         await client.query('RELEASE SAVEPOINT automation_run');return {status:'skipped'};
       }
       let affected=0;
       const selections=new Map<string,string[]>();
       for(const action of rule.definition.actions){
+        if(action.type==='create_card'){
+          const listId=action.target==='list'?action.listId:sourceContext?.list_id;
+          if(!listId)throw new Error('Selecione uma lista para criar o cartão.');
+          const destination=(await client.query('SELECT id FROM lists WHERE id=$1 AND board_id=$2 AND archived_at IS NULL FOR UPDATE',[listId,rule.board_id])).rows[0];
+          if(!destination)throw new Error('Lista de destino indisponível.');
+          const title=interpolate(action.value||'',sourceContext||({title:'',description:'',list_id:'',list:'',board:'',completed:false,due_date:null,labels:[],members:[],fields:{},user:''} satisfies Context),now).trim();
+          if(!title||title.length>300)throw new Error('Título inválido.');
+          await client.query('INSERT INTO cards(list_id,title,description,position) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1),0))',[listId,title,sourceContext?.description||'']);
+          affected++;continue;
+        }
         const scope=`${action.target||(source?'card':'board')}:${action.listId||''}`;
         let ids=selections.get(scope);
         if(!ids){
@@ -224,7 +246,7 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
       for(const event of queue){
         await client.query('BEGIN');
         for(const rule of rules){const t=rule.definition.trigger;if(rule.board_id!==event.board_id||t.type!=='event'||eventName(t.event||'')!==eventName(event.kind)||new Date(rule.created_at)>new Date(event.created_at as string))continue;
-          if(t.listId&&String(event.payload.after?.list_id||'')!==t.listId){const c=event.card_id?await this.context(client,event.card_id):null;if(event.kind==='card_moved'||c?.list_id!==t.listId)continue;}
+          if(t.listId&&event.payload.after?.list_id&&String(event.payload.after.list_id)!==t.listId){const c=event.card_id?await this.context(client,event.card_id):null;if(event.kind==='card_moved'||c?.list_id!==t.listId)continue;}
           await this.execute(client,rule,'event:'+event.id,event.card_id,event.chain,new Date(),event.payload.after);
         }
         await client.query('UPDATE automation_events SET processed_at=now() WHERE id=$1',[event.id]);await client.query('COMMIT');

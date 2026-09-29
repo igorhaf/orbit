@@ -153,7 +153,7 @@ Object.assign(actions, {
   run_agent: "Executar agente do cartão",
   run_skill: "Executar skill do cartão",
   execute_plugin_action: "Executar integrações do cartão",
-  create_card: "Criar cartão na mesma lista",
+  create_card: "Criar cartão",
 });
 Object.assign(actions, {
   "google_calendar.create_event": "Google Calendar: criar evento",
@@ -1024,6 +1024,7 @@ function AutomationManager({
                                 : "",
                           report: "snapshot",
                           ...(type === "report" ? { target: "board" } : {}),
+                          ...(type === "create_card" ? { target: "list" } : {}),
                         })
                       }
                     />

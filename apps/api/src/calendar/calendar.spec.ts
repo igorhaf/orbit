@@ -79,6 +79,10 @@ test("google provider advertises normalized actions, triggers and provider capab
     "google_calendar.get_availability",
   ])
     assert.ok(ids.includes(id), id);
+  const definition = googleCalendarPluginDefinition(plugin);
+  assert.equal(definition.actions?.length, 7);
+  assert.ok(definition.actions?.every((action) => typeof action.execute === "function"));
+  assert.ok(definition.actions?.find((action) => action.id === "google_calendar.create_event")?.requiredCapabilities?.includes("calendar.events.write"));
   assert.deepEqual(
     plugin.contributions.automationTriggers.map((trigger) => trigger.id),
     [
@@ -88,6 +92,17 @@ test("google provider advertises normalized actions, triggers and provider capab
       "calendar.event.starting",
     ],
   );
+});
+
+test("Google Calendar Registry actions have executable handlers", async () => {
+  const plugin = new GoogleCalendarPlugin({} as never, {} as never, new ActionDispatcher());
+  Object.assign(plugin, { listSources: async (owner: string, connection?: string) => [{ owner, connection }] });
+  const definition = googleCalendarPluginDefinition(plugin);
+  const action = definition.actions?.find((item) => item.id === "google_calendar.list_calendars");
+  assert.ok(action?.execute);
+  assert.deepEqual(await action.execute({}, { userId: "owner-1" }), {
+    type: "calendar", label: "Listar calendários", value: [{ owner: "owner-1", connection: undefined }],
+  });
 });
 
 test("google event normalization distinguishes all-day and timed values with timezone", () => {
@@ -150,6 +165,11 @@ test("OAuth start persists only a state hash and requests offline access", async
       state = url.searchParams.get("state")!;
     assert.equal(url.searchParams.get("access_type"), "offline");
     assert.equal(url.searchParams.get("prompt"), "consent");
+    const requestedScopes = new Set(url.searchParams.get("scope")!.split(" "));
+    assert.ok(requestedScopes.has("https://www.googleapis.com/auth/calendar.events"));
+    assert.ok(requestedScopes.has("https://www.googleapis.com/auth/calendar.calendarlist.readonly"));
+    assert.ok(requestedScopes.has("https://www.googleapis.com/auth/calendar.freebusy"));
+    assert.ok(!requestedScopes.has("https://www.googleapis.com/auth/calendar"));
     const stored = String(
       calls.find((call) => call.sql.includes("INSERT INTO oauth_states"))
         ?.params[0],

@@ -9,6 +9,9 @@ import { Pool } from "pg";
 import { Db } from "../db";
 import { migrateVersions } from "../migrations";
 import { OrbitCardCalendarSource } from "./orbit-card-provider";
+import { CalendarService } from "./calendar.service";
+import { CalendarSourceRegistry } from "./source-registry";
+import { FeaturesService } from "../features";
 
 test("calendar migration persists multiple accounts, sources, mirror items and scheduled Orbit Cards", async () => {
   const db = new Db(),
@@ -55,6 +58,14 @@ test("calendar migration persists multiple accounts, sources, mirror items and s
     assert.equal(items.length, 1);
     assert.equal(items[0].cardId, card);
     assert.equal(items[0].metadata.boardId, board);
+    const otherBoard = (await db.one<{id:string}>("INSERT INTO boards(title,owner_id) VALUES('Other calendar board',$1) RETURNING id",[user]))!.id;
+    await db.query("INSERT INTO board_members(board_id,user_id,role) VALUES($1,$2,'owner')",[otherBoard,user]);
+    const otherList = (await db.one<{id:string}>("INSERT INTO lists(board_id,title) VALUES($1,'Other target') RETURNING id",[otherBoard]))!.id;
+    const sourceId = (await db.one<{id:string}>("INSERT INTO calendar_sources(owner_id,provider_id,external_id,name) VALUES($1,'fixture','source','Fixture') RETURNING id",[user]))!.id;
+    const calendar = new CalendarService(db,new FeaturesService(db),new CalendarSourceRegistry());
+    await assert.rejects(()=>calendar.updateSource(user,sourceId,{auto_create_cards:true,target_board_id:board,target_list_id:otherList}),/pertencer ao quadro de destino/);
+    await db.query("INSERT INTO calendar_source_settings(source_id,target_board_id,target_list_id) VALUES($1,$2,$3)",[sourceId,board,list]);
+    await assert.rejects(()=>calendar.updateSource(user,sourceId,{target_list_id:otherList}),/pertencer ao quadro de destino/);
     const sealed = "test-ciphertext";
     const first = (await db.one<{ id: string }>(
       "INSERT INTO integration_connections(owner_id,plugin_id,external_account_id,display_name,credentials_encrypted) VALUES($1,'google_calendar','a','A',$2) RETURNING id",

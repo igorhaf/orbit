@@ -39,6 +39,7 @@ export function validateDefinition(input:unknown,options:{events?:Iterable<strin
     if(['scheduled','board_button'].includes(t.type)&&['card','related'].includes(a.target||''))throw new Error('Este gatilho exige uma lista ou o quadro como alvo.');
     for(const key of ['value','field','listId','recipients','subject','template'] as const)if(a[key]!==undefined&&(typeof a[key]!=='string'||a[key]!.length>10000))throw new Error('Texto de ação inválido.');
     if(a.target==='list'&&!isId(a.listId))throw new Error('Selecione a lista alvo.');
+    if(a.type==='create_card'&&!a.listId&&(!['card_button','due'].includes(t.type)||a.target==='list'))throw new Error('Selecione a lista onde o cartão será criado.');
     if(['move','move_card','label_add','label_remove','add_label','remove_label','assign','unassign'].includes(a.type)&&!isId(a.value))throw new Error('Selecione o destino da ação.');
     if(a.type==='field'&&!isId(a.field))throw new Error('Selecione o campo personalizado.');
     if(a.type==='sort'&&!['title','due_date','created_at'].includes(a.value||''))throw new Error('Ordenação inválida.');

@@ -22,7 +22,7 @@ import {
 } from "node:crypto";
 import { Db } from "../db";
 import { FeaturesService } from "../features";
-import { PluginDefinition } from "../plugins/contract";
+import { PluginActionContext, PluginDefinition } from "../plugins/contract";
 import { SecretVault } from "../secrets";
 import { ActionDispatcher } from "../action-dispatcher";
 import {
@@ -163,7 +163,16 @@ export class GoogleCalendarPlugin
             sourceId: { type: "string" },
             title: { type: "string" },
             start: { type: "string" },
+            end: { type: "string" },
+            description: { type: "string" },
+            location: { type: "string" },
+            allDay: { type: "boolean" },
+            timeZone: { type: "string" },
+            attendees: { type: "array", items: { type: "object" } },
+            recurrence: { type: "array", items: { type: "string" } },
+            conference: { type: "boolean" },
           },
+          additionalProperties: false,
         },
       },
       {
@@ -172,7 +181,16 @@ export class GoogleCalendarPlugin
         inputSchema: {
           type: "object",
           required: ["itemId"],
-          properties: { itemId: { type: "string" } },
+          properties: {
+            itemId: { type: "string" }, title: { type: "string" },
+            description: { type: "string" }, start: { type: "string" },
+            end: { type: "string" }, location: { type: "string" },
+            allDay: { type: "boolean" }, timeZone: { type: "string" },
+            attendees: { type: "array", items: { type: "object" } },
+            recurrence: { type: "array", items: { type: "string" } },
+            conference: { type: "boolean" },
+          },
+          additionalProperties: false,
         },
       },
       {
@@ -340,7 +358,13 @@ export class GoogleCalendarPlugin
       access_type: "offline",
       prompt: "consent",
       include_granted_scopes: "true",
-      scope: "https://www.googleapis.com/auth/calendar",
+      scope: [
+        "openid",
+        "email",
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        "https://www.googleapis.com/auth/calendar.freebusy",
+      ].join(" "),
       state,
     });
     return { url: `https://accounts.google.com/o/oauth2/v2/auth?${query}` };
@@ -687,7 +711,7 @@ export class GoogleCalendarPlugin
         JSON.stringify({ eventType: event.eventType || "default" }),
       ],
     );
-    if (!operationId && (!old || old.etag !== event.etag))
+    if (!old || old.etag !== event.etag)
       await this.afterChange(
         source,
         row!,
@@ -742,7 +766,7 @@ export class GoogleCalendarPlugin
     } else if (cardId && settings?.update_linked_cards) {
       const fields = settings.field_mapping as Record<string, boolean>;
       await this.db.query(
-        `UPDATE cards SET title=CASE WHEN $2 THEN $3 ELSE title END,description=CASE WHEN $4 THEN $5 ELSE description END,schedule_start_at=$6,schedule_end_at=$7,schedule_all_day=$8,schedule_time_zone=$9,archived_at=CASE WHEN $10 AND $11 THEN now() ELSE archived_at END,updated_at=now() WHERE id=$1`,
+        `UPDATE cards SET title=CASE WHEN $2 THEN $3 ELSE title END,description=CASE WHEN $4 THEN $5 ELSE description END,schedule_start_at=$6,schedule_end_at=$7,schedule_all_day=$8,schedule_time_zone=$9,archived_at=CASE WHEN $10 AND $11 THEN now() ELSE archived_at END,updated_at=now() WHERE id=$1 AND (($2 AND title IS DISTINCT FROM $3) OR ($4 AND description IS DISTINCT FROM $5) OR schedule_start_at IS DISTINCT FROM $6 OR schedule_end_at IS DISTINCT FROM $7 OR schedule_all_day IS DISTINCT FROM $8 OR schedule_time_zone IS DISTINCT FROM $9 OR ($10 AND $11 AND archived_at IS NULL))`,
         [
           cardId,
           fields?.title !== false,
@@ -895,6 +919,27 @@ export class GoogleCalendarPlugin
       return item;
     });
   }
+  async getItem(ownerId: string, itemId: string) {
+    const row = await this.db.one<Record<string, unknown>>(
+      "SELECT i.*,s.connection_id,s.external_id AS calendar_external_id,s.owner_id,s.name,s.time_zone AS source_time_zone,s.color,s.selected,s.metadata AS source_metadata FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE i.id=$1 AND i.owner_id=$2 AND s.provider_id=$3",
+      [itemId, ownerId, this.id],
+    );
+    if (!row) return fail("Evento não encontrado.", 404);
+    const source: Source = {
+      id: String(row.source_id), owner_id: ownerId,
+      connection_id: String(row.connection_id),
+      external_id: String(row.calendar_external_id), name: String(row.name),
+      time_zone: row.source_time_zone as string | null,
+      color: row.color as string | null, selected: Boolean(row.selected),
+      metadata: (row.source_metadata || {}) as Record<string, unknown>,
+    };
+    const connection = await this.connection(source.connection_id, ownerId);
+    const event = await this.request<GoogleEvent>(
+      connection,
+      `calendars/${encodeURIComponent(source.external_id)}/events/${encodeURIComponent(String(row.external_id))}`,
+    );
+    return (await this.persist(source, event))!;
+  }
   private googleDate(date: string, allDay?: boolean, timeZone?: string | null) {
     if (allDay) return { date: new Date(date).toISOString().slice(0, 10) };
     return {
@@ -1005,7 +1050,7 @@ export class GoogleCalendarPlugin
     operationId = randomUUID(),
   ) {
     const row = await this.db.one<Record<string, unknown>>(
-      "SELECT i.*,s.connection_id,s.external_id AS calendar_external_id FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE i.id=$1 AND i.owner_id=$2 AND s.provider_id=$3",
+      "SELECT i.*,s.connection_id,s.external_id AS calendar_external_id,s.owner_id,s.name,s.time_zone AS source_time_zone,s.color,s.selected,s.metadata AS source_metadata FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE i.id=$1 AND i.owner_id=$2 AND s.provider_id=$3",
       [itemId, ownerId, this.id],
     );
     if (!row) return fail("Evento não encontrado.", 404);
@@ -1021,10 +1066,18 @@ export class GoogleCalendarPlugin
         headers: row.etag ? { "if-match": String(row.etag) } : {},
       },
     );
-    await this.db.query(
-      "UPDATE calendar_items SET status='cancelled',operation_id=$2,updated_at=now() WHERE id=$1",
+    const cancelled = await this.db.one<Record<string, unknown>>(
+      "UPDATE calendar_items SET status='cancelled',operation_id=$2,updated_at=now() WHERE id=$1 RETURNING *",
       [itemId, operationId],
     );
+    if (cancelled) await this.afterChange({
+      id: String(row.source_id), owner_id: ownerId,
+      connection_id: String(row.connection_id),
+      external_id: String(row.calendar_external_id), name: String(row.name),
+      time_zone: row.source_time_zone as string | null,
+      color: row.color as string | null, selected: Boolean(row.selected),
+      metadata: (row.source_metadata || {}) as Record<string, unknown>,
+    }, cancelled, "calendar.event.deleted", cancelled.card_id as string | null);
   }
   async getAvailability(
     ownerId: string,
@@ -1191,7 +1244,7 @@ export class GoogleCalendarPlugin
         () => undefined,
       );
     const starting = await this.db.query<Record<string, unknown>>(
-      `SELECT i.*,s.owner_id,s.connection_id,s.external_id AS source_external_id,s.name AS source_name,s.time_zone AS source_time_zone,s.color,s.selected,s.metadata AS source_metadata FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE s.provider_id=$1 AND i.status<>'cancelled' AND i.start_at>now() AND i.start_at<=now()+interval '30 minutes' AND NOT (i.metadata ? 'startingPublishedAt')`,
+      `SELECT i.*,s.owner_id,s.connection_id,s.external_id AS source_external_id,s.name AS source_name,s.time_zone AS source_time_zone,s.color,s.selected,s.metadata AS source_metadata FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE s.provider_id=$1 AND s.selected AND i.status<>'cancelled' AND i.start_at>now() AND i.start_at<=now()+interval '30 minutes' AND NOT (i.metadata ? 'startingPublishedAt')`,
       [this.id],
     );
     for (const item of starting) {
@@ -1235,7 +1288,59 @@ export const googleCalendarPluginDefinition = (
   actions: plugin.contributions.automationActions.map((action) => ({
     id: action.id,
     name: action.label,
+    requiredCapabilities: [
+      action.id.endsWith(".create_event") || action.id.endsWith(".update_event") || action.id.endsWith(".delete_event")
+        ? "calendar.events.write"
+        : action.id.endsWith(".list_calendars") || action.id.endsWith(".list_events") || action.id.endsWith(".get_event") || action.id.endsWith(".get_availability")
+          ? action.id.endsWith(".get_availability") ? "calendar.availability.read" : "calendar.events.read"
+          : "calendar.events.read",
+    ],
+    permissions: [
+      action.id.endsWith(".create_event") || action.id.endsWith(".update_event") || action.id.endsWith(".delete_event")
+        ? "calendar.events.write"
+        : action.id.endsWith(".get_availability") ? "calendar.availability.read" : "calendar.events.read",
+    ],
     inputSchema: action.inputSchema,
+    outputSchema: {
+      type: "object", required: ["type", "label", "value"],
+      properties: { type: { const: "calendar" }, label: { type: "string" }, value: {} },
+      additionalProperties: false,
+    },
+    async execute(input: Record<string, unknown>, context: PluginActionContext) {
+      if (!context.userId) throw new Error("Usuário ausente.");
+      const itemId = String(input.itemId || "");
+      let value: unknown;
+      switch (action.id) {
+        case "google_calendar.list_calendars":
+          value = await plugin.listSources(context.userId, input.connectionId as string | undefined);
+          break;
+        case "google_calendar.list_events":
+          value = await plugin.listItems(context.userId, [String(input.sourceId)], new Date(String(input.start)), new Date(String(input.end)));
+          break;
+        case "google_calendar.get_event":
+          value = await plugin.getItem(context.userId, itemId);
+          break;
+        case "google_calendar.create_event":
+          value = await plugin.createItem(context.userId, String(input.sourceId), input as unknown as CalendarMutation);
+          break;
+        case "google_calendar.update_event":
+          value = await plugin.updateItem(context.userId, itemId, input as Partial<CalendarMutation>);
+          break;
+        case "google_calendar.delete_event":
+          await plugin.deleteItem(context.userId, itemId);
+          value = { deleted: true };
+          break;
+        case "google_calendar.get_availability":
+          value = await plugin.getAvailability(context.userId, {
+            sourceIds: input.sourceIds as string[], start: String(input.start),
+            end: String(input.end), timeZone: input.timeZone as string | undefined,
+          });
+          break;
+        default:
+          throw new Error(`Action Google desconhecida: ${action.id}`);
+      }
+      return { type: "calendar", label: action.label, value };
+    },
   })),
   triggers: plugin.contributions.automationTriggers.map((trigger) => ({
     id: trigger.id,

@@ -105,11 +105,21 @@ test("Outlook delta sync paginates and recovers a single invalid cursor with a c
 
 test("Outlook event CRUD uses Graph, ETags, recurrence and Teams fields", async () => {
   const source={id:"00000000-0000-4000-8000-000000000020",owner_id:connection.owner_id,connection_id:connection.id,external_id:"calendar",name:"Calendar",time_zone:"UTC",color:null,selected:true,metadata:{}},row={id:"00000000-0000-4000-8000-000000000021",source_id:source.id,external_id:"event",connection_id:connection.id,calendar_external_id:"calendar",owner_id:connection.owner_id,name:"Calendar",source_time_zone:"UTC",time_zone:"UTC",color:null,selected:true,source_metadata:{},all_day:false,etag:'W/"etag"'},requests:Array<{path:string;init:RequestInit}>=[],queries:string[]=[];
-  const db={one:async(sql:string)=>sql.includes("SELECT * FROM calendar_sources")?source:row,query:async(sql:string)=>{queries.push(sql);return []}},graph={connection:async()=>connection,request:async(_connection:unknown,path:string,init:RequestInit={})=>{requests.push({path,init});return{id:"event",subject:"Planning",start:{dateTime:"2026-10-01T13:00:00",timeZone:"UTC"},end:{dateTime:"2026-10-01T14:00:00",timeZone:"UTC"},isOnlineMeeting:true,onlineMeeting:{joinUrl:"https://teams.microsoft.com/join"}}}};
+  const db={one:async(sql:string)=>{queries.push(sql);return sql.includes("SELECT * FROM calendar_sources")?source:row},query:async(sql:string)=>{queries.push(sql);return []}},graph={connection:async()=>connection,request:async(_connection:unknown,path:string,init:RequestInit={})=>{requests.push({path,init});return{id:"event",subject:"Planning",start:{dateTime:"2026-10-01T13:00:00",timeZone:"UTC"},end:{dateTime:"2026-10-01T14:00:00",timeZone:"UTC"},isOnlineMeeting:true,onlineMeeting:{joinUrl:"https://teams.microsoft.com/join"}}}};
   const plugin=new OutlookCalendarPlugin(db as never,graph as never,{} as never);Object.defineProperty(plugin,"persist",{value:async():Promise<CalendarItem>=>({id:row.id,sourceId:source.id,resourceType:"event",title:"Planning",start:"2026-10-01T13:00:00Z",allDay:false,metadata:{}})});
   await plugin.createItem(connection.owner_id,source.id,{title:"Planning",start:"2026-10-01T13:00:00Z",end:"2026-10-01T14:00:00Z",recurrence:[{pattern:{type:"weekly"}} as never],conference:true});
   await plugin.updateItem(connection.owner_id,row.id,{title:"Changed"});await plugin.deleteItem(connection.owner_id,row.id);
   assert.equal(requests[0].init.method,"POST");assert.match(String(requests[0].init.body),/teamsForBusiness/);assert.match(String(requests[0].init.body),/weekly/);assert.equal(requests[1].init.method,"PATCH");assert.deepEqual((requests[1].init.headers as Record<string,string>)["If-Match"],'W/"etag"');assert.equal(requests[2].init.method,"DELETE");assert.ok(queries.some(sql=>sql.includes("status='cancelled'")));
+});
+
+test("Outlook maintenance publishes the normalized starting trigger for selected calendars", async () => {
+  const item={id:"item-1",source_id:"source-1",owner_id:connection.owner_id,connection_id:connection.id,source_external_id:"calendar",source_name:"Development",source_time_zone:"UTC",color:null,selected:true,source_metadata:{},title:"Review",start_at:new Date(Date.now()+5*60_000),end_at:new Date(Date.now()+35*60_000),all_day:false,time_zone:"UTC",status:"confirmed",metadata:{}};
+  const queries:string[]=[],db={query:async(sql:string)=>{queries.push(sql);return sql.includes("FROM calendar_items i JOIN calendar_sources")?[item]:[]}},subscriptions={renewDue:async()=>undefined};
+  const plugin=new OutlookCalendarPlugin(db as never,{} as never,subscriptions as never),published:string[]=[];
+  Object.defineProperty(plugin,"afterChange",{value:async(_source:unknown,_item:unknown,kind:string)=>{published.push(kind)}});
+  await (plugin as unknown as {maintenance():Promise<void>}).maintenance();
+  assert.deepEqual(published,["calendar.event.starting"]);
+  assert.ok(queries.some((sql)=>sql.includes("startingPublishedAt")));
 });
 
 test("Graph subscriptions create, validate, deduplicate, renew and delete safely", async () => {

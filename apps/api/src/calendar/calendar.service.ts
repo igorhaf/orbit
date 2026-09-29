@@ -69,11 +69,12 @@ export class CalendarService {
     body: Record<string, unknown>,
   ) {
     uid(id);
-    const source = await this.db.one(
-      "SELECT id FROM calendar_sources WHERE id=$1 AND owner_id=$2",
+    const source = await this.db.one<{ id: string; target_board_id: string | null; target_list_id: string | null }>(
+      "SELECT s.id,st.target_board_id,st.target_list_id FROM calendar_sources s LEFT JOIN calendar_source_settings st ON st.source_id=s.id WHERE s.id=$1 AND s.owner_id=$2",
       [id, ownerId],
     );
     if (!source) bad("Calendário não encontrado.", 404);
+    const currentSource = source!;
     for (const key of ["selected", "visible", "is_default"])
       if (body[key] !== undefined && typeof body[key] !== "boolean")
         bad("Configuração inválida.");
@@ -115,12 +116,24 @@ export class CalendarService {
     if (board) await this.features.member(board, ownerId);
     if (
       list &&
-      !(await this.db.one(
-        "SELECT 1 FROM lists l JOIN board_members m ON m.board_id=l.board_id WHERE l.id=$1 AND m.user_id=$2",
+      !(await this.db.one<{ board_id: string }>(
+        "SELECT l.board_id FROM lists l JOIN board_members m ON m.board_id=l.board_id WHERE l.id=$1 AND m.user_id=$2 AND l.archived_at IS NULL",
         [list, ownerId],
       ))
     )
       bad("Lista não encontrada.", 404);
+    const effectiveBoard = board === undefined ? currentSource.target_board_id : board;
+    const effectiveList = list === undefined ? currentSource.target_list_id : list;
+    if (body.auto_create_cards === true && (!effectiveBoard || !effectiveList))
+      bad("Selecione o quadro e a lista para criar Cards automaticamente.");
+    if (effectiveBoard && effectiveList) {
+      const destination = await this.db.one<{ board_id: string }>(
+        "SELECT board_id FROM lists WHERE id=$1 AND archived_at IS NULL",
+        [effectiveList],
+      );
+      if (!destination || destination.board_id !== effectiveBoard)
+        bad("A lista selecionada precisa pertencer ao quadro de destino.");
+    }
     if (
       body.recurring_strategy !== undefined &&
       !["series", "occurrence"].includes(String(body.recurring_strategy))
