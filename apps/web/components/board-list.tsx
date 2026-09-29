@@ -47,6 +47,8 @@ export function BoardList({
   query,
   statusFilter,
   fieldFilter,
+  labelFilter = '',
+  dueFilter = '',
 }: {
   list: List;
   lists: List[];
@@ -59,6 +61,8 @@ export function BoardList({
   query: string;
   statusFilter: "all" | "open" | "completed";
   fieldFilter: string;
+  labelFilter?: string;
+  dueFilter?: string;
 }) {
   const { confirm, confirmationModal } = useConfirmModal();
   const {
@@ -98,8 +102,12 @@ export function BoardList({
         card.custom_values?.find((value) => value.field_id === fieldId)?.value,
       ) ===
         (expected === "true");
+    // eslint-disable-next-line react-hooks/purity
+    const now=Date.now();const due=card.due_date?new Date(card.due_date).getTime():null;
+    const label=!labelFilter||card.labels.some(item=>item.id===labelFilter);
+    const dueMatch=dueFilter===''||dueFilter==='all'||(dueFilter==='overdue'?Boolean(due&&due<now&&!card.completed):dueFilter==='week'?Boolean(due&&due>=now&&due<=now+7*86400000):due===null);
     return (
-      checkbox &&
+      checkbox && label && dueMatch &&
       (statusFilter === "all" ||
         card.completed === (statusFilter === "completed")) &&
       (card.title.toLowerCase().includes(query.toLowerCase()) ||
