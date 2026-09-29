@@ -34,6 +34,7 @@ export type Card = {
   list_id: string;
   title: string;
   description: string;
+  cover_color?: string | null;
   position: number;
   start_date: string | null;
   due_date: string | null;
