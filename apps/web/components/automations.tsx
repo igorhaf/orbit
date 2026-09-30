@@ -714,7 +714,7 @@ function AutomationManager({
               <input
                 aria-label="Filtrar por nome ou tag"
                 placeholder="Buscar por nome ou tag"
-                className={input + " flex-1"}
+                className={input + " flex-1 !bg-white !text-[#172b4d]"}
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
               />
