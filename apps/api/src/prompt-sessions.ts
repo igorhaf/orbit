@@ -29,7 +29,15 @@ const has=(body:Payload,key:string)=>Object.prototype.hasOwnProperty.call(body,k
 export class PromptSessionsService {
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents){}
   models(){return catalog;}
-  async projects(userId:string){return this.db.query('SELECT id,name,local_path,created_at,updated_at FROM ai_projects WHERE owner_id=$1 ORDER BY name',[userId]);}
+  private nativeProjectPath(){return resolve(process.env.ORBIT_NATIVE_ROOT||'/home/meada/projetos/orbit-dev');}
+  private async nativeProject(userId:string){
+    const current=await this.db.one('SELECT id,name,local_path,created_at,updated_at,is_native FROM ai_projects WHERE owner_id=$1 AND is_native=true LIMIT 1',[userId]);
+    if(current)return current;
+    const localPath=await this.localPath(this.nativeProjectPath());
+    return this.db.one('INSERT INTO ai_projects(owner_id,name,local_path,is_native) VALUES($1,$2,$3,true) RETURNING id,name,local_path,created_at,updated_at,is_native',[userId,'Orbit (nativo)',localPath]);
+  }
+  async projects(userId:string){return this.db.query('SELECT id,name,local_path,created_at,updated_at FROM ai_projects WHERE owner_id=$1 AND NOT is_native ORDER BY name',[userId]);}
+  async executionProjects(userId:string){return [await this.nativeProject(userId),...await this.projects(userId)];}
   async projectDirectories(input?:string){
     const directory=resolve(typeof input==='string'&&input.trim()?input:homedir());
     const entries=await readdir(directory,{withFileTypes:true}).catch(error=>{const code=(error as NodeJS.ErrnoException).code;if(code==='EACCES'||code==='EPERM')fail('O Orbit não tem permissão para listar esta pasta.',403);if(code==='ENOTDIR')fail('O caminho informado não é uma pasta.');if(code==='ENOENT')fail('Esta pasta não existe.',404);return fail('Não foi possível listar esta pasta.',400);});
@@ -64,16 +72,17 @@ export class PromptSessionsService {
   async createProject(userId:string,body:Payload){
     const rawName=body.name;if(typeof rawName!=='string'||!rawName.trim()||rawName.trim().length>120)fail('Nome inválido.');const name=rawName as string;
     const localPath=await this.localPath(body.local_path,body.create_directory===true);
+    if(localPath===this.nativeProjectPath())fail('O Orbit é um projeto nativo e não pode ser adicionado à lista de projetos.');
     const project=await this.db.one('INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,$2,$3) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,created_at,updated_at',[userId,name.trim(),localPath]);
     if(!project)fail('Esta pasta já está cadastrada como projeto.',409);return project;
   }
   async updateProject(userId:string,id:string,body:Payload){
     const rawName=body.name;const name=rawName===undefined?undefined:typeof rawName==='string'&&rawName.trim()&&rawName.trim().length<=120?rawName.trim():fail('Nome inválido.');
     const localPath=body.local_path===undefined?undefined:await this.localPath(body.local_path);
-    const project=await this.db.one('UPDATE ai_projects SET name=COALESCE($3,name),local_path=COALESCE($4,local_path),updated_at=now() WHERE id=$1 AND owner_id=$2 RETURNING id,name,local_path,created_at,updated_at',[uuid(id,'Projeto'),userId,name??null,localPath??null]);
+    const project=await this.db.one('UPDATE ai_projects SET name=COALESCE($3,name),local_path=COALESCE($4,local_path),updated_at=now() WHERE id=$1 AND owner_id=$2 AND NOT is_native RETURNING id,name,local_path,created_at,updated_at',[uuid(id,'Projeto'),userId,name??null,localPath??null]);
     if(!project)fail('Projeto não encontrado.',404);return project;
   }
-  async deleteProject(userId:string,id:string){const project=await this.db.one('DELETE FROM ai_projects WHERE id=$1 AND owner_id=$2 RETURNING id',[uuid(id,'Projeto'),userId]);if(!project)fail('Projeto não encontrado.',404);return {ok:true};}
+  async deleteProject(userId:string,id:string){const project=await this.db.one('DELETE FROM ai_projects WHERE id=$1 AND owner_id=$2 AND NOT is_native RETURNING id',[uuid(id,'Projeto'),userId]);if(!project)fail('Projeto não encontrado.',404);return {ok:true};}
   async updateBoard(boardId:string,userId:string,body:Payload){
     await this.features.member(boardId,userId);const member=await this.db.one<{role:string}>('SELECT role FROM board_members WHERE board_id=$1 AND user_id=$2',[boardId,userId]);if(!member||member.role!=='owner')fail('Apenas o proprietário pode configurar a IA do quadro.',403);
     const board=await this.db.one<{ai_default_project_id:string|null;ai_default_model:string|null;ai_default_effort:Effort|null}>('SELECT ai_default_project_id,ai_default_model,ai_default_effort FROM boards WHERE id=$1',[boardId]);
@@ -106,7 +115,7 @@ export class PromptSessionsService {
     if(!model)fail('Escolha um modelo.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
     const project=await this.db.one<{id:string;name:string;local_path:string}>('SELECT id,name,local_path FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
     if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string};const localPath=await this.localPath(currentProject.local_path);
-    const orbitRoot=resolve(process.env.ORBIT_DEPLOY_ROOT||resolve(process.cwd(),'../..'));
+    const orbitRoot=this.nativeProjectPath();
     const deployNote=localPath===orbitRoot?'\n\nEste é o projeto do próprio Orbit. Não execute build, deploy, migrations nem reinicie servidores; faça apenas as alterações solicitadas. O botão Deploy do Orbit compila e reinicia depois que a execução terminar.':'';
     const additional=body.instruction===undefined?'':typeof body.instruction==='string'&&body.instruction.trim().length<=4000?body.instruction.trim():fail('A instrução adicional é inválida.');
     const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND codex_session_id IS NOT NULL ORDER BY started_at DESC LIMIT 1',[cardId,currentProject.id]);

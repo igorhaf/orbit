@@ -319,6 +319,7 @@ CREATE TABLE IF NOT EXISTS ai_projects (
   local_path text NOT NULL,
   ai_default_model varchar(100),
   ai_default_effort varchar(16) CHECK(ai_default_effort IN ('low','medium','high','xhigh')),
+  is_native boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(owner_id, local_path)
@@ -326,6 +327,7 @@ CREATE TABLE IF NOT EXISTS ai_projects (
 ALTER TABLE cards DROP CONSTRAINT IF EXISTS cards_ai_project_id_fkey;
 ALTER TABLE cards ADD CONSTRAINT cards_ai_project_id_fkey FOREIGN KEY (ai_project_id) REFERENCES ai_projects(id) ON DELETE SET NULL;
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS ai_default_project_id uuid REFERENCES ai_projects(id) ON DELETE SET NULL;
+ALTER TABLE ai_projects ADD COLUMN IF NOT EXISTS is_native boolean NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS card_ai_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,

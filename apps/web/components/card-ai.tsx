@@ -71,7 +71,7 @@ export function CardAi({
     let active = true;
     Promise.all([
       api<AiModel[]>("/ai/models"),
-      api<AiProject[]>("/ai/projects"),
+      api<AiProject[]>("/ai/execution-projects"),
       api<PromptRun[]>(`/cards/${card.id}/prompt-runs`),
     ])
       .then(([available, localProjects, history]) => {

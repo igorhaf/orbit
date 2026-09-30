@@ -120,7 +120,7 @@ class Service {
     try { if(Date.now()-(await stat(manager)).mtimeMs>10_000) throw new Error(); }
     catch { fail('O Deploy local não está disponível. Inicie o Orbit com “npm run orbit:serve”.',409); }
     await writeFile(join(root,'.orbit-deploy-request'),JSON.stringify({requested_at:new Date().toISOString(),user_id:userId}),{mode:0o600});
-    return {ok:true,message:'Deploy iniciado. O Orbit vai compilar e reiniciar automaticamente.'};
+    return {ok:true,message:'Deploy iniciado. O Orbit vai publicar o desenvolvimento, atualizar o main e reiniciar automaticamente.'};
   }
   private vaultKey() { return createHash('sha256').update(process.env.VAULT_ENCRYPTION_KEY || process.env.JWT_SECRET || '').digest(); }
   private encryptVault(payload:Payload) {
@@ -1095,6 +1095,7 @@ class ApiController {
   @Post('cards/:id/comments/ai') aiComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiComment(id,this.service.user(req),body);}
   @Get('ai/models') aiModels(){return this.prompts.models();}
   @Get('ai/projects') aiProjects(@Req() req:Request){return this.prompts.projects(this.service.user(req));}
+  @Get('ai/execution-projects') aiExecutionProjects(@Req() req:Request){return this.prompts.executionProjects(this.service.user(req));}
   @Get('ai/projects/directories') aiProjectDirectories(@Req() req:Request,@Query('path') path?:string){this.service.user(req);return this.prompts.projectDirectories(path);}
   @Post('ai/projects') createAiProject(@Req() req:Request,@Body() body:Payload){return this.prompts.createProject(this.service.user(req),body);}
   @Patch('ai/projects/:id') updateAiProject(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateProject(this.service.user(req),id,body);}

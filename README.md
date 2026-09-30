@@ -76,7 +76,7 @@ npm run build
 npm run orbit:serve
 ```
 
-Depois de uma sessão de prompt que altere o próprio Orbit, clique em **Deploy**. Ele para os processos locais, compila API e web e os inicia novamente. Durante essa etapa, a página reconecta sozinha quando o Orbit volta a responder.
+O Orbit é um projeto nativo em `/home/meada/projetos/orbit-dev`; ele não aparece na lista de projetos locais. Depois de uma sessão de prompt que o altere, clique em **Deploy**. Ele interrompe a interface, cria um commit das alterações em `develop`, envia para o remoto, atualiza o repositório principal em `main`, aplica as migrações, compila API e web e inicia o Orbit novamente. A tela fica travada até a reconexão.
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 

@@ -96,7 +96,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const knownNotifications = useRef(new Set<string>());
 
   async function deploy() {
-    setDeploying(true);setMessage('Compilando e reiniciando o Orbit…');
+    setDeploying(true);setMessage('Publicando o desenvolvimento e atualizando o Orbit…');
     try {
       await send('/deploy','POST');
       const expires=Date.now()+10*60_000;
@@ -217,7 +217,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const unread = notifications.filter(item => !item.read_at).length;
   const boardMatches = boards.filter(board => !board.is_inbox && board.title.toLowerCase().includes(query.toLowerCase())).slice(0,8);
 
-  return <header className="relative z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 sm:gap-2 sm:px-4">
+  return <><header className="relative z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
       <span className="flex h-7 w-7 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={19} strokeWidth={2.8}/></span>
       <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">Orbit</span>
@@ -279,7 +279,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
     {message && <div role="alert" className="absolute right-3 top-14 rounded bg-[#ffebe6] px-3 py-2 text-xs text-[#ae2a19] shadow"><button className="mr-2" onClick={() => setMessage('')}><X size={14}/></button>{message}</div>}
-  </header>;
+  </header>{deploying&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#091e42]/75 p-6 text-center text-white"><div><Rocket className="mx-auto mb-4 animate-pulse" size={42}/><h2 className="text-xl font-bold">Deploy em andamento</h2><p className="mt-2 max-w-md text-sm text-white/85">Salvando o desenvolvimento, atualizando o main e reiniciando o Orbit. Aguarde a tela recarregar.</p></div></div>}</>;
 }
 
 function InboxPanel({boards,onOpen}:{boards:Board[];onOpen:()=>void}) {
