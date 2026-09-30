@@ -302,7 +302,7 @@ class Service {
       (SELECT json_build_object('enabled',e.enabled,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
       (SELECT json_build_object('status',r.status) FROM card_runs r WHERE r.card_id=c.id ORDER BY r.created_at DESC LIMIT 1) AS result,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
-      COALESCE((SELECT json_agg(json_build_object('id',label.id,'name',label.name,'color',label.color)) FROM card_labels cl JOIN labels label ON label.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
+      COALESCE((SELECT json_agg(json_build_object('id',label.id,'name',label.name,'color',label.color) ORDER BY label.name,label.id) FROM card_labels cl JOIN labels label ON label.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
       (SELECT count(*)::int FROM comments cm WHERE cm.card_id=c.id) AS comment_count,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id) AS checklist_total,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id AND ci.completed) AS checklist_done,
@@ -1062,10 +1062,14 @@ class Service {
     const boardId = await this.contentCard(cardId,userId); uuid(labelId);
     const label = await this.db.one('SELECT id FROM labels WHERE id=$1 AND board_id=$2',[labelId,boardId]);
     if (!label) fail('Etiqueta não encontrada.',404);
-    const existing = await this.db.one('SELECT 1 FROM card_labels WHERE card_id=$1 AND label_id=$2',[cardId,labelId]);
-    if (existing) await this.db.query('DELETE FROM card_labels WHERE card_id=$1 AND label_id=$2',[cardId,labelId]);
-    else await this.db.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2)',[cardId,labelId]);
-    return { selected: !existing };
+    // Delete first and use the affected row to decide whether this was a
+    // removal. If nothing was deleted, the insert is protected by the
+    // composite primary key so repeated requests cannot fail or duplicate a
+    // label association.
+    const removed = await this.db.one('DELETE FROM card_labels WHERE card_id=$1 AND label_id=$2 RETURNING card_id',[cardId,labelId]);
+    if (removed) return { selected: false };
+    await this.db.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2) ON CONFLICT (card_id,label_id) DO NOTHING',[cardId,labelId]);
+    return { selected: true };
   }
 }
 

@@ -641,7 +641,7 @@ export function CardDialog({
                   </button>
                 </div>
                 {panel === "labels" && (
-                  <CardLabelsPanel board={board} card={card} run={run} />
+                  <CardLabelsPanel board={board} card={card} run={run} busy={busy} />
                 )}
                 {panel === "date" && (
                   <CardDatesPanel

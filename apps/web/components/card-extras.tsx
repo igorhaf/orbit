@@ -223,10 +223,12 @@ export function CardLabelsPanel({
   board,
   card,
   run,
+  busy = false,
 }: {
   board: Board;
   card: Card;
   run: Run;
+  busy?: boolean;
 }) {
   const { confirm, confirmationModal } = useConfirmModal();
   const [name, setName] = useState("");
@@ -261,6 +263,8 @@ export function CardLabelsPanel({
         {board.labels?.map((label) => (
           <div key={label.id} className="flex items-center gap-1">
             <button
+              type="button"
+              disabled={busy}
               onClick={() =>
                 void action(() =>
                   send(
@@ -281,6 +285,8 @@ export function CardLabelsPanel({
               )}
             </button>
             <button
+              type="button"
+              disabled={busy}
               title="Editar etiqueta"
               onClick={() => {
                 setEditing(label);
@@ -292,6 +298,8 @@ export function CardLabelsPanel({
               <Pencil size={14} />
             </button>
             <button
+              type="button"
+              disabled={busy}
               title="Excluir etiqueta"
               onClick={() => confirm(
                 { title: "Excluir etiqueta", description: "Excluir esta etiqueta do quadro e removê-la dos cartões?", confirmLabel: "Excluir" },
@@ -337,7 +345,7 @@ export function CardLabelsPanel({
           </p>
         )}
         <div className="mt-3 flex gap-2">
-          <button className="rounded bg-[#0c66e4] px-3 py-1.5 font-semibold text-white">
+          <button disabled={busy} className="rounded bg-[#0c66e4] px-3 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
             {editing ? "Salvar" : "Criar"}
           </button>
           {editing && (
