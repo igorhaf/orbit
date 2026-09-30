@@ -1,4 +1,4 @@
-import { HttpException, Inject, Injectable } from '@nestjs/common';
+import { HttpException, Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { access, mkdir, realpath, stat, readdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, dirname, isAbsolute, parse, resolve } from 'node:path';
@@ -28,8 +28,11 @@ const has=(body:Payload,key:string)=>Object.prototype.hasOwnProperty.call(body,k
 const npm=process.platform==='win32'?'npm.cmd':'npm';
 
 @Injectable()
-export class PromptSessionsService {
+export class PromptSessionsService implements OnModuleInit {
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents){}
+  async onModuleInit(){
+    await this.db.query("UPDATE card_ai_runs SET status='error',error='A execução foi interrompida porque o servidor foi reiniciado.',finished_at=now() WHERE status='running'");
+  }
   models(){return catalog;}
   private nativeProjectPath(){return resolve(process.env.ORBIT_NATIVE_ROOT||'/home/meada/projetos/orbit-dev');}
   private async command(directory:string,args:string[]){

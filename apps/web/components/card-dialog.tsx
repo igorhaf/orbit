@@ -81,6 +81,11 @@ export function CardDialog({
   const user = getUser();
   const list = board.lists?.find((current) => current.id === card.list_id);
 
+  function openDescriptionEditor() {
+    setDescription(card.description || "");
+    setEditingDescription(true);
+  }
+
   async function loadDetails() {
     try {
       setDetails(await api<CardDetails>(`/cards/${card.id}/details`));
@@ -386,11 +391,11 @@ export function CardDialog({
                   </div>
                 ) : (
                   <div
-                    onDoubleClick={() => setEditingDescription(true)}
+                    onDoubleClick={openDescriptionEditor}
                     className="min-h-16 rounded bg-[#e9eaed] p-3 text-sm"
                   >
                     <button
-                      onClick={() => setEditingDescription(true)}
+                      onClick={openDescriptionEditor}
                       className="mb-2 text-xs font-semibold text-[#0c66e4]"
                     >
                       Editar descrição
