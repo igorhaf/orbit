@@ -80,6 +80,10 @@ O Orbit é um projeto nativo em `/home/meada/projetos/orbit-dev`; ele não apare
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 
+## Instâncias principal e desenvolvimento
+
+As duas cópias usam o mesmo banco e repositórios de arquivos, mas executam em portas distintas. A principal (`orbit`, branch `main`) usa `http://localhost:3000` e API `4000`. A cópia de desenvolvimento (`orbit-dev`, branch `develop`) usa `http://localhost:3001` e API `4001`, sempre em tema escuro. Depois de preparar a cópia de desenvolvimento, inicie-a com `npm run orbit:dev`.
+
 Para acessar pelo celular, conecte-o à mesma rede Wi-Fi da máquina e abra no navegador o endereço `http://IP-DA-MAQUINA:3000` (por exemplo, `http://192.168.68.57:3000`). O frontend usa um proxy local para encaminhar as chamadas à API, então não é necessário configurar o IP do celular.
 
 ## Conta inicial

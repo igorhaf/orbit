@@ -144,7 +144,8 @@ export const setUser = (user: User) => {
   window.dispatchEvent(new Event('account:changed'));
 };
 export const applyTheme = (theme: 'light' | 'dark') => {
-  if (typeof document !== 'undefined') document.documentElement.dataset.theme = theme;
+  const forcedTheme=process.env.NEXT_PUBLIC_ORBIT_FORCE_THEME==='dark'?'dark':theme;
+  if (typeof document !== 'undefined') document.documentElement.dataset.theme = forcedTheme;
 };
 export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   let response: Response;

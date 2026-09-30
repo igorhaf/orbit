@@ -3,5 +3,6 @@ import './globals.css';
 
 export const metadata: Metadata = { title: 'Orbit | Organize seu trabalho', description: 'Quadros, listas e cartões para organizar tudo em equipe.' };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR"><body>{children}</body></html>;
+  const forcedTheme=process.env.NEXT_PUBLIC_ORBIT_FORCE_THEME==='dark'?'dark':undefined;
+  return <html lang="pt-BR" data-theme={forcedTheme}><body>{children}</body></html>;
 }
