@@ -42,6 +42,12 @@ async function updateStableOrbit() {
   await git(root, ['push', 'origin', 'main']);
 }
 
+async function prepareAndValidate(directory) {
+  await run(npm, ['run', 'db:prepare'], { cwd: directory });
+  await run(npm, ['run', 'build'], { cwd: directory });
+  await run(npm, ['run', 'test:unit'], { cwd: directory });
+}
+
 function stopChildren() {
   for (const child of children) {
     if (!child.pid) continue;
@@ -66,12 +72,10 @@ async function deploy() {
   await writeFile(status, JSON.stringify({ status: 'building', started_at: new Date().toISOString() }));
   stopChildren();
   try {
-    await run(npm, ['run', 'build'], { cwd: developmentRoot });
+    await prepareAndValidate(developmentRoot);
     await publishDevelopment();
-    await run(npm, ['test', '-w', 'apps/api'], { cwd: developmentRoot });
     await updateStableOrbit();
-    await run(npm, ['run', 'db:migrate', '-w', 'apps/api']);
-    await run(npm, ['run', 'build']);
+    await prepareAndValidate(root);
     await writeFile(status, JSON.stringify({ status: 'restarting', finished_at: new Date().toISOString() }));
   } catch (error) {
     await writeFile(status, JSON.stringify({ status: 'failed', error: error instanceof Error ? error.message : 'Falha na compilação.' }));

@@ -3,6 +3,7 @@ import { access, mkdir, realpath, stat, readdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, dirname, isAbsolute, parse, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { spawn } from 'node:child_process';
 import { CodexAiService } from './codex-ai';
 import { Db } from './db';
 import { FeaturesService } from './features';
@@ -24,12 +25,33 @@ const uuid=(value:unknown,label:string):string=>{if(typeof value!=='string'||!/^
 const selectedModel=(value:unknown):string=>{if(typeof value!=='string'||!catalog.some(item=>item.id===value))fail('Modelo inválido.');return value as string;};
 const selectedEffort=(value:unknown):Effort=>{if(value!=='low'&&value!=='medium'&&value!=='high'&&value!=='xhigh')fail('Esforço inválido.');return value as Effort;};
 const has=(body:Payload,key:string)=>Object.prototype.hasOwnProperty.call(body,key);
+const npm=process.platform==='win32'?'npm.cmd':'npm';
 
 @Injectable()
 export class PromptSessionsService {
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents){}
   models(){return catalog;}
   private nativeProjectPath(){return resolve(process.env.ORBIT_NATIVE_ROOT||'/home/meada/projetos/orbit-dev');}
+  private async command(directory:string,args:string[]){
+    await new Promise<void>((resolveCommand,reject)=>{
+      const child=spawn(npm,args,{cwd:directory,stdio:['ignore','ignore','pipe']});let error='';
+      child.stderr.on('data',chunk=>{error=(error+chunk.toString()).slice(-2000);});
+      child.on('error',reject);child.on('close',code=>code===0?resolveCommand():reject(new Error(error||`${args.join(' ')} terminou com código ${code}.`)));
+    });
+  }
+  private async nativeChanges(directory:string){
+    return new Promise<boolean>((resolveChanges,reject)=>{
+      const child=spawn('git',['status','--porcelain'],{cwd:directory,stdio:['ignore','pipe','pipe']});let output='',error='';
+      child.stdout.on('data',chunk=>{output+=chunk.toString();});child.stderr.on('data',chunk=>{error=(error+chunk.toString()).slice(-2000);});
+      child.on('error',reject);child.on('close',code=>code===0?resolveChanges(Boolean(output.trim())):reject(new Error(error||'Não foi possível verificar as alterações do Orbit.')));
+    });
+  }
+  private async validateNativeChanges(directory:string,progress:(message:string)=>void){
+    if(!await this.nativeChanges(directory))return;
+    progress('Aplicando migrações e seed no Orbit em desenvolvimento…');await this.command(directory,['run','db:prepare']);
+    progress('Compilando o Orbit em desenvolvimento…');await this.command(directory,['run','build']);
+    progress('Executando os testes unitários do Orbit…');await this.command(directory,['run','test:unit']);
+  }
   private async nativeProject(userId:string){
     const current=await this.db.one('SELECT id,name,local_path,created_at,updated_at,is_native FROM ai_projects WHERE owner_id=$1 AND is_native=true LIMIT 1',[userId]);
     if(current)return current;
@@ -129,7 +151,7 @@ export class PromptSessionsService {
       run=(await client.query<{id:string}>('INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[cardId,currentProject.id,userId,model,effort,prompt])).rows[0];await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message:`Iniciando ${model} com esforço ${effort}.`});
-    try { const result=await this.codex.execute(prompt,localPath,model as string,effort,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}),previous?.codex_session_id); await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,codex_session_id=$3,finished_at=now() WHERE id=$1",[run!.id,result.output,result.sessionId]); await this.features.record(userId,context.boardId,cardId,'prompt_execution',`${continuing?'continuou':'iniciou'} a conversa com ${model} em ${currentProject.name}`); this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'}); return {id:run!.id,model,effort,status:'success' as const,output:result.output,codex_session_id:result.sessionId}; }
+    try { const result=await this.codex.execute(prompt,localPath,model as string,effort,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}),previous?.codex_session_id);if(localPath===orbitRoot)await this.validateNativeChanges(localPath,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})); await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,codex_session_id=$3,finished_at=now() WHERE id=$1",[run!.id,result.output,result.sessionId]); await this.features.record(userId,context.boardId,cardId,'prompt_execution',`${continuing?'continuou':'iniciou'} a conversa com ${model} em ${currentProject.name}`); this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'}); return {id:run!.id,model,effort,status:'success' as const,output:result.output,codex_session_id:result.sessionId}; }
     catch(error){const message=error instanceof Error?error.message:'A execução falhou.';await this.db.query("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1",[run!.id,message]);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'error',message});throw error;}
   }
 }

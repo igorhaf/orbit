@@ -11,6 +11,9 @@
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
     "lint:fix": "npm run lint:fix -w apps/api && npm run lint:fix -w apps/web",
     "db:migrate": "npm run db:migrate -w apps/api",
+    "db:seed": "npm run db:seed -w apps/api",
+    "db:prepare": "npm run db:migrate && npm run db:seed",
+    "test:unit": "npm test -w apps/api",
     "db:backup": "npm run db:backup -w apps/api --"
   },
   "devDependencies": {

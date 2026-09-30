@@ -65,7 +65,7 @@ O cadastro e os convites estão desativados nesta etapa de conta única. Exclus�
 4. Crie as tabelas, configure a conta inicial e inicie os servidores:
 
    ```bash
-   npm run db:migrate
+   npm run db:prepare
    npm run dev
    ```
 
@@ -76,7 +76,7 @@ npm run build
 npm run orbit:serve
 ```
 
-O Orbit é um projeto nativo em `/home/meada/projetos/orbit-dev`; ele não aparece na lista de projetos locais. Execute a aplicação pela cópia principal em `/home/meada/projetos/orbit`, na branch `main`. Depois de uma sessão de prompt que altere o projeto nativo, clique em **Deploy**: a cópia em `orbit-dev` é compilada, testada, enviada para `develop`; a cópia principal em `main` faz pull de `develop`, envia o avanço de `main` ao remoto, aplica as migrações, compila e reinicia. A tela fica travada até a reconexão.
+O Orbit é um projeto nativo em `/home/meada/projetos/orbit-dev`; ele não aparece na lista de projetos locais. Execute a aplicação pela cópia principal em `/home/meada/projetos/orbit`, na branch `main`. Depois de uma sessão de prompt que altere o projeto nativo, o Orbit aplica migrações e seed, compila e executa os testes unitários em `orbit-dev`. Em seguida, clique em **Deploy**: essa mesma validação é repetida em `orbit-dev`, as alterações seguem para `develop`; a cópia principal em `main` faz pull de `develop`, envia o avanço de `main` ao remoto, repete migrações, seed, compilação e testes unitários, e só então reinicia. A tela fica travada até a reconexão.
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 
