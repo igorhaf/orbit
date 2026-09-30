@@ -385,7 +385,10 @@ export function CardDialog({
                     </div>
                   </div>
                 ) : (
-                  <div className="min-h-16 rounded bg-[#e9eaed] p-3 text-sm">
+                  <div
+                    onDoubleClick={() => setEditingDescription(true)}
+                    className="min-h-16 rounded bg-[#e9eaed] p-3 text-sm"
+                  >
                     <button
                       onClick={() => setEditingDescription(true)}
                       className="mb-2 text-xs font-semibold text-[#0c66e4]"
