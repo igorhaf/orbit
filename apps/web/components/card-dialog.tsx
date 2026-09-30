@@ -417,6 +417,7 @@ export function CardDialog({
               card={card}
               board={board}
               onChanged={onChanged}
+              onExecutionStart={() => setTab("output")}
               onApply={async (text) => {
                 const changed = await updateCard(
                   { description: text },

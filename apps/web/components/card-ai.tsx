@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, LoaderCircle, Sparkles } from "lucide-react";
+import { Check, LoaderCircle, Play, Sparkles } from "lucide-react";
 import {
   AiModel,
   AiProject,
   Board,
   Card,
+  PromptRun,
   api,
   send,
 } from "@/lib/api";
@@ -30,13 +31,16 @@ export function CardAi({
   board,
   onApply,
   onChanged,
+  onExecutionStart,
 }: {
   card: Card;
   board: Board;
   onApply: (text: string) => Promise<void>;
   onChanged: () => Promise<void>;
+  onExecutionStart?: () => void;
 }) {
   const [action, setAction] = useState<Action>("refine");
+  const [instruction, setInstruction] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [models, setModels] = useState<AiModel[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
@@ -123,6 +127,29 @@ export function CardAi({
       setBusy(false);
     }
   }
+  async function execute() {
+    if (!effectiveProjectId) {
+      setError("Selecione um projeto no cartão ou configure o padrão do quadro.");
+      return;
+    }
+    if (!effective || !effectiveEffort) {
+      setError("Configure modelo, versão e esforço em algum nível da hierarquia de IA.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await send<PromptRun>(`/cards/${card.id}/prompt-runs`, "POST", {
+        instruction,
+      });
+      setInstruction("");
+      onExecutionStart?.();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="rounded-lg border border-[#c3b6f7] bg-[#f7f5ff] p-3">
       <h3 className="flex items-center gap-2 text-sm font-bold text-[#403294]">
@@ -162,7 +189,33 @@ export function CardAi({
           Execução limitada a: {selectedProject.local_path}
         </p>
       )}
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-4 rounded-lg border border-[#c3b6f7] bg-white p-3">
+        <label className="text-xs font-semibold text-[#5e5a87]">
+          Executar prompt no projeto
+          <textarea
+            value={instruction}
+            onChange={(event) => setInstruction(event.target.value)}
+            maxLength={4000}
+            rows={3}
+            placeholder="Instrução adicional (opcional). A descrição do cartão será a instrução principal."
+            className="mt-1 block w-full resize-y rounded border border-[#c3b6f7] bg-white p-2 text-sm font-normal text-[#172b4d]"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={busy || !effectiveProjectId || !effective || !effectiveEffort}
+          onClick={() => void execute()}
+          className="mt-2 flex items-center gap-1.5 rounded bg-[#403294] px-3 py-2 text-xs font-semibold text-white hover:bg-[#35297d] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Play size={14} />}
+          Executar prompt
+        </button>
+      </div>
+      <div className="mt-4">
+        <p className="mb-2 text-xs font-semibold text-[#5e5a87]">
+          Assistente de texto
+        </p>
+        <div className="flex flex-wrap gap-2">
         <select
           value={action}
           onChange={(event) => setAction(event.target.value as Action)}
@@ -181,6 +234,7 @@ export function CardAi({
         >
           {busy ? <LoaderCircle size={14} className="animate-spin" /> : "Gerar"}
         </button>
+        </div>
       </div>
       {error && (
         <p role="alert" className="mt-2 text-xs text-[#ae2a19]">
