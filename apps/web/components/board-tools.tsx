@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Archive,
@@ -15,10 +15,10 @@ import {
   RotateCcw,
   Sparkles,
   Trash2,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   Activity,
-  AiEffort,
   AiModel,
   AiProject,
   api,
@@ -31,35 +31,34 @@ import {
 import { remember } from "@/lib/history";
 import { Modal, useConfirmModal } from "./ui";
 import { RichText } from "./rich-text";
+import { AiEffortField, AiModelFields } from "./ai-model-fields";
 export { RichText } from "./rich-text";
 
 type Panel =
   "about" | "activity" | "background" | "copy" | "trello" | "ai" | null;
-const efforts: { id: AiEffort; label: string }[] = [
-  { id: "low", label: "Baixo" },
-  { id: "medium", label: "Médio" },
-  { id: "high", label: "Alto" },
-  { id: "xhigh", label: "Muito alto" },
-];
-const effortIndex = (effort: AiEffort | null | undefined) =>
-  Math.max(
-    0,
-    efforts.findIndex((item) => item.id === (effort || "medium")),
-  );
 export function BoardTools({
   board,
   onChanged,
   onClosed,
   onDeleted,
+  filters,
 }: {
   board: Board;
   onChanged: () => Promise<void>;
   onClosed: () => void;
   onDeleted: () => void;
+  filters?: {
+    status: string; setStatus: (value: "all" | "open" | "completed") => void;
+    field: string; setField: (value: string) => void;
+    label: string; setLabel: (value: string) => void;
+    due: string; setDue: (value: string) => void;
+  };
 }) {
   const router = useRouter();
   const { confirm, confirmationModal } = useConfirmModal();
   const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [advancedFilters, setAdvancedFilters] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [description, setDescription] = useState(board.description || "");
   const [copyTitle, setCopyTitle] = useState(`${board.title} (cópia)`);
@@ -70,9 +69,22 @@ export function BoardTools({
   const [trelloBoardId, setTrelloBoardId] = useState("");
   const [models, setModels] = useState<AiModel[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
+  const selectedAiProject = projects.find((project) => project.id === board.ai_default_project_id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
+  useEffect(() => {
+    if (!menu) return;
+    const closeOutside = (event: Event) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(false);
+    };
+    document.addEventListener("mousedown", closeOutside);
+    document.addEventListener("focusin", closeOutside);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside);
+      document.removeEventListener("focusin", closeOutside);
+    };
+  }, [menu]);
   useEffect(() => {
     if (panel !== "activity") return;
     api<Activity[]>(`/boards/${board.id}/activity?commentsOnly=${commentsOnly}`)
@@ -193,7 +205,7 @@ export function BoardTools({
   }
   return (
     <>
-      <div className="relative">
+      <div ref={menuRef} className="relative">
         <button
           onClick={() => setMenu(!menu)}
           className="rounded p-1.5 hover:bg-white/20"
@@ -205,6 +217,19 @@ export function BoardTools({
         {menu && (
           <div className="absolute right-0 top-9 z-30 max-h-[75vh] w-60 overflow-y-auto rounded-lg bg-white p-2 text-sm text-[#172b4d] shadow-dialog">
             <p className="px-2 py-2 font-bold">Menu do quadro</p>
+            {filters && !board.closed_at && (
+              <section className="mb-2 border-b border-[#dfe1e6] pb-2">
+                <button type="button" onClick={() => setAdvancedFilters(value => !value)} aria-expanded={advancedFilters} className="flex min-h-9 w-full items-center gap-2 rounded px-2 text-left font-semibold hover:bg-[#f1f2f4]">
+                  <SlidersHorizontal size={16} /> Filtro avançado
+                </button>
+                {advancedFilters && <div className="space-y-2 px-2 pb-2 pt-1">
+                  <select aria-label="Filtrar por status" value={filters.status} onChange={event => filters.setStatus(event.target.value as "all" | "open" | "completed")} className="h-9 w-full rounded border border-[#c1c7d0] bg-white px-2 text-sm text-[#172b4d]"><option value="all">Todos os status</option><option value="open">Pendentes</option><option value="completed">Concluídos</option></select>
+                  <select aria-label="Filtrar por checkbox" value={filters.field} onChange={event => filters.setField(event.target.value)} className="h-9 w-full rounded border border-[#c1c7d0] bg-white px-2 text-sm text-[#172b4d]"><option value="">Campos: todos</option>{board.custom_fields?.filter(field => field.type === "checkbox").flatMap(field => [<option key={`${field.id}:true`} value={`${field.id}:true`}>{field.name}: marcado</option>, <option key={`${field.id}:false`} value={`${field.id}:false`}>{field.name}: desmarcado</option>])}</select>
+                  <select aria-label="Filtrar por etiqueta" value={filters.label} onChange={event => filters.setLabel(event.target.value)} className="h-9 w-full rounded border border-[#c1c7d0] bg-white px-2 text-sm text-[#172b4d]"><option value="">Todas as etiquetas</option>{board.labels?.map(label => <option key={label.id} value={label.id}>{label.name || "Sem nome"}</option>)}</select>
+                  <select aria-label="Filtrar por prazo" value={filters.due} onChange={event => filters.setDue(event.target.value)} className="h-9 w-full rounded border border-[#c1c7d0] bg-white px-2 text-sm text-[#172b4d]"><option value="">Todos os prazos</option><option value="overdue">Vencidos</option><option value="week">7 dias</option><option value="none">Sem prazo</option></select>
+                </div>}
+              </section>
+            )}
             <MenuButton
               icon={<Info size={16} />}
               label="Sobre este quadro"
@@ -389,66 +414,23 @@ export function BoardTools({
                 </div>
                 <div>
                   <p className="mb-3 text-sm text-[#626f86]">
-                    Modelo usado pelos cartões que não possuem um modelo
-                    próprio.
+                    Configuração que prevalece sobre projeto e global, mas pode ser substituída no cartão.
                   </p>
-                  <select
-                    value={board.ai_default_model || ""}
-                    onChange={(event) =>
-                      void run(() =>
-                        send(`/boards/${board.id}/prompt-settings`, "PATCH", {
-                          ai_default_model: event.target.value || null,
-                        }),
-                      )
-                    }
-                    className="w-full rounded border border-[#8590a2] bg-white p-2 text-sm"
-                  >
-                    <option value="">Escolha um modelo</option>
-                    {models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </select>
+                  <AiModelFields
+                    value={board.ai_default_model}
+                    inheritedValue={selectedAiProject?.ai_default_model || board.ai_global_model}
+                    models={models}
+                    disabled={busy}
+                    onSave={async (value) => { await run(() => send(`/boards/${board.id}/prompt-settings`, "PATCH", { ai_default_model: value })); }}
+                  />
                 </div>
                 <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label
-                      htmlFor="board-ai-effort"
-                      className="text-sm font-semibold"
-                    >
-                      Esforço padrão
-                    </label>
-                    <span className="text-sm text-[#626f86]">
-                      {efforts[effortIndex(board.ai_default_effort)].label}
-                    </span>
-                  </div>
-                  <input
-                    id="board-ai-effort"
-                    type="range"
-                    min="0"
-                    max={efforts.length - 1}
-                    step="1"
+                  <AiEffortField
+                    value={board.ai_default_effort}
+                    inheritedValue={selectedAiProject?.ai_default_effort || board.ai_global_effort}
                     disabled={busy}
-                    value={effortIndex(board.ai_default_effort)}
-                    onChange={(event) =>
-                      void run(() =>
-                        send(`/boards/${board.id}/prompt-settings`, "PATCH", {
-                          ai_default_effort:
-                            efforts[Number(event.target.value)].id,
-                        }),
-                      )
-                    }
-                    className="w-full accent-[#6554c0]"
+                    onChange={async (value) => { await run(() => send(`/boards/${board.id}/prompt-settings`, "PATCH", { ai_default_effort: value })); }}
                   />
-                  <div className="mt-1 flex justify-between text-[11px] text-[#626f86]">
-                    {efforts.map((item) => (
-                      <span key={item.id}>{item.label}</span>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-xs text-[#626f86]">
-                    Aplicado aos cartões sem esforço próprio.
-                  </p>
                 </div>
               </div>
             )}

@@ -18,6 +18,7 @@ import { Db } from "../db";
 import { FeaturesService } from "../features";
 import { CalendarSourceRegistry } from "./source-registry";
 import { CalendarMutation } from "./types";
+import { PluginRegistry } from "../execution/registries";
 
 const bad = (message: string, status = 400): never => {
   throw new HttpException({ message }, status);
@@ -42,6 +43,7 @@ export class CalendarService {
     @Inject(Db) private db: Db,
     @Inject(FeaturesService) private features: FeaturesService,
     @Inject(CalendarSourceRegistry) private registry: CalendarSourceRegistry,
+    @Inject(PluginRegistry) private plugins: PluginRegistry,
   ) {}
   user(req: Request) {
     return this.features.user(req);
@@ -50,13 +52,14 @@ export class CalendarService {
     await Promise.all(
       this.registry
         .all()
+        .filter((provider) => provider.id === "orbit_cards" || this.plugins.isEnabled(provider.id))
         .map((provider) => provider.listSources(ownerId).catch(() => [])),
     );
     return this.db.query(
       `SELECT s.id,s.provider_id,s.connection_id,s.external_id,s.name,s.time_zone,s.color,s.access_role,s.is_primary,s.selected,s.visible,s.is_default,s.capabilities,s.metadata,
       c.display_name AS connection_name,c.enabled AS connection_enabled,COALESCE(to_jsonb(st)-'source_id','{}'::jsonb) AS settings
       FROM calendar_sources s LEFT JOIN integration_connections c ON c.id=s.connection_id LEFT JOIN calendar_source_settings st ON st.source_id=s.id
-      WHERE s.owner_id=$1 ORDER BY s.provider_id,c.created_at,s.is_primary DESC,s.name`,
+      WHERE s.owner_id=$1 AND (s.provider_id='orbit_cards' OR s.provider_id NOT IN ('google_calendar','outlook_calendar') OR COALESCE((SELECT ps.enabled FROM plugin_settings ps WHERE ps.plugin_id=s.provider_id),true)) ORDER BY s.provider_id,c.created_at,s.is_primary DESC,s.name`,
       [ownerId],
     );
   }
@@ -171,6 +174,7 @@ export class CalendarService {
       [uid(sourceId), ownerId],
     );
     if (!source) return bad("Calendário não encontrado.", 404);
+    if (source!.provider_id !== "orbit_cards" && !this.plugins.isEnabled(source!.provider_id)) return bad("O plugin deste calendário está desativado.", 409);
     return this.registry.get(source.provider_id);
   }
   async items(
@@ -189,8 +193,9 @@ export class CalendarService {
         (requested.length ? " AND id=ANY($2::uuid[])" : ""),
       requested.length ? [ownerId, requested] : [ownerId],
     );
+    const enabledSources = sourceRows.filter(row => row.provider_id === "orbit_cards" || this.plugins.isEnabled(row.provider_id));
     const grouped = new Map<string, string[]>();
-    for (const row of sourceRows)
+    for (const row of enabledSources)
       grouped.set(row.provider_id, [
         ...(grouped.get(row.provider_id) || []),
         row.id,

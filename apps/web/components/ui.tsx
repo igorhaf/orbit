@@ -1,17 +1,19 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
   Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut,
-  Moon, Plus, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
-  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Rocket,
+  Moon, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
+  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Workflow, Circle, CheckCircle2,
 } from 'lucide-react';
 import {
-  api, send, AppNotification, Board, SearchResults, User,
+  api, send, AppNotification, Board, Card, SearchResults, User,
   boardColors, cardUrl, clearSession, getUser, initials, setUser,
 } from '@/lib/api';
 import { historyState, redo, undo } from '@/lib/history';
+import { CardDialog } from './card-dialog';
 
 export function Avatar({ name, url, size = 'md' }: { name: string; url?: string | null; size?: 'sm'|'md'|'lg' }) {
   const dimensions = size === 'sm' ? 'h-7 w-7 text-[10px]' : size === 'lg' ? 'h-16 w-16 text-xl' : 'h-8 w-8 text-xs';
@@ -20,18 +22,34 @@ export function Avatar({ name, url, size = 'md' }: { name: string; url?: string 
   </span>;
 }
 
+const modalStack: symbol[] = [];
+const subscribeToHydration = () => () => {};
+const getHydratedSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export function Modal({ children, onClose, wide = false, extraWide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; extraWide?: boolean }) {
+  const mounted = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerSnapshot);
+  const modalId = useRef(Symbol('modal'));
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const id = modalId.current;
+    modalStack.push(id);
+    const handler = (event: KeyboardEvent) => { if (event.key === 'Escape' && modalStack.at(-1) === id) closeRef.current(); };
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-  return <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#091e42a6] p-3 pt-[8vh] sm:p-6 sm:pt-[10vh]" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div className={`fade-in relative w-full ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[760px]' : 'max-w-[430px]'} rounded-xl bg-white shadow-dialog`} role="dialog" aria-modal="true">
+    return () => {
+      window.removeEventListener('keydown', handler);
+      const index = modalStack.lastIndexOf(id);
+      if (index >= 0) modalStack.splice(index, 1);
+    };
+  }, []);
+  if (!mounted) return null;
+  return createPortal(<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#091e42a6] p-3 pt-[8vh] sm:p-6 sm:pt-[10vh]" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div onMouseDown={e => e.stopPropagation()} className={`fade-in relative w-full ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[760px]' : 'max-w-[430px]'} rounded-xl bg-white shadow-dialog`} role="dialog" aria-modal="true">
       {children}
       <button aria-label="Fechar" onClick={onClose} className="absolute right-3 top-3 rounded-md p-2 text-[#626f86] hover:bg-[#091e4214]"><X size={18}/></button>
     </div>
-  </div>;
+  </div>, document.body);
 }
 
 export function useConfirmModal() {
@@ -45,8 +63,14 @@ export function useConfirmModal() {
 }
 
 export function BoardTile({ board, onClick }: { board: Board; onClick: () => void }) {
+  const total = board.card_count || 0;
+  const completed = board.completed_card_count || 0;
+  const open = Math.max(0, total - completed);
+  const completedPercent = total ? Math.round((completed / total) * 100) : 0;
+  const openPercent = total ? 100 - completedPercent : 0;
   return <button onClick={onClick} className="group relative flex h-[112px] w-full flex-col overflow-hidden rounded-[5px] p-3 text-left text-white shadow-sm transition hover:brightness-90" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}>
-    <strong className="relative z-10 max-w-[90%] text-[16px] leading-5">{board.title}</strong>
+    <span className="relative z-10 flex max-w-full gap-1 pr-2 text-[10px] font-semibold"><span className="inline-flex items-center gap-1 rounded bg-black/35 px-1.5 py-1"><Circle size={11}/> {open} abertos · {openPercent}%</span><span className="inline-flex items-center gap-1 rounded bg-black/35 px-1.5 py-1"><CheckCircle2 size={11}/> {completed} concluídos · {completedPercent}%</span></span>
+    <strong className="relative z-10 mt-auto max-w-[90%] truncate text-[16px] leading-5">{board.title}</strong>
     <span className="absolute -bottom-6 -right-6 h-28 w-28 rounded-full bg-white/10"/>
     <span className="absolute -top-10 right-8 h-28 w-28 rounded-full bg-white/5"/>
     {board.starred && <Star size={15} fill="currentColor" className="absolute bottom-3 right-3"/>}
@@ -59,13 +83,13 @@ function NotificationPanel({ items, onRead, onReadAll, onChoose }: {
   onReadAll: () => void;
   onChoose: (item: AppNotification) => void;
 }) {
-  return <div className="absolute right-2 top-12 z-40 w-[min(390px,calc(100vw-16px))] overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog">
+  return <div className="absolute right-0 top-full z-40 w-[min(390px,calc(100vw-16px))] overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog">
     <div className="flex items-center justify-between border-b border-[#dfe1e6] px-4 py-3"><h3 className="font-bold">Notificações</h3><button onClick={onReadAll} className="text-xs font-semibold text-[#0c66e4] hover:underline">Marcar todas como lidas</button></div>
     <div className="scrollbar-thin max-h-[440px] overflow-y-auto">
       {items.length === 0 ? <div className="p-8 text-center text-sm text-[#626f86]"><Bell className="mx-auto mb-3" size={26}/> Nenhuma notificação por enquanto.</div> : items.map(item =>
         <button key={item.id} onClick={() => onChoose(item)} className={`flex w-full gap-3 border-b border-[#f1f2f4] px-4 py-3 text-left hover:bg-[#f1f2f4] ${!item.read_at ? 'bg-[#e9f2ff]' : ''}`}>
           <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.read_at ? 'bg-transparent' : 'bg-[#0c66e4]'}`}/>
-          <span className="min-w-0 flex-1"><strong className="block text-sm">{item.title}</strong><span className="mt-0.5 block truncate text-xs text-[#44546f]">{item.body}</span><span className="mt-1 block text-[11px] text-[#626f86]">{item.board_title ? `${item.board_title} · ` : ''}{new Date(item.created_at).toLocaleString('pt-BR')}</span></span>
+          <span className="min-w-0 flex-1"><span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#626f86]">{item.plugin_id.replaceAll('_', ' ')}</span><strong className="block text-sm">{item.title}</strong><span className="mt-0.5 block truncate text-xs text-[#44546f]">{item.body}</span><span className="mt-1 block text-[11px] text-[#626f86]">{item.board_title ? `${item.board_title} · ` : ''}{new Date(item.created_at).toLocaleString('pt-BR')}</span></span>
           {!item.read_at && <span onClick={e => { e.stopPropagation(); onRead(item.id); }} title="Marcar como lida" className="self-start rounded p-1 hover:bg-[#dfe1e6]"><Check size={15}/></span>}
         </button>)}
     </div>
@@ -81,6 +105,9 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     updateUser(initialUser);
   }
   const [panel, setPanel] = useState<'search'|'boards'|'create'|'notifications'|'account'|null>(null);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+  const boardsMenuRef = useRef<HTMLDivElement>(null);
+  const notificationsMenuRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<{query:string; data:SearchResults}>({query:'',data:{boards:[],cards:[]}});
   const results = panel === 'search' && query.trim().length >= 2 && searchResponse.query === query
@@ -89,25 +116,10 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const [pinned, setPinned] = useState(true);
   const [history, setHistory] = useState(historyState());
   const [message, setMessage] = useState('');
-  const [deploying, setDeploying] = useState(false);
   const [pluginNavigation, setPluginNavigation] = useState<Array<{id:string;label:string;href:string}>>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const initializedNotifications = useRef(false);
   const knownNotifications = useRef(new Set<string>());
-
-  async function deploy() {
-    setDeploying(true);setMessage('Publicando o desenvolvimento e atualizando o Orbit…');
-    try {
-      await send('/deploy','POST');
-      const expires=Date.now()+10*60_000;
-      let offline=false;
-      const check=async()=>{
-        try { if((await fetch('/api/health',{cache:'no-store'})).ok&&offline){window.location.reload();return;} } catch { offline=true; }
-        if(Date.now()<expires)window.setTimeout(()=>void check(),1500);else {setDeploying(false);setMessage('O Deploy não voltou a responder. Confira o terminal do Orbit.');}
-      };
-      window.setTimeout(()=>void check(),1500);
-    } catch(error) { setDeploying(false);setMessage((error as Error).message); }
-  }
 
   useEffect(() => {
     const accountChanged = () => updateUser(getUser());
@@ -126,12 +138,12 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   useEffect(() => {
     if (!user) return;
     let active = true;
-    api<{plugins:Array<{contributions?:{navigation?:Array<{id?:unknown;label?:unknown;href?:unknown}>}}>}>('/plugins')
+    const loadPluginNavigation = () => api<{plugins:Array<{enabled:boolean;contributions?:{navigation?:Array<{id?:unknown;label?:unknown;href?:unknown}>}}>}>('/plugins')
       .then(({plugins}) => {
         if (!active) return;
         const reserved = new Set(['/','/boards','/calendar','/plugins']);
         const seen = new Set<string>();
-        setPluginNavigation(plugins.flatMap(plugin => plugin.contributions?.navigation || [])
+        setPluginNavigation(plugins.filter(plugin=>plugin.enabled).flatMap(plugin => plugin.contributions?.navigation || [])
           .filter((item): item is {id:string;label:string;href:string} =>
             typeof item.id === 'string' && typeof item.label === 'string' &&
             typeof item.href === 'string' && /^\/[a-z0-9/-]+$/.test(item.href))
@@ -142,7 +154,9 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
           }));
       })
       .catch(() => { if (active) setPluginNavigation([]); });
-    return () => { active = false; };
+    void loadPluginNavigation();
+    window.addEventListener('plugins:changed', loadPluginNavigation);
+    return () => { active = false; window.removeEventListener('plugins:changed', loadPluginNavigation); };
   }, [user]);
   useEffect(() => {
     if (panel !== 'search' || query.trim().length < 2) return;
@@ -174,7 +188,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     const handler = (event: KeyboardEvent) => {
       if (user?.preferences?.shortcuts === false) return;
       const target = event.target as HTMLElement;
-      if (target.closest('input,textarea,[contenteditable="true"]')) return;
+      if (target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         (event.shiftKey ? redo() : undo()).catch(error => setMessage((error as Error).message));
@@ -199,7 +213,8 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   function chooseNotification(item: AppNotification) {
     if (!item.read_at) markRead(item.id).catch(() => {});
     setPanel(null);
-    if (item.board_id) router.push(cardUrl(item.board_id,item.card_id,item.card_url_token));
+    if (item.target_url) router.push(item.target_url);
+    else if (item.board_id && item.card_id) router.push(cardUrl(item.board_id,item.card_id,item.card_url_token));
   }
   async function toggleTheme() {
     const theme = user?.preferences?.theme === 'dark' ? 'light' : 'dark';
@@ -216,6 +231,34 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   function openBoard(id: string) { setPanel(null); router.push(`/board/${id}`); }
   const unread = notifications.filter(item => !item.read_at).length;
   const boardMatches = boards.filter(board => !board.is_inbox && board.title.toLowerCase().includes(query.toLowerCase())).slice(0,8);
+  useEffect(() => {
+    if (panel !== 'account') return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setPanel(null);
+    };
+    document.addEventListener('mousedown', closeOutside);
+    return () => document.removeEventListener('mousedown', closeOutside);
+  }, [panel]);
+  useEffect(() => {
+    if (panel !== 'boards') return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!boardsMenuRef.current?.contains(event.target as Node)) setPanel(null);
+    };
+    document.addEventListener('mousedown', closeOutside);
+    return () => document.removeEventListener('mousedown', closeOutside);
+  }, [panel]);
+  useEffect(() => {
+    if (panel !== 'notifications') return;
+    const closeOutside = (event: Event) => {
+      if (!notificationsMenuRef.current?.contains(event.target as Node)) setPanel(null);
+    };
+    document.addEventListener('mousedown', closeOutside);
+    document.addEventListener('focusin', closeOutside);
+    return () => {
+      document.removeEventListener('mousedown', closeOutside);
+      document.removeEventListener('focusin', closeOutside);
+    };
+  }, [panel]);
 
   return <><header className="relative z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
@@ -224,11 +267,20 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     </button>
     <nav className="ml-1 hidden items-center gap-1 md:flex">
       <button onClick={() => router.push('/')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
-      <button onClick={() => setPanel(panel === 'boards' ? null : 'boards')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
+      <div ref={boardsMenuRef} className="relative" onMouseLeave={() => { if (panel === 'boards') setPanel(null); }}>
+        <button onClick={() => setPanel(panel === 'boards' ? null : 'boards')} aria-expanded={panel === 'boards'} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
+        {panel === 'boards' && <div className="absolute left-0 top-full z-40 w-72 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
+          <div className="flex items-center justify-between px-2 py-2"><strong className="text-sm">Alternar quadro</strong><button onClick={togglePin} className="rounded p-1 text-[#626f86] hover:bg-[#f1f2f4]" title={pinned ? 'Desafixar painel lateral' : 'Fixar painel lateral'}>{pinned ? <PinOff size={16}/> : <Pin size={16}/>}</button></div>
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar quadro" className="mb-2 w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/>
+          <div className="scrollbar-thin max-h-64 overflow-y-auto">{boardMatches.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-5 w-7 shrink-0 rounded" style={{background:boardColors[board.background]}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}</div>
+          <button onClick={() => { setPanel(null); router.push('/boards'); }} className="mt-2 w-full border-t border-[#dfe1e6] px-2 py-2 text-left text-sm font-semibold text-[#0c66e4]">Ver todos os quadros</button>
+        </div>}
+      </div>
       <button onClick={() => router.push('/calendar')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Calendário</button>
       {pluginNavigation.map(item => <button key={item.id} onClick={() => router.push(item.href)} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{item.label}</button>)}
       <button onClick={() => router.push('/notebooks')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={15} className="mr-1 inline"/>Cadernos</button>
       <button onClick={() => router.push('/vault')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={15} className="mr-1 inline"/>Cofre</button>
+      <button onClick={() => router.push('/automations')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Workflow size={15} className="mr-1 inline"/>Automações</button>
       <button onClick={() => router.push('/plugins')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Plugins</button>
     </nav>
 <button
@@ -240,13 +292,16 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
 </button>
     <button onClick={() => router.push('/')} className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden" title="Home"><Home size={19}/></button>
     <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="ml-1 rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
-    <button disabled={deploying} onClick={() => void deploy()} className="flex items-center gap-1 rounded border border-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-[#0c66e4] hover:bg-[#e9f2ff] disabled:opacity-50" title="Compilar e reiniciar o Orbit"><Rocket size={15}/>{deploying?'Deploy…':'Deploy'}</button>
     <div className="flex-1"/>
-    <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} className="hidden rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] lg:block" title={history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'}><Undo2 size={18}/></button>
-    <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} className="hidden rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] lg:block" title={history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'}><Redo2 size={18}/></button>
+    <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
+    <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
     <button onClick={() => setPanel('search')} className="flex items-center gap-2 rounded border border-transparent p-2 text-[#44546f] hover:bg-[#f1f2f4] sm:w-44 sm:border-[#8590a2] sm:px-3 sm:py-1.5" aria-label="Pesquisar em todos os quadros"><Search size={17}/><span className="hidden text-sm text-[#626f86] sm:inline">Pesquisar</span></button>
-    <button onClick={() => setPanel(panel === 'notifications' ? null : 'notifications')} className="relative rounded-full p-2 text-[#44546f] hover:bg-[#f1f2f4]" title="Notificações"><Bell size={19}/>{unread > 0 && <span className="absolute right-0 top-0 min-w-4 rounded-full bg-[#e5484d] px-0.5 text-[10px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}</button>
-    <button onClick={() => setPanel(panel === 'account' ? null : 'account')} title="Conta" className="rounded-full"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/></button>
+    <div ref={notificationsMenuRef} className="relative" onMouseLeave={() => { if (panel === 'notifications') setPanel(null); }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPanel(null); }}>
+    <button onClick={() => setPanel(panel === 'notifications' ? null : 'notifications')} aria-expanded={panel === 'notifications'} className="relative rounded-full p-2 text-[#44546f] hover:bg-[#f1f2f4]" title="Notificações"><Bell size={19}/>{unread > 0 && <span className="absolute right-0 top-0 min-w-4 rounded-full bg-[#e5484d] px-0.5 text-[10px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}</button>
+    {panel === 'notifications' && <NotificationPanel items={notifications} onRead={id => markRead(id).catch(() => {})} onReadAll={() => markAll().catch(() => {})} onChoose={chooseNotification}/>}
+    </div>
+    <div ref={accountMenuRef} className="relative" onMouseLeave={() => { if (panel === 'account') setPanel(null); }}>
+    <button onClick={() => setPanel(panel === 'account' ? null : 'account')} title="Conta" aria-expanded={panel === 'account'} className="rounded-full"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/></button>
 
     {panel === 'search' && <div className="absolute left-2 right-2 top-12 z-40 overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog sm:left-auto sm:right-28 sm:w-[430px]">
       <div className="flex items-center gap-2 border-b border-[#dfe1e6] px-3 py-2"><Search size={17} className="text-[#626f86]"/><input ref={searchRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Pesquisar cartões e quadros..." className="min-w-0 flex-1 border-0 bg-transparent py-1 text-sm outline-none"/><button onClick={() => setPanel(null)}><X size={17}/></button></div>
@@ -259,18 +314,11 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         <button onClick={() => { setPanel(null); router.push(`/search?q=${encodeURIComponent(query)}`); }} className="mt-2 w-full border-t border-[#dfe1e6] px-3 py-2 text-left text-xs font-semibold text-[#0c66e4]">Abrir busca avançada</button>
       </>}</div>
     </div>}
-    {panel === 'boards' && <div className="absolute left-32 top-12 z-40 w-72 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
-      <div className="flex items-center justify-between px-2 py-2"><strong className="text-sm">Alternar quadro</strong><button onClick={togglePin} className="rounded p-1 text-[#626f86] hover:bg-[#f1f2f4]" title={pinned ? 'Desafixar painel lateral' : 'Fixar painel lateral'}>{pinned ? <PinOff size={16}/> : <Pin size={16}/>}</button></div>
-      <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar quadro" className="mb-2 w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/>
-      <div className="scrollbar-thin max-h-64 overflow-y-auto">{boardMatches.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-5 w-7 shrink-0 rounded" style={{background:boardColors[board.background]}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}</div>
-      <button onClick={() => { setPanel(null); router.push('/boards'); }} className="mt-2 w-full border-t border-[#dfe1e6] px-2 py-2 text-left text-sm font-semibold text-[#0c66e4]">Ver todos os quadros</button>
-    </div>}
     {panel === 'create' && <div className="absolute left-20 top-12 z-40 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:left-96">
       <button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>
       <button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>
     </div>}
-    {panel === 'notifications' && <NotificationPanel items={notifications} onRead={id => markRead(id).catch(() => {})} onReadAll={() => markAll().catch(() => {})} onChoose={chooseNotification}/>}
-    {panel === 'account' && <div className="absolute right-3 top-12 z-40 w-64 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
+    {panel === 'account' && <div className="absolute right-0 top-full z-40 w-64 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
       <div className="border-b border-[#dfe1e6] px-3 py-2"><p className="text-[11px] font-bold uppercase tracking-wide text-[#626f86]">Conta</p><div className="mt-2 flex items-center gap-2"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/><div className="min-w-0"><p className="truncate text-sm font-semibold">{user?.name}</p><p className="truncate text-xs text-[#626f86]">{user?.email}</p></div></div></div>
       <button onClick={() => {setPanel(null);router.push('/profile')}} className="mt-1 flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><UserRound size={16}/> Perfil e atividade</button>
       <button onClick={() => {setPanel(null);router.push('/profile?tab=cards')}} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><CheckSquare size={16}/> Cartões atribuídos</button>
@@ -278,13 +326,14 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={toggleTheme} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]">{user?.preferences?.theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {user?.preferences?.theme === 'dark' ? 'Tema claro' : 'Tema escuro'}</button>
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
+    </div>
     {message && <div role="alert" className="absolute right-3 top-14 rounded bg-[#ffebe6] px-3 py-2 text-xs text-[#ae2a19] shadow"><button className="mr-2" onClick={() => setMessage('')}><X size={14}/></button>{message}</div>}
-  </header>{deploying&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#091e42]/75 p-6 text-center text-white"><div><Rocket className="mx-auto mb-4 animate-pulse" size={42}/><h2 className="text-xl font-bold">Deploy em andamento</h2><p className="mt-2 max-w-md text-sm text-white/85">Salvando o desenvolvimento, atualizando o main e reiniciando o Orbit. Aguarde a tela recarregar.</p></div></div>}</>;
+  </header></>;
 }
 
-function InboxPanel({boards,onOpen}:{boards:Board[];onOpen:()=>void}) {
-  const router=useRouter();
+function InboxPanel({boards}:{boards:Board[]}) {
   const [inbox,setInbox]=useState<Board|null>(null);
+  const [selected,setSelected]=useState<Card|null>(null);
   const [title,setTitle]=useState('');
   const [error,setError]=useState('');
   const box=boards.find(board=>board.is_inbox);
@@ -292,10 +341,10 @@ function InboxPanel({boards,onOpen}:{boards:Board[];onOpen:()=>void}) {
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
   useEffect(()=>{const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card'))event.preventDefault()});document.addEventListener('drop',drop);return()=>document.removeEventListener('drop',drop)},[load]);
   const cards=inbox?.lists?.flatMap(list=>list.cards)||[];
-  return <section className="mt-3 border-t border-[#dfe1e6] pt-3"><div className="flex items-center justify-between px-2"><strong className="flex items-center gap-2 text-sm"><Inbox size={17}/> Inbox</strong><button onClick={onOpen} className="text-xs text-[#0c66e4]">Abrir</button></div><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[42vh] space-y-2 overflow-y-auto px-2">{cards.map(card=><button key={card.id} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.effectAllowed='move'}} onClick={()=>router.push(`/inbox?card=${encodeURIComponent(card.id)}`)} className="w-full rounded bg-[#f1f2f4] px-2 py-2 text-left text-sm shadow-sm hover:bg-[#e9eaed]">{card.title}</button>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem rascunhos.</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste um cartão para qualquer lista deste quadro.</p></section>
+  return <><section className="pt-1"><div className="flex items-center px-2"><strong className="flex items-center gap-2 text-sm"><Inbox size={17}/> Inbox</strong></div><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{cards.map(card=><button key={card.id} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.setData('application/x-orbit-inbox-title',card.title);event.dataTransfer.effectAllowed='move'}} onClick={()=>setSelected(card)} className="w-full rounded bg-[#f1f2f4] px-2 py-2 text-left text-sm shadow-sm hover:bg-[#e9eaed]">{card.title}</button>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem rascunhos.</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste cartões para o Planner ou Calendário para agendá-los.</p></section>{selected&&inbox&&<CardDialog card={selected} board={inbox} onClose={()=>setSelected(null)} onChanged={async()=>{await load();const updated=await api<Board>(`/boards/${inbox.id}`);setInbox(updated);setSelected(updated.lists?.flatMap(list=>list.cards).find(card=>card.id===selected.id)||null)}} onDeleted={async()=>{setSelected(null);await load()}}/>}</>
 }
 
-export function WorkspaceSidebar({ boards, activeId, onCreate, onChoose }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {
+export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {
   const router = useRouter();
   const [pinned, setPinned] = useState(true);
   useEffect(() => {
@@ -303,20 +352,19 @@ export function WorkspaceSidebar({ boards, activeId, onCreate, onChoose }: { boa
     sync(); window.addEventListener('sidebar:changed', sync);
     return () => window.removeEventListener('sidebar:changed', sync);
   }, []);
-  if (!pinned) return null;
-  return <aside className="scrollbar-thin hidden w-[245px] shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white px-3 py-5 lg:block">
-    <button onClick={() => router.push('/')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><Home size={17}/> Home</button>
-    <button onClick={() => router.push('/boards')} className={`flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold ${!activeId && typeof window !== 'undefined' && window.location.pathname === '/boards' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'hover:bg-[#f1f2f4]'}`}><LayoutDashboard size={17}/> Quadros</button>
-    <button onClick={() => router.push('/#your-items')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><CheckSquare size={17}/> Seus itens</button>
-    <button onClick={() => router.push('/calendar')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={17}/> Calendário</button>
-    <button onClick={() => router.push('/notebooks')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={17}/> Cadernos</button>
-    <button onClick={() => router.push('/vault')} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={17}/> Cofre</button>
-    <InboxPanel boards={boards} onOpen={()=>router.push('/inbox')}/>
-    <div className="mt-6 flex items-center justify-between px-2 text-[11px] font-bold uppercase tracking-wide text-[#626f86]"><span>Seus quadros</span><button onClick={onCreate} aria-label="Criar quadro" className="rounded p-1 hover:bg-[#f1f2f4]"><Plus size={16}/></button></div>
-    {boards.filter(board => !board.is_inbox).length === 0 && <p className="px-2 py-3 text-xs text-[#626f86]">Crie seu primeiro quadro.</p>}
-    <div className="mt-3">{boards.filter(board => !board.is_inbox).map(board =>
-      <button key={board.id} onClick={() => onChoose(board.id)} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm ${activeId === board.id ? 'bg-[#e9f2ff] font-semibold text-[#0c66e4]' : 'hover:bg-[#f1f2f4]'}`}><span className="h-5 w-7 shrink-0 rounded-[2px]" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}
-    </div>
+  return <aside aria-label="Menu lateral" className={`scrollbar-thin shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] ${pinned?'w-[64px] px-2 lg:w-[245px] lg:px-3':'w-[56px] px-2'}`}>
+    <button onClick={()=>router.push('/inbox')} aria-label="Abrir Inbox" title="Inbox" className="mb-3 flex h-9 w-full items-center justify-center rounded-lg text-[#44546f] hover:bg-[#f1f2f4] lg:hidden"><Inbox size={18}/></button>
+    {pinned&&<div className="hidden lg:block"><InboxPanel boards={boards}/></div>}
+    <section className="mt-4 border-t border-[#dfe1e6] pt-3">
+      {pinned&&<h2 className="mb-2 hidden px-2 text-xs font-bold uppercase tracking-wide text-[#626f86] lg:block">Seus quadros</h2>}
+      <nav aria-label="Seus quadros" className="space-y-1">
+        {boards.filter(board=>!board.is_inbox).map(board=><button key={board.id} onClick={()=>router.push(`/board/${board.id}`)} title={board.title} className={`flex h-9 w-full items-center gap-2 rounded-lg text-left text-sm text-[#44546f] hover:bg-[#f1f2f4] ${pinned?'justify-center lg:justify-start lg:px-2':'justify-center'}`}>
+          <span className="h-5 w-6 shrink-0 rounded" style={{background:board.background_image?`url("${board.background_image}") center/cover`:boardColors[board.background]||boardColors.blue}}/>
+          {pinned&&<span className="hidden min-w-0 truncate lg:block">{board.title}</span>}
+        </button>)}
+        {pinned&&<button onClick={()=>router.push('/boards')} className="hidden w-full rounded-lg px-2 py-2 text-left text-xs font-semibold text-[#0c66e4] hover:bg-[#f1f2f4] lg:block">Ver todos os quadros</button>}
+      </nav>
+    </section>
   </aside>;
 }
 

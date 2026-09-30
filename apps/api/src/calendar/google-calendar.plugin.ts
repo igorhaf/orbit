@@ -1360,6 +1360,7 @@ export const googleCalendarPluginDefinition = (
   },
   contributions: {
     navigation: [{ id: "calendar", label: "Calendar", href: "/calendar" }],
+    notifications: [{ id: "event_starting", label: "Evento começando" }],
     calendarSources: plugin.contributions.calendarSources,
     automationActions: plugin.contributions.automationActions,
     automationTriggers: plugin.contributions.automationTriggers,

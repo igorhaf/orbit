@@ -1,5 +1,6 @@
 "use client";
 import { ChangeEvent, ClipboardEvent, DragEvent, useEffect, useState } from "react";
+import { io } from "socket.io-client";
 import {
   Copy,
   Eye,
@@ -32,6 +33,14 @@ type PendingAttachment = {
   mime_type?: string;
   data?: string;
 };
+type CommentAiAction = "write" | "elaborate" | "refine" | "summarize" | "shorten";
+const commentAiActions: { id: CommentAiAction; label: string }[] = [
+  { id: "write", label: "Escrever comentário" },
+  { id: "elaborate", label: "Elaborar melhor o texto" },
+  { id: "refine", label: "Refinar texto" },
+  { id: "summarize", label: "Resumir" },
+  { id: "shorten", label: "Encurtar" },
+];
 const asData = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -59,6 +68,7 @@ export function CardComments({
   board,
   details,
   onChanged,
+  refreshDetails,
   run,
   user,
 }: {
@@ -66,6 +76,7 @@ export function CardComments({
   board: Board;
   details: CardDetails;
   onChanged: () => Promise<void>;
+  refreshDetails: () => Promise<void>;
   run: (action: () => Promise<unknown>) => Promise<boolean>;
   user: { id: string; name: string; avatar_url?: string | null } | null;
 }) {
@@ -78,6 +89,15 @@ export function CardComments({
   const [error, setError] = useState("");
   const [aiResult, setAiResult] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiAction, setAiAction] = useState<CommentAiAction>("elaborate");
+  useEffect(() => {
+    const socket=io({path:"/socket.io",auth:{token:getToken()}});
+    socket.on("connect",()=>socket.emit("board:join",board.id));
+    socket.on("comment:changed",(event:{boardId:string;cardId:string})=>{
+      if(event.boardId===board.id&&event.cardId===card.id)void refreshDetails();
+    });
+    return()=>{socket.emit("board:leave",board.id);socket.disconnect();};
+  },[board.id,card.id,refreshDetails]);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("comment");
     if (id)
@@ -119,7 +139,7 @@ export function CardComments({
     }
   }
   async function commentAi(
-    action: "write" | "refine" | "summarize" | "shorten",
+    action: CommentAiAction,
   ) {
     setAiBusy(true);
     setError("");
@@ -261,6 +281,9 @@ export function CardComments({
           onSubmit={(event) => void submit(event)}
           className="rounded bg-white p-3 shadow-card"
         >
+          <p className="mb-2 text-xs text-[#626f86]">
+            Cada comentário vira uma mensagem do chat deste cartão no projeto selecionado; a resposta do GPT aparece como próximo comentário. O modelo e o esforço seguem as configurações do cartão ou do quadro.
+          </p>
           <div className="flex gap-2">
             <Avatar
               name={user?.name || "Você"}
@@ -299,25 +322,10 @@ export function CardComments({
             </label>
             <span className="inline-flex items-center gap-1 rounded bg-[#f0edff] px-2 py-1 text-xs text-[#403294]">
               <Sparkles size={13} />
-              {(["write", "refine", "summarize", "shorten"] as const).map(
-                (action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    disabled={aiBusy}
-                    onClick={() => void commentAi(action)}
-                    className="underline disabled:opacity-50"
-                  >
-                    {action === "write"
-                      ? "Escrever"
-                      : action === "refine"
-                        ? "Refinar"
-                        : action === "summarize"
-                          ? "Resumir"
-                          : "Encurtar"}
-                  </button>
-                ),
-              )}
+              <select aria-label="Ação de IA para o comentário" disabled={aiBusy} value={aiAction} onChange={(event) => setAiAction(event.target.value as CommentAiAction)} className="max-w-48 rounded border border-[#c3b6f7] bg-white px-2 py-1 text-xs text-[#403294]">
+                {commentAiActions.map((action) => <option key={action.id} value={action.id}>{action.label}</option>)}
+              </select>
+              <button type="button" disabled={aiBusy} onClick={() => void commentAi(aiAction)} className="font-semibold underline disabled:opacity-50">Gerar</button>
               {aiBusy && <LoaderCircle size={12} className="animate-spin" />}
             </span>
             <button
@@ -372,7 +380,7 @@ export function CardComments({
             >
               <Avatar
                 name={comment.author_name}
-                url={comment.author_id === user?.id ? user?.avatar_url : null}
+                url={!comment.is_ai&&comment.author_id === user?.id ? user?.avatar_url : null}
                 size="sm"
               />
               <div className="min-w-0 flex-1">
@@ -383,6 +391,14 @@ export function CardComments({
                     {comment.edited_at ? " · editado" : ""}
                   </span>
                 </p>
+                {(comment.ai_status === "queued" || comment.ai_status === "running") && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-[#6554c0]">
+                    <LoaderCircle size={12} className="animate-spin" /> GPT está preparando a resposta…
+                  </p>
+                )}
+                {comment.ai_status === "error" && comment.ai_error && (
+                  <p className="mt-1 text-xs text-[#ae2a19]">O GPT não conseguiu responder: {comment.ai_error}</p>
+                )}
                 {editing?.id === comment.id ? (
                   <form
                     onSubmit={async (event) => {
@@ -438,7 +454,7 @@ export function CardComments({
                     <Copy size={12} className="mr-1 inline" />
                     Copiar link
                   </button>
-                  {comment.author_id === user?.id && (
+                  {!comment.is_ai&&!comment.ai_status&&comment.author_id === user?.id && (
                     <>
                       <button
                         onClick={() => {

@@ -1054,6 +1054,7 @@ export const outlookCalendarPluginDefinition = (
       ],
     },
     contributions: {
+      notifications: [{ id: "event_starting", label: "Evento começando" }],
       calendarSources: [
         {
           providerId: plugin.id,

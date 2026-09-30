@@ -10,7 +10,7 @@ import {
   labelTextColor,
   send,
 } from "@/lib/api";
-import { Avatar, useConfirmModal } from "./ui";
+import { Avatar, Modal, useConfirmModal } from "./ui";
 
 type Run = (action: () => Promise<unknown>) => Promise<boolean>;
 type Update = (
@@ -235,6 +235,7 @@ export function CardLabelsPanel({
   const [color, setColor] = useState("green");
   const [editing, setEditing] = useState<Label | null>(null);
   const [error, setError] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
   async function action(work: () => Promise<unknown>) {
     if (await run(work)) setError("");
   }
@@ -254,7 +255,15 @@ export function CardLabelsPanel({
       setName("");
       setColor("green");
       setError("");
+      setEditorOpen(false);
     }
+  }
+  function closeEditor() {
+    setEditorOpen(false);
+    setEditing(null);
+    setName("");
+    setColor("green");
+    setError("");
   }
   return (
     <>
@@ -292,6 +301,8 @@ export function CardLabelsPanel({
                 setEditing(label);
                 setName(label.name);
                 setColor(label.color);
+                setError("");
+                setEditorOpen(true);
               }}
               className="rounded p-1 hover:bg-[#e9eaed]"
             >
@@ -312,58 +323,63 @@ export function CardLabelsPanel({
           </div>
         ))}
       </div>
-      <form onSubmit={save} className="mt-3 border-t border-[#dfe1e6] pt-3">
-        <label className="font-semibold">
-          {editing ? "Editar etiqueta" : "Nova etiqueta"}
-        </label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={100}
-          placeholder="Nome opcional"
-          className="mt-1 w-full rounded border border-[#8590a2] px-2 py-1.5"
-        />
-        <div className="mt-2 grid grid-cols-6 gap-1">
-          {Object.entries(labelColors).map(([key, hex]) => (
-            <button
-              type="button"
-              title={key === "none" ? "Sem cor" : key.replace("_", " ")}
-              aria-label={key}
-              key={key}
-              onClick={() => setColor(key)}
-              className={
-                "h-7 rounded " +
-                (color === key ? "ring-2 ring-[#0c66e4] ring-offset-1" : "")
-              }
-              style={{ background: hex }}
-            />
-          ))}
-        </div>
-        {error && (
-          <p role="alert" className="mt-2 text-[#ae2a19]">
-            {error}
-          </p>
-        )}
-        <div className="mt-3 flex gap-2">
-          <button disabled={busy} className="rounded bg-[#0c66e4] px-3 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-            {editing ? "Salvar" : "Criar"}
-          </button>
-          {editing && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(null);
-                setName("");
-                setColor("green");
-              }}
-              className="rounded bg-[#e9eaed] px-3 py-1.5"
-            >
-              Cancelar
-            </button>
-          )}
-        </div>
-      </form>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setEditing(null);
+          setName("");
+          setColor("green");
+          setError("");
+          setEditorOpen(true);
+        }}
+        className="mt-3 w-full rounded border border-[#dfe1e6] py-2 font-semibold hover:bg-[#f1f2f4] disabled:opacity-60"
+      >
+        Criar etiqueta
+      </button>
     </div>
+    {editorOpen && (
+      <Modal onClose={closeEditor}>
+        <form onSubmit={save} className="p-5">
+          <h2 className="text-lg font-bold">{editing ? "Editar etiqueta" : "Criar etiqueta"}</h2>
+          <label className="mt-4 block font-semibold">
+            Nome
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={100}
+              placeholder="Nome da etiqueta"
+              className="mt-1 w-full rounded border border-[#8590a2] px-3 py-2 font-normal"
+            />
+          </label>
+          <fieldset className="mt-4">
+            <legend className="mb-2 font-semibold">Cor</legend>
+            <div className="grid grid-cols-6 gap-2">
+              {Object.entries(labelColors).map(([key, hex]) => (
+                <button
+                  type="button"
+                  title={key === "none" ? "Sem cor" : key.replace("_", " ")}
+                  aria-label={key}
+                  aria-pressed={color === key}
+                  key={key}
+                  onClick={() => setColor(key)}
+                  className={"h-8 rounded " + (color === key ? "ring-2 ring-[#0c66e4] ring-offset-2" : "")}
+                  style={{ background: hex }}
+                />
+              ))}
+            </div>
+          </fieldset>
+          {error && <p role="alert" className="mt-3 text-sm text-[#ae2a19]">{error}</p>}
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" onClick={closeEditor} className="rounded px-3 py-2 font-semibold hover:bg-[#f1f2f4]">Cancelar</button>
+            <button disabled={busy} className="rounded bg-[#0c66e4] px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
+              {editing ? "Salvar" : "Criar etiqueta"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+    )}
     {confirmationModal}
     </>
   );

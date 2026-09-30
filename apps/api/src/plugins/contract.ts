@@ -22,7 +22,9 @@ export type PluginActionContext = {
     info(message: string, metadata?: Record<string, unknown>): void;
     warn(message: string, metadata?: Record<string, unknown>): void;
   };
-  services?: Readonly<Record<string, unknown>>;
+  services?: Readonly<Record<string, unknown>> & {
+    notifications?: { publish(input: import("./notifications").PluginNotificationInput): Promise<unknown> };
+  };
 };
 
 export type ActionDefinition = {
@@ -62,7 +64,9 @@ export type PluginContribution = {
   calendarSources?: Array<Record<string, unknown>>;
   automationActions?: Array<Record<string, unknown>>;
   automationTriggers?: Array<Record<string, unknown>>;
+  automationTemplates?: Array<Record<string, unknown>>;
   resourceRenderers?: Array<Record<string, unknown>>;
+  notifications?: Array<{ id: string; label: string }>;
 };
 
 export type PluginDefinition = {

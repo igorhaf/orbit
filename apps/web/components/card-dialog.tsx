@@ -1,7 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  AlignLeft,
   Check,
   CheckSquare,
   Clock3,
@@ -22,6 +21,7 @@ import {
   Board,
   Card,
   CardDetails,
+  PromptRun,
   getUser,
   labelColors,
   labelTextColor,
@@ -34,8 +34,8 @@ import { CardSections } from "./card-sections";
 import { CardOperations } from "./card-operations";
 import { CardComments } from "./card-comments";
 import { CardAi } from "./card-ai";
-import { PromptExecution } from "./prompt-execution";
 import { CardExecutionPanel } from "./card-execution";
+import { PromptExecution } from "./prompt-execution";
 
 const imageData = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -43,6 +43,25 @@ const imageData = (file: File) => new Promise<string>((resolve, reject) => {
   reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
   reader.readAsDataURL(file);
 });
+
+function PromptPreview({ card, board }: { card: Card; board: Board }) {
+  const [run, setRun] = useState<PromptRun | null>(null);
+  useEffect(() => {
+    let live = true;
+    void api<PromptRun[]>(`/cards/${card.id}/prompt-runs`).then((runs) => {
+      if (live) setRun(runs[0] || null);
+    }).catch(() => undefined);
+    return () => { live = false; };
+  }, [card.id]);
+  const model = card.ai_model || board.ai_default_model || card.ai_project_default_model || board.ai_global_model || card.ai_global_model || "Não configurado";
+  const effort = card.ai_effort || board.ai_default_effort || card.ai_project_default_effort || board.ai_global_effort || card.ai_global_effort || "Não configurado";
+  const prompt = run?.prompt || `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description || card.title}`;
+  return <section className="mt-6 space-y-4" aria-label="Próximo prompt">
+    <div className="flex flex-wrap gap-3 text-xs"><span className="rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{run?.model || model}</b></span><span className="rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
+    <p className="text-sm text-[#626f86]">Prévia da instrução usada na sessão. Após executar, esta aba mostra o prompt completo enviado.</p>
+    <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-4 font-mono text-xs leading-5">{prompt}</pre>
+  </section>;
+}
 
 export function CardDialog({
   card,
@@ -66,12 +85,10 @@ export function CardDialog({
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description || "");
   const [editingDescription, setEditingDescription] = useState(false);
-  const [contentTab, setContentTab] = useState<"description" | "execution">(
-    "description",
-  );
   const [panel, setPanel] = useState<"labels" | "date" | "move" | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"card" | "prompt" | "output">("card");
   const [previousCard, setPreviousCard] = useState(card);
   if (card !== previousCard) {
     setPreviousCard(card);
@@ -86,17 +103,19 @@ export function CardDialog({
     setEditingDescription(true);
   }
 
-  async function loadDetails() {
+  const loadDetails = useCallback(async () => {
     try {
       setDetails(await api<CardDetails>(`/cards/${card.id}/details`));
     } catch (err) {
       setError((err as Error).message);
     }
-  }
+  }, [card.id]);
   useEffect(() => {
+    let active = true;
     api<CardDetails>(`/cards/${card.id}/details`)
-      .then(setDetails)
-      .catch((err) => setError((err as Error).message));
+      .then((value) => { if (active) setDetails(value); })
+      .catch((err) => { if (active) setError((err as Error).message); });
+    return () => { active = false; };
   }, [card.id]);
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -204,7 +223,10 @@ export function CardDialog({
             {error}
           </div>
         )}
-        <div className="mt-6 grid gap-7 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]">
+        <nav className="mt-6 flex gap-1 border-b border-[#dfe1e6]" aria-label="Abas do cartão">
+          {[ ["card", "Cartão"], ["prompt", "Próximo prompt"], ["output", "Execução"] ].map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as typeof tab)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === id ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86] hover:text-[#172b4d]"}`}>{label}</button>)}
+        </nav>
+        {tab === "card" && <div className="mt-6 grid gap-7 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]">
           <div className="min-w-0 space-y-7">
             <div className="flex flex-wrap gap-5 pl-1">
               {card.labels?.length > 0 && (
@@ -334,25 +356,7 @@ export function CardDialog({
               </button>
             </div>
             <section>
-              <div className="mb-3 flex gap-1 border-b border-[#dfe1e6]">
-                <button
-                  onClick={() => setContentTab("description")}
-                  className={`flex items-center gap-2 border-b-2 px-2 py-2 text-sm font-semibold ${contentTab === "description" ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86]"}`}
-                >
-                  <AlignLeft size={18} /> Descrição
-                </button>
-                <button
-                  onClick={() => setContentTab("execution")}
-                  className={`flex items-center gap-2 border-b-2 px-2 py-2 text-sm font-semibold ${contentTab === "execution" ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86]"}`}
-                >
-                  Execução
-                </button>
-              </div>
-              <div
-                className={
-                  contentTab === "description" ? "pl-0 sm:pl-8" : "hidden"
-                }
-              >
+              <div className="pl-0 sm:pl-8">
                 {editingDescription ? (
                   <div>
                     <MarkdownEditor
@@ -408,16 +412,10 @@ export function CardDialog({
                   </div>
                 )}
               </div>
-              <PromptExecution
-                card={card}
-                board={board}
-                active={contentTab === "execution"}
-              />
             </section>
             <CardAi
               card={card}
               board={board}
-              onExecutionStart={() => setContentTab("execution")}
               onChanged={onChanged}
               onApply={async (text) => {
                 const changed = await updateCard(
@@ -442,6 +440,7 @@ export function CardDialog({
               card={card}
               board={board}
               onChanged={onChanged}
+              mode="settings"
             />
             {details.externalResources.length > 0 && (
               <section>
@@ -510,6 +509,7 @@ export function CardDialog({
               board={board}
               details={details}
               onChanged={onChanged}
+              refreshDetails={loadDetails}
               run={run}
               user={user}
             />
@@ -618,7 +618,7 @@ export function CardDialog({
                 <button
                   onClick={() => confirm(
                     { title: "Arquivar cartão", description: `Arquivar o cartão “${card.title}”?`, confirmLabel: "Arquivar" },
-                    async () => { await send(`/cards/${card.id}/archive`, "POST"); await onDeleted(); },
+                    async () => { await send(`/cards/${card.id}/archive`, "POST"); remember({label:'arquivar cartão',undo:[{path:`/cards/${card.id}/restore`,method:'POST'}],redo:[{path:`/cards/${card.id}/archive`,method:'POST'}]}); await onDeleted(); },
                   )}
                   className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm text-[#ae2a19] hover:bg-[#ffebe6]"
                 >
@@ -666,7 +666,9 @@ export function CardDialog({
               </div>
             )}
           </aside>
-        </div>
+        </div>}
+        {tab === "prompt" && <PromptPreview card={card} board={board} />}
+        {tab === "output" && <div className="mt-6 space-y-6"><CardExecutionPanel key={`execution-output:${card.id}`} card={card} board={board} onChanged={onChanged} mode="outputs"/><PromptExecution card={card} board={board} active /></div>}
       </div>
     </Modal>
     {confirmationModal}

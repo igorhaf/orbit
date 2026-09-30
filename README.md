@@ -32,7 +32,9 @@ Orbit é uma aplicação Kanban feita com Next.js, NestJS, PostgreSQL e Tailwind
 - Mover e copiar cartões entre listas, quadros e Inbox; cópia com escolha de descrição, datas, etiquetas, membros, checklists, anexos, campos, comentários e capa
 - Arquivar e restaurar cartões; exclusão definitiva somente após arquivar
 - Seleção de até 20 cartões com Ctrl/Cmd, Shift ou modo de seleção por toque para mover, copiar, arrastar em grupo, arquivar ou mesclar; mesclagens podem ser desfeitas por cinco minutos
-- Comentários editáveis com anexos de arquivos, cartões e quadros; links diretos, menções `@card` e `@board`, e acompanhamento de cartão, lista ou quadro
+- Comentários com anexos de arquivos, cartões e quadros; links diretos, menções `@card` e `@board`, e acompanhamento de cartão, lista ou quadro
+- A configuração de IA herda modelo, versão e esforço nesta ordem: global → projeto → quadro → cartão; cada nível substitui os anteriores, e campos sem configuração permanecem vazios até serem escolhidos
+- Em cartões com projeto e configuração de IA resolvida, cada comentário enviado continua o chat daquele cartão e projeto; a resposta do GPT entra como próximo comentário, identificada pelo modelo, versão e esforço. Mensagens enviadas ao chat ficam preservadas como histórico
 - Cada cartão exibe um endereço de comentário por e-mail. O recebimento exige configurar `COMMENT_EMAIL_DOMAIN` e um provedor para encaminhar mensagens ao endpoint protegido do Orbit
 
 Arquivos podem ter até 10 MB; imagens para capa, até 2 MB. A prévia de links usa informações da URL; vídeos do YouTube também podem mostrar a miniatura pública. O link abre o serviço original.
@@ -76,13 +78,13 @@ npm run build
 npm run orbit:serve
 ```
 
-O Orbit é um projeto nativo em `/home/meada/projetos/orbit-dev`; ele não aparece na lista de projetos locais. Execute a aplicação pela cópia principal em `/home/meada/projetos/orbit`, na branch `main`. Depois de uma sessão de prompt que altere o projeto nativo, o Orbit aplica migrações e seed, compila e executa os testes unitários em `orbit-dev`. Em seguida, clique em **Deploy**: essa mesma validação é repetida em `orbit-dev`, as alterações seguem para `develop`; a cópia principal em `main` faz pull de `develop`, envia o avanço de `main` ao remoto, repete migrações, seed, compilação e testes unitários, e só então reinicia. A tela fica travada até a reconexão.
+O projeto nativo do Orbit fica em `/home/meada/projetos/orbit-dev` e aparece em **Perfil → Projetos** como integrado e protegido contra remoção. As sessões de prompt podem selecionar esse projeto diretamente; quando uma sessão altera seus arquivos, o Orbit aplica migrações e seed, compila e executa os testes unitários ao final. Execute a aplicação principal pela cópia em `/home/meada/projetos/orbit`, na branch `main`. Depois, clique em **Deploy**: a validação é repetida em `orbit-dev`, as alterações seguem para `develop`; a cópia principal em `main` faz pull de `develop`, envia o avanço de `main` ao remoto, repete migrações, seed, compilação e testes unitários, e só então reinicia. A tela fica travada até a reconexão.
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 
 ## Instâncias principal e desenvolvimento
 
-As duas cópias usam o mesmo banco e repositórios de arquivos, mas executam em portas distintas. A principal (`orbit`, branch `main`) usa `http://localhost:3000` e API `4000`. A cópia de desenvolvimento (`orbit-dev`, branch `develop`) usa `http://localhost:3001` e API `4001`, sempre em tema escuro. Depois de preparar a cópia de desenvolvimento, inicie-a com `npm run orbit:dev`.
+As cópias principal (`orbit`, branch `main`) e de desenvolvimento (`orbit-dev`, branch `develop`) usam o mesmo banco e repositórios de arquivos, mas executam em portas distintas. A principal usa `http://localhost:3000` e API `4000`; desenvolvimento usa `http://localhost:3001` e API `4001`, sempre em tema escuro. Depois de preparar a cópia de desenvolvimento, inicie-a com `npm run orbit:dev`.
 
 Para acessar pelo celular, conecte-o à mesma rede Wi-Fi da máquina e abra no navegador o endereço `http://IP-DA-MAQUINA:3000` (por exemplo, `http://192.168.68.57:3000`). O frontend usa um proxy local para encaminhar as chamadas à API, então não é necessário configurar o IP do celular.
 

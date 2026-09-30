@@ -8,7 +8,7 @@ let running = false;
 const notify = () => {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('history:changed'));
 };
-export const historyState = () => ({ canUndo: undoStack.length > 0, canRedo: redoStack.length > 0, undoLabel: undoStack.at(-1)?.label, redoLabel: redoStack.at(-1)?.label });
+export const historyState = () => ({ canUndo: !running && undoStack.length > 0, canRedo: !running && redoStack.length > 0, undoLabel: undoStack.at(-1)?.label, redoLabel: redoStack.at(-1)?.label });
 export function remember(entry: Entry) {
   if (running) return;
   undoStack.push(entry);
@@ -23,6 +23,7 @@ async function perform(steps: Operation[]) {
 export async function undo() {
   if (running || !undoStack.length) return;
   running = true;
+  notify();
   const entry = undoStack.pop()!;
   try { await perform(entry.undo); redoStack.push(entry); }
   catch (error) { undoStack.push(entry); throw error; }
@@ -31,6 +32,7 @@ export async function undo() {
 export async function redo() {
   if (running || !redoStack.length) return;
   running = true;
+  notify();
   const entry = redoStack.pop()!;
   try { await perform(entry.redo); undoStack.push(entry); }
   catch (error) { redoStack.push(entry); throw error; }

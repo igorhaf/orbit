@@ -26,4 +26,7 @@ export class OrbitEvents {
   promptProgress(boardId:string,cardId:string,event:{runId:string;status:'running'|'success'|'error';message:string}) {
     this.server?.to(`board:${boardId}`).emit('prompt:progress',{boardId,cardId,...event,at:new Date().toISOString()});
   }
+  commentChanged(boardId:string,cardId:string) {
+    this.server?.to(`board:${boardId}`).emit('comment:changed',{boardId,cardId,at:new Date().toISOString()});
+  }
 }

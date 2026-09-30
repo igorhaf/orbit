@@ -12,6 +12,7 @@ import { OrbitCardCalendarSource } from "./orbit-card-provider";
 import { CalendarService } from "./calendar.service";
 import { CalendarSourceRegistry } from "./source-registry";
 import { FeaturesService } from "../features";
+import { PluginRegistry } from "../execution/registries";
 
 test("calendar migration persists multiple accounts, sources, mirror items and scheduled Orbit Cards", async () => {
   const db = new Db(),
@@ -62,7 +63,7 @@ test("calendar migration persists multiple accounts, sources, mirror items and s
     await db.query("INSERT INTO board_members(board_id,user_id,role) VALUES($1,$2,'owner')",[otherBoard,user]);
     const otherList = (await db.one<{id:string}>("INSERT INTO lists(board_id,title) VALUES($1,'Other target') RETURNING id",[otherBoard]))!.id;
     const sourceId = (await db.one<{id:string}>("INSERT INTO calendar_sources(owner_id,provider_id,external_id,name) VALUES($1,'fixture','source','Fixture') RETURNING id",[user]))!.id;
-    const calendar = new CalendarService(db,new FeaturesService(db),new CalendarSourceRegistry());
+    const calendar = new CalendarService(db,new FeaturesService(db),new CalendarSourceRegistry(),new PluginRegistry());
     await assert.rejects(()=>calendar.updateSource(user,sourceId,{auto_create_cards:true,target_board_id:board,target_list_id:otherList}),/pertencer ao quadro de destino/);
     await db.query("INSERT INTO calendar_source_settings(source_id,target_board_id,target_list_id) VALUES($1,$2,$3)",[sourceId,board,list]);
     await assert.rejects(()=>calendar.updateSource(user,sourceId,{target_list_id:otherList}),/pertencer ao quadro de destino/);

@@ -146,6 +146,22 @@ export default function CalendarPage() {
       await load();
     }
   }
+  async function dropInboxCard(cardId: string, date: Date) {
+    const start = new Date(date);
+    start.setHours(9, 0, 0, 0);
+    const end = new Date(start.getTime() + 60 * 60_000);
+    try {
+      await send(`/cards/${cardId}`, "PATCH", {
+        schedule_start_at: start.toISOString(),
+        schedule_end_at: end.toISOString(),
+        schedule_all_day: false,
+      });
+      await load();
+      window.dispatchEvent(new Event("data:changed"));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
   const title =
     view === "month"
       ? anchor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
@@ -218,6 +234,7 @@ export default function CalendarPage() {
             sources={sources}
             choose={setSelected}
             drop={drop}
+            dropInboxCard={dropInboxCard}
           /></div>
           </section>
         </main>
@@ -287,6 +304,7 @@ function CalendarView({
   sources,
   choose,
   drop,
+  dropInboxCard,
 }: {
   view: View;
   start: Date;
@@ -295,6 +313,7 @@ function CalendarView({
   sources: CalendarSource[];
   choose: (item: CalendarItem) => void;
   drop: (item: CalendarItem, date: Date) => void;
+  dropInboxCard: (cardId: string, date: Date) => void;
 }) {
   const days = Array.from(
     { length: Math.round((end.getTime() - start.getTime()) / dayMs) },
@@ -311,6 +330,11 @@ function CalendarView({
             dayItems(day).length > 0 && (
               <section
                 key={isoDate(day)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  const cardId = event.dataTransfer.getData("application/x-orbit-inbox-card");
+                  if (cardId) { event.preventDefault(); dropInboxCard(cardId, day); }
+                }}
                 className="overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm"
               >
                 <h3 className="border-b border-[#dfe1e6] px-4 py-3 text-sm font-bold capitalize">
@@ -381,6 +405,8 @@ function CalendarView({
                     key={s.id + isoDate(day)}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
+                      const cardId = e.dataTransfer.getData("application/x-orbit-inbox-card");
+                      if (cardId) { e.preventDefault(); dropInboxCard(cardId, day); return; }
                       const item = items.find(
                         (x) =>
                           x.id ===
@@ -417,6 +443,8 @@ function CalendarView({
           key={isoDate(day)}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
+            const cardId = e.dataTransfer.getData("application/x-orbit-inbox-card");
+            if (cardId) { e.preventDefault(); dropInboxCard(cardId, day); return; }
             const item = items.find(
               (x) =>
                 x.id ===
@@ -477,21 +505,23 @@ function EventForm({
         onSubmit={async (e) => {
           e.preventDefault();
           try {
-            await send(`/calendar/sources/${source}/items`, "POST", {
-              title,
-              start: new Date(start).toISOString(),
-              end: end ? new Date(end).toISOString() : undefined,
-              allDay,
-              description,
-              location,
-              attendees: attendees
-                .split(",")
-                .map((x) => x.trim())
-                .filter(Boolean)
-                .map((email) => ({ email })),
-              recurrence: recurrence ? [recurrence] : [],
-              conference,
-            });
+            const selectedSource = sources.find((item) => item.id === source);
+            if (selectedSource?.provider_id === "orbit_cards") {
+              const details = [description, location && `Local: ${location}`, attendees && `Convidados: ${attendees}`, recurrence && `Recorrência: ${recurrence}`, conference && "Videoconferência solicitada"].filter(Boolean).join("\n");
+              await send("/planner/cards", "POST", { title, starts_at: new Date(start).toISOString(), ends_at: end ? new Date(end).toISOString() : undefined, all_day: allDay, description: details });
+            } else {
+              await send(`/calendar/sources/${source}/items`, "POST", {
+                title,
+                start: new Date(start).toISOString(),
+                end: end ? new Date(end).toISOString() : undefined,
+                allDay,
+                description,
+                location,
+                attendees: attendees.split(",").map((x) => x.trim()).filter(Boolean).map((email) => ({ email })),
+                recurrence: recurrence ? [recurrence] : [],
+                conference,
+              });
+            }
             await changed();
           } catch (e) {
             setError((e as Error).message);

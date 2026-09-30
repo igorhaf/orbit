@@ -1,18 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Check, LoaderCircle, Play, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, LoaderCircle, Sparkles } from "lucide-react";
 import {
-  AiEffort,
   AiModel,
   AiProject,
   Board,
   Card,
-  PromptRun,
   api,
   send,
 } from "@/lib/api";
 import { RichText } from "./rich-text";
+import { AiEffortField, AiModelFields } from "./ai-model-fields";
 
 type Action =
   "write" | "refine" | "summarize" | "shorten" | "action_items" | "checklist";
@@ -25,60 +24,43 @@ const actions: { id: Action; label: string }[] = [
   { id: "action_items", label: "Encontrar ações" },
   { id: "checklist", label: "Criar checklist" },
 ];
-const label = (id: string | null | undefined, models: AiModel[]) =>
-  models.find((item) => item.id === id)?.name || id || "";
-const efforts: { id: AiEffort; label: string }[] = [
-  { id: "low", label: "Baixo" },
-  { id: "medium", label: "Médio" },
-  { id: "high", label: "Alto" },
-  { id: "xhigh", label: "Muito alto" },
-];
-const effortIndex = (effort: AiEffort | null | undefined) =>
-  Math.max(
-    0,
-    efforts.findIndex((item) => item.id === (effort || "medium")),
-  );
 
 export function CardAi({
   card,
   board,
   onApply,
   onChanged,
-  onExecutionStart,
 }: {
   card: Card;
   board: Board;
   onApply: (text: string) => Promise<void>;
   onChanged: () => Promise<void>;
-  onExecutionStart?: () => void;
 }) {
   const [action, setAction] = useState<Action>("refine");
-  const [instruction, setInstruction] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [models, setModels] = useState<AiModel[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
-  const [runs, setRuns] = useState<PromptRun[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const effective = card.ai_model || board.ai_default_model;
-  const effectiveEffort = card.ai_effort || board.ai_default_effort || "medium";
   const effectiveProjectId =
     card.ai_project_id || board.ai_default_project_id || null;
   const selectedProject = projects.find(
     (project) => project.id === effectiveProjectId,
   );
+  const inheritedModel = board.ai_default_model || selectedProject?.ai_default_model || board.ai_global_model || null;
+  const inheritedEffort = board.ai_default_effort || selectedProject?.ai_default_effort || board.ai_global_effort || null;
+  const effective = card.ai_model || inheritedModel;
+  const effectiveEffort = card.ai_effort || inheritedEffort;
   useEffect(() => {
     let active = true;
     Promise.all([
       api<AiModel[]>("/ai/models"),
       api<AiProject[]>("/ai/execution-projects"),
-      api<PromptRun[]>(`/cards/${card.id}/prompt-runs`),
     ])
-      .then(([available, localProjects, history]) => {
+      .then(([available, localProjects]) => {
         if (active) {
           setModels(available);
           setProjects(localProjects);
-          setRuns(history);
         }
       })
       .catch((err) => {
@@ -101,8 +83,8 @@ export function CardAi({
     }
   }
   async function generate() {
-    if (!effective) {
-      setError("Escolha um modelo.");
+    if (!effective || !effectiveEffort) {
+      setError("Configure modelo, versão e esforço em algum nível da hierarquia de IA.");
       return;
     }
     setBusy(true);
@@ -112,7 +94,6 @@ export function CardAi({
       setResult(
         await send<Result>(`/cards/${card.id}/ai`, "POST", {
           action,
-          instruction,
         }),
       );
     } catch (err) {
@@ -142,42 +123,14 @@ export function CardAi({
       setBusy(false);
     }
   }
-  async function execute() {
-    if (!effective || !effectiveProjectId) {
-      setError(
-        !effective
-          ? "Escolha um modelo."
-          : "Selecione um projeto no cartão ou configure o padrão do quadro.",
-      );
-      return;
-    }
-    onExecutionStart?.();
-    setBusy(true);
-    setError("");
-    try {
-      const run = await send<PromptRun>(`/cards/${card.id}/prompt-runs`, "POST", { instruction });
-      setRuns([run, ...runs]);
-      setInstruction("");
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  const modelHint = useMemo(
-    () =>
-      card.ai_model
-        ? `Modelo do cartão: ${label(card.ai_model, models)}`
-        : board.ai_default_model
-          ? `Padrão do quadro: ${label(board.ai_default_model, models)}`
-          : "Escolha um modelo",
-    [board.ai_default_model, card.ai_model, models],
-  );
   return (
     <section className="rounded-lg border border-[#c3b6f7] bg-[#f7f5ff] p-3">
       <h3 className="flex items-center gap-2 text-sm font-bold text-[#403294]">
-        <Sparkles size={17} /> Sessão de prompt
+        <Sparkles size={17} /> IA do cartão
       </h3>
+      <p className="mt-1 text-xs text-[#626f86]">
+        O cartão prevalece sobre quadro, projeto e configuração global. Campos sem configuração própria herdam o nível acima.
+      </p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <label className="text-xs font-semibold text-[#5e5a87]">
           Projeto
@@ -190,7 +143,7 @@ export function CardAi({
             className="mt-1 block w-full rounded border border-[#c3b6f7] bg-white p-2 text-sm text-[#172b4d]"
           >
               <option value="">
-                {board.ai_default_project_id ? "Padrão do quadro" : "Sem projeto"}
+                {board.ai_default_project_id ? "Herdar projeto do quadro" : "Escolher projeto"}
               </option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
@@ -199,64 +152,10 @@ export function CardAi({
             ))}
           </select>
         </label>
-        <label className="text-xs font-semibold text-[#5e5a87]">
-          Modelo
-          <select
-            disabled={busy}
-            value={card.ai_model || ""}
-            onChange={(event) =>
-              void configure({ ai_model: event.target.value || null })
-            }
-            className="mt-1 block w-full rounded border border-[#c3b6f7] bg-white p-2 text-sm text-[#172b4d]"
-          >
-            <option value="">{modelHint}</option>
-            {models.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
-      <div className="mt-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-[#5e5a87]">
-            Esforço{card.ai_effort ? "" : " · padrão do quadro"}
-          </span>
-          <span className="text-xs text-[#5e5a87]">
-            {efforts[effortIndex(effectiveEffort)].label}
-          </span>
-        </div>
-        <input
-          aria-label="Esforço de raciocínio"
-          type="range"
-          min="0"
-          max={efforts.length - 1}
-          step="1"
-          disabled={busy}
-          value={effortIndex(effectiveEffort)}
-          onChange={(event) =>
-            void configure({
-              ai_effort: efforts[Number(event.target.value)].id,
-            })
-          }
-          className="mt-1 w-full accent-[#6554c0]"
-        />
-        <div className="flex justify-between text-[10px] text-[#5e5a87]">
-          {efforts.map((item) => (
-            <span key={item.id}>{item.label}</span>
-          ))}
-        </div>
-        {card.ai_effort && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void configure({ ai_effort: null })}
-            className="mt-1 text-xs font-semibold text-[#403294]"
-          >
-            Usar padrão do quadro
-          </button>
-        )}
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <AiModelFields value={card.ai_model} inheritedValue={inheritedModel} models={models} disabled={busy} onSave={(value) => configure({ ai_model: value })} />
+        <AiEffortField value={card.ai_effort} inheritedValue={inheritedEffort} disabled={busy} onChange={(value) => configure({ ai_effort: value })} />
       </div>
       {selectedProject && (
         <p className="mt-2 truncate text-xs text-[#5e5a87]">
@@ -276,28 +175,13 @@ export function CardAi({
           ))}
         </select>
         <button
-          disabled={busy || !effective}
+          disabled={busy || !effective || !effectiveEffort}
           onClick={() => void generate()}
           className="rounded bg-[#6554c0] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
         >
           {busy ? <LoaderCircle size={14} className="animate-spin" /> : "Gerar"}
         </button>
-        <button
-            disabled={busy || !effective || !effectiveProjectId}
-          onClick={() => void execute()}
-          className="flex items-center gap-1 rounded bg-[#403294] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-        >
-          <Play size={13} /> {runs.some((run) => run.codex_session_id) ? "Continuar" : "Executar"}
-        </button>
       </div>
-      <textarea
-        value={instruction}
-        onChange={(event) => setInstruction(event.target.value)}
-        maxLength={2000}
-        rows={2}
-        placeholder={runs.some((run) => run.codex_session_id) ? "Próxima mensagem para continuar a conversa" : "Instrução adicional (opcional)"}
-        className="mt-2 w-full rounded border border-[#c3b6f7] bg-white p-2 text-xs text-[#172b4d]"
-      />
       {error && (
         <p role="alert" className="mt-2 text-xs text-[#ae2a19]">
           {error}
@@ -323,25 +207,6 @@ export function CardAi({
           >
             Aplicar à descrição
           </button>
-        </div>
-      )}
-      {runs[0] && (
-        <div className="mt-3 rounded bg-white p-2 text-xs">
-          <strong>
-            {runs[0].codex_session_id ? "Conversa persistida" : "Última execução"} · {label(runs[0].model, models)} ·{" "}
-            {efforts[effortIndex(runs[0].effort)].label}
-          </strong>
-          <span className="ml-2 text-[#626f86]">
-            {runs[0].status === "success" ? "concluída" : "falhou"}
-          </span>
-          {runs[0].output && (
-            <p className="mt-1 whitespace-pre-wrap text-[#44546f]">
-              {runs[0].output}
-            </p>
-          )}
-          {runs[0].error && (
-            <p className="mt-1 text-[#ae2a19]">{runs[0].error}</p>
-          )}
         </div>
       )}
     </section>

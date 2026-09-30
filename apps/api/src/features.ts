@@ -46,7 +46,7 @@ export class FeaturesService {
   }
 
   async account(userId: string) {
-    const account = await this.db.one('SELECT id,name,email,avatar_url,preferences,created_at FROM users WHERE id=$1 AND email=$2', [userId, SINGLE_EMAIL]);
+    const account = await this.db.one('SELECT id,name,email,avatar_url,preferences,ai_default_model,ai_default_effort,created_at FROM users WHERE id=$1 AND email=$2', [userId, SINGLE_EMAIL]);
     if (!account) return bad('Conta não encontrada.', 404);
     return account;
   }
@@ -154,8 +154,8 @@ export class FeaturesService {
   async notify(userId: string, boardId: string, cardId: string | null, kind: string, title: string, body: string) {
     const account=await this.account(userId);
     if (!account.preferences.notifications) return;
-    await this.db.query(`INSERT INTO notifications(user_id,board_id,card_id,kind,title,body)
-      VALUES($1,$2,$3,$4,$5,$6)`, [userId,boardId,cardId,kind,title,body.slice(0,300)]);
+    await this.db.query(`INSERT INTO notifications(plugin_id,user_id,board_id,card_id,kind,title,body)
+      VALUES('cards',$1,$2,$3,$4,$5,$6)`, [userId,boardId,cardId,kind,title,body.slice(0,300)]);
   }
 
   async mention(userId: string, boardId: string, cardId: string, body: string) {
@@ -227,13 +227,28 @@ export class FeaturesService {
         FROM boards b JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         LEFT JOIN workspaces w ON w.id=b.workspace_id WHERE b.starred AND b.closed_at IS NULL ORDER BY b.favorite_position ASC NULLS LAST,b.created_at DESC`,[userId]),
       this.db.query(`SELECT cm.id,cm.body,cm.created_at,c.id AS card_id,c.url_token AS card_url_token,c.title AS card_title,
-        b.id AS board_id,b.title AS board_title,u.name AS author_name
+        b.id AS board_id,b.title AS board_title,COALESCE(cm.author_label,u.name) AS author_name
         FROM comments cm JOIN users u ON u.id=cm.author_id JOIN cards c ON c.id=cm.card_id
         JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY cm.created_at DESC LIMIT 6`,[userId]),
     ]);
     return { upNext,highlights,yourItems,recentBoards,favorites,recentConversations };
+  }
+
+  async trashSummary(userId: string) {
+    const [closedBoards,archivedLists,archivedCards]=await Promise.all([
+      this.db.one<{count:number}>(`SELECT count(*)::int AS count FROM boards b
+        JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1 WHERE b.closed_at IS NOT NULL AND NOT b.is_inbox`,[userId]),
+      this.db.one<{count:number}>(`SELECT count(*)::int AS count FROM lists l
+        JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE l.archived_at IS NOT NULL AND b.closed_at IS NULL AND NOT b.is_inbox`,[userId]),
+      this.db.one<{count:number}>(`SELECT count(*)::int AS count FROM cards c
+        JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+        JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE c.archived_at IS NOT NULL AND l.archived_at IS NULL AND b.closed_at IS NULL AND NOT b.is_inbox`,[userId]),
+    ]);
+    return {closedBoards:closedBoards?.count||0,archivedLists:archivedLists?.count||0,archivedCards:archivedCards?.count||0};
   }
 
   async activities(userId: string, limit=30) {
@@ -290,15 +305,18 @@ export class FeaturesService {
 
   async planner(userId:string, boardId?:string) {
     const boardFilter=boardId?` AND b.id=$2`:''; const params=boardId?[userId,validId(boardId)]:[userId];
-    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
+    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.due_date,c.schedule_start_at,c.schedule_end_at,c.completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
       FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id
-      LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1 WHERE bm.user_id=$1 AND (ca.user_id=$1 OR b.is_inbox) AND c.due_date IS NOT NULL AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL${boardFilter} ORDER BY c.due_date`,params);
-    const events=await this.db.query(`SELECT e.id,e.title,e.starts_at,e.ends_at,COALESCE(json_agg(json_build_object('id',c.id,'url_token',c.url_token,'title',c.title,'board_id',b.id)) FILTER(WHERE c.id IS NOT NULL),'[]') AS cards FROM focus_events e LEFT JOIN focus_event_cards fec ON fec.event_id=e.id LEFT JOIN cards c ON c.id=fec.card_id LEFT JOIN lists l ON l.id=c.list_id LEFT JOIN boards b ON b.id=l.board_id WHERE e.user_id=$1 GROUP BY e.id ORDER BY e.starts_at`,[userId]);
-    return {cards,events};
+      LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1 WHERE bm.user_id=$1 AND (ca.user_id=$1 OR b.is_inbox) AND (c.due_date IS NOT NULL OR c.schedule_start_at IS NOT NULL) AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL${boardFilter} ORDER BY COALESCE(c.schedule_start_at,c.due_date)`,params);
+    return {cards};
   }
-  async createFocus(userId:string,body:Record<string,unknown>){const title=body.title===undefined?'Focus time':bounded(body.title,'Título',160);const start=new Date(bounded(body.starts_at,'Início',40)),end=new Date(bounded(body.ends_at,'Fim',40));if(Number.isNaN(+start)||Number.isNaN(+end)||end<=start)bad('Intervalo inválido.');return this.db.one('INSERT INTO focus_events(user_id,title,starts_at,ends_at) VALUES($1,$2,$3,$4) RETURNING *',[userId,title,start,end]);}
-  async linkFocus(userId:string,eventId:string,cardId:string){validId(eventId);await this.cardBoard(cardId,userId);const event=await this.db.one('SELECT id FROM focus_events WHERE id=$1 AND user_id=$2',[eventId,userId]);if(!event)bad('Bloco de foco não encontrado.',404);await this.db.query('INSERT INTO focus_event_cards(event_id,card_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[eventId,validId(cardId)]);return {ok:true};}
-  async unlinkFocus(userId:string,eventId:string,cardId:string){validId(eventId);await this.db.query('DELETE FROM focus_event_cards fec USING focus_events e WHERE fec.event_id=$1 AND fec.card_id=$2 AND e.id=fec.event_id AND e.user_id=$3',[eventId,validId(cardId),userId]);return {ok:true};}
+  async createScheduledCard(userId:string,body:Record<string,unknown>){
+    const title=bounded(body.title,'Título',300);const start=new Date(bounded(body.starts_at,'Início',40));const end=body.ends_at===undefined?new Date(start.getTime()+60*60_000):new Date(bounded(body.ends_at,'Fim',40));if(Number.isNaN(+start)||Number.isNaN(+end)||end<=start)bad('Intervalo inválido.');const description=body.description===undefined?'':bounded(body.description,'Descrição',4000);
+    const boardId=body.board_id===undefined||body.board_id===null||body.board_id===""?null:typeof body.board_id==='string'?validId(body.board_id):bad('Quadro inválido.');const target=boardId?await this.db.one<{id:string}>(`SELECT l.id FROM lists l JOIN board_members bm ON bm.board_id=l.board_id WHERE l.board_id=$1 AND bm.user_id=$2 AND l.archived_at IS NULL ORDER BY l.position LIMIT 1`,[boardId,userId]):await this.db.one<{id:string}>('SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL ORDER BY l.position LIMIT 1',[userId]);
+    if(!target)bad('Não encontrei uma lista disponível para criar o cartão.',404);
+    if(body.all_day!==undefined&&typeof body.all_day!=='boolean')bad('Tipo de agendamento inválido.');const allDay=body.all_day===true;
+    const destination=target as {id:string};return this.db.one(`INSERT INTO cards(list_id,title,description,position,schedule_start_at,schedule_end_at,schedule_all_day) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0),$4,$5,$6) RETURNING id,title,schedule_start_at,schedule_end_at`,[destination.id,title,description,start,end,allDay]);
+  }
 
   async notifications(userId: string) {
     const account=await this.account(userId);
@@ -307,15 +325,15 @@ export class FeaturesService {
         AND c.due_date=n.due_at AND c.reminder_minutes IS NOT NULL
         AND EXISTS (SELECT 1 FROM lists l JOIN boards b ON b.id=l.board_id WHERE l.id=c.list_id AND l.archived_at IS NULL AND b.closed_at IS NULL))`,[userId]);
     if (account.preferences.notifications) {
-      await this.db.query(`INSERT INTO notifications(user_id,board_id,card_id,kind,title,body,due_at)
-        SELECT $1,b.id,c.id,'due',CASE WHEN c.due_date<now() THEN 'Cartão vencido' ELSE 'Prazo próximo' END,
+      await this.db.query(`INSERT INTO notifications(plugin_id,user_id,board_id,card_id,kind,title,body,due_at)
+        SELECT 'planner',$1,b.id,c.id,'due',CASE WHEN c.due_date<now() THEN 'Cartão vencido' ELSE 'Prazo próximo' END,
           c.title,c.due_date FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND NOT c.completed AND c.due_date IS NOT NULL
           AND c.reminder_minutes IS NOT NULL AND c.due_date<=now()+c.reminder_minutes*interval '1 minute'
         ON CONFLICT DO NOTHING`,[userId]);
     }
-    return this.db.query(`SELECT n.id,n.kind,n.title,n.body,n.created_at,n.read_at,n.board_id,n.card_id,
+    return this.db.query(`SELECT n.id,n.plugin_id,n.target_url,n.kind,n.title,n.body,n.created_at,n.read_at,n.board_id,n.card_id,
       b.title AS board_title,c.url_token AS card_url_token FROM notifications n LEFT JOIN boards b ON b.id=n.board_id LEFT JOIN cards c ON c.id=n.card_id
       WHERE n.user_id=$1 ORDER BY n.created_at DESC LIMIT 80`,[userId]);
   }
@@ -342,6 +360,7 @@ export class FeaturesController {
   @Get('account/activity') activity(@Req() req: Request) { return this.features.activities(this.features.user(req),60); }
   @Get('account/cards') cards(@Req() req: Request) { return this.features.assignedCards(this.features.user(req)); }
   @Get('home') home(@Req() req: Request) { return this.features.home(this.features.user(req)); }
+  @Get('trash/summary') trashSummary(@Req() req: Request) { return this.features.trashSummary(this.features.user(req)); }
   @Get('workspaces') workspaces(@Req() req: Request) { return this.features.workspaces(this.features.user(req)); }
   @Post('workspaces') createWorkspace(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.createWorkspace(this.features.user(req),body); }
   @Patch('favorites/reorder') favorites(@Req() req: Request,@Body() body: {ids: string[]}) { return this.features.reorderFavorites(this.features.user(req),body.ids); }
@@ -357,9 +376,7 @@ export class FeaturesController {
   @Post('saved-searches') saveSearch(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.saveSearch(this.features.user(req),body);}
   @Delete('saved-searches/:id') deleteSavedSearch(@Req() req:Request,@Param('id') id:string){return this.features.deleteSavedSearch(this.features.user(req),id);}
   @Get('planner') planner(@Req() req:Request,@Query('board_id') boardId?:string){return this.features.planner(this.features.user(req),boardId);}
-  @Post('planner/focus-events') focus(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.createFocus(this.features.user(req),body);}
-  @Post('planner/focus-events/:id/cards/:cardId') linkFocus(@Req() req:Request,@Param('id') id:string,@Param('cardId') cardId:string){return this.features.linkFocus(this.features.user(req),id,cardId);}
-  @Delete('planner/focus-events/:id/cards/:cardId') unlinkFocus(@Req() req:Request,@Param('id') id:string,@Param('cardId') cardId:string){return this.features.unlinkFocus(this.features.user(req),id,cardId);}
+  @Post('planner/cards') createScheduledCard(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.createScheduledCard(this.features.user(req),body);}
   @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
   @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }
   @Patch('notifications/:id/read') read(@Req() req: Request,@Param('id') id: string) { return this.features.markNotification(this.features.user(req),id); }

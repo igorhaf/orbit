@@ -182,6 +182,7 @@ export const mailPluginDefinition = (providerId: "gmail" | "outlook_mail", name:
       ],
       automationActions: ["search", "create_draft", "send", "reply"].map((action) => ({ id: `${providerId}.${action}`, label: `${name}: ${action}` })),
       automationTriggers: [{ id: "email.received", label: "E-mail recebido" }],
+      notifications: [{ id: "new_email", label: "Novo e-mail" }],
       resourceRenderers: [{ resourceTypes: ["mail_thread", "mail_message"], component: "mail-preview" }],
       settings: [{ id: providerId, label: name, href: `/profile?integration=${providerId}` }],
     },

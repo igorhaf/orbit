@@ -1,14 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api, send, Board } from "@/lib/api";
 import { Modal, useConfirmModal } from "./ui";
 import {
   ArrowDown,
+  ArrowRight,
   ArrowUp,
   Copy,
+  Filter,
+  GitBranch,
+  Library,
   Play,
   Plus,
+  Puzzle,
+  Rocket,
   Trash2,
   Zap,
 } from "lucide-react";
@@ -50,6 +57,20 @@ type Rule = {
   next_run_at?: string | null;
 };
 type Suggestion = { name: string; reason: string; definition: Definition };
+type AutomationTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  category?: string;
+  tags?: string[];
+  pluginId?: string;
+  pluginName?: string;
+  definition: Definition;
+};
+type AutomationCatalog = {
+  pluginActions: { id: string; label: string; description?: string; pluginId: string; scope?: string }[];
+  templates: AutomationTemplate[];
+};
 type Logs = {
   mailConfigured: boolean;
   runs: {
@@ -165,6 +186,73 @@ Object.assign(conditions, {
   provider_id: "Provider",
   resource_type: "Tipo do recurso",
 });
+
+function FlowDiagram({
+  definition,
+  actionLabels,
+  compact = false,
+}: {
+  definition: Definition;
+  actionLabels: Record<string, string>;
+  compact?: boolean;
+}) {
+  const triggerLabel =
+    definition.trigger.type === "event"
+      ? eventNames[definition.trigger.event || ""] || "Evento"
+      : types[definition.trigger.type] || definition.trigger.type;
+  const actionNodes = definition.actions.flatMap((action, index) => {
+    if (action.type === "deploy.publish") {
+      return [
+        "Validar develop",
+        "Versionar develop",
+        "Atualizar main",
+        "Validar main",
+        "Reiniciar Orbit",
+      ].map((label, step) => ({
+        id: `action-${index}-deploy-${step}`,
+        label,
+        detail: `Deploy ${step + 1}/5`,
+        icon: step === 4 ? Rocket : Puzzle,
+        tone: "bg-[#f0edff] text-[#6554c0] border-[#c3b6f7]",
+      }));
+    }
+    return [{
+      id: `action-${index}`,
+      label: actionLabels[action.type] || action.type,
+      detail: action.type.includes(".") ? "Plugin" : `Ação ${index + 1}`,
+      icon: action.type.includes(".") ? Puzzle : Zap,
+      tone: action.type.includes(".")
+        ? "bg-[#f0edff] text-[#6554c0] border-[#c3b6f7]"
+        : "bg-[#e3fcef] text-[#216e4e] border-[#7ee2b8]",
+    }];
+  });
+  const nodes = [
+    { id: "trigger", label: triggerLabel, detail: "Gatilho", icon: GitBranch, tone: "bg-[#e9f2ff] text-[#0c66e4] border-[#b3d4ff]" },
+    ...(definition.conditions.length
+      ? [{ id: "conditions", label: `${definition.conditions.length} ${definition.conditions.length === 1 ? "condição" : "condições"}`, detail: "Filtro", icon: Filter, tone: "bg-[#fff7d6] text-[#7f5f01] border-[#f5cd47]" }]
+      : []),
+    ...actionNodes,
+  ];
+  return (
+    <div className={`scrollbar-thin flex items-stretch overflow-x-auto ${compact ? "py-1" : "rounded-xl border border-[#dfe1e6] bg-[#f7f8fa] p-4"}`}>
+      {nodes.map((node, index) => {
+        const Icon = node.icon;
+        return (
+          <div key={node.id} className="flex shrink-0 items-center">
+            {index > 0 && <ArrowRight size={16} className="mx-2 shrink-0 text-[#8590a2]" />}
+            <div className={`flex min-w-[135px] items-center gap-2 rounded-lg border px-3 ${compact ? "py-2" : "py-3"} ${node.tone}`}>
+              <Icon size={16} className="shrink-0" />
+              <span className="min-w-0">
+                <small className="block text-[9px] font-bold uppercase tracking-wide opacity-75">{node.detail}</small>
+                <strong className="block max-w-[170px] truncate text-xs">{node.label}</strong>
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function Select({
   label,
   value,
@@ -305,8 +393,8 @@ export function AutomationControls({
   listId?: string;
   onChanged?: () => Promise<void>;
 }) {
-  const [open, setOpen] = useState(false),
-    [rules, setRules] = useState<Rule[]>([]),
+  const router = useRouter();
+  const [rules, setRules] = useState<Rule[]>([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [result, setResult] = useState("");
@@ -387,6 +475,7 @@ export function AutomationControls({
           .filter(
             (r) =>
               r.enabled &&
+              !r.definition.actions.some((action) => action.type === "deploy.publish") &&
               r.definition.trigger.type ===
                 (cardId ? "card_button" : "board_button"),
           )
@@ -402,7 +491,7 @@ export function AutomationControls({
               {r.name}
             </button>
           ))}
-      <button className={button} onClick={() => setOpen(true)}>
+      <button className={button} onClick={() => router.push(`/automations?board=${boardId}${listId ? `&list=${listId}` : ""}`)}>
         <Zap size={14} className="mr-1 inline" />
         {listId
           ? "Automatizar lista"
@@ -426,16 +515,6 @@ export function AutomationControls({
           {result}
         </p>
       )}
-      {open && (
-        <AutomationManager
-          boardId={boardId}
-          listId={listId}
-          onClose={() => {
-            setOpen(false);
-            void refresh();
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -444,10 +523,12 @@ function AutomationManager({
   boardId,
   listId,
   onClose,
+  standalone = false,
 }: {
   boardId: string;
   listId?: string;
   onClose: () => void;
+  standalone?: boolean;
 }) {
   const { confirm, confirmationModal } = useConfirmModal();
   const [board, setBoard] = useState<Board | null>(null),
@@ -463,16 +544,21 @@ function AutomationManager({
     [copyRule, setCopyRule] = useState<Rule | null>(null),
     [copyBoard, setCopyBoard] = useState<Board | null>(null),
     [boards, setBoards] = useState<Board[]>([]),
-    [mapping, setMapping] = useState<Record<string, string>>({});
+    [mapping, setMapping] = useState<Record<string, string>>({}),
+    [catalog, setCatalog] = useState<AutomationCatalog>({ pluginActions: [], templates: [] }),
+    [executing, setExecuting] = useState<string | null>(null),
+    [executionMessage, setExecutionMessage] = useState("");
   const load = useCallback(async () => {
-    const [b, r, s] = await Promise.all([
+    const [b, r, s, c] = await Promise.all([
       api<Board>(`/boards/${boardId}`),
       api<Rule[]>(`/boards/${boardId}/automations`),
       api<Suggestion[]>(`/boards/${boardId}/automation-suggestions`),
+      api<AutomationCatalog>(`/boards/${boardId}/automation-catalog`),
     ]);
     setBoard(b);
     setRules(r);
     setSuggestions(s);
+    setCatalog(c);
   }, [boardId]);
   useEffect(() => {
     let active = true;
@@ -480,12 +566,14 @@ function AutomationManager({
       api<Board>(`/boards/${boardId}`),
       api<Rule[]>(`/boards/${boardId}/automations`),
       api<Suggestion[]>(`/boards/${boardId}/automation-suggestions`),
+      api<AutomationCatalog>(`/boards/${boardId}/automation-catalog`),
     ])
-      .then(([b, r, s]) => {
+      .then(([b, r, s, c]) => {
         if (active) {
           setBoard(b);
           setRules(r);
           setSuggestions(s);
+          setCatalog(c);
         }
       })
       .catch((e) => {
@@ -555,10 +643,53 @@ function AutomationManager({
       ...(board?.members || []),
       ...(board?.custom_fields || []),
     ].find((x) => x.id === id);
-  return (
-    <>
-    <Modal onClose={onClose} wide>
-      <div className="max-h-[85vh] w-full overflow-y-auto p-4 text-[#172b4d] dark:text-[#b6c2cf] sm:p-6">
+  const actionLabels = Object.fromEntries([
+    ...Object.entries(actions),
+    ...catalog.pluginActions.map((action) => [action.id, action.label]),
+  ]);
+  async function executeRule(rule: Rule) {
+    setExecuting(rule.id);
+    setExecutionMessage("");
+    setError("");
+    const isDeploy = rule.definition.actions.some((action) => action.type === "deploy.publish");
+    try {
+      const response = await send<{ status: string; error?: string; affected?: number }>(
+        `/automations/${rule.id}/run`,
+        "POST",
+        { requestId: crypto.randomUUID() },
+      );
+      if (response.status === "error") throw new Error(response.error || "A execução falhou.");
+      setExecutionMessage(isDeploy ? "Publicação iniciada. Aguardando o Orbit reiniciar…" : `Fluxo concluído · ${response.affected || 0} ações executadas.`);
+      if (!isDeploy) {
+        await load();
+        setExecuting(null);
+        return;
+      }
+      const expires = Date.now() + 10 * 60_000;
+      let offline = false;
+      const check = async () => {
+        try {
+          if ((await fetch("/api/health", { cache: "no-store" })).ok && offline) {
+            window.location.reload();
+            return;
+          }
+        } catch {
+          offline = true;
+        }
+        if (Date.now() < expires) window.setTimeout(() => void check(), 1500);
+        else {
+          setExecuting(null);
+          setError("O Orbit não voltou a responder. Confira o terminal do gerenciador.");
+        }
+      };
+      window.setTimeout(() => void check(), 1500);
+    } catch (value) {
+      setExecuting(null);
+      setError((value as Error).message);
+    }
+  }
+  const content = (
+      <div className={`${standalone ? "w-full" : "max-h-[85vh] overflow-y-auto"} p-4 text-[#172b4d] dark:text-[#b6c2cf] sm:p-6`}>
         <div className="mb-4 pr-10">
           <h2 className="text-lg font-bold">
             Automação · {board?.title || "Carregando"}
@@ -588,6 +719,39 @@ function AutomationManager({
                 onChange={(e) => setFilter(e.target.value)}
               />
             </div>
+            {catalog.templates.length > 0 && !listId && (
+              <section className="mb-6 rounded-xl border border-[#c3b6f7] bg-[#f7f5ff] p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <Library size={17} className="text-[#6554c0]" />
+                  <div>
+                    <h3 className="text-sm font-bold">Biblioteca de automações</h3>
+                    <p className="text-xs text-[#626f86]">Modelos do Orbit e dos plugins ativos, prontos para adaptar.</p>
+                  </div>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {catalog.templates.map((template) => (
+                    <article key={template.id} className="rounded-lg border border-[#dfe1e6] bg-white p-3 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-[#6554c0]">{template.pluginName || template.category || "Orbit"}</p>
+                          <h4 className="mt-1 font-bold">{template.name}</h4>
+                          <p className="mt-1 text-xs text-[#626f86]">{template.description}</p>
+                        </div>
+                        <button
+                          className={primary + " shrink-0"}
+                          disabled={busy}
+                          onClick={() => void act(() => send(`/boards/${boardId}/automations`, "POST", { name: template.name, tags: template.tags || [], enabled: true, definition: template.definition }))}
+                        >
+                          Usar modelo
+                        </button>
+                      </div>
+                      <div className="mt-3"><FlowDiagram definition={template.definition} actionLabels={actionLabels} compact /></div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+            {executionMessage && <p role="status" className="mb-3 rounded-lg bg-[#e3fcef] p-3 text-sm text-[#216e4e]">{executionMessage}</p>}
             {rules
               .filter((r) =>
                 (r.name + " " + r.tags.join(" "))
@@ -630,7 +794,14 @@ function AutomationManager({
                       {rule.enabled ? "Ativa" : "Pausada"}
                     </label>
                   </div>
+                  <FlowDiagram definition={rule.definition} actionLabels={actionLabels} compact />
                   <div className="flex flex-wrap gap-2">
+                    {rule.definition.trigger.type === "board_button" && (
+                      <button className={primary} disabled={Boolean(executing)} onClick={() => void executeRule(rule)}>
+                        <Play size={13} className="mr-1 inline" />
+                        {executing === rule.id ? "Executando…" : "Executar fluxo"}
+                      </button>
+                    )}
                     <button
                       className={button}
                       onClick={() => setEditing(structuredClone(rule))}
@@ -739,6 +910,10 @@ function AutomationManager({
                 setEditing(null);
             }}
           >
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#626f86]">Prévia do fluxo</p>
+              <FlowDiagram definition={editing.definition} actionLabels={actionLabels} />
+            </div>
             <Text
               label="Nome"
               value={editing.name}
@@ -1012,7 +1187,7 @@ function AutomationManager({
                     <Select
                       label="Ação"
                       value={a.type}
-                      options={actions}
+                      options={actionLabels}
                       onChange={(type) =>
                         changeAction(index, {
                           type,
@@ -1028,20 +1203,22 @@ function AutomationManager({
                         })
                       }
                     />
-                    <Select
-                      label="Aplicar a"
-                      value={a.target || "card"}
-                      options={{
-                        ...(!["scheduled", "board_button"].includes(
-                          editing.definition.trigger.type,
-                        )
-                          ? { card: "Cartão do gatilho" }
-                          : {}),
-                        list: "Cartões de uma lista",
-                        board: "Cartões de todo o quadro",
-                      }}
-                      onChange={(target) => changeAction(index, { target })}
-                    />
+                    {a.type !== "deploy.publish" && (
+                      <Select
+                        label="Aplicar a"
+                        value={a.target || "card"}
+                        options={{
+                          ...(!["scheduled", "board_button"].includes(
+                            editing.definition.trigger.type,
+                          )
+                            ? { card: "Cartão do gatilho" }
+                            : {}),
+                          list: "Cartões de uma lista",
+                          board: "Cartões de todo o quadro",
+                        }}
+                        onChange={(target) => changeAction(index, { target })}
+                      />
+                    )}
                     {a.target === "list" && (
                       <Select
                         label="Lista alvo"
@@ -1090,7 +1267,7 @@ function AutomationManager({
                         onChange={(value) => changeAction(index, { value })}
                       />
                     ) : (
-                      !["archive", "report"].includes(a.type) && (
+                      !["archive", "report", "deploy.publish"].includes(a.type) && (
                         <Text
                           label={
                             ["due", "start"].includes(a.type)
@@ -1128,6 +1305,9 @@ function AutomationManager({
                       />
                     )}
                   </div>
+                  {a.type === "deploy.publish" && (
+                    <p className="rounded-lg bg-[#f0edff] p-3 text-xs text-[#5e2a96]">O plugin compila o ambiente develop, atualiza o main e reinicia o Orbit. A execução fica registrada no histórico deste fluxo.</p>
+                  )}
                   {a.type === "report" && (
                     <div className="space-y-3">
                       <Select
@@ -1347,8 +1527,11 @@ function AutomationManager({
           </section>
         )}
       </div>
-    </Modal>
-    {confirmationModal}
-    </>
   );
+  if (standalone) return <>{content}{confirmationModal}</>;
+  return <><Modal onClose={onClose} wide>{content}</Modal>{confirmationModal}</>;
+}
+
+export function AutomationStudio({ boardId, listId }: { boardId: string; listId?: string }) {
+  return <AutomationManager boardId={boardId} listId={listId} onClose={() => {}} standalone />;
 }

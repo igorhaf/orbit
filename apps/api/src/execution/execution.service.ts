@@ -1,4 +1,4 @@
-import {HttpException,Inject,Injectable,OnModuleInit,OnModuleDestroy} from '@nestjs/common';
+import {HttpException,Inject,Injectable,OnModuleInit,OnModuleDestroy,Optional} from '@nestjs/common';
 import {randomUUID} from 'node:crypto';
 import {PoolClient} from 'pg';
 import {Db} from '../db';
@@ -15,17 +15,20 @@ import {emptyConfig,ExecutionConfig,ExecutionInput,ExecutionResult,permissions} 
 import {validateConfig} from './config';
 import {redact,safePath} from './security';
 import {PluginActionExecutor} from './plugin-action-executor';
+import {PluginNotifications} from '../plugins/notifications';
 
 @Injectable()
 export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
   readonly executors=new ExecutorRegistry();readonly plugins:PluginRegistry;readonly runs:RunRepository;readonly context:ContextBuilder;
   private timer?:ReturnType<typeof setInterval>;private active=false;private stopping=false;
   private controllers=new Map<string,AbortController>();
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(ActionDispatcher) private actions:ActionDispatcher,@Inject(PluginRegistry) plugins:PluginRegistry){
+  private notifications:PluginNotifications;
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(ActionDispatcher) private actions:ActionDispatcher,@Inject(PluginRegistry) plugins:PluginRegistry,@Optional() @Inject(PluginNotifications) notifications?:PluginNotifications){
     this.plugins=plugins;
+    this.notifications=notifications||new PluginNotifications(this.db);
     this.runs=new RunRepository(db,events);this.context=new ContextBuilder(db,projects);
     this.executors.register(new CodexExecutor());
-    this.executors.register(new PluginActionExecutor(this.plugins));
+    this.executors.register(new PluginActionExecutor(this.plugins,this.notifications));
     this.plugins.register(filesystemPlugin());
   }
   onModuleInit(){
@@ -122,7 +125,7 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
       await this.runs.stage(run.id,'executor',`Iniciando ${run.executor}.${run.action}.`);
       if(controller.signal.aborted)throw new Error('Execução cancelada.');
       const result:ExecutionResult=await executor.execute(input);
-      if(run.executor!=='plugin')for(const integration of run.input.config.integrations){if(controller.signal.aborted)throw new Error('Execução cancelada.');await this.runs.stage(run.id,'plugin',`Executando ${integration.plugin}.${integration.action}.`);result.outputs.push(await this.plugins.execute(integration,input))}
+      if(run.executor!=='plugin')for(const integration of run.input.config.integrations){if(controller.signal.aborted)throw new Error('Execução cancelada.');await this.runs.stage(run.id,'plugin',`Executando ${integration.plugin}.${integration.action}.`);result.outputs.push(await this.plugins.execute(integration,input,{notifications:{publish:(notification)=>this.notifications.publish(integration.plugin,input.userId,notification)}}))}
       if(!result||typeof result.summary!=='string'||!Array.isArray(result.outputs)||result.outputs.length>30||JSON.stringify(result).length>200000)throw new Error('Resultado do executor inválido.');
       await this.runs.stage(run.id,'result','Persistindo resultado.');
       const destination=run.input.config.automation.on_success_list_id;

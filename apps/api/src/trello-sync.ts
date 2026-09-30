@@ -1,4 +1,5 @@
-import { HttpException, Inject, Injectable } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param, Patch, Post, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { config as loadEnv } from 'dotenv';
 import { Db } from './db';
 import { FeaturesService } from './features';
@@ -95,4 +96,16 @@ export class TrelloSyncService {
   async sync(id:string){if(this.syncing.has(id))return {id,status:'running'};this.syncing.add(id);try{const connection=await this.db.one<Connection>('SELECT * FROM trello_connections WHERE id=$1 AND enabled',[id]);if(!connection)return {id,status:'disabled'};const pushed=await this.pushPending(connection);const mappings=await this.db.query<{trello_list_id:string;orbit_list_id:string}>('SELECT trello_list_id,orbit_list_id FROM trello_list_mappings WHERE connection_id=$1',[id]);const labelIds=await this.labels(connection.board_id,connection.trello_board_name);let cardCount=0,changed=false;for(const mapping of mappings){const remoteCards=await this.request<TrelloCard[]>(`lists/${mapping.trello_list_id}/cards`,'GET',{fields:'name,desc,due,closed,dateLastActivity,pos',filter:'all'});for(let cardIndex=0;cardIndex<remoteCards.length;cardIndex++){if(await this.pullCard(connection,mapping.orbit_list_id,remoteCards[cardIndex],cardIndex,labelIds))changed=true;cardCount++;}}await this.db.query('UPDATE trello_connections SET last_synced_at=now(),last_error=NULL WHERE id=$1',[id]);if(changed||pushed)this.events.boardChanged(connection.board_id,changed?'trello':'orbit');return {id,status:'ok',lists:mappings.length,cards:cardCount};}catch(reason){const message=reason instanceof Error?reason.message:'Falha desconhecida.';await this.db.query('UPDATE trello_connections SET last_error=$2 WHERE id=$1',[id,message.slice(0,1000)]).catch(()=>undefined);throw reason;}finally{this.syncing.delete(id)}}
   async tick(){const rows=await this.db.query<{id:string}>('SELECT id FROM trello_connections WHERE enabled');await Promise.all(rows.map(row=>this.sync(row.id).catch(()=>undefined)));}
   async connectDefault(){const orbit=process.env.TRELLO_DEFAULT_ORBIT_BOARD_ID||defaultOrbitBoard;const source=process.env.TRELLO_DEFAULT_BOARD_ID||defaultTrelloBoard;const target=await this.db.one<{owner_id:string}>('SELECT owner_id FROM boards WHERE id=$1',[orbit]);if(target)await this.connect(orbit,target.owner_id,source);}
+}
+
+@Controller()
+export class TrelloController {
+  constructor(@Inject(TrelloSyncService) private trello:TrelloSyncService,@Inject(FeaturesService) private features:FeaturesService){}
+  @Get('boards/:id/trello') connections(@Req() req:Request,@Param('id') boardId:string){return this.trello.connections(boardId,this.features.user(req))}
+  @Get('boards/:id/trello/available') available(@Req() req:Request,@Param('id') boardId:string){return this.trello.available(boardId,this.features.user(req))}
+  @Post('boards/:id/trello') connect(@Req() req:Request,@Param('id') boardId:string,@Body() body:Record<string,unknown>){return this.trello.connect(boardId,this.features.user(req),body.trello_board_id)}
+  @Post('boards/:id/trello/sync') sync(@Req() req:Request,@Param('id') boardId:string){return this.trello.syncBoard(boardId,this.features.user(req))}
+  @Delete('boards/:id/trello/:connectionId') disconnect(@Req() req:Request,@Param('id') boardId:string,@Param('connectionId') connectionId:string){return this.trello.disconnect(boardId,this.features.user(req),connectionId)}
+  @Get('lists/:id/trello') listOptions(@Req() req:Request,@Param('id') listId:string){return this.trello.listOptions(listId,this.features.user(req))}
+  @Patch('lists/:id/trello') mapList(@Req() req:Request,@Param('id') listId:string,@Body() body:Record<string,unknown>){return this.trello.mapList(listId,this.features.user(req),body.connection_id,body.trello_list_id)}
 }

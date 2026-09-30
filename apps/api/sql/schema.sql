@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{"theme":"light","notifications":true,"browserNotifications":false,"shortcuts":true,"compactCards":false}'::jsonb;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_model varchar(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_effort varchar(16) CHECK(ai_default_effort IN ('low','medium','high','xhigh'));
 CREATE TABLE IF NOT EXISTS notebooks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -27,6 +29,25 @@ CREATE TABLE IF NOT EXISTS vault_items (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS vault_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name varchar(48) NOT NULL,
+  icon varchar(32) NOT NULL DEFAULT 'LockKeyhole',
+  position integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(owner_id,name)
+);
+CREATE TABLE IF NOT EXISTS plugin_settings (
+  plugin_id varchar(100) PRIMARY KEY,
+  enabled boolean NOT NULL DEFAULT true,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE vault_categories
+  ADD COLUMN IF NOT EXISTS icon varchar(32) NOT NULL DEFAULT 'LockKeyhole',
+  ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS vault_categories_owner_idx ON vault_categories(owner_id,name);
+CREATE INDEX IF NOT EXISTS vault_categories_owner_position_idx ON vault_categories(owner_id,position,id);
 CREATE INDEX IF NOT EXISTS vault_items_owner_updated_idx ON vault_items(owner_id, updated_at DESC);
 CREATE TABLE IF NOT EXISTS workspaces (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -108,6 +129,7 @@ ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_start_at timestamptz;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_end_at timestamptz;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_all_day boolean NOT NULL DEFAULT false;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_time_zone varchar(100);
+ALTER TABLE vault_items ADD COLUMN IF NOT EXISTS card_id uuid UNIQUE REFERENCES cards(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS cards_mirror_source_idx ON cards(mirror_source_id) WHERE mirror_source_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS cards_list_position_idx ON cards(list_id, position);
 CREATE TABLE IF NOT EXISTS labels (
@@ -125,10 +147,12 @@ CREATE TABLE IF NOT EXISTS comments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
   author_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  author_label text,
   body text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE comments ADD COLUMN IF NOT EXISTS edited_at timestamptz;
+ALTER TABLE comments ADD COLUMN IF NOT EXISTS author_label text;
 CREATE TABLE IF NOT EXISTS comment_attachments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   comment_id uuid NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
@@ -235,12 +259,14 @@ CREATE TABLE IF NOT EXISTS activities (
 CREATE INDEX IF NOT EXISTS activities_board_created_idx ON activities(board_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  plugin_id varchar(80) NOT NULL DEFAULT 'cards',
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   board_id uuid REFERENCES boards(id) ON DELETE CASCADE,
   card_id uuid REFERENCES cards(id) ON DELETE CASCADE,
   kind varchar(32) NOT NULL,
   title varchar(300) NOT NULL,
   body text NOT NULL DEFAULT '',
+  target_url text,
   read_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -346,6 +372,21 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS codex_session_id text;
 CREATE INDEX IF NOT EXISTS card_ai_runs_card_started_idx ON card_ai_runs(card_id, started_at DESC);
+CREATE TABLE IF NOT EXISTS card_ai_comment_jobs (
+  comment_id uuid PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE,
+  card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id uuid NOT NULL REFERENCES ai_projects(id) ON DELETE RESTRICT,
+  model varchar(100) NOT NULL,
+  effort varchar(16) NOT NULL CHECK(effort IN ('low','medium','high','xhigh')),
+  status varchar(16) NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','success','error')),
+  answer_comment_id uuid REFERENCES comments(id) ON DELETE SET NULL,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  finished_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS card_ai_comment_jobs_queue_idx ON card_ai_comment_jobs(card_id,status,created_at);
 CREATE TABLE IF NOT EXISTS trello_connections (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,

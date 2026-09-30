@@ -26,7 +26,15 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
   onModuleDestroy(){if(this.timer)clearInterval(this.timer)}
   async list(board:string,user:string){await this.features.member(board,user);return this.db.query('SELECT * FROM automations WHERE board_id=$1 ORDER BY created_at DESC',[board])}
   async status(board:string,user:string){await this.features.member(board,user);return this.db.one('SELECT max(r.created_at) AS last FROM automation_runs r JOIN automations a ON a.id=r.automation_id WHERE a.board_id=$1',[board])}
-  async catalog(board:string,user:string){await this.features.member(board,user);return {events:[...new Set([...events,...this.plugins.automationTriggers().map(trigger=>trigger.id)])],actions:[...new Set([...actionTypes,...this.dispatcher.list()])],pluginTriggers:this.plugins.automationTriggers()}}
+  async catalog(board:string,user:string){
+    await this.features.member(board,user);
+    const templates=[
+      {id:'orbit.celebrate-completion',name:'Registrar conclusão',description:'Quando um cartão for concluído, publica uma confirmação no próprio cartão.',category:'Organização',pluginName:'Orbit',tags:['conclusão','histórico'],definition:{trigger:{type:'event',event:'card_completed'},conditions:[{field:'completed',op:'eq',value:'true'}],actions:[{type:'comment',target:'card',value:'✅ Trabalho concluído e registrado pela automação.'}]}},
+      {id:'orbit.archive-completed',name:'Limpeza semanal de concluídos',description:'Toda segunda-feira, arquiva os cartões concluídos do quadro.',category:'Organização',pluginName:'Orbit',tags:['limpeza','semanal'],definition:{trigger:{type:'scheduled',frequency:'weekly',time:'18:00',timezone:'America/Recife',weekday:1},conditions:[{field:'completed',op:'eq',value:'true'}],actions:[{type:'archive',target:'board'}]}},
+      ...this.plugins.automationTemplates(),
+    ];
+    return {events:[...new Set([...events,...this.plugins.automationTriggers().map(trigger=>trigger.id)])],actions:[...new Set([...actionTypes,...this.dispatcher.list()])],pluginTriggers:this.plugins.automationTriggers(),pluginActions:this.plugins.automationActions(),templates};
+  }
   async access(id:string,user:string){const rule=await this.db.one<Rule>('SELECT * FROM automations WHERE id=$1',[checkId(id)]);if(!rule)bad('Automação não encontrada.',404);await this.features.member(rule!.board_id,user);return rule!}
   private async references(board:string,d:Definition){
     const refs:{table:string;id:string;column?:string}[]=[];
@@ -91,6 +99,7 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
   private async action(client:PoolClient,rule:Rule,action:AutomationAction,c:Context,now:Date){
     const text=interpolate(action.value||'',c,now),id=c.id as string;
     if(this.dispatcher.has(action.type)){
+      this.plugins.automationAction(action.type);
       const chain=(await client.query("SELECT COALESCE(NULLIF(current_setting('orbit.automation_chain',true),'')::uuid[],'{}'::uuid[]) AS chain")).rows[0].chain;
       await this.dispatcher.dispatch({type:action.type,cardId:id,boardId:rule.board_id,userId:rule.owner_id,config:{value:text,list_id:text},chain},client);return;
     }
@@ -133,8 +142,8 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
       case 'checklist_complete':await client.query("UPDATE checklist_items SET completed=true WHERE card_id=$1 AND ($2='' OR text ILIKE '%' || $2 || '%')",[id,text]);break;
     }
     await client.query('INSERT INTO activities(actor_id,board_id,card_id,kind,body) VALUES($1,$2,$3,$4,$5)',[rule.owner_id,rule.board_id,id,'automation',`${rule.name}: ${action.type}`]);
-    await client.query(`INSERT INTO notifications(user_id,board_id,card_id,kind,title,body)
-      SELECT DISTINCT watcher.user_id,$2,$3,'automation',$4,$5 FROM (
+    await client.query(`INSERT INTO notifications(plugin_id,user_id,board_id,card_id,kind,title,body)
+      SELECT DISTINCT 'automations',watcher.user_id,$2,$3,'automation',$4,$5 FROM (
       SELECT user_id FROM card_watchers WHERE card_id=$3 UNION SELECT user_id FROM list_watchers WHERE list_id=$6 UNION SELECT user_id FROM board_watchers WHERE board_id=$2) watcher
       JOIN board_members bm ON bm.user_id=watcher.user_id AND bm.board_id=$2 JOIN users u ON u.id=watcher.user_id
       WHERE $1::uuid IS NOT NULL AND COALESCE((u.preferences->>'notifications')::boolean,true)`,[rule.owner_id,rule.board_id,id,rule.name,`${c.title}: ${action.type}`,c.list_id]);
@@ -187,6 +196,12 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
       let affected=0;
       const selections=new Map<string,string[]>();
       for(const action of rule.definition.actions){
+        const pluginAction=this.plugins.automationAction(action.type);
+        if(pluginAction?.scope==='workspace'){
+          if(!this.dispatcher.has(action.type))throw new Error(`Ação do plugin indisponível: ${action.type}`);
+          await this.dispatcher.dispatch({type:action.type,cardId:source||'',boardId:rule.board_id,userId:rule.owner_id,config:{value:action.value||'',list_id:action.listId||''},chain},client);
+          affected++;continue;
+        }
         if(action.type==='create_card'){
           const listId=action.target==='list'?action.listId:sourceContext?.list_id;
           if(!listId)throw new Error('Selecione uma lista para criar o cartão.');

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { remember } from "@/lib/history";
 import {
   Activity as ActivityIcon,
   CheckSquare,
@@ -19,6 +20,8 @@ import {
   send,
   Activity,
   AiProject,
+  AiEffort,
+  AiModel,
   Board,
   HomeCard,
   Preferences,
@@ -37,6 +40,7 @@ import {
 } from "@/components/ui";
 import { useHydrated } from "@/lib/use-hydrated";
 import { CalendarIntegrations } from "@/components/calendar-integrations";
+import { AiEffortField, AiModelFields } from "@/components/ai-model-fields";
 
 type DropboxStatus = { configured: boolean; connections: Array<{ id: string; display_name: string; label: string; status: string; metadata: { email?: string | null } }> };
 type EnvironmentSettings = { groups: Array<{ id:string; label:string; fields:Array<{key:string;label:string;secret:boolean;value:string;configured:boolean}> }> };
@@ -57,6 +61,7 @@ export default function ProfilePage() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [cards, setCards] = useState<HomeCard[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
+  const [models, setModels] = useState<AiModel[]>([]);
   const [projectName, setProjectName] = useState("");
   const [projectPath, setProjectPath] = useState("");
   const [directoryPicker, setDirectoryPicker] = useState<{path:string;parent:string|null;name:string;folders:Array<{name:string;path:string}>}|null>(null);
@@ -77,7 +82,7 @@ export default function ProfilePage() {
   const [create, setCreate] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [account, all, activity, assigned, projectList, dropboxStatus] = await Promise.all(
+      const [account, all, activity, assigned, projectList, dropboxStatus, availableModels] = await Promise.all(
         [
           api<User>("/account"),
           api<Board[]>("/boards"),
@@ -85,6 +90,7 @@ export default function ProfilePage() {
           api<HomeCard[]>("/account/cards"),
           api<AiProject[]>("/ai/projects"),
           api<DropboxStatus>("/dropbox/status"),
+          api<AiModel[]>("/ai/models"),
         ],
       );
       setCurrentUser(account);
@@ -94,6 +100,7 @@ export default function ProfilePage() {
       setActivities(activity);
       setCards(assigned);
       setProjects(projectList);
+      setModels(availableModels);
       setDropbox(dropboxStatus);
       setError("");
     } catch (err) {
@@ -174,6 +181,23 @@ export default function ProfilePage() {
     } catch (err) {
       setError((err as Error).message);
     }
+  }
+  async function saveGlobalAi(body: { ai_default_model?: string | null; ai_default_effort?: AiEffort | null }) {
+    try {
+      const settings = await send<{ ai_default_model: string | null; ai_default_effort: AiEffort | null }>("/ai/settings", "PATCH", body);
+      setCurrentUser((current) => current ? { ...current, ...settings } : current);
+      if (user) setUser({ ...user, ...settings });
+      setNotice("Configuração global de IA salva.");
+      setError("");
+    } catch (err) { setError((err as Error).message); }
+  }
+  async function saveProjectAi(projectId: string, body: { ai_default_model?: string | null; ai_default_effort?: AiEffort | null }) {
+    try {
+      const updated = await send<AiProject>(`/ai/projects/${projectId}`, "PATCH", body);
+      setProjects((current) => current.map((project) => project.id === projectId ? updated : project));
+      setNotice("Configuração do projeto salva.");
+      setError("");
+    } catch (err) { setError((err as Error).message); }
   }
   async function browserNotifications() {
     if (!user?.preferences) return;
@@ -266,6 +290,7 @@ export default function ProfilePage() {
       background,
       workspace_id: workspaceId,
     });
+    remember({label:'criar quadro',undo:[{path:`/boards/${board.id}/close`,method:'PATCH'}],redo:[{path:`/boards/${board.id}/reopen`,method:'PATCH'}]});
     router.push(`/board/${board.id}`);
   }
   if (!ready) return <div className="min-h-screen bg-[#f7f8fa]" />;
@@ -534,16 +559,32 @@ export default function ProfilePage() {
                           <strong className="block text-sm">
                             {project.name}
                           </strong>
+                          {project.is_native && (
+                            <span className="text-xs font-semibold text-[#6554c0]">
+                              Projeto nativo do Orbit
+                            </span>
+                          )}
                           <code className="block truncate text-xs text-[#626f86]">
                             {project.local_path}
                           </code>
+                          <details className="mt-3 max-w-2xl rounded-lg border border-[#dfe1e6] p-3">
+                            <summary className="cursor-pointer text-xs font-semibold">Configuração de IA do projeto</summary>
+                            <div className="mt-3 space-y-3">
+                              <AiModelFields value={project.ai_default_model} inheritedValue={user?.ai_default_model} models={models} onSave={(value) => saveProjectAi(project.id, { ai_default_model: value })} />
+                              <AiEffortField value={project.ai_default_effort} inheritedValue={user?.ai_default_effort} onChange={(value) => saveProjectAi(project.id, { ai_default_effort: value })} />
+                            </div>
+                          </details>
                         </div>
-                        <button
-                          onClick={() => void removeProject(project.id)}
-                          className="text-xs text-[#ae2a19]"
-                        >
-                          Remover
-                        </button>
+                        {project.is_native ? (
+                          <span className="text-xs text-[#626f86]">Integrado</span>
+                        ) : (
+                          <button
+                            onClick={() => void removeProject(project.id)}
+                            className="text-xs text-[#ae2a19]"
+                          >
+                            Remover
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -657,6 +698,14 @@ export default function ProfilePage() {
           )}
           {tab === "settings" && (
             <div className="grid gap-6 md:grid-cols-2">
+              <section className="rounded-xl border border-[#c3b6f7] bg-[#f7f5ff] p-6 shadow-sm">
+                <h2 className="mb-1 text-lg font-bold text-[#403294]">IA global</h2>
+                <p className="mb-5 text-sm text-[#626f86]">Base de modelo e esforço para projetos, quadros e cartões sem configuração própria. Sem escolha, o campo continua vazio.</p>
+                <div className="space-y-4">
+                  <AiModelFields value={user?.ai_default_model} models={models} onSave={(value) => saveGlobalAi({ ai_default_model: value })} />
+                  <AiEffortField value={user?.ai_default_effort} onChange={(value) => saveGlobalAi({ ai_default_effort: value })} />
+                </div>
+              </section>
               <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
                 <h2 className="mb-1 text-lg font-bold">Aparência</h2>
                 <p className="mb-5 text-sm text-[#626f86]">
@@ -667,7 +716,7 @@ export default function ProfilePage() {
                     <button
                       key={theme}
                       onClick={() => preference("theme", theme)}
-                      className={`flex flex-col items-center gap-2 rounded-lg border-2 p-5 text-sm font-semibold ${preferences.theme === theme ? "border-[#0c66e4] bg-[#e9f2ff]" : "border-[#dfe1e6] hover:border-[#8590a2]"}`}
+                      className={`flex flex-col items-center gap-2 rounded-lg border-2 p-5 text-sm font-semibold text-[#172b4d] ${preferences.theme === theme ? "border-[#0c66e4] bg-[#e9f2ff]" : "border-[#dfe1e6] hover:border-[#8590a2]"}`}
                     >
                       {theme === "light" ? (
                         <Palette size={25} />

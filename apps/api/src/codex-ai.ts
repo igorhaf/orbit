@@ -22,8 +22,8 @@ export class CodexAiService {
     const result=await this.run(instruction, process.cwd(), 'read-only', model, effort);
     return typeof result==='string'?result:result.output;
   }
-  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null): Promise<CodexExecution> {
-    const result=await this.run(instruction, projectPath, 'workspace-write', model, effort, progress, sessionId);
+  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void): Promise<CodexExecution> {
+    const result=await this.run(instruction, projectPath, 'workspace-write', model, effort, progress, sessionId, onSessionId);
     return typeof result==='string'?{output:result,sessionId:sessionId||null}:result;
   }
   private progressMessage(line:string):string|null {
@@ -39,17 +39,19 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
-  private async run(instruction: string, workingDirectory: string, sandbox: 'read-only'|'workspace-write', model?: string, effort?: string, progress?:Progress, sessionId?:string|null): Promise<string|CodexExecution> {
+  private async run(instruction: string, workingDirectory: string, sandbox: 'read-only'|'workspace-write', model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void): Promise<string|CodexExecution> {
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
     const executable = process.env.CODEX_BIN || 'codex';
     const timeout = Number(process.env.CODEX_AI_TIMEOUT_MS || 300_000);
     let detectedSessionId: string|null = sessionId || null;
+    let sessionPersistence=Promise.resolve();
+    let sessionPersistenceError:unknown;
 
     try {
       await new Promise<void>((resolve, reject) => {
         const command = sessionId
-          ? ['exec', '-C', workingDirectory, 'resume', sessionId, '--skip-git-repo-check']
+          ? ['exec', '-C', workingDirectory, 'resume', sessionId, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
           : ['exec', '--sandbox', sandbox, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
         const child = spawn(executable, [
           ...command,
@@ -65,7 +67,16 @@ export class CodexAiService {
         child.stdout?.on('data',(chunk:Buffer)=>{
           stdout+=chunk.toString();const lines=stdout.split(/\r?\n/);stdout=lines.pop()||'';
           for(const line of lines){
-            try { const event=JSON.parse(line) as {type?:string;thread_id?:string}; if(event.type==='thread.started'&&typeof event.thread_id==='string') detectedSessionId=event.thread_id; } catch { /* Non-JSON output is ignored. */ }
+            try {
+              const event=JSON.parse(line) as {type?:string;thread_id?:string};
+              if(event.type==='thread.started'&&typeof event.thread_id==='string'){
+                detectedSessionId=event.thread_id;
+                sessionPersistence=sessionPersistence.then(async()=>{
+                  try { await onSessionId?.(event.thread_id!); }
+                  catch(error) { sessionPersistenceError=error; }
+                });
+              }
+            } catch { /* Non-JSON output is ignored. */ }
             const message=this.progressMessage(line);if(message)progress?.(message.slice(0,2000));
           }
         });
@@ -77,12 +88,16 @@ export class CodexAiService {
           else reject(new Error(stderr || 'O Codex não conseguiu concluir a solicitação.'));
         });
       });
+      await sessionPersistence;
+      if(sessionPersistenceError)throw sessionPersistenceError;
       const text = (await readFile(output, 'utf8')).trim();
       if (!text) throw new Error('O Codex não retornou conteúdo.');
       const result={output:text.slice(0, MAX_OUTPUT),sessionId:detectedSessionId};
       return progress ? result : result.output;
     } catch (error) {
-      const detail = error instanceof Error ? error.message : '';
+      await sessionPersistence;
+      const failure=sessionPersistenceError||error;
+      const detail = failure instanceof Error ? failure.message : '';
       throw new HttpException(codexErrorMessage(detail), 502);
     } finally {
       await rm(directory, { recursive: true, force: true });

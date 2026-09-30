@@ -86,6 +86,7 @@ export default function BoardsPage() {
       background,
       workspace_id: workspaceId,
     });
+    remember({label:'criar quadro',undo:[{path:`/boards/${board.id}/close`,method:'PATCH'}],redo:[{path:`/boards/${board.id}/reopen`,method:'PATCH'}]});
     router.push(`/board/${board.id}`);
   }
   async function toggleStar(board: Board) {
