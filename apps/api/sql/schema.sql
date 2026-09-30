@@ -334,6 +334,7 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   model varchar(100) NOT NULL,
   effort varchar(16) NOT NULL DEFAULT 'medium',
   prompt text NOT NULL,
+  codex_session_id text,
   output text,
   status varchar(16) NOT NULL DEFAULT 'running' CHECK(status IN ('running','success','error')),
   error text,
@@ -341,6 +342,7 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   finished_at timestamptz
 );
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';
+ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS codex_session_id text;
 CREATE INDEX IF NOT EXISTS card_ai_runs_card_started_idx ON card_ai_runs(card_id, started_at DESC);
 CREATE TABLE IF NOT EXISTS trello_connections (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

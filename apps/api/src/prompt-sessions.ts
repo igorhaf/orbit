@@ -100,22 +100,27 @@ export class PromptSessionsService {
     const updated=await this.db.one('UPDATE cards SET ai_project_id=$2,ai_model=$3,ai_effort=$4,updated_at=now() WHERE id=$1 RETURNING ai_project_id,ai_model,ai_effort',[cardId,projectId,model,effort]);
     await this.features.record(userId,context.boardId,cardId,'prompt_session','configurou a sessão de prompt');return updated;
   }
-  async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,model,effort,status,output,error,started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY started_at DESC LIMIT 20',[cardId]);}
-  async execute(cardId:string,userId:string){
+  async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,model,effort,status,output,error,codex_session_id,started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY started_at DESC LIMIT 20',[cardId]);}
+  async execute(cardId:string,userId:string,body:Payload={}){
     const context=await this.card(cardId,userId);const card=context.card;const model=card.ai_model||card.ai_default_model;const effort=card.ai_effort||card.ai_default_effort||'medium' as Effort;const projectId=card.ai_project_id||card.ai_default_project_id;
     if(!model)fail('Escolha um modelo.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
     const project=await this.db.one<{id:string;name:string;local_path:string}>('SELECT id,name,local_path FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
     if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string};const localPath=await this.localPath(currentProject.local_path);
     const orbitRoot=resolve(process.env.ORBIT_DEPLOY_ROOT||resolve(process.cwd(),'../..'));
     const deployNote=localPath===orbitRoot?'\n\nEste é o projeto do próprio Orbit. Não execute build, deploy, migrations nem reinicie servidores; faça apenas as alterações solicitadas. O botão Deploy do Orbit compila e reinicia depois que a execução terminar.':'';
-    const prompt=`Você está executando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.${deployNote}\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO:\n${card.description||card.title}`;
+    const additional=body.instruction===undefined?'':typeof body.instruction==='string'&&body.instruction.trim().length<=4000?body.instruction.trim():fail('A instrução adicional é inválida.');
+    const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND codex_session_id IS NOT NULL ORDER BY started_at DESC LIMIT 1',[cardId,currentProject.id]);
+    const continuing=Boolean(previous?.codex_session_id);
+    const prompt=continuing
+      ? `Continue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a instrução pedir.\n\nCARTÃO: ${card.title}\n\nDESCRIÇÃO ATUAL:\n${card.description||'(sem descrição)'}\n\nNOVA INSTRUÇÃO:\n${additional||'Continue a implementação e informe o próximo resultado.'}`
+      : `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.${deployNote}\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${additional?`\n\nINSTRUÇÃO ADICIONAL:\n${additional}`:''}`;
     const client=await this.db.pool.connect();let run:{id:string};
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[cardId]);
       if((await client.query("SELECT id FROM card_runs WHERE card_id=$1 AND status IN ('queued','running') UNION ALL SELECT id FROM card_ai_runs WHERE card_id=$1 AND status='running'",[cardId])).rowCount)fail('Este cartão já possui uma execução ativa.',409);
       run=(await client.query<{id:string}>('INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[cardId,currentProject.id,userId,model,effort,prompt])).rows[0];await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message:`Iniciando ${model} com esforço ${effort}.`});
-    try { const output=await this.codex.execute(prompt,localPath,model as string,effort,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})); await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,finished_at=now() WHERE id=$1",[run!.id,output]); await this.features.record(userId,context.boardId,cardId,'prompt_execution',`executou ${model} em ${currentProject.name}`); this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'}); return {id:run!.id,model,effort,status:'success' as const,output}; }
+    try { const result=await this.codex.execute(prompt,localPath,model as string,effort,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}),previous?.codex_session_id); await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,codex_session_id=$3,finished_at=now() WHERE id=$1",[run!.id,result.output,result.sessionId]); await this.features.record(userId,context.boardId,cardId,'prompt_execution',`${continuing?'continuou':'iniciou'} a conversa com ${model} em ${currentProject.name}`); this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'}); return {id:run!.id,model,effort,status:'success' as const,output:result.output,codex_session_id:result.sessionId}; }
     catch(error){const message=error instanceof Error?error.message:'A execução falhou.';await this.db.query("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1",[run!.id,message]);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'error',message});throw error;}
   }
 }

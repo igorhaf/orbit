@@ -1102,7 +1102,7 @@ class ApiController {
   @Patch('boards/:id/prompt-settings') updateBoardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateBoard(id,this.service.user(req),body);}
   @Patch('cards/:id/prompt-settings') updateCardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateCard(id,this.service.user(req),body);}
   @Get('cards/:id/prompt-runs') promptRuns(@Req() req:Request,@Param('id') id:string){return this.prompts.runs(id,this.service.user(req));}
-  @Post('cards/:id/prompt-runs') executePrompt(@Req() req:Request,@Param('id') id:string){return this.prompts.execute(id,this.service.user(req));}
+  @Post('cards/:id/prompt-runs') executePrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.execute(id,this.service.user(req),body);}
   @Post('deploy') deploy(@Req() req:Request){return this.service.deployOrbit(this.service.user(req));}
   @Get('boards') boards(@Req() req: Request,@Query('status') status='active') { return this.service.boards(this.service.user(req),status); }
   @Post('boards') createBoard(@Req() req: Request,@Body() body: Payload) { return this.service.createBoard(this.service.user(req),body); }

@@ -155,11 +155,9 @@ export function CardAi({
     setBusy(true);
     setError("");
     try {
-      const run = await send<PromptRun>(
-        `/cards/${card.id}/prompt-runs`,
-        "POST",
-      );
+      const run = await send<PromptRun>(`/cards/${card.id}/prompt-runs`, "POST", { instruction });
       setRuns([run, ...runs]);
+      setInstruction("");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -289,7 +287,7 @@ export function CardAi({
           onClick={() => void execute()}
           className="flex items-center gap-1 rounded bg-[#403294] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
         >
-          <Play size={13} /> Executar
+          <Play size={13} /> {runs.some((run) => run.codex_session_id) ? "Continuar" : "Executar"}
         </button>
       </div>
       <textarea
@@ -297,7 +295,7 @@ export function CardAi({
         onChange={(event) => setInstruction(event.target.value)}
         maxLength={2000}
         rows={2}
-        placeholder="Instrução adicional (opcional)"
+        placeholder={runs.some((run) => run.codex_session_id) ? "Próxima mensagem para continuar a conversa" : "Instrução adicional (opcional)"}
         className="mt-2 w-full rounded border border-[#c3b6f7] bg-white p-2 text-xs text-[#172b4d]"
       />
       {error && (
@@ -330,7 +328,7 @@ export function CardAi({
       {runs[0] && (
         <div className="mt-3 rounded bg-white p-2 text-xs">
           <strong>
-            Última execução · {label(runs[0].model, models)} ·{" "}
+            {runs[0].codex_session_id ? "Conversa persistida" : "Última execução"} · {label(runs[0].model, models)} ·{" "}
             {efforts[effortIndex(runs[0].effort)].label}
           </strong>
           <span className="ml-2 text-[#626f86]">
