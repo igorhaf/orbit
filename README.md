@@ -76,7 +76,7 @@ npm run build
 npm run orbit:serve
 ```
 
-O Orbit é um projeto nativo em `/home/meada/projetos/orbit-dev`; ele não aparece na lista de projetos locais. Depois de uma sessão de prompt que o altere, clique em **Deploy**. Ele interrompe a interface, cria um commit das alterações em `develop`, envia para o remoto, atualiza o repositório principal em `main`, aplica as migrações, compila API e web e inicia o Orbit novamente. A tela fica travada até a reconexão.
+O Orbit é um projeto nativo em `/home/meada/projetos/orbit-dev`; ele não aparece na lista de projetos locais. Execute a aplicação pela cópia principal em `/home/meada/projetos/orbit`, na branch `main`. Depois de uma sessão de prompt que altere o projeto nativo, clique em **Deploy**: a cópia em `orbit-dev` é compilada, testada, enviada para `develop`; a cópia principal em `main` faz pull de `develop`, envia o avanço de `main` ao remoto, aplica as migrações, compila e reinicia. A tela fica travada até a reconexão.
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 

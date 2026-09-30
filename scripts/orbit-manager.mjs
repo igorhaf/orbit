@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const stableRoot = resolve(process.env.ORBIT_STABLE_ROOT || join(root, '../orbit'));
+const developmentRoot = resolve(process.env.ORBIT_DEVELOPMENT_ROOT || join(root, '../orbit-dev'));
 const request = resolve(root, '.orbit-deploy-request');
 const heartbeat = resolve(root, '.orbit-deploy-manager');
 const status = resolve(root, '.orbit-deploy-status.json');
@@ -30,17 +30,16 @@ const gitOutput = (directory, args) => new Promise((resolveOutput, reject) => {
 });
 
 async function publishDevelopment() {
-  await git(root, ['add', '-A']);
-  if ((await gitOutput(root, ['status', '--porcelain'])).trim()) await git(root, ['commit', '-m', 'chore: deploy Orbit development changes']);
-  await git(root, ['push', 'origin', 'develop']);
+  await git(developmentRoot, ['add', '-A']);
+  if ((await gitOutput(developmentRoot, ['status', '--porcelain'])).trim()) await git(developmentRoot, ['commit', '-m', 'chore: deploy Orbit development changes']);
+  await git(developmentRoot, ['push', 'origin', 'develop']);
 }
 
 async function updateStableOrbit() {
-  if ((await gitOutput(stableRoot, ['status', '--porcelain'])).trim()) throw new Error('O repositório principal do Orbit tem alterações locais. Finalize-as antes do Deploy.');
-  await git(stableRoot, ['fetch', 'origin', 'main', 'develop']);
-  await git(stableRoot, ['checkout', 'main']);
-  await git(stableRoot, ['merge', '--ff-only', 'origin/develop']);
-  await git(stableRoot, ['push', 'origin', 'main']);
+  if ((await gitOutput(root, ['status', '--porcelain'])).trim()) throw new Error('O Orbit em main tem alterações locais. Finalize-as antes do Deploy.');
+  await git(root, ['checkout', 'main']);
+  await git(root, ['pull', '--ff-only', 'origin', 'develop']);
+  await git(root, ['push', 'origin', 'main']);
 }
 
 function stopChildren() {
@@ -67,11 +66,12 @@ async function deploy() {
   await writeFile(status, JSON.stringify({ status: 'building', started_at: new Date().toISOString() }));
   stopChildren();
   try {
-    await run(npm, ['run', 'build']);
+    await run(npm, ['run', 'build'], { cwd: developmentRoot });
     await publishDevelopment();
-    await run(npm, ['test', '-w', 'apps/api']);
+    await run(npm, ['test', '-w', 'apps/api'], { cwd: developmentRoot });
     await updateStableOrbit();
     await run(npm, ['run', 'db:migrate', '-w', 'apps/api']);
+    await run(npm, ['run', 'build']);
     await writeFile(status, JSON.stringify({ status: 'restarting', finished_at: new Date().toISOString() }));
   } catch (error) {
     await writeFile(status, JSON.stringify({ status: 'failed', error: error instanceof Error ? error.message : 'Falha na compilação.' }));
