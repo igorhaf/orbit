@@ -49,7 +49,7 @@ export class CodexAiService {
     try {
       await new Promise<void>((resolve, reject) => {
         const command = sessionId
-          ? ['exec', 'resume', sessionId, '--skip-git-repo-check']
+          ? ['exec', '-C', workingDirectory, 'resume', sessionId, '--skip-git-repo-check']
           : ['exec', '--sandbox', sandbox, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
         const child = spawn(executable, [
           ...command,

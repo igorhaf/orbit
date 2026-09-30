@@ -34,9 +34,9 @@ export class PromptSessionsService {
   private nativeProjectPath(){return resolve(process.env.ORBIT_NATIVE_ROOT||'/home/meada/projetos/orbit-dev');}
   private async command(directory:string,args:string[]){
     await new Promise<void>((resolveCommand,reject)=>{
-      const child=spawn(npm,args,{cwd:directory,stdio:['ignore','ignore','pipe']});let error='';
-      child.stderr.on('data',chunk=>{error=(error+chunk.toString()).slice(-2000);});
-      child.on('error',reject);child.on('close',code=>code===0?resolveCommand():reject(new Error(error||`${args.join(' ')} terminou com código ${code}.`)));
+      const child=spawn(npm,args,{cwd:directory,stdio:['ignore','pipe','pipe']});let output='';
+      child.stdout.on('data',chunk=>{output=(output+chunk.toString()).slice(-2000);});child.stderr.on('data',chunk=>{output=(output+chunk.toString()).slice(-2000);});
+      child.on('error',reject);child.on('close',code=>code===0?resolveCommand():reject(new Error(output.trim()||`${args.join(' ')} terminou com código ${code}.`)));
     });
   }
   private async nativeChanges(directory:string){
@@ -135,8 +135,8 @@ export class PromptSessionsService {
   async execute(cardId:string,userId:string,body:Payload={}){
     const context=await this.card(cardId,userId);const card=context.card;const model=card.ai_model||card.ai_default_model;const effort=card.ai_effort||card.ai_default_effort||'medium' as Effort;const projectId=card.ai_project_id||card.ai_default_project_id;
     if(!model)fail('Escolha um modelo.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
-    const project=await this.db.one<{id:string;name:string;local_path:string}>('SELECT id,name,local_path FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
-    if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string};const localPath=await this.localPath(currentProject.local_path);
+    const project=await this.db.one<{id:string;name:string;local_path:string;is_native:boolean}>('SELECT id,name,local_path,is_native FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
+    if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string;is_native:boolean};const localPath=await this.localPath(currentProject.local_path);
     const orbitRoot=this.nativeProjectPath();
     const deployNote=localPath===orbitRoot?'\n\nEste é o projeto do próprio Orbit. Não execute build, deploy, migrations nem reinicie servidores; faça apenas as alterações solicitadas. O botão Deploy do Orbit compila e reinicia depois que a execução terminar.':'';
     const additional=body.instruction===undefined?'':typeof body.instruction==='string'&&body.instruction.trim().length<=4000?body.instruction.trim():fail('A instrução adicional é inválida.');
@@ -151,7 +151,7 @@ export class PromptSessionsService {
       run=(await client.query<{id:string}>('INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[cardId,currentProject.id,userId,model,effort,prompt])).rows[0];await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message:`Iniciando ${model} com esforço ${effort}.`});
-    try { const result=await this.codex.execute(prompt,localPath,model as string,effort,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}),previous?.codex_session_id);if(localPath===orbitRoot)await this.validateNativeChanges(localPath,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})); await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,codex_session_id=$3,finished_at=now() WHERE id=$1",[run!.id,result.output,result.sessionId]); await this.features.record(userId,context.boardId,cardId,'prompt_execution',`${continuing?'continuou':'iniciou'} a conversa com ${model} em ${currentProject.name}`); this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'}); return {id:run!.id,model,effort,status:'success' as const,output:result.output,codex_session_id:result.sessionId}; }
-    catch(error){const message=error instanceof Error?error.message:'A execução falhou.';await this.db.query("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1",[run!.id,message]);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'error',message});throw error;}
+    try { const result=await this.codex.execute(prompt,localPath,model as string,effort,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}),previous?.codex_session_id);if(currentProject.is_native)await this.validateNativeChanges(localPath,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})); await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,codex_session_id=$3,finished_at=now() WHERE id=$1",[run!.id,result.output,result.sessionId]); await this.features.record(userId,context.boardId,cardId,'prompt_execution',`${continuing?'continuou':'iniciou'} a conversa com ${model} em ${currentProject.name}`); this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'}); return {id:run!.id,model,effort,status:'success' as const,output:result.output,codex_session_id:result.sessionId}; }
+    catch(error){const message=error instanceof Error?error.message:'A execução falhou.';await this.db.query("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1",[run!.id,message]);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'error',message});if(error instanceof HttpException)throw error;throw new HttpException(message,422);}
   }
 }
