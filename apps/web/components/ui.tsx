@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
-  Bell, CalendarDays, Check, ChevronDown, Home, LayoutDashboard, LogOut,
+  Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut,
   Moon, Plus, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
-  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault,
+  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Rocket,
 } from 'lucide-react';
 import {
   api, send, AppNotification, Board, SearchResults, User,
@@ -89,10 +89,25 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const [pinned, setPinned] = useState(true);
   const [history, setHistory] = useState(historyState());
   const [message, setMessage] = useState('');
+  const [deploying, setDeploying] = useState(false);
   const [pluginNavigation, setPluginNavigation] = useState<Array<{id:string;label:string;href:string}>>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const initializedNotifications = useRef(false);
   const knownNotifications = useRef(new Set<string>());
+
+  async function deploy() {
+    setDeploying(true);setMessage('Compilando e reiniciando o Orbit…');
+    try {
+      await send('/deploy','POST');
+      const expires=Date.now()+10*60_000;
+      let offline=false;
+      const check=async()=>{
+        try { if((await fetch('/api/health',{cache:'no-store'})).ok&&offline){window.location.reload();return;} } catch { offline=true; }
+        if(Date.now()<expires)window.setTimeout(()=>void check(),1500);else {setDeploying(false);setMessage('O Deploy não voltou a responder. Confira o terminal do Orbit.');}
+      };
+      window.setTimeout(()=>void check(),1500);
+    } catch(error) { setDeploying(false);setMessage((error as Error).message); }
+  }
 
   useEffect(() => {
     const accountChanged = () => updateUser(getUser());
@@ -184,7 +199,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   function chooseNotification(item: AppNotification) {
     if (!item.read_at) markRead(item.id).catch(() => {});
     setPanel(null);
-    if (item.board_id) router.push(cardUrl(item.board_id,item.card_id));
+    if (item.board_id) router.push(cardUrl(item.board_id,item.card_id,item.card_url_token));
   }
   async function toggleTheme() {
     const theme = user?.preferences?.theme === 'dark' ? 'light' : 'dark';
@@ -225,6 +240,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
 </button>
     <button onClick={() => router.push('/')} className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden" title="Home"><Home size={19}/></button>
     <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="ml-1 rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
+    <button disabled={deploying} onClick={() => void deploy()} className="flex items-center gap-1 rounded border border-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-[#0c66e4] hover:bg-[#e9f2ff] disabled:opacity-50" title="Compilar e reiniciar o Orbit"><Rocket size={15}/>{deploying?'Deploy…':'Deploy'}</button>
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} className="hidden rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] lg:block" title={history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} className="hidden rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] lg:block" title={history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'}><Redo2 size={18}/></button>
@@ -238,7 +254,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         {results.boards.length > 0 && <p className="px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Quadros</p>}
         {results.boards.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-6 w-8 rounded" style={{background:boardColors[board.background]}}/><span className="flex-1 truncate">{board.title}</span></button>)}
         {results.cards.length > 0 && <p className="mt-2 px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Cartões</p>}
-        {results.cards.map(card => <button key={card.id} onClick={() => { setPanel(null); router.push(cardUrl(card.board_id,card.id)); }} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><CreditCard size={16}/><span className="min-w-0 flex-1 truncate">{card.title}</span>{card.completed&&<span className="rounded bg-[#baf3db] px-1.5 py-0.5 text-[10px] text-[#216e4e]">Concluído</span>}<span className="max-w-24 truncate text-xs text-[#626f86]">{card.board_title}</span></button>)}
+        {results.cards.map(card => <button key={card.id} onClick={() => { setPanel(null); router.push(cardUrl(card.board_id,card.id,card.url_token)); }} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><CreditCard size={16}/><span className="min-w-0 flex-1 truncate">{card.title}</span>{card.completed&&<span className="rounded bg-[#baf3db] px-1.5 py-0.5 text-[10px] text-[#216e4e]">Concluído</span>}<span className="max-w-24 truncate text-xs text-[#626f86]">{card.board_title}</span></button>)}
         {!results.boards.length && !results.cards.length && <p className="p-4 text-center text-xs text-[#626f86]">Nenhum resultado encontrado.</p>}
         <button onClick={() => { setPanel(null); router.push(`/search?q=${encodeURIComponent(query)}`); }} className="mt-2 w-full border-t border-[#dfe1e6] px-3 py-2 text-left text-xs font-semibold text-[#0c66e4]">Abrir busca avançada</button>
       </>}</div>
@@ -251,6 +267,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     </div>}
     {panel === 'create' && <div className="absolute left-20 top-12 z-40 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:left-96">
       <button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>
+      <button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>
     </div>}
     {panel === 'notifications' && <NotificationPanel items={notifications} onRead={id => markRead(id).catch(() => {})} onReadAll={() => markAll().catch(() => {})} onChoose={chooseNotification}/>}
     {panel === 'account' && <div className="absolute right-3 top-12 z-40 w-64 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
@@ -266,6 +283,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
 }
 
 function InboxPanel({boards,onOpen}:{boards:Board[];onOpen:()=>void}) {
+  const router=useRouter();
   const [inbox,setInbox]=useState<Board|null>(null);
   const [title,setTitle]=useState('');
   const [error,setError]=useState('');
@@ -274,7 +292,7 @@ function InboxPanel({boards,onOpen}:{boards:Board[];onOpen:()=>void}) {
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
   useEffect(()=>{const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card'))event.preventDefault()});document.addEventListener('drop',drop);return()=>document.removeEventListener('drop',drop)},[load]);
   const cards=inbox?.lists?.flatMap(list=>list.cards)||[];
-  return <section className="mt-3 border-t border-[#dfe1e6] pt-3"><div className="flex items-center justify-between px-2"><strong className="flex items-center gap-2 text-sm"><Inbox size={17}/> Inbox</strong><button onClick={onOpen} className="text-xs text-[#0c66e4]">Abrir</button></div><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[42vh] space-y-2 overflow-y-auto px-2">{cards.map(card=><button key={card.id} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.effectAllowed='move'}} onClick={onOpen} className="w-full rounded bg-[#f1f2f4] px-2 py-2 text-left text-sm shadow-sm hover:bg-[#e9eaed]">{card.title}</button>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem rascunhos.</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste um cartão para qualquer lista deste quadro.</p></section>
+  return <section className="mt-3 border-t border-[#dfe1e6] pt-3"><div className="flex items-center justify-between px-2"><strong className="flex items-center gap-2 text-sm"><Inbox size={17}/> Inbox</strong><button onClick={onOpen} className="text-xs text-[#0c66e4]">Abrir</button></div><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[42vh] space-y-2 overflow-y-auto px-2">{cards.map(card=><button key={card.id} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.effectAllowed='move'}} onClick={()=>router.push(`/inbox?card=${encodeURIComponent(card.id)}`)} className="w-full rounded bg-[#f1f2f4] px-2 py-2 text-left text-sm shadow-sm hover:bg-[#e9eaed]">{card.title}</button>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem rascunhos.</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste um cartão para qualquer lista deste quadro.</p></section>
 }
 
 export function WorkspaceSidebar({ boards, activeId, onCreate, onChoose }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {

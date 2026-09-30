@@ -9,8 +9,6 @@ import {
   ExternalLink,
   Link2,
   Plus,
-  RefreshCw,
-  Settings,
   Trash2,
   Unlink,
   Users,
@@ -25,10 +23,9 @@ import {
   send,
   User,
 } from "@/lib/api";
-import { AppHeader, Modal, useConfirmModal } from "@/components/ui";
+import { AppHeader, Modal, useConfirmModal, WorkspaceSidebar } from "@/components/ui";
 
 type View = "month" | "week" | "day" | "agenda" | "timeline";
-type CalendarProvider = {id:string;name:string;connectable:boolean;connectOptions?:Array<{id:string;label:string}>};
 const views: Record<View, string> = {
   month: "Mês",
   week: "Semana",
@@ -44,10 +41,6 @@ const isoDate = (date: Date) =>
 const addDays = (date: Date, days: number) =>
   new Date(date.getTime() + days * dayMs);
 const eventColor = (source?: CalendarSource) => source?.color || "#0c66e4";
-const sourceGroup = (source: CalendarSource) =>
-  source.provider_id === "orbit_cards"
-    ? "Orbit"
-    : source.connection_name || source.provider_id;
 const readable = (date: string, allDay = false) =>
   new Date(date).toLocaleString(
     "pt-BR",
@@ -76,31 +69,25 @@ export default function CalendarPage() {
   const [user, setUser] = useState<User | null>(null),
     [boards, setBoards] = useState<Board[]>([]),
     [sources, setSources] = useState<CalendarSource[]>([]),
-    [providers,setProviders]=useState<CalendarProvider[]>([]),
     [items, setItems] = useState<CalendarItem[]>([]),
-    [providerMenu,setProviderMenu]=useState(false),
     [view, setView] = useState<View>("month"),
     [anchor, setAnchor] = useState(new Date()),
     [selected, setSelected] = useState<CalendarItem | null>(null),
     [creating, setCreating] = useState(false),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false),
-    [settingsSource, setSettingsSource] = useState<CalendarSource | null>(null);
+    [error, setError] = useState("");
   const { confirm, confirmationModal } = useConfirmModal();
   const current = useMemo(() => range(view, anchor), [view, anchor]);
   const load = useCallback(async () => {
     try {
       setError("");
-      const [u, b, s, p] = await Promise.all([
+      const [u, b, s] = await Promise.all([
         api<User>("/auth/me"),
         api<Board[]>("/boards"),
         api<CalendarSource[]>("/calendar/sources"),
-        api<CalendarProvider[]>("/calendar/catalog"),
       ]);
       setUser(u);
       setBoards(b);
       setSources(s);
-      setProviders(p);
       const visible = s.filter((x) => x.selected && x.visible).map((x) => x.id);
       setItems(
         await api<CalendarItem[]>(
@@ -119,37 +106,10 @@ export default function CalendarPage() {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load, router]);
-  async function sourceChange(
-    source: CalendarSource,
-    body: Record<string, unknown>,
-  ) {
-    try {
-      setSources(
-        await send<CalendarSource[]>(
-          `/calendar/sources/${source.id}`,
-          "PATCH",
-          body,
-        ),
-      );
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
   function navigate(direction: number) {
     const amount =
       view === "month" ? 32 : view === "week" ? 7 : view === "day" ? 1 : 30;
     setAnchor(addDays(anchor, direction * amount));
-  }
-  async function connectProvider(providerId:string,option?:string) {
-    try {
-      const { url } = await api<{ url: string }>(
-        `/calendar/providers/${providerId}/connect${option?`?option=${encodeURIComponent(option)}`:''}`,
-      );
-      window.location.assign(url);
-    } catch (e) {
-      setError((e as Error).message);
-    }
   }
   async function drop(item: CalendarItem, date: Date) {
     const oldStart = new Date(item.start),
@@ -194,180 +154,63 @@ export default function CalendarPage() {
     <div className="flex min-h-screen flex-col bg-[#f7f8fa]">
       <AppHeader user={user} boards={boards} />
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-72 shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white p-4 lg:block">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold">Calendários</h2>
-            <button
-              onClick={() => setProviderMenu(!providerMenu)}
-              title="Conectar calendário"
-              className="rounded bg-[#e9f2ff] p-1.5 text-[#0c66e4]"
-            >
-              <Plus size={16} />
-            </button>
+        <WorkspaceSidebar boards={boards} onCreate={() => router.push("/boards?create=1")} onChoose={(id) => router.push(id ? `/board/${id}` : "/boards")} />
+        <main className="mx-auto w-full min-w-0 max-w-[1400px] px-4 py-7 sm:px-7 lg:px-9">
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="mb-1 text-xs font-bold uppercase tracking-[.12em] text-[#626f86]">PLANEJAMENTO</p>
+              <h1 className="flex items-center gap-2.5 text-[27px] font-bold tracking-tight sm:text-[31px]"><CalendarDays size={25} className="text-[#0c66e4]" /> Calendário</h1>
+              <p className="mt-1 text-sm text-[#626f86]">Acompanhe seus eventos e compromissos em todas as agendas.</p>
+            </div>
+            <button onClick={() => setCreating(true)} className="flex items-center gap-2 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]"><Plus size={17} /> Criar evento</button>
           </div>
-          {providerMenu&&<div className="mt-2 rounded border border-[#dfe1e6] bg-white p-2 shadow-sm">{providers.filter(item=>item.connectable).flatMap(provider=>provider.connectOptions?.length?provider.connectOptions.map(option=><button key={`${provider.id}:${option.id}`} onClick={()=>void connectProvider(provider.id,option.id)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#f1f2f4]">{option.label}</button>):[<button key={provider.id} onClick={()=>void connectProvider(provider.id)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#f1f2f4]">Conectar {provider.name}</button>])}</div>}
-          <div className="mt-4 space-y-5">
-            {Array.from(new Set(sources.map(sourceGroup))).map((group) => (
-              <section key={group}>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs font-bold text-[#626f86]">{group}</p>
-                  <span className="flex gap-2 text-[10px]">
-                    <button
-                      onClick={() =>
-                        void Promise.all(
-                          sources
-                            .filter((s) => sourceGroup(s) === group)
-                            .map((s) =>
-                              sourceChange(s, {
-                                selected: true,
-                                visible: true,
-                              }),
-                            ),
-                        )
-                      }
-                    >
-                      todos
-                    </button>
-                    <button
-                      onClick={() =>
-                        void Promise.all(
-                          sources
-                            .filter((s) => sourceGroup(s) === group)
-                            .map((s) => sourceChange(s, { visible: false })),
-                        )
-                      }
-                    >
-                      limpar
-                    </button>
-                  </span>
-                </div>
-                {sources
-                  .filter((s) => sourceGroup(s) === group)
-                  .map((source) => (
-                    <div key={source.id} className="mb-2">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={source.selected && source.visible}
-                          onChange={(e) =>
-                            void sourceChange(source, {
-                              selected: e.target.checked,
-                              visible: e.target.checked,
-                            })
-                          }
-                        />
-                        <span
-                          className="h-3 w-3 rounded-full border"
-                          style={{ background: eventColor(source) }}
-                        />
-                        <span className="min-w-0 flex-1 truncate">
-                          {source.name}
-                        </span>
-                        <input
-                          type="radio"
-                          name="default-calendar"
-                          title="Calendário padrão"
-                          checked={source.is_default}
-                          onChange={() =>
-                            void sourceChange(source, { is_default: true })
-                          }
-                        />
-                      </label>
-                      {source.provider_id !== "orbit_cards" &&
-                        source.selected && (
-                          <div className="ml-8 mt-1 flex gap-3">
-                            <button
-                              onClick={async () => {
-                                setBusy(true);
-                                try {
-                                  await send(
-                                    `/calendar/sources/${source.id}/sync`,
-                                    "POST",
-                                  );
-                                  await load();
-                                } catch (e) {
-                                  setError((e as Error).message);
-                                } finally {
-                                  setBusy(false);
-                                }
-                              }}
-                              className="flex items-center gap-1 text-[11px] text-[#0c66e4]"
-                            >
-                              <RefreshCw
-                                size={11}
-                                className={busy ? "animate-spin" : ""}
-                              />{" "}
-                              sincronizar
-                            </button>
-                            <button
-                              onClick={() => setSettingsSource(source)}
-                              className="flex items-center gap-1 text-[11px] text-[#44546f]"
-                            >
-                              <Settings size={11} /> espelho
-                            </button>
-                          </div>
-                        )}
-                    </div>
-                  ))}
-              </section>
-            ))}
-          </div>
-          {providers.filter(provider=>provider.connectable).map(provider=><button key={provider.id} onClick={() => void connectProvider(provider.id)} className="mt-3 w-full rounded border border-[#0c66e4] px-3 py-2 text-sm font-semibold text-[#0c66e4]">Conectar {provider.name}</button>)}
-        </aside>
-        <main className="min-w-0 flex-1 p-3 sm:p-5">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <h1 className="mr-auto flex items-center gap-2 text-xl font-bold">
-              <CalendarDays className="text-[#0c66e4]" /> Calendário
-            </h1>
+          <section className="min-w-0 overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm" aria-label="Agenda do calendário">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dfe1e6] px-5 py-4">
+            <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setAnchor(new Date())}
-              className="rounded border bg-white px-3 py-1.5 text-sm"
+              className="rounded border border-[#dfe1e6] px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]"
             >
               Hoje
             </button>
             <button
               onClick={() => navigate(-1)}
-              className="rounded p-2 hover:bg-white"
+              className="rounded p-1.5 hover:bg-[#f1f2f4]"
             >
               <ChevronLeft size={18} />
             </button>
             <button
               onClick={() => navigate(1)}
-              className="rounded p-2 hover:bg-white"
+              className="rounded p-1.5 hover:bg-[#f1f2f4]"
             >
               <ChevronRight size={18} />
             </button>
-            <button
-              onClick={() => setCreating(true)}
-              className="rounded bg-[#0c66e4] px-3 py-2 text-sm font-semibold text-white"
-            >
-              <Plus size={15} className="mr-1 inline" />
-              Evento
-            </button>
-          </div>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="capitalize font-semibold">{title}</h2>
-            <div className="flex rounded bg-[#e9eaed] p-1">
-              {Object.entries(views).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setView(key as View)}
-                  className={`rounded px-2.5 py-1.5 text-xs font-semibold ${view === key ? "bg-white text-[#0c66e4] shadow-sm" : ""}`}
-                >
-                  {label}
-                </button>
-              ))}
+            <h2 className="ml-1 text-sm font-bold capitalize sm:text-base">{title}</h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs text-[#626f86]">{items.length} {items.length === 1 ? "evento" : "eventos"}</span>
+              <div className="flex rounded bg-[#e9eaed] p-1">
+                {Object.entries(views).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setView(key as View)}
+                    className={`rounded px-2.5 py-1.5 text-xs font-semibold ${view === key ? "bg-white text-[#0c66e4] shadow-sm" : "text-[#626f86] hover:text-[#172b4d]"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           {error && (
             <div
               role="alert"
-              className="mb-3 rounded bg-[#ffebe6] p-3 text-sm text-[#ae2a19]"
+              className="m-4 rounded border border-[#ffbdad] bg-[#ffebe6] px-4 py-3 text-sm text-[#ae2a19]"
             >
               {error}
             </div>
           )}
-          <CalendarView
+          <div className="p-3 sm:p-4"><CalendarView
             view={view}
             start={current.start}
             end={current.end}
@@ -375,7 +218,8 @@ export default function CalendarPage() {
             sources={sources}
             choose={setSelected}
             drop={drop}
-          />
+          /></div>
+          </section>
         </main>
       </div>
       {selected && (
@@ -401,17 +245,6 @@ export default function CalendarPage() {
           }}
         />
       )}
-      {settingsSource && (
-        <SourceSettings
-          source={settingsSource}
-          boards={boards}
-          close={() => setSettingsSource(null)}
-          changed={async () => {
-            setSettingsSource(null);
-            await load();
-          }}
-        />
-      )}
       {confirmationModal}
     </div>
   );
@@ -433,8 +266,8 @@ function ItemButton({
         e.dataTransfer.setData("application/x-orbit-calendar-item", item.id)
       }
       onClick={() => choose(item)}
-      className="mb-1 block w-full truncate rounded px-1.5 py-1 text-left text-[11px] font-semibold text-white shadow-sm"
-      style={{ background: eventColor(source) }}
+      className="mb-1 block w-full truncate rounded border border-[#b3d4ff] border-l-[3px] bg-[#e9f2ff] px-1.5 py-1 text-left text-[11px] font-semibold text-[#0c66e4] hover:bg-[#deebff]"
+      style={{ borderLeftColor: eventColor(source) }}
       title={item.title}
     >
       {!item.allDay &&
@@ -478,9 +311,9 @@ function CalendarView({
             dayItems(day).length > 0 && (
               <section
                 key={isoDate(day)}
-                className="rounded-xl border bg-white"
+                className="overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm"
               >
-                <h3 className="border-b px-4 py-2 text-sm font-bold capitalize">
+                <h3 className="border-b border-[#dfe1e6] px-4 py-3 text-sm font-bold capitalize">
                   {day.toLocaleDateString("pt-BR", {
                     weekday: "long",
                     day: "2-digit",
@@ -491,7 +324,7 @@ function CalendarView({
                   <button
                     key={item.id}
                     onClick={() => choose(item)}
-                    className="flex w-full items-center gap-3 border-b px-4 py-3 text-left last:border-0"
+                    className="flex w-full items-center gap-3 border-b border-[#dfe1e6] px-4 py-3 text-left last:border-0 hover:bg-[#f7f8fa]"
                   >
                     <span
                       className="h-9 w-1 rounded"
@@ -513,18 +346,18 @@ function CalendarView({
     );
   if (view === "timeline")
     return (
-      <div className="overflow-x-auto rounded-xl border bg-white">
+      <div className="overflow-x-auto rounded-xl border border-[#dfe1e6] bg-white">
         <div
-          className="grid min-w-[900px]"
+          className="grid min-w-[900px] divide-x divide-[#dfe1e6]"
           style={{
             gridTemplateColumns: `180px repeat(${Math.min(days.length, 14)},1fr)`,
           }}
         >
-          <div className="border-b p-3 font-bold">Fonte</div>
+          <div className="border-b border-[#dfe1e6] p-3 text-xs font-bold uppercase tracking-wide text-[#626f86]">Agenda</div>
           {days.slice(0, 14).map((day) => (
             <div
               key={isoDate(day)}
-              className="border-b border-l p-2 text-center text-xs font-bold"
+              className="border-b border-[#dfe1e6] bg-white p-2 text-center text-xs font-bold text-[#626f86]"
             >
               {day.toLocaleDateString("pt-BR", {
                 day: "2-digit",
@@ -535,8 +368,8 @@ function CalendarView({
           {sources
             .filter((s) => s.visible)
             .map((s) => (
-              <div key={s.id} className="contents">
-                <div className="border-b p-3 text-sm">
+                <div key={s.id} className="contents">
+                <div className="border-b border-[#dfe1e6] p-3 text-sm">
                   <span
                     className="mr-2 inline-block h-3 w-3 rounded-full"
                     style={{ background: eventColor(s) }}
@@ -557,7 +390,7 @@ function CalendarView({
                       );
                       if (item) void drop(item, day);
                     }}
-                    className="min-h-16 border-b border-l p-1"
+                    className="min-h-16 border-b border-[#dfe1e6] p-1"
                   >
                     {dayItems(day)
                       .filter((item) => item.sourceId === s.id)
@@ -577,9 +410,8 @@ function CalendarView({
       </div>
     );
   return (
-    <div
-      className={`grid overflow-hidden rounded-xl border bg-white ${view === "month" ? "grid-cols-7" : view === "week" ? "grid-cols-7" : "grid-cols-1"}`}
-    >
+    <div className="scrollbar-thin overflow-x-auto">
+    <div className={`grid min-w-[770px] divide-x divide-[#dfe1e6] overflow-hidden rounded-xl border border-[#dfe1e6] bg-white ${view === "month" || view === "week" ? "grid-cols-7" : "grid-cols-1"}`}>
       {days.map((day) => (
         <div
           key={isoDate(day)}
@@ -592,17 +424,15 @@ function CalendarView({
             );
             if (item) void drop(item, day);
           }}
-          className={`border-b border-r p-1.5 ${view === "month" ? "min-h-28" : view === "week" ? "min-h-[560px]" : "min-h-[650px]"}`}
+          className={`min-w-0 border-b border-[#dfe1e6] bg-white ${view === "month" ? "min-h-28" : view === "week" ? "min-h-[390px]" : "min-h-[560px]"}`}
         >
-          <div
-            className={`mb-2 text-xs font-bold ${isoDate(day) === isoDate(new Date()) ? "text-[#0c66e4]" : ""}`}
-          >
-            {day.toLocaleDateString("pt-BR", {
-              weekday: view === "day" ? "long" : "short",
-              day: "2-digit",
-              month: view === "day" ? "long" : undefined,
-            })}
+          <div className={`flex items-center justify-between border-b border-[#dfe1e6] px-2 py-3 ${isoDate(day) === isoDate(new Date()) ? "bg-[#e9f2ff]" : ""}`}>
+            <div>
+              <p className="text-[11px] font-semibold uppercase text-[#626f86]">{day.toLocaleDateString("pt-BR", { weekday: view === "day" ? "long" : "short" })}</p>
+              <p className={`mt-1 text-lg font-bold ${isoDate(day) === isoDate(new Date()) ? "text-[#0c66e4]" : view === "month" && day.getMonth() !== start.getMonth() ? "text-[#8993a4]" : "text-[#172b4d]"}`}>{day.toLocaleDateString("pt-BR", { day: "2-digit", ...(view === "day" ? { month: "long" as const } : {}) })}</p>
+            </div>
           </div>
+          <div className="space-y-1 p-2">
           {dayItems(day).map((item) => (
             <ItemButton
               key={item.id}
@@ -611,8 +441,10 @@ function CalendarView({
               choose={choose}
             />
           ))}
+          </div>
         </div>
       ))}
+    </div>
     </div>
   );
 }
@@ -749,147 +581,6 @@ function EventForm({
           className="w-full rounded bg-[#0c66e4] p-2 font-semibold text-white"
         >
           Criar evento
-        </button>
-      </form>
-    </Modal>
-  );
-}
-
-function SourceSettings({
-  source,
-  boards,
-  close,
-  changed,
-}: {
-  source: CalendarSource;
-  boards: Board[];
-  close: () => void;
-  changed: () => Promise<void>;
-}) {
-  const settings = source.settings || {};
-  const [auto, setAuto] = useState(Boolean(settings.auto_create_cards)),
-    [updates, setUpdates] = useState(Boolean(settings.update_linked_cards)),
-    [archive, setArchive] = useState(Boolean(settings.archive_cancelled_cards)),
-    [strategy, setStrategy] = useState(
-      String(settings.recurring_strategy || "series"),
-    ),
-    [board, setBoard] = useState(
-      String(settings.target_board_id || boards[0]?.id || ""),
-    ),
-    [lists, setLists] = useState<Board["lists"]>([]),
-    [list, setList] = useState(String(settings.target_list_id || "")),
-    [error, setError] = useState("");
-  useEffect(() => {
-    if (!board) return;
-    api<Board>(`/boards/${board}`)
-      .then((value) => {
-        setLists(value.lists || []);
-        setList((current) => current || value.lists?.[0]?.id || "");
-      })
-      .catch((e) => setError((e as Error).message));
-  }, [board]);
-  return (
-    <Modal onClose={close}>
-      <form
-        onSubmit={async (event) => {
-          event.preventDefault();
-          try {
-            await send(`/calendar/sources/${source.id}`, "PATCH", {
-              auto_create_cards: auto,
-              target_board_id: auto ? board : null,
-              target_list_id: auto ? list : null,
-              update_linked_cards: updates,
-              archive_cancelled_cards: archive,
-              recurring_strategy: strategy,
-            });
-            await changed();
-          } catch (e) {
-            setError((e as Error).message);
-          }
-        }}
-        className="space-y-4 p-6"
-      >
-        <h2 className="pr-8 text-lg font-bold">
-          Espelho de eventos · {source.name}
-        </h2>
-        <p className="text-sm text-[#626f86]">
-          Desativado por padrão. O vínculo usa ExternalResource e mantém
-          workflow, etiquetas, responsáveis e automações sob autoridade do
-          Orbit.
-        </p>
-        <label className="flex gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={auto}
-            onChange={(e) => setAuto(e.target.checked)}
-          />
-          Criar Cards automaticamente para novos eventos
-        </label>
-        {auto && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-xs font-bold">
-              Quadro
-              <select
-                value={board}
-                onChange={(e) => {
-                  setBoard(e.target.value);
-                  setList("");
-                }}
-                className="mt-1 w-full rounded border p-2 text-sm"
-              >
-                {boards.filter((item) => !item.is_inbox).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs font-bold">
-              Lista
-              <select
-                value={list}
-                onChange={(e) => setList(e.target.value)}
-                className="mt-1 w-full rounded border p-2 text-sm"
-              >
-                {lists?.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        )}
-        <label className="flex gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={updates}
-            onChange={(e) => setUpdates(e.target.checked)}
-          />
-          Atualizar título, descrição e agenda dos Cards vinculados
-        </label>
-        <label className="flex gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={archive}
-            onChange={(e) => setArchive(e.target.checked)}
-          />
-          Arquivar Card quando o evento for cancelado
-        </label>
-        <label className="block text-xs font-bold">
-          Eventos recorrentes
-          <select
-            value={strategy}
-            onChange={(e) => setStrategy(e.target.value)}
-            className="mt-1 w-full rounded border p-2 text-sm"
-          >
-            <option value="series">Um Card para toda a série (padrão)</option>
-            <option value="occurrence">Um Card por ocorrência</option>
-          </select>
-        </label>
-        {error && <p className="text-sm text-[#ae2a19]">{error}</p>}
-        <button className="w-full rounded bg-[#0c66e4] p-2 font-semibold text-white">
-          Salvar configuração
         </button>
       </form>
     </Modal>

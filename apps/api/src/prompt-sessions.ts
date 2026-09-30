@@ -1,6 +1,8 @@
 import { HttpException, Inject, Injectable } from '@nestjs/common';
-import { realpath, stat } from 'node:fs/promises';
-import { isAbsolute, parse } from 'node:path';
+import { access, mkdir, realpath, stat, readdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { basename, dirname, isAbsolute, parse, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { CodexAiService } from './codex-ai';
 import { Db } from './db';
 import { FeaturesService } from './features';
@@ -28,17 +30,40 @@ export class PromptSessionsService {
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents){}
   models(){return catalog;}
   async projects(userId:string){return this.db.query('SELECT id,name,local_path,created_at,updated_at FROM ai_projects WHERE owner_id=$1 ORDER BY name',[userId]);}
-  private async localPath(value:unknown):Promise<string>{
-    if(typeof value!=='string'||value.length>2000||!isAbsolute(value))fail('Informe uma pasta local absoluta.');const supplied=value as string;
-    let resolved='';
-    try { resolved=await realpath(supplied); const info=await stat(resolved); if(!info.isDirectory())fail('O caminho não é uma pasta.'); }
-    catch(error){if(error instanceof HttpException)throw error;fail('A pasta local não existe ou não está acessível.');}
-    if(resolved===parse(resolved).root)fail('Não é permitido usar a raiz do sistema como projeto.');
-    return resolved;
+  async projectDirectories(input?:string){
+    const directory=resolve(typeof input==='string'&&input.trim()?input:homedir());
+    const entries=await readdir(directory,{withFileTypes:true}).catch(error=>{const code=(error as NodeJS.ErrnoException).code;if(code==='EACCES'||code==='EPERM')fail('O Orbit não tem permissão para listar esta pasta.',403);if(code==='ENOTDIR')fail('O caminho informado não é uma pasta.');if(code==='ENOENT')fail('Esta pasta não existe.',404);return fail('Não foi possível listar esta pasta.',400);});
+    const folders=entries.filter(entry=>entry.isDirectory()).map(entry=>({name:entry.name,path:resolve(directory,entry.name)})).sort((a,b)=>a.name.localeCompare(b.name));
+    return {path:directory,parent:dirname(directory)===directory?null:dirname(directory),name:basename(directory)||directory,folders};
+  }
+  private async localPath(value:unknown,createIfMissing=false):Promise<string>{
+    if(typeof value!=='string'||!value.trim()||value.length>2000||!isAbsolute(value))fail('Informe uma pasta local absoluta.');
+    const supplied=resolve(value as string);
+    if(supplied===parse(supplied).root)fail('Não é permitido usar a raiz do sistema como projeto.');
+    if(createIfMissing){
+      try { await mkdir(supplied,{recursive:true}); }
+      catch(error){const code=(error as NodeJS.ErrnoException).code;if(code==='EACCES'||code==='EPERM')fail('O Orbit não tem permissão para criar essa pasta.');if(code==='ENOTDIR'||code==='EEXIST')fail('O caminho informado contém um item que não é pasta.');fail('Não foi possível criar a pasta neste caminho.');}
+    }
+    let canonical='';
+    try {
+      canonical=await realpath(supplied);
+      const info=await stat(canonical);
+      if(!info.isDirectory())fail('O caminho informado não é uma pasta.');
+      await access(canonical,constants.R_OK|constants.W_OK|constants.X_OK);
+    } catch(error){
+      if(error instanceof HttpException)throw error;
+      const code=(error as NodeJS.ErrnoException).code;
+      if(code==='ENOENT'&&!createIfMissing)throw new HttpException({code:'PROJECT_DIRECTORY_MISSING',message:`A pasta “${supplied}” não existe. Deseja criá-la?`},409);
+      if(code==='EACCES'||code==='EPERM')fail('O Orbit não tem permissão para acessar ou gravar nessa pasta.');
+      if(code==='ENOTDIR')fail('O caminho informado contém um item que não é pasta.');
+      fail('A pasta local não existe ou não está acessível.');
+    }
+    if(canonical===parse(canonical).root)fail('Não é permitido usar a raiz do sistema como projeto.');
+    return canonical;
   }
   async createProject(userId:string,body:Payload){
     const rawName=body.name;if(typeof rawName!=='string'||!rawName.trim()||rawName.trim().length>120)fail('Nome inválido.');const name=rawName as string;
-    const localPath=await this.localPath(body.local_path);
+    const localPath=await this.localPath(body.local_path,body.create_directory===true);
     const project=await this.db.one('INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,$2,$3) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,created_at,updated_at',[userId,name.trim(),localPath]);
     if(!project)fail('Esta pasta já está cadastrada como projeto.',409);return project;
   }
@@ -81,7 +106,9 @@ export class PromptSessionsService {
     if(!model)fail('Escolha um modelo.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
     const project=await this.db.one<{id:string;name:string;local_path:string}>('SELECT id,name,local_path FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
     if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string};const localPath=await this.localPath(currentProject.local_path);
-    const prompt=`Você está executando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO:\n${card.description||card.title}`;
+    const orbitRoot=resolve(process.env.ORBIT_DEPLOY_ROOT||resolve(process.cwd(),'../..'));
+    const deployNote=localPath===orbitRoot?'\n\nEste é o projeto do próprio Orbit. Não execute build, deploy, migrations nem reinicie servidores; faça apenas as alterações solicitadas. O botão Deploy do Orbit compila e reinicia depois que a execução terminar.':'';
+    const prompt=`Você está executando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.${deployNote}\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO:\n${card.description||card.title}`;
     const client=await this.db.pool.connect();let run:{id:string};
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[cardId]);
       if((await client.query("SELECT id FROM card_runs WHERE card_id=$1 AND status IN ('queued','running') UNION ALL SELECT id FROM card_ai_runs WHERE card_id=$1 AND status='running'",[cardId])).rowCount)fail('Este cartão já possui uma execução ativa.',409);

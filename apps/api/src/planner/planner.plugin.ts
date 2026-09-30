@@ -37,14 +37,14 @@ export class PlannerPlugin {
     const selectedBoard = boardId ? uuid(boardId) : null;
     if (selectedBoard) await this.features.member(selectedBoard, userId);
     const [cards, events, suggestions, rules] = await Promise.all([
-      this.db.query(`SELECT c.id,c.title,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
+      this.db.query(`SELECT c.id,c.url_token,c.title,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
         FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         WHERE c.due_date IS NOT NULL AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL
           AND ($2::uuid IS NULL OR b.id=$2)
         ORDER BY c.due_date,c.id`, [userId, selectedBoard]),
       this.db.query(`SELECT e.id,e.title,e.starts_at,e.ends_at,
-        COALESCE((SELECT json_agg(json_build_object('id',c.id,'title',c.title,'board_id',b.id) ORDER BY c.title)
+        COALESCE((SELECT json_agg(json_build_object('id',c.id,'url_token',c.url_token,'title',c.title,'board_id',b.id) ORDER BY c.title)
           FROM focus_event_cards fec JOIN cards c ON c.id=fec.card_id JOIN lists l ON l.id=c.list_id
           JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
           WHERE fec.event_id=e.id AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL),'[]'::json) AS cards

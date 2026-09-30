@@ -87,6 +87,10 @@ CREATE TABLE IF NOT EXISTS cards (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS url_token uuid DEFAULT gen_random_uuid();
+UPDATE cards SET url_token=gen_random_uuid() WHERE url_token IS NULL;
+ALTER TABLE cards ALTER COLUMN url_token SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS cards_url_token_unique_idx ON cards(url_token);
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS start_date timestamptz;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS reminder_minutes integer;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS recurrence varchar(16);

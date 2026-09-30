@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable } from '@nestjs/common';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ const MAX_OUTPUT = 20_000;
 type Progress = (message:string)=>void;
 export const codexErrorMessage=(detail:string) => {
   if (/ENOENT/.test(detail)) return 'O executável local do Codex não foi encontrado. Configure CODEX_BIN no servidor.';
+  if (/mountinfo path is not absolute/i.test(detail)) return 'O Codex CLI instalado tem uma falha no sandbox Linux (mountinfo path is not absolute). Atualize o CODEX_BIN para uma versão estável posterior à correção e reinicie a API.';
   if (/tempo limite/i.test(detail)) return detail;
   if (/(?:usage limit|rate limit|quota|insufficient_quota|too many requests|credits? exhausted)/i.test(detail)) return 'O limite de uso ou de tokens da conta do Codex foi excedido. Verifique sua cota e tente novamente mais tarde.';
   if (/(?:context length|context window|maximum.*tokens|too many tokens|token limit)/i.test(detail)) return 'A solicitação excedeu o limite de tokens do modelo. Reduza o conteúdo ou divida a tarefa em partes menores.';
@@ -39,7 +40,7 @@ export class CodexAiService {
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
     const executable = process.env.CODEX_BIN || 'codex';
-    const timeout = Number(process.env.CODEX_AI_TIMEOUT_MS || 90_000);
+    const timeout = Number(process.env.CODEX_AI_TIMEOUT_MS || 300_000);
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -72,7 +73,7 @@ export class CodexAiService {
       return text.slice(0, MAX_OUTPUT);
     } catch (error) {
       const detail = error instanceof Error ? error.message : '';
-      throw new Error(codexErrorMessage(detail));
+      throw new HttpException(codexErrorMessage(detail), 502);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

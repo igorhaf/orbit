@@ -21,6 +21,7 @@ export type ChecklistGroup = { id:string;card_id:string;title:string;position:nu
 export type CardExtensions = { checklists:ChecklistGroup[];values:CustomValue[] };
 export type Card = {
   id: string;
+  url_token?: string;
   execution?: {enabled:boolean;agent:string|null;executor:string|null}|null;
   result?: {status:string}|null;
   kind?: 'normal'|'template'|'board'|'separator'|'link'|'mirror';
@@ -99,15 +100,15 @@ export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string;
 export type ExternalResource = {id:string;plugin_id:string;connection_id:string|null;resource_type:string;external_id:string;external_parent_id:string|null;url:string|null;etag:string|null;metadata:Record<string,unknown>;created_at:string;updated_at:string};
 export type CardDetails = { comments: Comment[]; checklist: ChecklistItem[]; externalResources:ExternalResource[] };
 export type WatchState = {card:boolean;list:boolean;board:boolean};
-export type Activity = { id: string; kind: string; body: string; created_at: string; card_id: string | null; card_title: string | null; board_id: string | null; board_title: string | null; actor_name: string };
-export type HomeCard = { id: string; title: string; description: string; due_date: string | null; overdue?: boolean; completed: boolean; board_id: string; board_title: string; list_title: string; assigned_to_me: boolean; background: string };
-export type HomeItem = { id: string; text: string; completed: boolean; due_date: string | null; overdue?: boolean; card_id: string; card_title: string; board_id: string; board_title: string };
-export type RecentConversation = { id: string; body: string; created_at: string; card_id: string; card_title: string; board_id: string; board_title: string; author_name: string };
+export type Activity = { id: string; kind: string; body: string; created_at: string; card_id: string | null; card_url_token?: string | null; card_title: string | null; board_id: string | null; board_title: string | null; actor_name: string };
+export type HomeCard = { id: string; url_token?: string; title: string; description: string; due_date: string | null; overdue?: boolean; completed: boolean; board_id: string; board_title: string; list_title: string; assigned_to_me: boolean; background: string };
+export type HomeItem = { id: string; text: string; completed: boolean; due_date: string | null; overdue?: boolean; card_id: string; card_url_token?: string; card_title: string; board_id: string; board_title: string };
+export type RecentConversation = { id: string; body: string; created_at: string; card_id: string; card_url_token?: string; card_title: string; board_id: string; board_title: string; author_name: string };
 export type HomeData = { upNext: HomeCard[]; highlights: Activity[]; yourItems: HomeItem[]; recentBoards: Board[]; favorites: Board[]; recentConversations: RecentConversation[] };
 export type SearchResults = { boards: Board[]; cards: (HomeCard & { description: string })[] };
 export type AdvancedSearchCard = HomeCard & {list_id:string;updated_at:string;labels:Label[]};
 export type SavedSearch = {id:string;name:string;query:Record<string,string>;created_at:string;updated_at:string};
-export type AppNotification = { id: string; kind: string; title: string; body: string; created_at: string; read_at: string | null; board_id: string | null; board_title: string | null; card_id: string | null };
+export type AppNotification = { id: string; kind: string; title: string; body: string; created_at: string; read_at: string | null; board_id: string | null; board_title: string | null; card_id: string | null; card_url_token?: string | null };
 export type CalendarSource = {id:string;provider_id:string;connection_id:string|null;connection_name?:string|null;external_id:string;name:string;time_zone:string|null;color:string|null;access_role:string|null;is_primary:boolean;selected:boolean;visible:boolean;is_default:boolean;capabilities:Record<string,boolean>;metadata:Record<string,unknown>;settings:Record<string,unknown>};
 export type CalendarItem = {id:string;sourceId:string;resourceType:'event'|'card';title:string;description?:string|null;start:string;end?:string|null;allDay:boolean;timeZone?:string|null;location?:string|null;externalResourceId?:string|null;cardId?:string|null;externalUrl?:string|null;status?:string;recurrence?:unknown[];attendees?:unknown[];conference?:unknown;metadata:Record<string,unknown>};
 export type PluginCatalogAction = {id:string;name:string;permissions?:string[];requiredCapabilities?:string[];inputSchema?:Record<string,unknown>;outputSchema?:Record<string,unknown>};
@@ -157,9 +158,24 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
       },
       cache: 'no-store',
     });
-  } catch { throw new Error('Não foi possível conectar à API. Verifique se o servidor está rodando.'); }
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof data.message === 'string' ? data.message : 'Ocorreu um erro. Tente novamente.');
+  } catch (reason) {
+    const detail = reason instanceof Error && reason.message ? ` (${reason.message})` : '';
+    throw new Error(`Não foi possível conectar à API. Verifique se o servidor está rodando.${detail}`);
+  }
+  const raw = await response.text();
+  let data: unknown = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch { /* A resposta abaixo informa o código recebido. */ }
+  if (!response.ok) {
+    const body = data && typeof data === 'object' ? data as {message?:unknown;code?:unknown} : {};
+    const message = typeof body.message === 'string'
+      ? body.message
+      : Array.isArray(body.message) ? body.message.filter((item): item is string => typeof item === 'string').join(' ')
+      : `A API respondeu ${response.status}${response.statusText ? ` (${response.statusText})` : ''}.${raw ? ` ${raw.slice(0, 300)}` : ''}`;
+    const error = new Error(message) as Error & { status:number; code?:string };
+    error.status = response.status;
+    if (typeof body.code === 'string') error.code = body.code;
+    throw error;
+  }
   return data as T;
 }
 export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown) =>
@@ -170,7 +186,7 @@ export async function commentAttachmentBlob(id:string):Promise<Blob>{
   return response.blob();
 }
 export const initials = (name: string) => name.split(' ').filter(Boolean).slice(0,2).map(n => n[0].toUpperCase()).join('');
-export const cardUrl = (boardId: string, cardId?: string | null) => `/board/${boardId}${cardId ? `?card=${cardId}` : ''}`;
+export const cardUrl = (boardId: string, cardId?: string | null, token?: string | null) => `/board/${boardId}${cardId ? `?card=${cardId}${token ? `&token=${encodeURIComponent(token)}` : ''}` : ''}`;
 export const dateLabel = (date: string) => new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 export const boardColors: Record<string,string> = {
   blue: 'linear-gradient(135deg,#126aaf,#074b88)',

@@ -75,7 +75,7 @@ export default function Home() {
   if (!user) return <AuthScreen onDone={account => {setCurrentUser(account);load();}}/>;
   const visibleBoards=boards.filter(board=>!board.is_inbox);
   const cards=data.upNext.filter(card => filter==='all' || (filter==='overdue' ? Boolean(card.due_date && new Date(card.due_date).getTime()<now) : Boolean(card.due_date && new Date(card.due_date).getTime()>=now)));
-  const openCard=(boardId:string,cardId?:string|null)=>router.push(cardUrl(boardId,cardId));
+  const openCard=(boardId:string,cardId?:string|null,token?:string|null)=>router.push(cardUrl(boardId,cardId,token));
   return <div className="flex min-h-screen flex-col bg-[#f7f8fa]"><AppHeader user={user} boards={boards} onCreate={()=>setCreate(true)}/><div className="flex min-h-0 flex-1"><WorkspaceSidebar boards={boards} onCreate={()=>setCreate(true)} onChoose={id=>router.push(id?`/board/${id}`:'/boards')}/><main className="mx-auto w-full max-w-[1400px] px-4 py-7 sm:px-7 lg:px-9">
     <div className="mb-8 flex flex-wrap items-center justify-between gap-4"><div><p className="mb-1 text-xs font-bold uppercase tracking-[.12em] text-[#626f86]">VISÃO GERAL</p><h1 className="text-[27px] font-bold tracking-tight sm:text-[31px]">Bom trabalho, {user.name.split(' ')[0]} <span className="text-[#e2b203]">✦</span></h1><p className="mt-1 text-sm text-[#626f86]">Aqui está o que merece sua atenção hoje.</p></div><button onClick={()=>router.push('/boards')} className="flex items-center gap-2 rounded bg-[#e9f2ff] px-3 py-2 text-sm font-semibold text-[#0c66e4] hover:bg-[#d8e8ff]"><LayoutDashboard size={16}/> Todos os quadros <ArrowRight size={15}/></button></div>
     {error && <p role="alert" className="mb-5 rounded bg-[#ffebe6] p-3 text-sm text-[#ae2a19]">{error}</p>}

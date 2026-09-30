@@ -6,6 +6,8 @@ import { Request, Response, json } from 'express';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { stat, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { PoolClient } from 'pg';
 import { Db } from './db';
 import { ActionDispatcher } from './action-dispatcher';
@@ -41,6 +43,7 @@ import { MicrosoftGraphSubscriptionManager } from './calendar/microsoft-subscrip
 import { OutlookCalendarController, OutlookCalendarPlugin, outlookCalendarPluginDefinition } from './calendar/outlook-calendar.plugin';
 import { MicrosoftTeamsPlugin, microsoftTeamsPluginDefinition } from './calendar/microsoft-teams.plugin';
 import { PlannerController, PlannerPlugin, plannerPluginDefinition } from './planner/planner.plugin';
+import { EnvironmentSettingsController } from './env-settings';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;customFields:boolean};
@@ -112,6 +115,13 @@ class Service {
     }
   }
   user(req: Request) { return this.features.user(req); }
+  async deployOrbit(userId:string){
+    const root=resolve(process.env.ORBIT_DEPLOY_ROOT||join(process.cwd(),'../..')),manager=join(root,'.orbit-deploy-manager');
+    try { if(Date.now()-(await stat(manager)).mtimeMs>10_000) throw new Error(); }
+    catch { fail('O Deploy local não está disponível. Inicie o Orbit com “npm run orbit:serve”.',409); }
+    await writeFile(join(root,'.orbit-deploy-request'),JSON.stringify({requested_at:new Date().toISOString(),user_id:userId}),{mode:0o600});
+    return {ok:true,message:'Deploy iniciado. O Orbit vai compilar e reiniciar automaticamente.'};
+  }
   private vaultKey() { return createHash('sha256').update(process.env.VAULT_ENCRYPTION_KEY || process.env.JWT_SECRET || '').digest(); }
   private encryptVault(payload:Payload) {
     const iv=randomBytes(12); const cipher=createCipheriv('aes-256-gcm',this.vaultKey(),iv);
@@ -286,7 +296,7 @@ class Service {
       slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
       source_board.id AS source_board_id,source_board.title AS source_board_title,
       (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
-      c.title,c.description,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,CASE WHEN EXISTS(SELECT 1 FROM lists completion WHERE completion.board_id=li.board_id AND completion.archived_at IS NULL AND completion.is_completion_list) THEN li.is_completion_list ELSE c.completed END AS completed,c.ai_project_id,c.ai_model,c.ai_effort,c.created_at,c.updated_at,
+      c.title,c.description,slot.url_token,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,CASE WHEN EXISTS(SELECT 1 FROM lists completion WHERE completion.board_id=li.board_id AND completion.archived_at IS NULL AND completion.is_completion_list) THEN li.is_completion_list ELSE c.completed END AS completed,c.ai_project_id,c.ai_model,c.ai_effort,c.created_at,c.updated_at,
       c.schedule_start_at,c.schedule_end_at,c.schedule_all_day,c.schedule_time_zone,
       CASE WHEN c.schedule_start_at IS NULL THEN NULL ELSE json_build_object('startAt',c.schedule_start_at,'endAt',c.schedule_end_at,'allDay',c.schedule_all_day,'timeZone',c.schedule_time_zone) END AS schedule,
       (SELECT json_build_object('enabled',e.enabled,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
@@ -360,7 +370,7 @@ class Service {
   async boardActivity(boardId: string,userId: string,commentsOnly: string) {
     await this.member(boardId,userId,true);
     return this.db.query(`SELECT a.id,a.kind,a.body,a.created_at,a.card_id,a.board_id,
-      b.title AS board_title,c.title AS card_title,u.name AS actor_name FROM activities a
+      b.title AS board_title,c.title AS card_title,c.url_token AS card_url_token,u.name AS actor_name FROM activities a
       JOIN users u ON u.id=a.actor_id LEFT JOIN boards b ON b.id=a.board_id
       LEFT JOIN cards c ON c.id=a.card_id WHERE a.board_id=$1 AND ($2::boolean=false OR a.kind='comment')
       ORDER BY a.created_at DESC LIMIT 100`,[boardId,commentsOnly==='true']);
@@ -942,6 +952,24 @@ class Service {
     await this.features.notifyAssignees(userId,boardId,id,'comment','Novo comentário',text);
     return comment;
   }
+  async addCardImageAttachment(id:string,userId:string,body:Payload){
+    const boardId=await this.contentCard(id,userId);
+    const name=value(body.name,'Nome',255);
+    const mime=value(body.mime_type,'Formato',120).toLowerCase();
+    if(!/^image\/(?:avif|gif|jpe?g|png|webp)$/.test(mime))fail('Envie uma imagem PNG, JPEG, GIF, WebP ou AVIF.');
+    const raw=body.data;
+    if(typeof raw!=='string'||raw.length>14_000_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))fail('Imagem inválida ou maior que 10 MB.');
+    const data=Buffer.from(raw as string,'base64');
+    if(!data.length||data.length>10_000_000||data.toString('base64')!==raw)fail('Imagem inválida ou maior que 10 MB.');
+    const attachment=await this.db.one<{id:string}>('INSERT INTO attachments(card_id,kind,name,mime_type,size_bytes,data,position) VALUES($1,$2,$3,$4,$5,$6,COALESCE((SELECT max(position)+1 FROM attachments WHERE card_id=$1),0)) RETURNING id',[id,'file',name,mime,data.length,data]);
+    await this.features.record(userId,boardId,id,'attachment',`anexou a imagem ${name}`);
+    return {id:attachment!.id,name,mime_type:mime,size_bytes:data.length};
+  }
+  async cardAttachmentContent(id:string,userId:string,response:Response){
+    uuid(id);const row=await this.db.one('SELECT * FROM attachments WHERE id=$1',[id]);
+    if(!row)fail('Anexo não encontrado.',404);const attachment=row!;await this.contentCard(attachment.card_id,userId);if(attachment.kind!=='file'||!attachment.data)fail('Arquivo indisponível.',404);
+    response.setHeader('Content-Type',attachment.mime_type||'application/octet-stream');response.setHeader('Content-Length',attachment.data.length);response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Content-Disposition',`inline; filename*=UTF-8''${encodeURIComponent(attachment.name)}`);response.send(attachment.data);
+  }
   private async addCommentAttachment(commentId:string,cardId:string,userId:string,input:unknown){
     if(!input||typeof input!=='object')fail('Anexo inválido.');const body=input as Payload;
     const kind=value(body.kind,'Tipo',8);if(!['file','card','board'].includes(kind))fail('Tipo de anexo inválido.');
@@ -1067,6 +1095,7 @@ class ApiController {
   @Post('cards/:id/comments/ai') aiComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiComment(id,this.service.user(req),body);}
   @Get('ai/models') aiModels(){return this.prompts.models();}
   @Get('ai/projects') aiProjects(@Req() req:Request){return this.prompts.projects(this.service.user(req));}
+  @Get('ai/projects/directories') aiProjectDirectories(@Req() req:Request,@Query('path') path?:string){this.service.user(req);return this.prompts.projectDirectories(path);}
   @Post('ai/projects') createAiProject(@Req() req:Request,@Body() body:Payload){return this.prompts.createProject(this.service.user(req),body);}
   @Patch('ai/projects/:id') updateAiProject(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateProject(this.service.user(req),id,body);}
   @Delete('ai/projects/:id') deleteAiProject(@Req() req:Request,@Param('id') id:string){return this.prompts.deleteProject(this.service.user(req),id);}
@@ -1074,6 +1103,7 @@ class ApiController {
   @Patch('cards/:id/prompt-settings') updateCardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateCard(id,this.service.user(req),body);}
   @Get('cards/:id/prompt-runs') promptRuns(@Req() req:Request,@Param('id') id:string){return this.prompts.runs(id,this.service.user(req));}
   @Post('cards/:id/prompt-runs') executePrompt(@Req() req:Request,@Param('id') id:string){return this.prompts.execute(id,this.service.user(req));}
+  @Post('deploy') deploy(@Req() req:Request){return this.service.deployOrbit(this.service.user(req));}
   @Get('boards') boards(@Req() req: Request,@Query('status') status='active') { return this.service.boards(this.service.user(req),status); }
   @Post('boards') createBoard(@Req() req: Request,@Body() body: Payload) { return this.service.createBoard(this.service.user(req),body); }
   @Get('boards/:id') board(@Req() req: Request,@Param('id') id: string) { return this.service.board(id,this.service.user(req)); }
@@ -1127,6 +1157,8 @@ class ApiController {
   @Patch('comments/:id') updateComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateComment(id,this.service.user(req),body)}
   @Delete('comments/:id') deleteComment(@Req() req: Request,@Param('id') id: string) { return this.service.deleteComment(id,this.service.user(req)); }
   @Get('comment-attachments/:id/content') commentAttachmentContent(@Req() req:Request,@Param('id') id:string,@Res() response:Response){return this.service.commentAttachmentContent(id,this.service.user(req),response)}
+  @Post('cards/:id/attachments') addCardImageAttachment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.addCardImageAttachment(id,this.service.user(req),body)}
+  @Get('card-attachments/:id/content') cardAttachmentContent(@Req() req:Request,@Param('id') id:string,@Res() response:Response){return this.service.cardAttachmentContent(id,this.service.user(req),response)}
   @Post('cards/:id/checklist') createChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createChecklist(id,this.service.user(req),body); }
   @Patch('checklist/:id') updateChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateChecklist(id,this.service.user(req),body); }
   @Delete('checklist/:id') deleteChecklist(@Req() req: Request,@Param('id') id: string) { return this.service.deleteChecklist(id,this.service.user(req)); }
@@ -1136,7 +1168,7 @@ class ApiController {
 @Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, SecretVault, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:(google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin)=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));return registry;},inject:[GoogleCalendarPlugin,MailService,GitHubPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin]}, CardExecutionService], controllers: [ApiController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController] })
+  {provide:PluginRegistry,useFactory:(google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin)=>{const registry=new PluginRegistry();registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));return registry;},inject:[GoogleCalendarPlugin,MailService,GitHubPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController] })
 class AppModule {}
 
 async function bootstrap() {

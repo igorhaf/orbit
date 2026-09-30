@@ -37,6 +37,13 @@ import { CardAi } from "./card-ai";
 import { PromptExecution } from "./prompt-execution";
 import { CardExecutionPanel } from "./card-execution";
 
+const imageData = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+  reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+  reader.readAsDataURL(file);
+});
+
 export function CardDialog({
   card,
   board,
@@ -99,6 +106,18 @@ export function CardDialog({
     } finally {
       setBusy(false);
     }
+  }
+  async function uploadDescriptionImages(files: File[]) {
+    if (files.length > 10) throw new Error("Envie no máximo 10 imagens por vez.");
+    return Promise.all(files.map(async file => {
+      if (!file.type.startsWith("image/")) throw new Error("Envie somente imagens na descrição.");
+      const attachment = await send<{ id: string }>(`/cards/${card.id}/attachments`, "POST", {
+        name: file.name || "imagem",
+        mime_type: file.type,
+        data: await imageData(file),
+      });
+      return `/api/card-attachments/${attachment.id}/content`;
+    }));
   }
   async function updateCard(
     body: Record<string, unknown>,
@@ -335,6 +354,7 @@ export function CardDialog({
                       value={description}
                       onChange={setDescription}
                       placeholder="Adicione contexto, links e imagens em Markdown..."
+                      onImageFiles={uploadDescriptionImages}
                     />
                     <div className="mt-2 flex gap-2">
                       <button
@@ -580,7 +600,7 @@ export function CardDialog({
                   </>
                 )}
                 <a
-                  href={`/board/${board.id}/print?card=${card.id}`}
+                  href={`/board/${board.id}/print?card=${card.id}&token=${card.url_token}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"

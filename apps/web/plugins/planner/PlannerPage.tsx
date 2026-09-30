@@ -6,8 +6,8 @@ import { CalendarClock, ChevronLeft, ChevronRight, Clock3, CreditCard, Link2, Pl
 import { api, Board, cardUrl, getToken, send, User } from "@/lib/api";
 import { AppHeader, Modal, WorkspaceSidebar } from "@/components/ui";
 
-type PlannerCard = { id: string; title: string; due_date: string; completed: boolean; board_id: string; board_title: string; list_title: string };
-type LinkedCard = Pick<PlannerCard, "id" | "title" | "board_id">;
+type PlannerCard = { id: string; url_token?: string; title: string; due_date: string; completed: boolean; board_id: string; board_title: string; list_title: string };
+type LinkedCard = Pick<PlannerCard, "id" | "url_token" | "title" | "board_id">;
 type FocusEvent = { id: string; title: string; starts_at: string; ends_at: string; cards: LinkedCard[] };
 
 const weekdays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
@@ -154,7 +154,7 @@ export default function Planner() {
                     <p className="break-words font-semibold">{event.title}</p>
                     {event.cards?.length > 0 && <p className="mt-1 text-[11px] text-[#44546f]">{event.cards.map((card) => card.title).join(", ")}</p>}
                   </div>)}
-                  {dayCards.map((card) => <button key={card.id} onClick={() => router.push(cardUrl(card.board_id, card.id))} className="w-full rounded border border-[#dfe1e6] bg-[#f7f8fa] p-2 text-left text-xs hover:border-[#0c66e4]" title={`Abrir cartão ${card.title}`}>
+                  {dayCards.map((card) => <button key={card.id} onClick={() => router.push(cardUrl(card.board_id, card.id, card.url_token))} className="w-full rounded border border-[#dfe1e6] bg-[#f7f8fa] p-2 text-left text-xs hover:border-[#0c66e4]" title={`Abrir cartão ${card.title}`}>
                     <p className="mb-1 flex items-center gap-1 text-[11px] text-[#626f86]"><CreditCard size={12} />Prazo · {time(card.due_date)}</p>
                     <p className={`break-words font-semibold ${card.completed ? "line-through opacity-60" : ""}`}>{card.title}</p>
                   </button>)}
@@ -177,7 +177,7 @@ export default function Planner() {
             <div className="p-3">
             {cards.length === 0 ? <p className="rounded bg-[#f7f8fa] p-3 text-xs text-[#626f86]">Nenhum cartão com prazo encontrado.</p> : <div className="max-h-[390px] space-y-1 overflow-y-auto">
               {cards.slice(0, 12).map((card) => <div key={card.id} className="flex items-center gap-1 rounded px-2 py-2 hover:bg-[#f1f2f4]">
-                <button onClick={() => router.push(cardUrl(card.board_id, card.id))} className="min-w-0 flex-1 text-left">
+                <button onClick={() => router.push(cardUrl(card.board_id, card.id, card.url_token))} className="min-w-0 flex-1 text-left">
                   <p className={`truncate text-sm font-semibold ${card.completed ? "line-through opacity-60" : ""}`}>{card.title}</p>
                   <p className="mt-0.5 truncate text-xs text-[#626f86]">{card.board_title} · {new Date(card.due_date).toLocaleDateString("pt-BR", { day: "numeric", month: "short" })}</p>
                 </button>

@@ -1,5 +1,5 @@
 "use client";
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, ClipboardEvent, DragEvent, useEffect, useState } from "react";
 import {
   Copy,
   Eye,
@@ -17,12 +17,14 @@ import {
   CardDetails,
   Comment,
   commentAttachmentBlob,
+  cardUrl,
   getToken,
   send,
   WatchState,
 } from "@/lib/api";
 import { Avatar } from "./ui";
 import { RichText } from "./rich-text";
+import Image from "next/image";
 
 type PendingAttachment = {
   kind: "file";
@@ -37,6 +39,20 @@ const asData = (file: File) =>
     reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
     reader.readAsDataURL(file);
   });
+
+function ImageAttachment({ id, name }: { id: string; name: string }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    void commentAttachmentBlob(id).then(blob => {
+      objectUrl = URL.createObjectURL(blob);
+      if (active) setUrl(objectUrl);
+    }).catch(() => undefined);
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [id]);
+  return url ? <Image unoptimized src={url} alt={name} width={640} height={320} className="mt-1 h-auto max-h-64 max-w-full rounded border border-[#dfe1e6] object-contain" /> : null;
+}
 
 export function CardComments({
   card,
@@ -69,9 +85,8 @@ export function CardComments({
         .getElementById(`comment-${id}`)
         ?.scrollIntoView({ block: "center" });
   }, [details.comments]);
-  async function addFiles(event: ChangeEvent<HTMLInputElement>) {
+  async function addPendingFiles(files: File[]) {
     try {
-      const files = Array.from(event.target.files || []);
       const entries = await Promise.all(
         files.map(async (file) => ({
           kind: "file" as const,
@@ -80,18 +95,21 @@ export function CardComments({
           data: await asData(file),
         })),
       );
-      setPending([...pending, ...entries].slice(0, 10));
-      event.target.value = "";
+      setPending(current => [...current, ...entries].slice(0, 10));
     } catch (err) {
       setError((err as Error).message);
     }
   }
+  async function addFiles(event: ChangeEvent<HTMLInputElement>) {
+    await addPendingFiles(Array.from(event.target.files || []));
+    event.target.value = "";
+  }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!body.trim()) return;
+    if (!body.trim() && !pending.length) return;
     const ok = await run(() =>
       send(`/cards/${card.id}/comments`, "POST", {
-        body,
+        body: body.trim() || "Imagem anexada.",
         attachments: pending,
       }),
     );
@@ -120,7 +138,7 @@ export function CardComments({
     }
   }
   async function copyLink(comment: Comment) {
-    const link = `${window.location.origin}/board/${board.id}?card=${card.id}&comment=${comment.id}`;
+    const link = `${window.location.origin}${cardUrl(board.id, card.id, card.url_token)}&comment=${comment.id}`;
     try {
       await navigator.clipboard.writeText(link);
     } catch {
@@ -252,6 +270,17 @@ export function CardComments({
             <textarea
               value={body}
               onChange={(event) => setBody(event.target.value)}
+              onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
+                const files = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/"));
+                if (files.length) { event.preventDefault(); void addPendingFiles(files); }
+              }}
+              onDragOver={(event: DragEvent<HTMLTextAreaElement>) => {
+                if (Array.from(event.dataTransfer.files).some(file => file.type.startsWith("image/"))) event.preventDefault();
+              }}
+              onDrop={(event: DragEvent<HTMLTextAreaElement>) => {
+                const files = Array.from(event.dataTransfer.files).filter(file => file.type.startsWith("image/"));
+                if (files.length) { event.preventDefault(); void addPendingFiles(files); }
+              }}
               rows={3}
               placeholder="Escreva um comentário… Use @card ou @board para mencionar."
               className="min-w-0 flex-1 resize-y rounded border border-[#dfe1e6] p-2 text-sm"
@@ -292,7 +321,7 @@ export function CardComments({
               {aiBusy && <LoaderCircle size={12} className="animate-spin" />}
             </span>
             <button
-              disabled={!body.trim()}
+              disabled={!body.trim() && !pending.length}
               className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
             >
               Comentar
@@ -320,7 +349,7 @@ export function CardComments({
                   key={item.name + index}
                   className="rounded bg-[#e9f2ff] px-2 py-1 text-xs"
                 >
-                  {item.name}
+                  {item.mime_type?.startsWith("image/") ? <Image unoptimized src={`data:${item.mime_type};base64,${item.data || ""}`} alt={item.name} width={32} height={32} className="mr-1 inline-block h-8 w-8 rounded object-cover align-middle" /> : null}{item.name}
                   <button
                     type="button"
                     onClick={() =>
@@ -388,13 +417,10 @@ export function CardComments({
                   <div className="mt-1 flex flex-wrap gap-1">
                     {comment.attachments.map((item) =>
                       item.kind === "file" ? (
-                        <button
-                          key={item.id}
-                          onClick={() => void download(item.id, item.name)}
-                          className="rounded bg-[#e9f2ff] px-2 py-1 text-xs text-[#0c66e4]"
-                        >
-                          {item.name}
-                        </button>
+                        <div key={item.id}>
+                          {item.mime_type?.startsWith("image/") ? <ImageAttachment id={item.id} name={item.name} /> : null}
+                          <button onClick={() => void download(item.id, item.name)} className="rounded bg-[#e9f2ff] px-2 py-1 text-xs text-[#0c66e4]">{item.name}</button>
+                        </div>
                       ) : (
                         <a
                           key={item.id}

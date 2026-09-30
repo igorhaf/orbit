@@ -60,7 +60,7 @@ O cadastro e os convites estão desativados nesta etapa de conta única. Exclus�
    cp .env.example apps/web/.env.local
    ```
 
-3. Edite `DATABASE_URL` em `apps/api/.env` com a conexão real do seu PostgreSQL. Defina `JWT_SECRET` com uma chave aleatória de pelo menos 32 caracteres (por exemplo, gere uma com `openssl rand -hex 32`). Se alterar as portas, ajuste `WEB_ORIGIN` e `NEXT_PUBLIC_API_URL` também.
+3. Edite `DATABASE_URL` em `apps/api/.env` com a conexão real do seu PostgreSQL. Defina `JWT_SECRET` com uma chave aleatória de pelo menos 32 caracteres (por exemplo, gere uma com `openssl rand -hex 32`) e configure `ORBIT_BACKUP_KEY` com `openssl rand -hex 32`; guarde a chave de backup fora do servidor. Se alterar as portas, ajuste `WEB_ORIGIN` e `NEXT_PUBLIC_API_URL` também.
 
 4. Crie as tabelas, configure a conta inicial e inicie os servidores:
 
@@ -68,6 +68,15 @@ O cadastro e os convites estão desativados nesta etapa de conta única. Exclus�
    npm run db:migrate
    npm run dev
    ```
+
+Para usar o botão **Deploy** do cabeçalho na instalação local, compile uma vez e inicie pelo gerenciador do Orbit:
+
+```bash
+npm run build
+npm run orbit:serve
+```
+
+Depois de uma sessão de prompt que altere o próprio Orbit, clique em **Deploy**. Ele para os processos locais, compila API e web e os inicia novamente. Durante essa etapa, a página reconecta sozinha quando o Orbit volta a responder.
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 
@@ -78,13 +87,15 @@ Para acessar pelo celular, conecte-o à mesma rede Wi-Fi da máquina e abra no n
 - E-mail: `igorhaf@gmail.com`
 - Senha: a senha informada na especificação desta etapa
 
-A migração guarda apenas o hash da senha e reconfigura esse acesso a cada execução. Altere a senha inicial antes de disponibilizar o sistema publicamente.
+A migração guarda apenas o hash da senha. Em execuções seguintes, ela preserva a senha existente. Altere a senha inicial antes de disponibilizar o sistema publicamente.
 
 ## Cartões executáveis (opcional)
 
 Cartões comuns continuam funcionando sem configuração. Na seção **Execução opcional** do cartão, selecione projeto, agente, executor e contexto para executar uma tarefa e acompanhar resultados e histórico. O primeiro executor usa o Codex local com a sessão ChatGPT do servidor; integrações ficam atrás de um registry genérico. Automações podem reagir ao resultado.
 
 Consulte [arquitetura, migrations, permissões, APIs e exemplo funcional](docs/executable-cards.md). Recursos de exemplo ficam em `.orbit/`. Execute `npm run db:migrate` antes de iniciar a nova versão.
+
+Para instalar e selecionar a versão compatível do Codex CLI no Linux, consulte o [guia de instalação](docs/installation.md).
 
 ## Calendar Workspace
 
@@ -97,16 +108,23 @@ Consulte [arquitetura, OAuth, sync incremental, watch channels, ExternalResource
 | Comando | Função |
 | --- | --- |
 | `npm run dev` | Inicia Next.js e NestJS em desenvolvimento |
+| `npm run orbit:serve` | Inicia o Orbit com o gerenciador local necessário para o botão Deploy |
 | `npm run lint` | Verifica o código da API e do front, sem aceitar avisos |
 | `npm run lint:fix` | Corrige automaticamente os problemas de lint possíveis |
 | `npm run build` | Executa o lint e compila a API e o front |
 | `npm run test -w apps/api` | Executa os testes das regras de cartões e automações |
 | `npm run test:integration -w apps/api` | Testa automações no PostgreSQL com dados temporários |
 | `npm run db:migrate` | Aplica o esquema SQL e prepara a conta inicial |
+| `npm run db:backup -- create` | Cria e verifica um backup PostgreSQL criptografado |
+| `npm run db:backup -- list` | Lista os backups locais |
+| `npm run db:backup -- verify <arquivo>` | Verifica checksum, chave e integridade do arquivo |
+| `npm run db:backup -- restore <arquivo>` | Restaura para um banco vazio diferente do banco de origem |
 | `npm run start -w apps/api` | Inicia a API compilada |
 | `npm run start -w apps/web` | Inicia o front compilado |
 
 O SQL fica em `apps/api/sql/schema.sql`.
+
+Consulte [o plano de backup e recuperação](docs/database-backups.md) para configurar cópias agendadas, validar uma restauração e recuperar o serviço.
 
 ## Automação
 

@@ -4,3 +4,7 @@ dist
 .env
 .env.local
 *.tsbuildinfo
+/backups/
+/.orbit-deploy-request
+/.orbit-deploy-manager
+/.orbit-deploy-status.json

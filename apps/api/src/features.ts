@@ -202,7 +202,7 @@ export class FeaturesService {
 
   async home(userId: string) {
     const [upNext, highlights, yourItems, recentBoards, favorites, recentConversations] = await Promise.all([
-      this.db.query(`SELECT c.id,c.title,c.description,c.due_date,c.completed,c.list_id,l.title AS list_title,
+      this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,c.completed,c.list_id,l.title AS list_title,
         (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
         b.id AS board_id,b.title AS board_title,b.background,ca.user_id IS NOT NULL AS assigned_to_me
         FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
@@ -211,7 +211,7 @@ export class FeaturesService {
         WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND NOT c.completed AND ((c.due_date IS NOT NULL AND c.due_date<=now()+interval '7 days') OR ca.user_id IS NOT NULL)
         ORDER BY c.due_date ASC NULLS LAST,c.updated_at DESC LIMIT 40`,[userId]),
       this.activities(userId,18),
-      this.db.query(`SELECT ci.id,ci.text,ci.completed,ci.due_date,c.id AS card_id,c.title AS card_title,
+      this.db.query(`SELECT ci.id,ci.text,ci.completed,ci.due_date,c.id AS card_id,c.url_token AS card_url_token,c.title AS card_title,
         (ci.due_date IS NOT NULL AND ci.due_date<now()) AS overdue,
         b.id AS board_id,b.title AS board_title FROM checklist_items ci
         JOIN cards c ON c.id=ci.card_id JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
@@ -226,7 +226,7 @@ export class FeaturesService {
         (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image
         FROM boards b JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         LEFT JOIN workspaces w ON w.id=b.workspace_id WHERE b.starred AND b.closed_at IS NULL ORDER BY b.favorite_position ASC NULLS LAST,b.created_at DESC`,[userId]),
-      this.db.query(`SELECT cm.id,cm.body,cm.created_at,c.id AS card_id,c.title AS card_title,
+      this.db.query(`SELECT cm.id,cm.body,cm.created_at,c.id AS card_id,c.url_token AS card_url_token,c.title AS card_title,
         b.id AS board_id,b.title AS board_title,u.name AS author_name
         FROM comments cm JOIN users u ON u.id=cm.author_id JOIN cards c ON c.id=cm.card_id
         JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
@@ -238,7 +238,7 @@ export class FeaturesService {
 
   async activities(userId: string, limit=30) {
     return this.db.query(`SELECT a.id,a.kind,a.body,a.created_at,a.card_id,a.board_id,
-      b.title AS board_title,c.title AS card_title,u.name AS actor_name
+      b.title AS board_title,c.title AS card_title,c.url_token AS card_url_token,u.name AS actor_name
       FROM activities a JOIN users u ON u.id=a.actor_id
       LEFT JOIN boards b ON b.id=a.board_id LEFT JOIN cards c ON c.id=a.card_id
       WHERE (a.board_id IS NULL OR b.closed_at IS NULL) AND (a.actor_id=$1 OR (a.board_id IS NOT NULL AND EXISTS
@@ -247,7 +247,7 @@ export class FeaturesService {
   }
 
   async assignedCards(userId: string) {
-    return this.db.query(`SELECT c.id,c.title,c.description,c.due_date,c.completed,b.id AS board_id,
+    return this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,c.completed,b.id AS board_id,
       b.title AS board_title,b.background,l.title AS list_title
       FROM card_assignees ca JOIN cards c ON c.id=ca.card_id JOIN lists l ON l.id=c.list_id
       JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
@@ -262,7 +262,7 @@ export class FeaturesService {
       this.db.query(`SELECT b.id,b.title,b.background,b.starred,w.name AS workspace_name
         FROM boards b JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         LEFT JOIN workspaces w ON w.id=b.workspace_id WHERE b.closed_at IS NULL AND b.title ILIKE $2 ORDER BY b.starred DESC,b.title LIMIT 12`,[userId,pattern]),
-      this.db.query(`SELECT c.id,c.title,c.description,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,
+      this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,
         l.title AS list_title FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND (c.title ILIKE $2 OR c.description ILIKE $2) ORDER BY c.updated_at DESC LIMIT 20`,[userId,pattern]),
@@ -281,7 +281,7 @@ export class FeaturesService {
     if(filters.due==='overdue')where.push('c.due_date<now() AND NOT c.completed');if(filters.due==='week')where.push("c.due_date BETWEEN now() AND now()+interval '7 days'");if(filters.due==='none')where.push('c.due_date IS NULL');
     if(filters.comments==='yes')where.push('EXISTS(SELECT 1 FROM comments cm WHERE cm.card_id=c.id)');if(filters.checklist==='yes')where.push('EXISTS(SELECT 1 FROM checklist_items ci WHERE ci.card_id=c.id)');
     const sort=filters.sort==='created'?'c.created_at DESC':filters.sort==='due'?'c.due_date ASC NULLS LAST':'c.updated_at DESC';
-    const cards=await this.db.query(`SELECT c.id,c.title,c.description,c.due_date,c.completed,c.updated_at,b.id AS board_id,b.title AS board_title,l.id AS list_id,l.title AS list_title,COALESCE((SELECT json_agg(json_build_object('id',la.id,'name',la.name,'color',la.color)) FROM labels la JOIN card_labels cl ON cl.label_id=la.id WHERE cl.card_id=c.id),'[]') AS labels FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id WHERE ${where.join(' AND ')} ORDER BY ${sort} LIMIT 100`,values);
+    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,c.completed,c.updated_at,b.id AS board_id,b.title AS board_title,l.id AS list_id,l.title AS list_title,COALESCE((SELECT json_agg(json_build_object('id',la.id,'name',la.name,'color',la.color)) FROM labels la JOIN card_labels cl ON cl.label_id=la.id WHERE cl.card_id=c.id),'[]') AS labels FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id WHERE ${where.join(' AND ')} ORDER BY ${sort} LIMIT 100`,values);
     return {cards};
   }
   async savedSearches(userId:string){return this.db.query('SELECT id,name,query,created_at,updated_at FROM saved_searches WHERE user_id=$1 ORDER BY updated_at DESC',[userId]);}
@@ -290,10 +290,10 @@ export class FeaturesService {
 
   async planner(userId:string, boardId?:string) {
     const boardFilter=boardId?` AND b.id=$2`:''; const params=boardId?[userId,validId(boardId)]:[userId];
-    const cards=await this.db.query(`SELECT c.id,c.title,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
+    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
       FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id
       LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1 WHERE bm.user_id=$1 AND (ca.user_id=$1 OR b.is_inbox) AND c.due_date IS NOT NULL AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL${boardFilter} ORDER BY c.due_date`,params);
-    const events=await this.db.query(`SELECT e.id,e.title,e.starts_at,e.ends_at,COALESCE(json_agg(json_build_object('id',c.id,'title',c.title,'board_id',b.id)) FILTER(WHERE c.id IS NOT NULL),'[]') AS cards FROM focus_events e LEFT JOIN focus_event_cards fec ON fec.event_id=e.id LEFT JOIN cards c ON c.id=fec.card_id LEFT JOIN lists l ON l.id=c.list_id LEFT JOIN boards b ON b.id=l.board_id WHERE e.user_id=$1 GROUP BY e.id ORDER BY e.starts_at`,[userId]);
+    const events=await this.db.query(`SELECT e.id,e.title,e.starts_at,e.ends_at,COALESCE(json_agg(json_build_object('id',c.id,'url_token',c.url_token,'title',c.title,'board_id',b.id)) FILTER(WHERE c.id IS NOT NULL),'[]') AS cards FROM focus_events e LEFT JOIN focus_event_cards fec ON fec.event_id=e.id LEFT JOIN cards c ON c.id=fec.card_id LEFT JOIN lists l ON l.id=c.list_id LEFT JOIN boards b ON b.id=l.board_id WHERE e.user_id=$1 GROUP BY e.id ORDER BY e.starts_at`,[userId]);
     return {cards,events};
   }
   async createFocus(userId:string,body:Record<string,unknown>){const title=body.title===undefined?'Focus time':bounded(body.title,'Título',160);const start=new Date(bounded(body.starts_at,'Início',40)),end=new Date(bounded(body.ends_at,'Fim',40));if(Number.isNaN(+start)||Number.isNaN(+end)||end<=start)bad('Intervalo inválido.');return this.db.one('INSERT INTO focus_events(user_id,title,starts_at,ends_at) VALUES($1,$2,$3,$4) RETURNING *',[userId,title,start,end]);}
@@ -316,7 +316,7 @@ export class FeaturesService {
         ON CONFLICT DO NOTHING`,[userId]);
     }
     return this.db.query(`SELECT n.id,n.kind,n.title,n.body,n.created_at,n.read_at,n.board_id,n.card_id,
-      b.title AS board_title FROM notifications n LEFT JOIN boards b ON b.id=n.board_id
+      b.title AS board_title,c.url_token AS card_url_token FROM notifications n LEFT JOIN boards b ON b.id=n.board_id LEFT JOIN cards c ON c.id=n.card_id
       WHERE n.user_id=$1 ORDER BY n.created_at DESC LIMIT 80`,[userId]);
   }
 

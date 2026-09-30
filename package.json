@@ -6,10 +6,12 @@
   ],
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "orbit:serve": "node scripts/orbit-manager.mjs",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
     "lint:fix": "npm run lint:fix -w apps/api && npm run lint:fix -w apps/web",
-    "db:migrate": "npm run db:migrate -w apps/api"
+    "db:migrate": "npm run db:migrate -w apps/api",
+    "db:backup": "npm run db:backup -w apps/api --"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
