@@ -78,7 +78,7 @@ npm run build
 npm run orbit:serve
 ```
 
-O projeto nativo do Orbit fica em `/home/meada/projetos/orbit-dev` e aparece em **Perfil → Projetos** como integrado e protegido contra remoção. As sessões de prompt podem selecionar esse projeto diretamente; quando uma sessão altera seus arquivos, o Orbit aplica migrações e seed, compila e executa os testes unitários ao final. Execute a aplicação principal pela cópia em `/home/meada/projetos/orbit`, na branch `main`. Depois, clique em **Deploy**: a validação é repetida em `orbit-dev`, as alterações seguem para `develop`; a cópia principal em `main` faz pull de `develop`, envia o avanço de `main` ao remoto, repete migrações, seed, compilação e testes unitários, e só então reinicia. A tela fica travada até a reconexão.
+O projeto nativo do Orbit fica em `/home/meada/projetos/orbit-dev` e aparece em **Perfil → Projetos** como integrado e protegido contra remoção. As sessões de prompt podem selecionar esse projeto diretamente; quando uma sessão altera seus arquivos, o Orbit aplica migrações, seed e compilação. Execute a aplicação principal pela cópia em `/home/meada/projetos/orbit`, na branch `main`. Depois, clique em **Deploy**: a validação é repetida em `orbit-dev`, os testes unitários rodam antes de publicar em `develop`; a cópia principal em `main` faz pull de `develop`, envia o avanço de `main` ao remoto, repete migrações, seed, compilação e testes unitários, e só então reinicia. A tela fica travada até a reconexão.
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 
