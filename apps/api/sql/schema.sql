@@ -378,6 +378,7 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   error text,
   created_at timestamptz NOT NULL DEFAULT now(),
   started_at timestamptz NOT NULL DEFAULT now(),
+  heartbeat_at timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz
 );
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';

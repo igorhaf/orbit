@@ -883,7 +883,7 @@ class Service {
       for (let titleIndex=0;titleIndex<titles.length;titleIndex++) {
         const title=titles[titleIndex],kind=kinds[titleIndex];
         const dueDate=kind.kind==='normal'?dueDateFromTitle(title):null;
-        const card: {id:string;title:string}=(await client.query('INSERT INTO cards(list_id,title,description,position,due_date,kind,target_board_id,link_url) VALUES($1,$2,$2,$3,$4,$5,$6,$7) RETURNING *',[listId,title,order.length+created.length,dueDate,kind.kind,kind.targetBoardId,kind.linkUrl])).rows[0];
+        const card: {id:string;title:string}=(await client.query('INSERT INTO cards(list_id,title,description,position,due_date,kind,target_board_id,link_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[listId,title,title,order.length+created.length,dueDate,kind.kind,kind.targetBoardId,kind.linkUrl])).rows[0];
         created.push(card);
       }
       order.splice(index,0,...created.map(card=>card.id as string));

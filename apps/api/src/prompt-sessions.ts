@@ -1,4 +1,4 @@
-import { HttpException, Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { HttpException, Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { access, mkdir, realpath, stat, readdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, dirname, isAbsolute, parse, resolve } from 'node:path';
@@ -41,14 +41,32 @@ function extractPromptSummary(output:string){
 }
 
 @Injectable()
-export class PromptSessionsService implements OnModuleInit {
+export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   private commentQueueWorkers=new Map<string,Promise<void>>();
+  private staleRunTimer:ReturnType<typeof setInterval>|null=null;
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents){}
   async onModuleInit(){
-    await this.db.query("UPDATE card_ai_runs SET status='error',error='A execução foi interrompida porque o servidor foi reiniciado.',finished_at=now() WHERE status IN ('queued','running')");
+    await this.recoverStaleRuns();
+    this.staleRunTimer=setInterval(()=>void this.recoverStaleRuns().catch(error=>console.error('Não foi possível limpar execuções de prompt abandonadas.',error)),30_000);
+    this.staleRunTimer.unref();
     await this.db.query("UPDATE card_ai_comment_jobs SET status='queued',started_at=NULL,error=NULL WHERE status='running' AND answer_comment_id IS NULL");
     const queued=await this.db.query<{card_id:string}>('SELECT DISTINCT card_id FROM card_ai_comment_jobs WHERE status=$1',['queued']);
     for(const job of queued)void this.drainCommentQueue(job.card_id).catch((error:unknown)=>console.error('Não foi possível retomar a fila de comentários do GPT.',error));
+  }
+  onModuleDestroy(){if(this.staleRunTimer)clearInterval(this.staleRunTimer);}
+  private async recoverStaleRuns(){
+    const stale=await this.db.query<{id:string;card_id:string;user_id:string;board_id:string;title:string}>(`WITH expired AS (
+      UPDATE card_ai_runs SET status='error',error='A execução foi interrompida porque o processo responsável deixou de responder.',finished_at=now()
+      WHERE status IN ('queued','running') AND heartbeat_at < now()-interval '90 seconds'
+      RETURNING id,card_id,user_id
+    )
+    SELECT expired.id,expired.card_id,expired.user_id,l.board_id,c.title
+    FROM expired JOIN cards c ON c.id=expired.card_id JOIN lists l ON l.id=c.list_id`);
+    for(const run of stale){
+      const message='A execução foi interrompida porque o processo responsável deixou de responder.';
+      try{await this.features.notify(run.user_id,run.board_id,run.card_id,'prompt_execution','Falha no prompt',message)}catch(error){console.error('Não foi possível notificar sobre uma execução de prompt interrompida.',error)}
+      this.events.promptProgress(run.board_id,run.card_id,{runId:run.id,status:'error',message});
+    }
   }
   models(){return catalog;}
   async updateGlobal(userId:string,body:Payload){
@@ -282,6 +300,8 @@ export class PromptSessionsService implements OnModuleInit {
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[cardId]);
       run=(await client.query<{id:string}>('INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id',[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description'])).rows[0];await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+    const queuedHeartbeat=setInterval(()=>void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND status='queued'",[run!.id]).catch(()=>undefined),15_000);
+    queuedHeartbeat.unref();
     this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'queued',message:'Execução adicionada à fila.'});
     void (async()=>{
       let cardClient:PoolClient|null=null;let cardLocked=false;let projectClient:PoolClient|null=null;let projectLocked=false;const cardLockName=`orbit-ai-card:${cardId}`;const projectLockName=`orbit-ai-project:${localPath}`;
@@ -299,7 +319,7 @@ export class PromptSessionsService implements OnModuleInit {
         await projectClient.query('SELECT pg_advisory_lock(hashtext($1)::bigint)',[projectLockName]);projectLocked=true;
         const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND id<>$3 AND codex_session_id IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1',[cardId,currentProject.id,run!.id]);
         previousSessionId=previous?.codex_session_id||null;continuing=Boolean(previousSessionId);prompt=makePrompt();
-        await this.db.query("UPDATE card_ai_runs SET status='running',prompt=$2,started_at=now() WHERE id=$1",[run!.id,prompt]);
+        await this.db.query("UPDATE card_ai_runs SET status='running',prompt=$2,started_at=now(),heartbeat_at=now() WHERE id=$1 AND status='queued'",[run!.id,prompt]);
         let streamedOutput='';let outputWrite:Promise<unknown>=Promise.resolve();const fileChanges=new Map<string,{path:string;kind:'add'|'delete'|'update'}>();const activities=new Map<string,{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}>();
         const progress=(message:string,output=false,replace=false,details?:{fileChanges?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}})=>{
           if(output){streamedOutput=replace?message:streamedOutput+message;outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET output=$2 WHERE id=$1',[run!.id,streamedOutput])).catch(()=>undefined);}
@@ -308,13 +328,13 @@ export class PromptSessionsService implements OnModuleInit {
           this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message,output,replace,files:details?.fileChanges?[...fileChanges.values()]:undefined,activity:details?.activity});
         };
         progress(`Iniciando ${model} com esforço ${effort}.`);
-        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined));
+        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined),()=>this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND status='running'",[run!.id]).then(()=>undefined));
         for(const change of result.fileChanges)fileChanges.set(change.path,change);
         for(const activity of result.activities)activities.set(activity.id,activity);
         await outputWrite;
         let validationError:string|null=null;
         if(currentProject.is_native){
-          try{await this.validateNativeChanges(localPath,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}));}
+          try{await this.validateNativeChanges(localPath,message=>{void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND status='running'",[run!.id]).catch(()=>undefined);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})});}
           catch(error){validationError=errorMessage(error);}
         }
         const promptResult=commentReply?{summary:null,output:result.output}:extractPromptSummary(result.output);
@@ -343,6 +363,7 @@ export class PromptSessionsService implements OnModuleInit {
         await this.features.notify(userId,context.boardId,cardId,'prompt_execution','Falha no prompt',message);
         this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'error',message});
       }finally{
+        clearInterval(queuedHeartbeat);
         if(projectClient){
           try{if(projectLocked)await projectClient.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[projectLockName]);}
           finally{projectClient.release();}

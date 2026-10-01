@@ -27,8 +27,8 @@ export class CodexAiService {
     const result=await this.run(instruction, process.cwd(), 'read-only', model, effort);
     return typeof result==='string'?result:result.output;
   }
-  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void): Promise<CodexExecution> {
-    const result=await this.run(instruction, projectPath, 'workspace-write', model, effort, progress, sessionId, onSessionId);
+  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void): Promise<CodexExecution> {
+    const result=await this.run(instruction, projectPath, 'workspace-write', model, effort, progress, sessionId, onSessionId, onHeartbeat);
     return typeof result==='string'?{output:result,sessionId:sessionId||null,fileChanges:[],activities:[]}:result;
   }
   private progressMessage(line:string):{message:string;output?:boolean;delta?:boolean;replace?:boolean;cumulative?:boolean;itemId?:string;fileChanges?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:PromptActivity}|null {
@@ -54,7 +54,7 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
-  private async run(instruction: string, workingDirectory: string, sandbox: 'read-only'|'workspace-write', model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void): Promise<string|CodexExecution> {
+  private async run(instruction: string, workingDirectory: string, sandbox: 'read-only'|'workspace-write', model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void): Promise<string|CodexExecution> {
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
     const executable = process.env.CODEX_BIN || 'codex';
@@ -80,10 +80,29 @@ export class CodexAiService {
         let stdout = '';
         let receivedOutputDelta=false;
         const streamedItems=new Map<string,string>();
+        let settled=false;
+        let timedOut=false;
+        let killTimer:ReturnType<typeof setTimeout>|undefined;
+        let finish:(error?:Error)=>void=()=>undefined;
+        const heartbeatTimer=setInterval(()=>{
+          if(child.exitCode===null&&child.signalCode===null)void Promise.resolve(onHeartbeat?.()).catch(()=>undefined);
+        },15_000);
+        heartbeatTimer.unref();
         const timer = setTimeout(() => {
-          child.kill('SIGTERM');
-          reject(new Error('A resposta do Codex excedeu o tempo limite.'));
+          timedOut=true;
+          try{child.kill('SIGTERM')}catch{ /* The Codex process may already have exited. */ }
+          killTimer=setTimeout(()=>{
+            if(child.exitCode===null&&child.signalCode===null)try{child.kill('SIGKILL')}catch{ /* The process may have exited during shutdown. */ }
+            finish(new Error('A resposta do Codex excedeu o tempo limite.'));
+          },5_000);
+          killTimer.unref();
         }, timeout);
+        const clearTimers=()=>{clearTimeout(timer);if(killTimer)clearTimeout(killTimer);clearInterval(heartbeatTimer);};
+        finish=(error?:Error)=>{
+          if(settled)return;
+          settled=true;clearTimers();
+          if(error)reject(error);else resolve();
+        };
         child.stdout?.on('data',(chunk:Buffer)=>{
           stdout+=chunk.toString();const lines=stdout.split(/\r?\n/);stdout=lines.pop()||'';
           for(const line of lines){
@@ -131,11 +150,11 @@ export class CodexAiService {
           }
         });
         child.stderr?.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-2000); });
-        child.on('error', error => { clearTimeout(timer); reject(error); });
+        child.on('error', error => finish(error));
         child.on('close', code => {
-          clearTimeout(timer);
-          if (code === 0) resolve();
-          else reject(new Error(stderr || 'O Codex não conseguiu concluir a solicitação.'));
+          if(timedOut)finish(new Error('A resposta do Codex excedeu o tempo limite.'));
+          else if (code === 0) finish();
+          else finish(new Error(stderr || 'O Codex não conseguiu concluir a solicitação.'));
         });
       });
       await sessionPersistence;
