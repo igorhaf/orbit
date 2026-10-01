@@ -69,9 +69,11 @@ ALTER TABLE boards ADD COLUMN IF NOT EXISTS favorite_position double precision;
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT '';
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS closed_at timestamptz;
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS is_inbox boolean NOT NULL DEFAULT false;
+ALTER TABLE boards ADD COLUMN IF NOT EXISTS is_collection boolean NOT NULL DEFAULT false;
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS ai_default_model varchar(100);
 ALTER TABLE boards ADD COLUMN IF NOT EXISTS ai_default_effort varchar(16);
 CREATE UNIQUE INDEX IF NOT EXISTS boards_owner_inbox_idx ON boards(owner_id) WHERE is_inbox;
+CREATE UNIQUE INDEX IF NOT EXISTS boards_owner_collection_idx ON boards(owner_id) WHERE is_collection;
 CREATE TABLE IF NOT EXISTS board_media (
   board_id uuid PRIMARY KEY REFERENCES boards(id) ON DELETE CASCADE,
   mime_type varchar(32) NOT NULL,
@@ -95,7 +97,9 @@ ALTER TABLE lists ADD COLUMN IF NOT EXISTS color varchar(32);
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS collapsed boolean NOT NULL DEFAULT false;
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 ALTER TABLE lists ADD COLUMN IF NOT EXISTS is_completion_list boolean NOT NULL DEFAULT false;
+ALTER TABLE lists ADD COLUMN IF NOT EXISTS parent_list_id uuid REFERENCES lists(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS lists_board_position_idx ON lists(board_id, position);
+CREATE INDEX IF NOT EXISTS lists_parent_position_idx ON lists(board_id,parent_list_id,position);
 CREATE TABLE IF NOT EXISTS cards (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   list_id uuid NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
@@ -372,6 +376,7 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   activities jsonb NOT NULL DEFAULT '[]'::jsonb,
   status varchar(16) NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','success','error')),
   error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
   started_at timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz
 );

@@ -162,7 +162,7 @@ export function CardAi({
         <Sparkles size={17} /> IA do cartão
       </h3>
       <p className="mt-1 text-xs text-[#626f86]">
-        O cartão prevalece sobre quadro, projeto e configuração global. Campos sem configuração própria herdam o nível acima.
+        Referência do quadro; se não estiver configurada, usa a configuração global. O cartão pode ter valores próprios.
       </p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <label className="text-xs font-semibold text-[#5e5a87]">
@@ -187,8 +187,8 @@ export function CardAi({
         </label>
       </div>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
-        <AiModelFields value={card.ai_model} inheritedValue={inheritedModel} models={models} disabled={busy} onSave={(value) => configure({ ai_model: value })} />
-        <AiEffortField value={card.ai_effort} inheritedValue={inheritedEffort} disabled={busy} onChange={(value) => configure({ ai_effort: value })} />
+        <AiModelFields value={card.ai_model || inheritedModel} inheritedValue={null} models={models} disabled={busy} onSave={(value) => configure({ ai_model: value })} />
+        <AiEffortField value={card.ai_effort || inheritedEffort} disabled={busy} onChange={(value) => configure({ ai_effort: value })} />
       </div>
       {selectedProject && (
         <p className="mt-2 truncate text-xs text-[#5e5a87]">

@@ -285,8 +285,17 @@ export class PromptSessionsService implements OnModuleInit {
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'queued',message:'Execução adicionada à fila.'});
     void (async()=>{
-      let projectClient:PoolClient|null=null;let projectLocked=false;const projectLockName=`orbit-ai-project:${localPath}`;
+      let cardClient:PoolClient|null=null;let cardLocked=false;let projectClient:PoolClient|null=null;let projectLocked=false;const cardLockName=`orbit-ai-card:${cardId}`;const projectLockName=`orbit-ai-project:${localPath}`;
       try {
+        while(true){
+          const candidate=await this.db.pool.connect();
+          const acquired=(await candidate.query<{locked:boolean}>('SELECT pg_try_advisory_lock(hashtext($1)::bigint) AS locked',[cardLockName])).rows[0]?.locked;
+          if(!acquired){candidate.release();await new Promise(resolveDelay=>setTimeout(resolveDelay,250));continue;}
+          const first=(await candidate.query<{id:string}>("SELECT id FROM card_ai_runs WHERE card_id=$1 AND status='queued' ORDER BY created_at,id LIMIT 1",[cardId])).rows[0];
+          if(first?.id===run!.id){cardClient=candidate;cardLocked=true;break;}
+          await candidate.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[cardLockName]);candidate.release();
+          await new Promise(resolveDelay=>setTimeout(resolveDelay,250));
+        }
         projectClient=await this.db.pool.connect();
         await projectClient.query('SELECT pg_advisory_lock(hashtext($1)::bigint)',[projectLockName]);projectLocked=true;
         const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND id<>$3 AND codex_session_id IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1',[cardId,currentProject.id,run!.id]);
@@ -338,6 +347,10 @@ export class PromptSessionsService implements OnModuleInit {
         if(projectClient){
           try{if(projectLocked)await projectClient.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[projectLockName]);}
           finally{projectClient.release();}
+        }
+        if(cardClient){
+          try{if(cardLocked)await cardClient.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[cardLockName]);}
+          finally{cardClient.release();}
         }
       }
     })().catch(error=>console.error('Não foi possível finalizar a execução de prompt.',error));

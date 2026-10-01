@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, OnModuleDestroy, OnModuleInit, Optional, Param, Patch, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { config as loadEnv } from 'dotenv';
 import { Db } from './db';
 import { FeaturesService } from './features';
 import { OrbitEvents } from './orbit-events';
+import { PluginRegistry } from './execution/registries';
 import { defineCapability, defineCardAction, defineConnectionProvider, defineContribution, definePlugin } from './plugins/sdk';
 
 export const trelloPluginDefinition=definePlugin({
@@ -30,10 +31,18 @@ const trelloId = (value:unknown,label:string) => {
 };
 
 @Injectable()
-export class TrelloSyncService {
+export class TrelloSyncService implements OnModuleInit, OnModuleDestroy {
   private configured=false;
   private syncing=new Set<string>();
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(OrbitEvents) private events:OrbitEvents){}
+  private timer?:ReturnType<typeof setInterval>;
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(OrbitEvents) private events:OrbitEvents,@Optional() @Inject(PluginRegistry) private plugins:PluginRegistry=new PluginRegistry()){}
+
+  onModuleInit(){
+    if(this.plugins.isEnabled('trello'))void this.connectDefault().catch(error=>console.error('Could not connect the default Trello board.',error));
+    this.timer=setInterval(()=>void this.tick(),Number(process.env.TRELLO_SYNC_INTERVAL_MS||5000));
+    this.timer.unref();
+  }
+  onModuleDestroy(){if(this.timer)clearInterval(this.timer)}
 
   private credentials(){
     if(!this.configured){loadEnv({path:process.env.TRELLO_CONFIG_PATH||defaultSource});this.configured=true;}
@@ -71,7 +80,7 @@ export class TrelloSyncService {
     await this.db.query('INSERT INTO trello_list_mappings(connection_id,trello_list_id,trello_list_name,orbit_list_id) VALUES($1,$2,$3,$4)',[connection.id,remote.id,remote.name,listId]);
     await this.sync(connection.id);return {ok:true,mapped_list_id:remote.id};
   }
-  private async labels(boardId:string,source:string){const ensure=async(name:string,color:string)=>{const existing=await this.db.one<{id:string}>('SELECT id FROM labels WHERE board_id=$1 AND name=$2 LIMIT 1',[boardId,name]);if(existing)return existing.id;return String((await this.db.one<{id:string}>('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[boardId,name,color]))!.id)};return [await ensure('trello','blue'),await ensure(source,'purple')];}
+  private async labels(boardId:string,source:string){const ensure=async(name:string,color:string)=>{const existing=await this.db.one<{id:string}>('SELECT id FROM labels WHERE board_id=$1 AND name=$2 LIMIT 1',[boardId,name]);if(existing){await this.db.query('UPDATE labels SET color=$3 WHERE id=$1 AND board_id=$2',[existing.id,boardId,color]);return existing.id;}return String((await this.db.one<{id:string}>('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[boardId,name,color]))!.id)};return [await ensure('trello','blue'),await ensure(source,'green')];}
   private async pullCard(connection:Connection,listId:string,remote:TrelloCard,index:number,labelIds:string[]){const mapping=await this.db.one<{orbit_card_id:string,last_trello_activity:Date|null}>('SELECT orbit_card_id,last_trello_activity FROM trello_card_mappings WHERE connection_id=$1 AND trello_card_id=$2',[connection.id,remote.id]);const remoteActivity=remote.dateLastActivity?new Date(remote.dateLastActivity):new Date();if(mapping?.last_trello_activity&&remoteActivity<=mapping.last_trello_activity)return false;const due=remote.due&&Number.isFinite(Date.parse(remote.due))?new Date(remote.due):null;let cardId=mapping?.orbit_card_id;if(cardId){await this.db.query(`UPDATE cards SET list_id=$2,title=$3,description=$4,due_date=$5,position=$6,completed=$7,archived_at=$8,updated_at=now() WHERE id=$1`,[cardId,listId,remote.name.slice(0,300),remote.desc||'',due,index,Boolean(remote.closed),remote.closed?new Date():null]);await this.db.query('UPDATE trello_card_mappings SET last_trello_activity=$3,last_orbit_update=now() WHERE connection_id=$1 AND trello_card_id=$2',[connection.id,remote.id,remoteActivity]);}else{const created=await this.db.one<{id:string}>(`INSERT INTO cards(list_id,title,description,due_date,position,completed,archived_at) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[listId,remote.name.slice(0,300),remote.desc||'',due,index,Boolean(remote.closed),remote.closed?new Date():null]);cardId=created!.id;await this.db.query('INSERT INTO trello_card_mappings(connection_id,trello_card_id,orbit_card_id,last_trello_activity,last_orbit_update) VALUES($1,$2,$3,$4,now())',[connection.id,remote.id,cardId,remoteActivity]);}for(const label of labelIds)await this.db.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[cardId,label]);return true;}
   private async pushPending(connection:Connection){
     const cards=await this.db.query<{id:string;title:string;description:string;due_date:Date|null;completed:boolean;archived_at:Date|null;updated_at:Date;trello_card_id:string|null;trello_list_id:string;last_orbit_update:Date|null}>(

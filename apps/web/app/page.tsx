@@ -42,14 +42,14 @@ export default function Home() {
         api<BackupSummary[]>('/backups').catch(()=>[]),
         api<Board[]>('/boards?status=closed').catch(()=>[]),
       ]);
-      const active=all.filter(board=>!board.is_inbox);
+      const active=all.filter(board=>!board.is_inbox&&!board.is_collection);
       const archiveDetails=await Promise.all(active.map(async board=>{
         const full=await api<Board>(`/boards/${board.id}`);
         const lists=await api<Array<{id:string;title:string;card_count:number;archived_at?:string}>>(`/boards/${board.id}/lists/archived`);
         const cards=await Promise.all((full.lists||[]).map(async list=>({list,cards:await api<Array<{id:string;title:string;archived_at:string}>>(`/lists/${list.id}/cards/archived`)})));
         return {board,lists,cards};
       }));
-      setData(home);setBoards(all);setBackups(backupRows);setArchivedBoards(closed.filter(board=>!board.is_inbox));
+      setData(home);setBoards(all);setBackups(backupRows);setArchivedBoards(closed.filter(board=>!board.is_inbox&&!board.is_collection));
       setArchivedLists(archiveDetails.flatMap(({board,lists})=>lists.map(list=>({...list,board_id:board.id,board_title:board.title}))).sort((a,b)=>new Date(b.archived_at||0).getTime()-new Date(a.archived_at||0).getTime()));
       setArchivedCards(archiveDetails.flatMap(({board,cards})=>cards.flatMap(({list,cards:items})=>items.map(card=>({...card,list_id:list.id,list_title:list.title,board_id:board.id,board_title:board.title})))).sort((a,b)=>new Date(b.archived_at).getTime()-new Date(a.archived_at).getTime()));
       setError('');

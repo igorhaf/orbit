@@ -360,7 +360,7 @@ export class FeaturesService {
   async markCardPromptNotificationsRead(userId:string,cardId:string) {
     const boardId=await this.cardBoard(cardId,userId);
     await this.db.query(`UPDATE notifications SET read_at=COALESCE(read_at,now())
-      WHERE user_id=$1 AND board_id=$2 AND card_id=$3 AND kind='prompt_execution'
+      WHERE user_id=$1 AND board_id=$2 AND card_id=$3 AND kind IN ('prompt_execution','card_execution')
         AND title<>'Prompt na fila' AND read_at IS NULL`,[userId,boardId,cardId]);
     this.events?.notificationChanged(userId);
     return {ok:true};

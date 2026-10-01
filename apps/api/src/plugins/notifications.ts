@@ -9,6 +9,7 @@ export const cardNotificationPlugin: PluginDefinition = {
     { id: "comment", label: "Comentários" },
     { id: "mention", label: "Menções" },
     { id: "card_updated", label: "Atualizações de cartão" },
+    { id: "card_execution", label: "Execuções de cartão" },
   ] },
 };
 

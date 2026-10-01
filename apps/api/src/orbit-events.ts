@@ -20,7 +20,7 @@ export class OrbitEvents {
     if(rows.length)this.server?.to(`board:${event.boardId}`).emit('orbit:event',{...event,id:rows[0].id,at:new Date().toISOString()});
     return rows[0]||null;
   }
-  boardChanged(boardId: string, source: 'trello' | 'orbit') {
+  boardChanged(boardId: string, source: string) {
     this.server?.to(`board:${boardId}`).emit('board:changed', { boardId, source, at: new Date().toISOString() });
   }
   notificationChanged(userId:string) {

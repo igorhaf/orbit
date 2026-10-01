@@ -26,7 +26,7 @@ export type Card = {
   id: string;
   url_token?: string;
   execution?: {enabled:boolean;agent:string|null;executor:string|null}|null;
-  result?: {status:string}|null;
+  result?: {status:string;unread?:boolean}|null;
   prompt?: {status:'queued'|'running'|'success'|'error';finished_at?:string|null;unread?:boolean}|null;
   kind?: 'normal'|'template'|'board'|'separator'|'link'|'mirror';
   target_board_id?: string|null;
@@ -67,10 +67,11 @@ export type Card = {
   checklist_done: number;
   custom_values?: CustomValue[];
 };
-export type List = { id: string; board_id: string; title: string; position: number; color: string | null; collapsed: boolean; is_completion_list?: boolean; archived_at?: string | null; card_count?: number; cards: Card[] };
+export type List = { id: string; board_id: string; title: string; position: number; parent_list_id?: string | null; color: string | null; collapsed: boolean; is_completion_list?: boolean; archived_at?: string | null; card_count?: number; cards: Card[] };
 export type Board = {
   id: string;
   is_inbox?: boolean;
+  is_collection?: boolean;
   title: string;
   background: string;
   background_image?: string | null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   SortableContext,
   useSortable,
@@ -54,7 +54,7 @@ export function BoardList({
   lists: List[];
   boards: Board[];
   onOpen: (card: Card) => void;
-  onAdd: (listId: string, text: string, position: number) => Promise<void>;
+  onAdd: (listId: string, text: string, position: number) => Promise<Card>;
   onRename: (listId: string, title: string) => Promise<void>;
   onAction: Action;
   renderCard: (card: Card, listColor?: string | null) => React.ReactNode;
@@ -91,6 +91,10 @@ export function BoardList({
     { id: string; title: string }[]
   >([]);
   const [busy, setBusy] = useState(false);
+  const [pendingScroll, setPendingScroll] = useState<
+    { direction: "start" | "end"; cardId: string } | null
+  >(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
   const [actionError, setActionError] = useState("");
   const [trelloOptions, setTrelloOptions] = useState<TrelloListOption[]>([]);
   const [trelloMapping, setTrelloMapping] = useState("");
@@ -114,6 +118,19 @@ export function BoardList({
         card.description?.toLowerCase().includes(query.toLowerCase()))
     );
   });
+  useEffect(() => {
+    if (!pendingScroll || !list.cards.some((card) => card.id === pendingScroll.cardId)) return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = cardsRef.current;
+      if (!container) return;
+      container.scrollTo({
+        top: pendingScroll.direction === "end" ? container.scrollHeight : 0,
+        behavior: "smooth",
+      });
+      setPendingScroll(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [list.cards, pendingScroll]);
   const close = () => {
     setMenu(false);
     setSection("main");
@@ -286,7 +303,10 @@ export function BoardList({
         </div>
       ) : (
         <>
-          <div className="scrollbar-thin min-h-1 space-y-1 overflow-y-auto px-2 pb-2">
+          <div
+            ref={cardsRef}
+            className="scrollbar-thin min-h-1 space-y-1 overflow-y-auto px-2 pb-2"
+          >
             <button
               onClick={() => openComposer(0)}
               className="w-full rounded px-2 py-1 text-left text-xs text-[#626f86] hover:bg-[#dfe1e6]"
@@ -325,11 +345,19 @@ export function BoardList({
                   if (!title.trim()) return;
                   setBusy(true);
                   try {
-                    await onAdd(
+                    const created = await onAdd(
                       list.id,
                       title,
                       insertPosition ?? list.cards.length,
                     );
+                    const position = insertPosition ?? list.cards.length;
+                    const direction =
+                      position === 0
+                        ? "start"
+                        : position >= list.cards.length
+                          ? "end"
+                          : null;
+                    if (direction) setPendingScroll({ cardId: created.id, direction });
                     setTitle("");
                     setActionError("");
                   } catch (err) {

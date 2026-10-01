@@ -287,7 +287,7 @@ class Service {
   async inboundEmailCard(body:Payload,token:string|undefined){if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN)fail('Canal de e-mail não autorizado.',401);const account=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);if(!account)fail('Conta não encontrada.',404);return this.createEmailCard(String((account as Payload).id),{email:body.body,sender:body.sender,subject:body.subject,list_id:body.list_id})}
   async boards(userId: string, status: string) {
     if (status !== 'active' && status !== 'closed') fail('Filtro inválido.');
-    return this.db.query(`SELECT b.id,b.title,b.background,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.description,b.closed_at,b.is_inbox,
+    return this.db.query(`SELECT b.id,b.title,b.background,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.description,b.closed_at,b.is_inbox,b.is_collection,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image,
       w.name AS workspace_name,v.visited_at,
       (SELECT count(*)::int FROM board_members bm2 WHERE bm2.board_id=b.id) AS member_count,
@@ -329,9 +329,9 @@ class Service {
   async board(boardId: string, userId: string) {
     await this.member(boardId,userId,true);
     await this.features.visit(boardId,userId);
-    const board = await this.db.one(`SELECT b.id,b.title,b.background,b.description,b.closed_at,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.is_inbox,b.ai_default_project_id,b.ai_default_model,b.ai_default_effort,u.ai_default_model AS ai_global_model,u.ai_default_effort AS ai_global_effort,
+    const board = await this.db.one(`SELECT b.id,b.title,b.background,b.description,b.closed_at,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.is_inbox,b.is_collection,b.ai_default_project_id,b.ai_default_model,b.ai_default_effort,u.ai_default_model AS ai_global_model,u.ai_default_effort AS ai_global_effort,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image FROM boards b JOIN users u ON u.id=$2 WHERE b.id=$1`, [boardId,userId]);
-    const lists = await this.db.query('SELECT id,board_id,title,position,color,collapsed,is_completion_list FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at', [boardId]);
+    const lists = await this.db.query('SELECT id,board_id,title,position,parent_list_id,color,collapsed,is_completion_list FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY parent_list_id NULLS FIRST,position,created_at', [boardId]);
     const cards = await this.db.query(`SELECT slot.id,slot.list_id,slot.position,slot.kind,slot.target_board_id,slot.link_url,
       slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
       source_board.id AS source_board_id,source_board.title AS source_board_title,
@@ -340,10 +340,22 @@ class Service {
       c.schedule_start_at,c.schedule_end_at,c.schedule_all_day,c.schedule_time_zone,
       CASE WHEN c.schedule_start_at IS NULL THEN NULL ELSE json_build_object('startAt',c.schedule_start_at,'endAt',c.schedule_end_at,'allDay',c.schedule_all_day,'timeZone',c.schedule_time_zone) END AS schedule,
       (SELECT json_build_object('enabled',e.enabled,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
-      (SELECT json_build_object('status',r.status) FROM card_runs r WHERE r.card_id=c.id ORDER BY r.created_at DESC LIMIT 1) AS result,
-      (SELECT json_build_object('status',r.status,'finished_at',r.finished_at,'unread',EXISTS(
-        SELECT 1 FROM notifications n WHERE n.user_id=$2 AND n.card_id=c.id AND n.kind='prompt_execution'
-          AND n.title<>'Prompt na fila' AND n.read_at IS NULL)) FROM card_ai_runs r WHERE r.card_id=c.id ORDER BY r.started_at DESC,r.id DESC LIMIT 1) AS prompt,
+      (SELECT json_build_object('status',CASE WHEN EXISTS(SELECT 1 FROM notifications failed WHERE failed.user_id=$2 AND failed.card_id=c.id
+          AND failed.kind='card_execution' AND failed.title='Falha na execução' AND failed.read_at IS NULL) THEN 'failed' ELSE r.status END,
+        'unread',EXISTS(SELECT 1 FROM notifications n WHERE n.user_id=$2 AND n.card_id=c.id AND n.kind='card_execution' AND n.read_at IS NULL))
+        FROM card_runs r WHERE r.card_id=c.id ORDER BY r.created_at DESC LIMIT 1) AS result,
+      (SELECT json_build_object('status',COALESCE(
+        (SELECT active.status FROM card_ai_runs active WHERE active.card_id=c.id AND active.status IN ('queued','running') ORDER BY active.started_at DESC,active.id DESC LIMIT 1),
+        (SELECT CASE WHEN bool_or(jobs.status='running') THEN 'running' WHEN count(*) > 0 THEN 'queued' END FROM card_ai_comment_jobs jobs WHERE jobs.card_id=c.id AND jobs.status IN ('queued','running')),
+        (SELECT 'error' WHERE EXISTS(SELECT 1 FROM notifications failed WHERE failed.user_id=$2 AND failed.card_id=c.id
+          AND failed.kind='prompt_execution' AND failed.title='Falha no prompt' AND failed.read_at IS NULL)),
+        (SELECT latest.status FROM card_ai_runs latest WHERE latest.card_id=c.id ORDER BY latest.started_at DESC,latest.id DESC LIMIT 1)),
+        'finished_at',NULLIF(GREATEST(
+          COALESCE((SELECT latest.finished_at FROM card_ai_runs latest WHERE latest.card_id=c.id ORDER BY latest.started_at DESC,latest.id DESC LIMIT 1),'-infinity'::timestamptz),
+          COALESCE((SELECT max(n.created_at) FROM notifications n WHERE n.user_id=$2 AND n.card_id=c.id AND n.kind IN ('prompt_execution','card_execution')),'-infinity'::timestamptz)),
+          '-infinity'::timestamptz),
+        'unread',EXISTS(SELECT 1 FROM notifications n WHERE n.user_id=$2 AND n.card_id=c.id
+          AND n.kind='prompt_execution' AND n.title<>'Prompt na fila' AND n.read_at IS NULL))) AS prompt,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
       COALESCE((SELECT json_agg(json_build_object('id',label.id,'name',label.name,'color',label.color) ORDER BY label.name,label.id) FROM card_labels cl JOIN labels label ON label.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
       (SELECT count(*)::int FROM comments cm WHERE cm.card_id=c.id) AS comment_count,
@@ -498,14 +510,16 @@ class Service {
   async createList(boardId: string,userId: string,body: Payload) {
     await this.member(boardId,userId);
     const title = value(body.title,'Título',160);
+    const parentId=body.parent_list_id===undefined||body.parent_list_id===null||body.parent_list_id===''?null:uuid(value(body.parent_list_id,'Categoria pai',36));
+    if(parentId){const parent=await this.db.one('SELECT id FROM lists WHERE id=$1 AND board_id=$2 AND archived_at IS NULL',[parentId,boardId]);if(!parent)fail('Categoria pai inválida.',400)}
     const client=await this.db.pool.connect();
     let list;
     try {
       await client.query('BEGIN');
       await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
-      const existing=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId])).rows.map(row=>row.id as string);
+      const existing=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND parent_list_id IS NOT DISTINCT FROM $2 AND archived_at IS NULL ORDER BY position,created_at',[boardId,parentId])).rows.map(row=>row.id as string);
       const index=body.position===undefined ? existing.length : positionIndex(body.position,existing.length);
-      list=(await client.query('INSERT INTO lists(board_id,title,position) VALUES($1,$2,$3) RETURNING *',[boardId,title,index])).rows[0];
+      list=(await client.query('INSERT INTO lists(board_id,title,position,parent_list_id) VALUES($1,$2,$3,$4) RETURNING *',[boardId,title,index,parentId])).rows[0];
       existing.splice(index,0,list.id);
       for (let i=0;i<existing.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[existing[i],i]);
       await client.query('COMMIT');
@@ -516,6 +530,9 @@ class Service {
   async updateList(id: string,userId: string,body: Payload) {
     const boardId=await this.listBoard(id,userId);
     const title=body.title===undefined ? null : value(body.title,'Título',160);
+    const parentRequested=body.parent_list_id!==undefined;
+    const parentId=parentRequested&&(body.parent_list_id===null||body.parent_list_id==='')?null:parentRequested?uuid(value(body.parent_list_id,'Categoria pai',36)):undefined;
+    if(parentId){const parent=await this.db.one('SELECT id FROM lists WHERE id=$1 AND board_id=$2 AND archived_at IS NULL',[parentId,boardId]);if(!parent||parentId===id)fail('Categoria pai inválida.',400)}
     const color=body.color===undefined ? undefined : body.color===null ? null : value(body.color,'Cor',32);
     if (color && !listColors.has(color)) fail('Cor inválida.');
     if (body.collapsed!==undefined && typeof body.collapsed!=='boolean') fail('Estado inválido.');
@@ -526,13 +543,15 @@ class Service {
       await client.query('BEGIN');
       await client.query('SELECT id FROM boards WHERE id=$1 FOR UPDATE',[boardId]);
       if(body.is_completion_list===true) await client.query('UPDATE lists SET is_completion_list=false WHERE board_id=$1 AND id<>$2',[boardId,id]);
-      if (body.position!==undefined) {
-        const order=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId])).rows.map(row=>row.id as string);
-        const index=positionIndex(body.position,order.length-1);
-        order.splice(order.indexOf(id),1); order.splice(index,0,id);
+      if (body.position!==undefined || parentRequested) {
+        const current=(await client.query('SELECT parent_list_id FROM lists WHERE id=$1',[id])).rows[0];
+        const nextParent=parentRequested?parentId:current.parent_list_id;
+        const order=(await client.query('SELECT id FROM lists WHERE board_id=$1 AND parent_list_id IS NOT DISTINCT FROM $2 AND archived_at IS NULL AND id<>$3 ORDER BY position,created_at',[boardId,nextParent,id])).rows.map(row=>row.id as string);
+        const requested=body.position===undefined?order.length:positionIndex(body.position,order.length);
+        order.splice(requested,0,id);
         for (let i=0;i<order.length;i++) await client.query('UPDATE lists SET position=$2 WHERE id=$1',[order[i],i]);
       }
-      list=(await client.query('UPDATE lists SET title=COALESCE($2,title),color=CASE WHEN $3::boolean THEN $4::varchar ELSE color END,collapsed=COALESCE($5,collapsed),is_completion_list=COALESCE($6,is_completion_list) WHERE id=$1 RETURNING *',[id,title,color!==undefined,color??null,body.collapsed??null,body.is_completion_list??null])).rows[0];
+      list=(await client.query('UPDATE lists SET title=COALESCE($2,title),parent_list_id=CASE WHEN $3::boolean THEN $4::uuid ELSE parent_list_id END,color=CASE WHEN $5::boolean THEN $6::varchar ELSE color END,collapsed=COALESCE($7,collapsed),is_completion_list=COALESCE($8,is_completion_list) WHERE id=$1 RETURNING *',[id,title,parentRequested,parentId,color!==undefined,color??null,body.collapsed??null,body.is_completion_list??null])).rows[0];
       if(body.is_completion_list!==undefined) await client.query('UPDATE cards c SET completed=l.is_completion_list FROM lists l WHERE c.list_id=l.id AND l.board_id=$1',[boardId]);
       await client.query('COMMIT');
     } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
@@ -976,7 +995,7 @@ class Service {
     const comments = await this.db.query(`SELECT c.id,c.body,c.created_at,c.edited_at,u.id AS author_id,COALESCE(c.author_label,u.name) AS author_name,c.author_label IS NOT NULL AS is_ai,
       jobs.status AS ai_status,jobs.error AS ai_error,
       COALESCE((SELECT json_agg(json_build_object('id',a.id,'kind',a.kind,'name',a.name,'url',a.url,'target_id',a.target_id,'mime_type',a.mime_type,'size_bytes',a.size_bytes)) FROM comment_attachments a WHERE a.comment_id=c.id),'[]'::json) AS attachments
-      FROM comments c JOIN users u ON u.id=c.author_id LEFT JOIN card_ai_comment_jobs jobs ON jobs.comment_id=c.id WHERE c.card_id=$1 ORDER BY c.created_at ASC,c.id ASC`,[id]);
+      FROM comments c JOIN users u ON u.id=c.author_id LEFT JOIN card_ai_comment_jobs jobs ON jobs.comment_id=c.id WHERE c.card_id=$1 ORDER BY c.created_at DESC,c.id DESC`,[id]);
     const checklist = await this.db.query('SELECT id,text,completed,position,due_date FROM checklist_items WHERE card_id=$1 ORDER BY position',[id]);
     const externalResources=await this.db.query(`SELECT id,plugin_id,connection_id,resource_type,external_id,external_parent_id,url,etag,metadata,created_at,updated_at
       FROM external_resources WHERE owner_id=$2 AND orbit_entity_type='card' AND orbit_entity_id=$1 ORDER BY created_at`,[id,userId]);
@@ -1274,12 +1293,8 @@ async function bootstrap() {
   events.attach(sockets);
   await app.listen(Number(process.env.API_PORT || 4000), '0.0.0.0');
   const planner=app.get(PlannerPlugin);
-  const trello=app.get(TrelloSyncService);
   if(plugins.isEnabled('planner'))void planner.prepareDailySchedules();
-  if(plugins.isEnabled('trello'))void trello.connectDefault().catch(error=>console.error('Could not connect the default Trello board.',error));
   const plannerTimer=setInterval(()=>{if(plugins.isEnabled('planner'))void planner.prepareDailySchedules()},60*60*1000);
   plannerTimer.unref();
-  const trelloTimer=setInterval(()=>{if(plugins.isEnabled('trello'))void trello.tick()},Number(process.env.TRELLO_SYNC_INTERVAL_MS||5000));
-  trelloTimer.unref();
 }
 bootstrap();

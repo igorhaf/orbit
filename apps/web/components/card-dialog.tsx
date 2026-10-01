@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   CheckSquare,
@@ -113,13 +113,28 @@ export function CardDialog({
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"card" | "prompt" | "output">("card");
   const [previousCard, setPreviousCard] = useState(card);
+  const markedActivityRead = useRef("");
+  const descriptionEditorRef = useRef<HTMLDivElement>(null);
+  const descriptionRef = useRef(description);
+  const saveDescriptionRef = useRef<() => Promise<void>>(async () => undefined);
+  const savingDescriptionRef = useRef(false);
   if (card !== previousCard) {
     setPreviousCard(card);
     setTitle(card.title);
-    setDescription(card.description || "");
+    // A troca do projeto de IA atualiza o cartão no servidor. Não substitua
+    // um rascunho que ainda está sendo editado por essa versão recarregada.
+    if (!editingDescription) setDescription(card.description || "");
   }
   const user = getUser();
   const list = board.lists?.find((current) => current.id === card.list_id);
+
+  useEffect(() => {
+    if (!card.prompt?.unread && !card.result?.unread) return;
+    const activityId = `${card.id}:${card.prompt?.finished_at || card.prompt?.status || card.result?.status || "complete"}`;
+    if (markedActivityRead.current === activityId) return;
+    markedActivityRead.current = activityId;
+    void send(`/cards/${card.id}/prompt-notifications/read`, "PATCH").then(onChanged).catch(() => undefined);
+  }, [card.id, card.prompt?.finished_at, card.prompt?.status, card.prompt?.unread, card.result?.status, card.result?.unread, onChanged]);
 
   function openDescriptionEditor() {
     setDescription(card.description || "");
@@ -195,6 +210,46 @@ export function CardDialog({
     }
     return success;
   }
+
+  const saveDescription = useCallback(async () => {
+    if (!editingDescription || savingDescriptionRef.current) return;
+    savingDescriptionRef.current = true;
+    const nextDescription = descriptionRef.current;
+    try {
+      if (nextDescription !== card.description) {
+        const success = await updateCard(
+          { description: nextDescription },
+          { description: card.description },
+          "editar descrição",
+        );
+        if (success) setEditingDescription(false);
+      } else {
+        setEditingDescription(false);
+      }
+    } finally {
+      savingDescriptionRef.current = false;
+    }
+  // updateCard is intentionally kept local to the dialog and is recreated with its current card state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.description, editingDescription]);
+
+  useEffect(() => {
+    descriptionRef.current = description;
+    saveDescriptionRef.current = saveDescription;
+  }, [description, saveDescription]);
+
+  useEffect(() => {
+    if (!editingDescription) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (descriptionEditorRef.current?.contains(target)) return;
+      void saveDescriptionRef.current();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [editingDescription]);
+
   return (
     <>
     <Modal onClose={onClose} extraWide>
@@ -382,34 +437,24 @@ export function CardDialog({
               <div className="pl-0 sm:pl-8">
                 {editingDescription ? (
                   <div>
-                    <MarkdownEditor
-                      value={description}
-                      onChange={setDescription}
-                      placeholder="Adicione contexto, links e imagens em Markdown..."
-                      onImageFiles={uploadDescriptionImages}
-                    />
+                    <div ref={descriptionEditorRef}>
+                      <MarkdownEditor
+                        value={description}
+                        onChange={setDescription}
+                        placeholder="Adicione contexto, links e imagens em Markdown..."
+                        onImageFiles={uploadDescriptionImages}
+                      />
+                    </div>
                     <div className="mt-2 flex gap-2">
                       <button
                         disabled={busy}
-                        onClick={async () => {
-                          if (
-                            await updateCard(
-                              { description },
-                              { description: card.description },
-                              "editar descrição",
-                            )
-                          )
-                            setEditingDescription(false);
-                        }}
+                        onClick={() => void saveDescription()}
                         className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
                       >
                         Salvar
                       </button>
                       <button
-                        onClick={() => {
-                          setDescription(card.description || "");
-                          setEditingDescription(false);
-                        }}
+                        onClick={() => void saveDescription()}
                         className="rounded px-3 py-1.5 text-sm hover:bg-[#e9eaed]"
                       >
                         Cancelar

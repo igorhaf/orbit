@@ -48,10 +48,10 @@ export function AiModelFields({
           </select>
         </label>
       </div>
-      {inheritedValue && <p className="text-xs text-[#626f86]">Herdado: {aiModelLabel(inheritedValue, models)}</p>}
+      {inheritedValue && <p className="text-xs text-[#626f86]">Referência: {aiModelLabel(inheritedValue, models)}</p>}
       <div className="flex items-center gap-3">
         <button type="button" disabled={disabled || !next || next.id === value} onClick={() => next && void onSave(next.id)} className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Salvar modelo</button>
-        {value && <button type="button" disabled={disabled} onClick={() => void onSave(null)} className="text-xs font-semibold text-[#626f86] disabled:opacity-50">Herdar configuração</button>}
+        {value && <button type="button" disabled={disabled} onClick={() => void onSave(null)} className="text-xs font-semibold text-[#626f86] disabled:opacity-50">Usar referência</button>}
       </div>
     </div>
   );
@@ -82,7 +82,7 @@ export function AiEffortField({
     <label className="block text-xs font-semibold">
       <span className="flex items-center justify-between gap-2">
         <span>Esforço</span>
-        <span className="font-normal text-[#626f86]">{value ? currentLabel : inheritedValue ? `Herdado · ${currentLabel}` : "Não configurado"}</span>
+        <span className="font-normal text-[#626f86]">{currentLabel}</span>
       </span>
       <input
         disabled={disabled}

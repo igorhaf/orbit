@@ -130,8 +130,10 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
       await this.runs.stage(run.id,'result','Persistindo resultado.');
       const destination=run.input.config.automation.on_success_list_id;
       await this.runs.finish(run,controller.signal.aborted?'cancelled':'success',result,undefined,destination?client=>this.actions.dispatch({type:'move_card',cardId:run.card_id,boardId:card.board_id,userId:run.user_id,config:{list_id:destination},chain:run.chain},client):undefined);
+      if(!controller.signal.aborted)await this.features.notify(run.user_id,card.board_id,run.card_id,'card_execution','Execução concluída',`A execução do cartão “${run.input.card.title}” foi concluída.`);
     }catch(error){
       await this.runs.finish(run,controller.signal.aborted?'cancelled':'failed',undefined,redact((error as Error).message));
+      if(!controller.signal.aborted){const card=await this.card(run.card_id,run.user_id).catch(()=>null);if(card)await this.features.notify(run.user_id,card.board_id,run.card_id,'card_execution','Falha na execução',`A execução do cartão “${run.input.card.title}” falhou: ${redact((error as Error).message)}`)}
       if(!controller.signal.aborted&&run.input.config.automation.on_failure_list_id){
         const card=await this.card(run.card_id,run.user_id).catch(()=>null);
         if(card){const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query("SELECT set_config('orbit.automation_chain',$1,true)",['{'+run.chain.join(',')+'}']);await this.actions.dispatch({type:'move_card',cardId:run.card_id,boardId:card.board_id,userId:run.user_id,config:{list_id:run.input.config.automation.on_failure_list_id},chain:run.chain},client);await client.query('COMMIT')}catch(error){await client.query('ROLLBACK');await this.runs.stage(run.id,'automation',`Falha ao mover: ${(error as Error).message}`)}finally{client.release()}}

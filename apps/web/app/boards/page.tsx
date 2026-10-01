@@ -129,7 +129,7 @@ export default function BoardsPage() {
     );
   }
   async function moveFavorite(index: number, direction: -1 | 1) {
-    const favorites = boards.filter((board) => board.starred && !board.is_inbox);
+    const favorites = boards.filter((board) => board.starred && !board.is_inbox && !board.is_collection);
     const target = index + direction;
     if (target < 0 || target >= favorites.length) return;
     const previous = favorites.map((board) => board.id);
@@ -164,7 +164,7 @@ export default function BoardsPage() {
   }
   if (!ready) return <div className="min-h-screen bg-[#f7f8fa]" />;
   if (!user) return null;
-  const visibleBoards = boards.filter((board) => !board.is_inbox);
+  const visibleBoards = boards.filter((board) => !board.is_inbox && !board.is_collection);
   const filtered = visibleBoards.filter((board) =>
     board.title.toLowerCase().includes(query.toLowerCase()),
   );
@@ -283,7 +283,7 @@ export default function BoardsPage() {
               <LayoutDashboard size={19} /> Todos os quadros
             </h2>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-              {filtered.filter((board) => !board.is_inbox).map((board) => (
+              {filtered.filter((board) => !board.is_inbox && !board.is_collection).map((board) => (
                       <div key={board.id} className="relative">
                         <BoardTile
                           board={board}

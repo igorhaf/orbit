@@ -1,12 +1,12 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
   Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut,
   Moon, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
-  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Workflow, Circle, CheckCircle2,
+  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Workflow, Circle, CheckCircle2, FolderOpen,
 } from 'lucide-react';
 import {
   api, send, AppNotification, Board, Card, SearchResults, User,
@@ -14,6 +14,7 @@ import {
 } from '@/lib/api';
 import { historyState, redo, undo } from '@/lib/history';
 import { CardDialog } from './card-dialog';
+import { CardActivityIndicator } from './card-execution';
 import { io } from 'socket.io-client';
 
 export function Avatar({ name, url, size = 'md' }: { name: string; url?: string | null; size?: 'sm'|'md'|'lg' }) {
@@ -112,7 +113,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<{query:string; data:SearchResults}>({query:'',data:{boards:[],cards:[]}});
   const results = panel === 'search' && query.trim().length >= 2 && searchResponse.query === query
-    ? {...searchResponse.data,boards:searchResponse.data.boards.filter(board=>!board.is_inbox)} : {boards:[],cards:[]};
+    ? {...searchResponse.data,boards:searchResponse.data.boards.filter(board=>!board.is_inbox&&!board.is_collection)} : {boards:[],cards:[]};
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [pinned, setPinned] = useState(true);
   const [history, setHistory] = useState(historyState());
@@ -243,7 +244,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   }
   function openBoard(id: string) { setPanel(null); router.push(`/board/${id}`); }
   const unread = notifications.filter(item => !item.read_at).length;
-  const boardMatches = boards.filter(board => !board.is_inbox && board.title.toLowerCase().includes(query.toLowerCase())).slice(0,8);
+  const boardMatches = boards.filter(board => !board.is_inbox && !board.is_collection && board.title.toLowerCase().includes(query.toLowerCase())).slice(0,8);
   useEffect(() => {
     if (panel !== 'account') return;
     const closeOutside = (event: MouseEvent) => {
@@ -273,7 +274,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     };
   }, [panel]);
 
-  return <><header className="relative z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 sm:gap-2 sm:px-4">
+  return <><header className="relative z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 py-1 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
       <span className="flex h-7 w-7 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={19} strokeWidth={2.8}/></span>
       <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">Orbit</span>
@@ -340,8 +341,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
     </div>
-    {message && <div role="alert" className="absolute right-3 top-14 rounded bg-[#ffebe6] px-3 py-2 text-xs text-[#ae2a19] shadow"><button className="mr-2" onClick={() => setMessage('')}><X size={14}/></button>{message}</div>}
-  </header></>;
+  </header>{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
 }
 
 function InboxPanel({boards}:{boards:Board[]}) {
@@ -349,16 +349,18 @@ function InboxPanel({boards}:{boards:Board[]}) {
   const [selected,setSelected]=useState<Card|null>(null);
   const [title,setTitle]=useState('');
   const [error,setError]=useState('');
-  const box=boards.find(board=>board.is_inbox);
-  const load=useCallback(async()=>{if(!box)return;try{setInbox(await api<Board>(`/boards/${box.id}`));setError('')}catch(err){setError((err as Error).message)}},[box]);
+  const inboxId=boards.find(board=>board.is_inbox)?.id;
+  const load=useCallback(async()=>{if(!inboxId)return;try{const full=await api<Board>(`/boards/${inboxId}`);setInbox(full);setSelected(current=>current?full.lists?.flatMap(list=>list.cards).find(card=>card.id===current.id)||current:null);setError('')}catch(err){setError((err as Error).message)}},[inboxId]);
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
+  useEffect(()=>{if(!inbox?.id)return;const boardId=inbox.id;const socket=io({path:'/socket.io',auth:{token:localStorage.getItem('orbit_token')||''}});socket.on('connect',()=>socket.emit('board:join',boardId));const refresh=(event?:{boardId?:string})=>{if(!event?.boardId||event.boardId===boardId)void load()};socket.on('board:changed',refresh);socket.on('comment:changed',refresh);socket.on('prompt:progress',refresh);socket.on('notification:changed',()=>void load());return()=>{socket.emit('board:leave',boardId);socket.disconnect()}},[inbox?.id,load]);
   useEffect(()=>{const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card'))event.preventDefault()});document.addEventListener('drop',drop);return()=>document.removeEventListener('drop',drop)},[load]);
   const cards=inbox?.lists?.flatMap(list=>list.cards)||[];
-  return <><section className="pt-1"><div className="flex items-center px-2"><strong className="flex items-center gap-2 text-sm"><Inbox size={17}/> Inbox</strong></div><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{cards.map(card=><button key={card.id} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.setData('application/x-orbit-inbox-title',card.title);event.dataTransfer.effectAllowed='move'}} onClick={()=>setSelected(card)} className="w-full rounded bg-[#f1f2f4] px-2 py-2 text-left text-sm shadow-sm hover:bg-[#e9eaed]">{card.title}</button>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem rascunhos.</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste cartões para o Planner ou Calendário para agendá-los.</p></section>{selected&&inbox&&<CardDialog card={selected} board={inbox} onClose={()=>setSelected(null)} onChanged={async()=>{await load();const updated=await api<Board>(`/boards/${inbox.id}`);setInbox(updated);setSelected(updated.lists?.flatMap(list=>list.cards).find(card=>card.id===selected.id)||null)}} onDeleted={async()=>{setSelected(null);await load()}}/>}</>
+  return <><section className="pt-1"><div className="flex items-center px-2"><strong className="flex items-center gap-2 text-sm"><Inbox size={17}/> Inbox</strong></div><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{cards.map(card=><button key={card.id} draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.setData('application/x-orbit-inbox-title',card.title);event.dataTransfer.effectAllowed='move'}} onClick={()=>setSelected(card)} className="w-full rounded bg-[#f1f2f4] px-2 py-2 text-left text-sm shadow-sm hover:bg-[#e9eaed]"><span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{card.title}</span><CardActivityIndicator card={card}/></span></button>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem rascunhos.</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste cartões para o Planner ou Calendário para agendá-los.</p></section>{selected&&inbox&&<CardDialog card={selected} board={inbox} onClose={()=>setSelected(null)} onChanged={async()=>{await load();const updated=await api<Board>(`/boards/${inbox.id}`);setInbox(updated);setSelected(updated.lists?.flatMap(list=>list.cards).find(card=>card.id===selected.id)||null)}} onDeleted={async()=>{setSelected(null);await load()}}/>}</>
 }
 
 export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [pinned, setPinned] = useState(true);
   useEffect(() => {
     const sync = () => setPinned(localStorage.getItem('orbit_sidebar_pinned') !== 'false');
@@ -366,12 +368,12 @@ export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: strin
     return () => window.removeEventListener('sidebar:changed', sync);
   }, []);
   return <aside aria-label="Menu lateral" className={`scrollbar-thin shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] ${pinned?'w-[64px] px-2 lg:w-[245px] lg:px-3':'w-[56px] px-2'}`}>
-    <button onClick={()=>router.push('/inbox')} aria-label="Abrir Inbox" title="Inbox" className="mb-3 flex h-9 w-full items-center justify-center rounded-lg text-[#44546f] hover:bg-[#f1f2f4] lg:hidden"><Inbox size={18}/></button>
-    {pinned&&<div className="hidden lg:block"><InboxPanel boards={boards}/></div>}
+    <div className="mb-3 flex gap-1 lg:block"><button onClick={()=>router.push('/inbox')} aria-current={pathname === '/inbox' ? 'page' : undefined} aria-label="Abrir Inbox" title="Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg lg:w-full ${pathname === '/inbox' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button><button onClick={()=>router.push('/collections')} aria-current={pathname === '/collections' ? 'page' : undefined} aria-label="Abrir Coleções" title="Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg lg:mt-1 lg:w-full lg:justify-start lg:px-2 ${pathname === '/collections' ? 'bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button></div>
+    {pinned && pathname !== '/collections' && <div className="hidden lg:block"><InboxPanel boards={boards}/></div>}
     <section className="mt-4 border-t border-[#dfe1e6] pt-3">
       {pinned&&<h2 className="mb-2 hidden px-2 text-xs font-bold uppercase tracking-wide text-[#626f86] lg:block">Seus quadros</h2>}
       <nav aria-label="Seus quadros" className="space-y-1">
-        {boards.filter(board=>!board.is_inbox).map(board=><button key={board.id} onClick={()=>router.push(`/board/${board.id}`)} title={board.title} className={`flex h-9 w-full items-center gap-2 rounded-lg text-left text-sm text-[#44546f] hover:bg-[#f1f2f4] ${pinned?'justify-center lg:justify-start lg:px-2':'justify-center'}`}>
+        {boards.filter(board=>!board.is_inbox&&!board.is_collection).map(board=><button key={board.id} onClick={()=>router.push(`/board/${board.id}`)} title={board.title} className={`flex h-9 w-full items-center gap-2 rounded-lg text-left text-sm text-[#44546f] hover:bg-[#f1f2f4] ${pinned?'justify-center lg:justify-start lg:px-2':'justify-center'}`}>
           <span className="h-5 w-6 shrink-0 rounded" style={{background:board.background_image?`url("${board.background_image}") center/cover`:boardColors[board.background]||boardColors.blue}}/>
           {pinned&&<span className="hidden min-w-0 truncate lg:block">{board.title}</span>}
         </button>)}

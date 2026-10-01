@@ -1,7 +1,20 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
+import {LoaderCircle} from 'lucide-react';
 import {api,send,Board,Card} from '@/lib/api';
 import {Catalog,ExecutionConfig,ExecutionDetails,Output,executionStatus} from '@/lib/execution';
+
+export function CardActivityIndicator({card}:{card:Card}){
+  const promptStatus=card.prompt?.status;
+  const runStatus=card.result?.status;
+  const active=['queued','running'].includes(promptStatus||'')||['queued','running'].includes(runStatus||'');
+  const unread=Boolean(card.prompt?.unread||card.result?.unread);
+  const failed=(promptStatus==='error'&&Boolean(card.prompt?.unread))||(runStatus==='failed'&&Boolean(card.result?.unread));
+  if(active)return <LoaderCircle aria-label="Atividade em andamento" size={14} className="shrink-0 animate-spin text-[#0c66e4]"/>;
+  if(failed&&unread)return <span aria-label="Atividade falhou" title="Atividade falhou" className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#e5484d]"/>;
+  if(unread)return <span aria-label="Atividade concluída" title="Atividade concluída" className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#0c66e4]"/>;
+  return null;
+}
 
 const input='w-full min-w-0 rounded border border-[#8590a2] bg-white px-2 py-1.5 text-sm text-[#172b4d]';
 const button='rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50';
@@ -12,11 +25,11 @@ export function ExecutionOutput({output}:{output:Output}){
   const url=['url','pull_request'].includes(output.type)&&typeof output.value==='string'&&/^https?:\/\//.test(output.value);
   return <div className="min-w-0 rounded border border-[#dfe1e6] bg-white p-2"><h4 className="text-xs font-bold">{output.label||output.type}</h4>{url?<a href={text} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-[#0c66e4] underline">{text}</a>:<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{text}</pre>}</div>;
 }
-export function CardExecutionBadge({card,listColor='var(--orbit-list-color, #22272b)'}:{card:Card;listColor?:string|null}){
+export function CardExecutionBadge({card}:{card:Card;listColor?:string|null}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   if(!card.execution?.enabled)return null;
   const active=busy||['queued','running'].includes(card.result?.status||'');
-  return <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-[#172b4d] bg-[#101828] px-3 py-2 text-[11px] text-[#d0d9e8]" style={listColor?{borderColor:listColor}:undefined}>
+  return <div className="mt-2 flex flex-wrap items-center gap-2 overflow-hidden rounded-lg border border-[#172b4d] bg-[#101828] px-3 py-2 text-[11px] text-[#d0d9e8] dark:border-[#dfe1e6] dark:bg-white dark:text-[#172b4d]">
     <span className={`h-2 w-2 rounded-full ${active?'bg-[#79c0ff] animate-pulse':'bg-[#4fd49a]'}`}/>
     <span className="font-mono">{card.execution.agent||card.execution.executor} · {executionStatus[card.result?.status||'idle']}</span>
     <button disabled={active} onPointerDown={e=>e.stopPropagation()} onClick={async e=>{e.stopPropagation();setBusy(true);setError('');try{await send(`/cards/${card.source_card_id||card.id}/runs`,'POST',{request_key:crypto.randomUUID()});window.dispatchEvent(new Event('data:changed'))}catch(error){setError((error as Error).message)}finally{setBusy(false)}}} className="rounded-md border border-white/15 px-2 py-1 font-mono text-[#79c0ff] hover:bg-white/5 disabled:opacity-50">{active?'Executando…':'Executar'}</button>
