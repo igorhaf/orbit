@@ -7,7 +7,7 @@ import {chromium} from 'playwright';
 import * as jwt from 'jsonwebtoken';
 import {Db} from '../db';
 
-test('optional execution config, real plugin run and history work on desktop and mobile',{timeout:60000},async()=>{
+test('optional execution config and real plugin run work on desktop and mobile',{timeout:60000},async()=>{
   const db=new Db(),root=await mkdtemp(tmpdir()+'/orbit-browser-');
   const user=(await db.one('SELECT id,name,email FROM users ORDER BY created_at LIMIT 1'))!;
   const token=jwt.sign({sub:user.id,email:user.email},process.env.JWT_SECRET!,{expiresIn:'10m'});
@@ -40,14 +40,10 @@ test('optional execution config, real plugin run and history work on desktop and
     await panel.getByLabel('Mover após sucesso').selectOption(review);
     await panel.getByRole('button',{name:'Salvar capacidades'}).click();
     await panel.getByRole('button',{name:'Executar',exact:true}).click();
-    await panel.locator('summary').filter({hasText:'Resultado · Concluído'}).waitFor({timeout:15000});
-    await panel.locator('summary').filter({hasText:'Resultado'}).click();
-    await panel.getByText('ORBIT_BROWSER_OK',{exact:true}).waitFor();
-    assert.equal((await db.one('SELECT list_id FROM cards WHERE id=$1',[card]))?.list_id,review);
     await page.getByText('definido pela coluna Review',{exact:false}).waitFor();
-    await panel.locator('summary').filter({hasText:'Histórico de execuções (1)'}).click();
-    await panel.getByRole('button').filter({hasText:'plugin · Concluído'}).click();
-    await panel.getByText(/Run .* etapa:/).waitFor();
+    assert.equal(await panel.getByText(/Resultado ·/).count(),0);
+    assert.equal(await panel.getByText(/Histórico de execuções/).count(),0);
+    assert.equal((await db.one('SELECT list_id FROM cards WHERE id=$1',[card]))?.list_id,review);
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate<boolean>('document.documentElement.scrollWidth > window.innerWidth'),false);
     assert.deepEqual(errors,[]);await context.close();

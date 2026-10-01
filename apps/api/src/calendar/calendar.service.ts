@@ -328,11 +328,12 @@ export class CalendarService {
       if (!list) return bad("Lista não encontrada.", 404);
       const imports = (body.import || {}) as Record<string, unknown>;
       const created = await this.db.one<{ id: string }>(
-        `INSERT INTO cards(list_id,title,description,position,schedule_start_at,schedule_end_at,schedule_all_day,schedule_time_zone) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1),0),$4,$5,$6,$7) RETURNING id`,
+        `INSERT INTO cards(list_id,title,description,due_date,position,schedule_start_at,schedule_end_at,schedule_all_day,schedule_time_zone) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1),0),$5,$6,$7,$8) RETURNING id`,
         [
           listId,
           imports.title === false ? "Novo cartão" : item.title,
           imports.description === false ? "" : item.description || "",
+          item.start_at,
           item.start_at,
           item.end_at,
           item.all_day,
@@ -341,6 +342,7 @@ export class CalendarService {
       );
       cardId = created!.id;
     }
+    if (body.card_id && cardId) await this.db.query("UPDATE cards SET due_date=$2,updated_at=now() WHERE id=$1",[cardId,item.start_at]);
     if (item.external_resource_id)
       await this.db.query(
         "UPDATE external_resources SET orbit_entity_type='card',orbit_entity_id=$2,updated_at=now() WHERE id=$1",

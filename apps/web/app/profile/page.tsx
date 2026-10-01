@@ -29,6 +29,7 @@ import {
   cardUrl,
   clearSession,
   getToken,
+  applyTheme,
   setUser,
 } from "@/lib/api";
 import {
@@ -170,6 +171,8 @@ export default function ProfilePage() {
     key: keyof Preferences,
     value: Preferences[keyof Preferences],
   ) {
+    const previousTheme = user?.preferences?.theme || "light";
+    if (key === "theme") applyTheme(value as "light" | "dark");
     try {
       const account = await send<User>("/account/preferences", "PATCH", {
         [key]: value,
@@ -179,6 +182,7 @@ export default function ProfilePage() {
       setNotice("Preferências salvas.");
       setError("");
     } catch (err) {
+      if (key === "theme") applyTheme(previousTheme);
       setError((err as Error).message);
     }
   }
@@ -709,21 +713,24 @@ export default function ProfilePage() {
               <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
                 <h2 className="mb-1 text-lg font-bold">Aparência</h2>
                 <p className="mb-5 text-sm text-[#626f86]">
-                  Escolha como o Orbit aparece para você.
+                  Escolha o tema da interface. A alteração é aplicada imediatamente e salva na sua conta.
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                <div aria-label="Tema da interface" className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="group">
                   {(["light", "dark"] as const).map((theme) => (
                     <button
+                      type="button"
                       key={theme}
                       onClick={() => preference("theme", theme)}
-                      className={`flex flex-col items-center gap-2 rounded-lg border-2 p-5 text-sm font-semibold text-[#172b4d] ${preferences.theme === theme ? "border-[#0c66e4] bg-[#e9f2ff]" : "border-[#dfe1e6] hover:border-[#8590a2]"}`}
+                      aria-pressed={preferences.theme === theme}
+                      className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-sm font-semibold text-[#172b4d] transition-colors ${preferences.theme === theme ? "border-[#0c66e4] bg-[#e9f2ff] ring-2 ring-[#0c66e4]/30" : "border-[#dfe1e6] hover:border-[#8590a2]"}`}
                     >
                       {theme === "light" ? (
                         <Palette size={25} />
                       ) : (
                         <Moon size={25} />
                       )}{" "}
-                      {theme === "light" ? "Claro" : "Escuro"}
+                      <span>{theme === "light" ? "Claro" : "Escuro"}</span>
+                      <span className="text-xs font-normal text-[#626f86]">{preferences.theme === theme ? "Selecionado" : "Selecionar"}</span>
                     </button>
                   ))}
                 </div>

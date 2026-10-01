@@ -5,7 +5,7 @@ import { FeaturesService } from './features';
 
 type Payload = Record<string, unknown>;
 type ChecklistRow = { [key:string]:unknown; id:string; card_id:string; title:string; position:number };
-type ItemRow = { [key:string]:unknown; id:string; card_id:string; checklist_id:string; text:string; completed:boolean; position:number; assignee_id:string|null; due_date:Date|null };
+type ItemRow = { [key:string]:unknown; id:string; card_id:string; checklist_id:string; text:string; completed:boolean; position:number; due_date:Date|null };
 const bad=(message:string,status=400):never=>{throw new HttpException({message},status)};
 const id=(value:string)=>{if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))bad('ID inválido.');return value};
 const text=(value:unknown,label:string,max:number)=>{if(typeof value!=='string'||!value.trim()||value.trim().length>max)bad(`${label} inválido.`);return (value as string).trim()};
@@ -39,7 +39,7 @@ export class CardExtensionsService {
     const boardId=await this.card(cardId,userId);
     const [checklists,items,values]=await Promise.all([
       this.db.query('SELECT * FROM checklists WHERE card_id=$1 ORDER BY position,id',[cardId]),
-      this.db.query('SELECT ci.id,ci.card_id,ci.checklist_id,ci.text,ci.completed,ci.position,ci.assignee_id,ci.due_date,u.name AS assignee_name FROM checklist_items ci LEFT JOIN users u ON u.id=ci.assignee_id WHERE ci.card_id=$1 ORDER BY ci.position,ci.id',[cardId]),
+      this.db.query('SELECT ci.id,ci.card_id,ci.checklist_id,ci.text,ci.completed,ci.position,ci.due_date FROM checklist_items ci WHERE ci.card_id=$1 ORDER BY ci.position,ci.id',[cardId]),
       this.db.query('SELECT v.field_id,v.value FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1 AND f.board_id=$2',[cardId,boardId]),
     ]);
     return {checklists:checklists.map(checklist=>({...checklist,items:items.filter(item=>item.checklist_id===checklist.id)})),values};
@@ -54,8 +54,8 @@ export class CardExtensionsService {
     try{
       await client.query('BEGIN');
       const group=(await client.query('INSERT INTO checklists(card_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM checklists WHERE card_id=$1),0)) RETURNING *',[cardId,title])).rows[0];
-      if(source)await client.query(`INSERT INTO checklist_items(card_id,checklist_id,text,completed,position,assignee_id,due_date)
-        SELECT $1,$2,text,completed,position,assignee_id,due_date FROM checklist_items WHERE checklist_id=$3 ORDER BY position`,[cardId,group.id,source]);
+      if(source)await client.query(`INSERT INTO checklist_items(card_id,checklist_id,text,completed,position,due_date)
+        SELECT $1,$2,text,completed,position,due_date FROM checklist_items WHERE checklist_id=$3 ORDER BY position`,[cardId,group.id,source]);
       await client.query('COMMIT');
       await this.features.record(userId,boardId,cardId,'checklist_created',`criou o checklist ${title}`);
       return group;
@@ -96,8 +96,6 @@ export class CardExtensionsService {
     const title=body.text===undefined?item.text:text(body.text,'Item',300);
     const completed=body.completed===undefined?item.completed:body.completed;
     if(typeof completed!=='boolean')bad('Status inválido.');
-    let assignee=item.assignee_id;
-    if(body.assignee_id!==undefined){assignee=body.assignee_id===null?null:id(String(body.assignee_id));if(assignee&&!await this.db.one('SELECT 1 FROM board_members WHERE board_id=$1 AND user_id=$2',[item.board_id,assignee]))bad('Membro não pertence ao quadro.');}
     const dueDate=body.due_date===undefined?item.due_date:date(body.due_date);
     const target=body.checklist_id===undefined?item.checklist_id:id(String(body.checklist_id));
     if(target!==item.checklist_id){const group=await this.checklist(target,userId);if(group.card_id!==item.card_id)bad('O checklist deve pertencer ao mesmo cartão.');}
@@ -116,9 +114,8 @@ export class CardExtensionsService {
         await client.query('COMMIT');
       }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     }
-    const updated=await this.db.one('UPDATE checklist_items SET text=$2,completed=$3,assignee_id=$4,due_date=$5 WHERE id=$1 RETURNING *',[itemId,title,completed,assignee,dueDate]);
+    const updated=await this.db.one('UPDATE checklist_items SET text=$2,completed=$3,due_date=$4 WHERE id=$1 RETURNING *',[itemId,title,completed,dueDate]);
     if(body.completed!==undefined)await this.features.record(userId,item.board_id,item.card_id,'checklist_updated',completed?'concluiu um item de checklist':'reabriu um item de checklist');
-    if(assignee&&assignee!==item.assignee_id)await this.features.notify(assignee,item.board_id,item.card_id,'checklist','Item atribuído a você',title);
     return updated;
   }
   async deleteItem(itemId:string,userId:string){await this.item(itemId,userId);await this.db.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);return {ok:true}}
@@ -131,7 +128,6 @@ export class CardExtensionsService {
     const client=await this.db.pool.connect();
     try{await client.query('BEGIN');
       const card=(await client.query(`INSERT INTO cards(list_id,title,due_date,position) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING *`,[listId,item.text,item.due_date])).rows[0];
-      if(item.assignee_id)await client.query('INSERT INTO card_assignees(card_id,user_id) VALUES($1,$2)',[card.id,item.assignee_id]);
       await client.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);
       await client.query('COMMIT');await this.features.record(userId,item.board_id,card.id,'card_created',`converteu o item ${item.text} em cartão`);return card;
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}

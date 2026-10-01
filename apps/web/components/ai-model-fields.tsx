@@ -75,13 +75,29 @@ export function AiEffortField({
   disabled?: boolean;
   onChange: (value: AiEffort | null) => Promise<void> | void;
 }) {
+  const effectiveValue = value || inheritedValue || "medium";
+  const level = efforts.findIndex((item) => item.id === effectiveValue);
+  const currentLabel = efforts[level]?.label || "Médio";
   return (
     <label className="block text-xs font-semibold">
-      Esforço
-      <select disabled={disabled} value={value || ""} onChange={(event) => void onChange((event.target.value || null) as AiEffort | null)} className="mt-1 w-full rounded border border-[#8590a2] bg-white p-2 text-sm font-normal">
-        <option value="">{inheritedValue ? `Herdar · ${efforts.find((item) => item.id === inheritedValue)?.label}` : "Escolha um esforço"}</option>
-        {efforts.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-      </select>
+      <span className="flex items-center justify-between gap-2">
+        <span>Esforço</span>
+        <span className="font-normal text-[#626f86]">{value ? currentLabel : inheritedValue ? `Herdado · ${currentLabel}` : "Não configurado"}</span>
+      </span>
+      <input
+        disabled={disabled}
+        type="range"
+        min={0}
+        max={efforts.length - 1}
+        step={1}
+        value={Math.max(0, level)}
+        aria-label="Esforço da IA"
+        onChange={(event) => void onChange(efforts[Number(event.target.value)].id)}
+        className="mt-3 w-full cursor-pointer accent-[#6e5dc6] disabled:cursor-not-allowed"
+      />
+      <span className="mt-1 flex justify-between text-[10px] font-normal text-[#626f86]">
+        {efforts.map((item) => <span key={item.id}>{item.label}</span>)}
+      </span>
     </label>
   );
 }

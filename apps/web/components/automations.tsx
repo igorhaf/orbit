@@ -667,14 +667,26 @@ function AutomationManager({
       }
       const expires = Date.now() + 10 * 60_000;
       let offline = false;
+      let healthyChecks = 0;
       const check = async () => {
         try {
-          if ((await fetch("/api/health", { cache: "no-store" })).ok && offline) {
-            window.location.reload();
-            return;
+          const response = await fetch("/api/health", { cache: "no-store" });
+          if (response.ok && offline) {
+            healthyChecks += 1;
+            if (healthyChecks >= 2) {
+              window.location.reload();
+              return;
+            }
+          } else if (!response.ok) {
+            healthyChecks = 0;
+            offline = true;
+          }
+          if (response.ok && !offline) {
+            healthyChecks = 0;
           }
         } catch {
           offline = true;
+          healthyChecks = 0;
         }
         if (Date.now() < expires) window.setTimeout(() => void check(), 1500);
         else {

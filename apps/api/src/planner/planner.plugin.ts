@@ -4,7 +4,7 @@ import { Db } from "../db";
 import { FeaturesService } from "../features";
 import { CodexAiService } from "../codex-ai";
 import { PluginActionContext, PluginDefinition } from "../plugins/contract";
-import { defineAction, defineCapability, defineContribution, definePlugin } from "../plugins/sdk";
+import { defineAction, defineCapability, definePlugin } from "../plugins/sdk";
 
 type Input = Record<string, unknown>;
 type PlannerCard = { id: string; title: string; description: string; due_date: string | null; schedule_start_at: string | null; schedule_end_at: string | null; board_title: string; labels: string };
@@ -215,7 +215,7 @@ export const plannerPluginDefinition = (planner: PlannerPlugin): PluginDefinitio
     defineAction({id:"suggest_schedule",name:"Sugerir planejamento",requiredCapabilities:["plan.suggest"],inputSchema:object(["mode"],{mode:{type:"string",enum:["smart_schedule","plan_my_day","daily_schedule"]}}),
       execute:async(input:Input,context:PluginActionContext)=>{if(!context.userId)throw new Error("Usuário obrigatório.");return {type:"planner",label:"Sugestões",value:await planner.aiSchedule(context.userId,input)};}}),
   ],
-  contributions:{navigation:[defineContribution({id:"planner",label:"Planner",href:"/planner",icon:"calendar-clock"})],notifications:[{id:"due",label:"Alertas de prazo e agenda"}]},
+  contributions:{notifications:[{id:"due",label:"Alertas de prazo e agenda"}]},
 });
 
 @Controller()

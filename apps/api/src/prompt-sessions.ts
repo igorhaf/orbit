@@ -17,9 +17,6 @@ type CommentSettings = {projectId:string;model:string;effort:Effort};
 type CommentJob = {comment_id:string;card_id:string;user_id:string;project_id:string;model:string;effort:Effort};
 type CommentReply = CommentJob & {authorLabel:string};
 const catalog=[
-  {id:'gpt-6-astra',name:'Astra',version:'GPT-6'},
-  {id:'gpt-6-luna',name:'Luna',version:'GPT-6'},
-  {id:'gpt-6-sol',name:'Sol',version:'GPT-6'},
   {id:'gpt-5.6-luna',name:'Luna',version:'GPT-5.6'},
   {id:'gpt-5.6-sol',name:'Sol',version:'GPT-5.6'},
   {id:'gpt-5.6-terra',name:'Terra',version:'GPT-5.6'},
@@ -34,13 +31,21 @@ const selectedModel=(value:unknown):string=>{if(typeof value!=='string'||!catalo
 const selectedEffort=(value:unknown):Effort=>{if(value!=='low'&&value!=='medium'&&value!=='high'&&value!=='xhigh')fail('Esforço inválido.');return value as Effort;};
 const has=(body:Payload,key:string)=>Object.prototype.hasOwnProperty.call(body,key);
 const npm=process.platform==='win32'?'npm.cmd':'npm';
+const summaryStart='[[ORBIT_SUMMARY]]';
+const summaryEnd='[[/ORBIT_SUMMARY]]';
+function extractPromptSummary(output:string){
+  const match=output.match(/\[\[ORBIT_SUMMARY\]\]\s*([\s\S]*?)\s*\[\[\/ORBIT_SUMMARY\]\]/i);
+  if(!match)return {summary:null,output};
+  const summary=match[1].split(/\r?\n/).map(line=>line.trim()).filter(Boolean).slice(0,10).join('\n').slice(0,3000)||null;
+  return {summary,output:output.replace(match[0],'').trimEnd()};
+}
 
 @Injectable()
 export class PromptSessionsService implements OnModuleInit {
   private commentQueueWorkers=new Map<string,Promise<void>>();
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents){}
   async onModuleInit(){
-    await this.db.query("UPDATE card_ai_runs SET status='error',error='A execução foi interrompida porque o servidor foi reiniciado.',finished_at=now() WHERE status='running'");
+    await this.db.query("UPDATE card_ai_runs SET status='error',error='A execução foi interrompida porque o servidor foi reiniciado.',finished_at=now() WHERE status IN ('queued','running')");
     await this.db.query("UPDATE card_ai_comment_jobs SET status='queued',started_at=NULL,error=NULL WHERE status='running' AND answer_comment_id IS NULL");
     const queued=await this.db.query<{card_id:string}>('SELECT DISTINCT card_id FROM card_ai_comment_jobs WHERE status=$1',['queued']);
     for(const job of queued)void this.drainCommentQueue(job.card_id).catch((error:unknown)=>console.error('Não foi possível retomar a fila de comentários do GPT.',error));
@@ -238,55 +243,96 @@ export class PromptSessionsService implements OnModuleInit {
     const updated=await this.db.one('UPDATE cards SET ai_project_id=$2,ai_model=$3,ai_effort=$4,updated_at=now() WHERE id=$1 RETURNING ai_project_id,ai_model,ai_effort',[cardId,projectId,model,effort]);
     await this.features.record(userId,context.boardId,cardId,'prompt_session','configurou a sessão de prompt');return updated;
   }
-  async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,project_id,model,effort,status,prompt,output,error,codex_session_id,started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY started_at DESC LIMIT 20',[cardId]);}
+  async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,project_id,model,effort,source,summary,file_changes,activities,status,prompt,output,error,codex_session_id,started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY started_at DESC LIMIT 20',[cardId]);}
   async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply){
     const context=await this.card(cardId,userId);const card=context.card;const model=commentReply?.model||card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model;const effort=commentReply?.effort||card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort;const projectId=commentReply?.project_id||card.ai_project_id||card.ai_default_project_id;
     if(!model)fail('Escolha um modelo no cartão, quadro, projeto ou configuração global.',409);if(!effort)fail('Escolha um esforço no cartão, quadro, projeto ou configuração global.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
     const project=await this.db.one<{id:string;name:string;local_path:string;is_native:boolean}>('SELECT id,name,local_path,is_native FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
     if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string;is_native:boolean};const localPath=await this.localPath(currentProject.local_path);
-    const orbitRoot=this.nativeProjectPath();
-    const deployNote=localPath===orbitRoot?'\n\nEste é o projeto do próprio Orbit. Não execute build, deploy, migrations nem reinicie servidores; faça apenas as alterações solicitadas. O deploy é feito separadamente pela automação Publicar Orbit depois que a execução terminar.':'';
     const instructionLimit=commentReply?5000:4000;
     const additional=body.instruction===undefined?'':typeof body.instruction==='string'&&body.instruction.trim().length<=instructionLimit?body.instruction.trim():fail('A instrução adicional é inválida.');
-    let previousSessionId:string|null=null;let continuing=false;let prompt='';
+    const checklistRows=await this.db.query<{checklist_title:string;item_text:string|null;completed:boolean|null}>(
+      `SELECT cl.title AS checklist_title,ci.text AS item_text,ci.completed
+       FROM checklists cl LEFT JOIN checklist_items ci ON ci.checklist_id=cl.id
+       WHERE cl.card_id=$1 ORDER BY cl.position,cl.id,ci.position,ci.id`,[cardId]);
+    const checklistGroups=new Map<string,string[]>();
+    for(const row of checklistRows){
+      const items=checklistGroups.get(row.checklist_title)||[];
+      if(row.item_text)items.push(`- [${row.completed?'x':' '}] ${row.item_text}`);
+      checklistGroups.set(row.checklist_title,items);
+    }
+    const checklistPrompt=checklistGroups.size
+      ? `\n\nCHECKLISTS DO CARTÃO (considere os itens pendentes como tarefas e os concluídos como contexto):\n${[...checklistGroups].map(([title,items])=>`${title}${items.length?`\n${items.join('\n')}`:'\n- (sem itens)'}`).join('\n\n')}`
+      : '';
+    const conversationRows=commentReply?await this.db.query<{author_name:string;body:string}>(
+      `SELECT COALESCE(c.author_label,u.name) AS author_name,c.body
+       FROM comments c JOIN users u ON u.id=c.author_id
+       WHERE c.card_id=$1 ORDER BY c.created_at ASC,c.id ASC`,[cardId]):[];
+    const conversationPrompt=commentReply
+      ? `\n\nCONVERSA COMPLETA DE COMENTÁRIOS DESTE CARTÃO (em ordem cronológica; use todas as mensagens como contexto):\n${conversationRows.map(row=>`${row.author_name}:\n${row.body}`).join('\n\n')||'(sem comentários anteriores)'}\n\nConsidere o histórico inteiro, mesmo quando partes dele se repetirem.`
+      : '';
+    const initialCommentIsAlreadyInHistory=commentReply&&conversationRows.some(row=>row.body===additional);
+    let previousSessionId:string|null=null;let continuing=false;
+    const executionGuidance='Implemente a solicitação nesta execução. Você pode editar arquivos, executar builds e verificações adequadas e reiniciar serviços locais do projeto quando necessário. Não encerre com a execução pendente nem transfira o trabalho para a automação Publicar Orbit, a menos que o usuário peça publicação ou deploy. ECONOMIA DE DADOS: use o histórico e a descrição como contexto sem repeti-los na resposta; envie mensagens de progresso curtas; não copie arquivos completos, diffs ou saídas de terminal para a resposta. Em comandos de validação longos, grave a saída em arquivo temporário, mostre apenas sucesso/falha e, se falhar, apresente somente as linhas relevantes do erro. Seja breve, salvo quando o usuário pedir detalhes.';
+    const summaryInstruction=commentReply?'':`\n\nFORMATO FINAL OBRIGATÓRIO:\nDepois da implementação, responda em português com no máximo 5 tópicos curtos, sem repetir o prompt, o histórico, arquivos inteiros ou logs. Em seguida, encerre com um resumo objetivo e didático em até 10 linhas físicas (use menos quando bastar), exatamente neste bloco:\n${summaryStart}\n[resumo em até 10 linhas]\n${summaryEnd}\nNão escreva nada depois do marcador final. Relate o que foi feito e o resultado das verificações; não invente resultados.`;
+    const makePrompt=()=>continuing
+      ? `Continue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir. ${commentReply?'A conversa completa já está nesta sessão; use-a como contexto e processe somente o comentário novo abaixo. ':''}${executionGuidance} Esta orientação substitui instruções anteriores da sessão que impeçam a implementação ou a validação local.\n\nCARTÃO: ${card.title}\n\nDESCRIÇÃO ATUAL:\n${card.description||'(sem descrição)'}${checklistPrompt}${commentReply?'':conversationPrompt}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}${summaryInstruction}`
+      : `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual. ${executionGuidance}\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${checklistPrompt}${conversationPrompt}${additional&&!initialCommentIsAlreadyInHistory?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}${summaryInstruction}`;
+    let prompt=makePrompt();
     const client=await this.db.pool.connect();let run:{id:string};
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[cardId]);
-      if((await client.query("SELECT id FROM card_runs WHERE card_id=$1 AND status IN ('queued','running') UNION ALL SELECT id FROM card_ai_runs WHERE card_id=$1 AND status='running'",[cardId])).rowCount)fail('Este cartão já possui uma execução ativa.',409);
-      const previous=(await client.query<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND codex_session_id IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1',[cardId,currentProject.id])).rows[0];
-      previousSessionId=previous?.codex_session_id||null;continuing=Boolean(previousSessionId);
-      prompt=continuing
-        ? `Continue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir.\n\nCARTÃO: ${card.title}\n\nDESCRIÇÃO ATUAL:\n${card.description||'(sem descrição)'}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}`
-        : `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.${deployNote}\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${additional?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}`;
-      run=(await client.query<{id:string}>('INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[cardId,currentProject.id,userId,model,effort,prompt])).rows[0];await client.query('COMMIT');
+      run=(await client.query<{id:string}>('INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id',[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description'])).rows[0];await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
-    this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message:`Iniciando ${model} com esforço ${effort}.`});
+    this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'queued',message:'Execução adicionada à fila.'});
     void (async()=>{
       let projectClient:PoolClient|null=null;let projectLocked=false;const projectLockName=`orbit-ai-project:${localPath}`;
       try {
         projectClient=await this.db.pool.connect();
         await projectClient.query('SELECT pg_advisory_lock(hashtext($1)::bigint)',[projectLockName]);projectLocked=true;
-        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}),previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined));
-        if(currentProject.is_native)await this.validateNativeChanges(localPath,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}));
+        const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND id<>$3 AND codex_session_id IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1',[cardId,currentProject.id,run!.id]);
+        previousSessionId=previous?.codex_session_id||null;continuing=Boolean(previousSessionId);prompt=makePrompt();
+        await this.db.query("UPDATE card_ai_runs SET status='running',prompt=$2,started_at=now() WHERE id=$1",[run!.id,prompt]);
+        let streamedOutput='';let outputWrite:Promise<unknown>=Promise.resolve();const fileChanges=new Map<string,{path:string;kind:'add'|'delete'|'update'}>();const activities=new Map<string,{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}>();
+        const progress=(message:string,output=false,replace=false,details?:{fileChanges?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}})=>{
+          if(output){streamedOutput=replace?message:streamedOutput+message;outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET output=$2 WHERE id=$1',[run!.id,streamedOutput])).catch(()=>undefined);}
+          if(details?.fileChanges){for(const change of details.fileChanges)fileChanges.set(change.path,change);outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET file_changes=$2 WHERE id=$1',[run!.id,JSON.stringify([...fileChanges.values()])])).catch(()=>undefined);}
+          if(details?.activity){activities.set(details.activity.id,details.activity);outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET activities=$2 WHERE id=$1',[run!.id,JSON.stringify([...activities.values()])])).catch(()=>undefined);}
+          this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message,output,replace,files:details?.fileChanges?[...fileChanges.values()]:undefined,activity:details?.activity});
+        };
+        progress(`Iniciando ${model} com esforço ${effort}.`);
+        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined));
+        for(const change of result.fileChanges)fileChanges.set(change.path,change);
+        for(const activity of result.activities)activities.set(activity.id,activity);
+        await outputWrite;
+        let validationError:string|null=null;
+        if(currentProject.is_native){
+          try{await this.validateNativeChanges(localPath,message=>this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message}));}
+          catch(error){validationError=errorMessage(error);}
+        }
+        const promptResult=commentReply?{summary:null,output:result.output}:extractPromptSummary(result.output);
         if(commentReply){
           const replyClient=await this.db.pool.connect();
           try{
             await replyClient.query('BEGIN');
-            const answer=(await replyClient.query<{id:string}>('INSERT INTO comments(card_id,author_id,author_label,body) VALUES($1,$2,$3,$4) RETURNING id',[cardId,userId,commentReply.authorLabel,result.output])).rows[0];
-            await replyClient.query("UPDATE card_ai_runs SET status='success',output=$2,codex_session_id=$3,finished_at=now() WHERE id=$1",[run!.id,result.output,result.sessionId]);
-            await replyClient.query("UPDATE card_ai_comment_jobs SET status='success',answer_comment_id=$2,error=NULL,finished_at=now() WHERE comment_id=$1",[commentReply.comment_id,answer.id]);
+            const answerBody=validationError?`${result.output}\n\n> A resposta foi concluída e a sessão foi preservada, mas a validação automática do projeto falhou. Consulte a aba Execução para ver o erro antes do deploy.`:result.output;
+            const answer=(await replyClient.query<{id:string}>('INSERT INTO comments(card_id,author_id,author_label,body) VALUES($1,$2,$3,$4) RETURNING id',[cardId,userId,commentReply.authorLabel,answerBody])).rows[0];
+            await replyClient.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,finished_at=now() WHERE id=$1",[run!.id,validationError?'error':'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),validationError,result.sessionId]);
+            await replyClient.query("UPDATE card_ai_comment_jobs SET status='success',answer_comment_id=$2,error=$3,finished_at=now() WHERE comment_id=$1",[commentReply.comment_id,answer.id,validationError]);
             await replyClient.query('COMMIT');
           }catch(error){await replyClient.query('ROLLBACK');throw error}finally{replyClient.release()}
           this.events.commentChanged(context.boardId,cardId);
         }else{
-          await this.db.query("UPDATE card_ai_runs SET status='success',output=$2,codex_session_id=$3,finished_at=now() WHERE id=$1",[run!.id,result.output,result.sessionId]);
+          await this.db.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,finished_at=now() WHERE id=$1",[run!.id,validationError?'error':'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),validationError,result.sessionId]);
           await this.features.record(userId,context.boardId,cardId,'prompt_execution',`${continuing?'continuou':'iniciou'} a conversa com ${model} em ${currentProject.name}`);
         }
-        this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'});
+        await this.features.notify(userId,context.boardId,cardId,'prompt_execution',validationError?'Prompt concluído com falha na validação':'Prompt concluído',validationError||`O cartão “${card.title}” terminou de processar o prompt.`);
+        this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:validationError?'error':'success',message:validationError||'Execução concluída.'});
       }
       catch(error){
         const message=errorMessage(error);
         await this.db.query("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1",[run!.id,message]);
         if(commentReply){await this.db.query("UPDATE card_ai_comment_jobs SET status='error',error=$2,finished_at=now() WHERE comment_id=$1 AND answer_comment_id IS NULL",[commentReply.comment_id,message]);this.events.commentChanged(context.boardId,cardId);}
+        await this.features.notify(userId,context.boardId,cardId,'prompt_execution','Falha no prompt',message);
         this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'error',message});
       }finally{
         if(projectClient){
@@ -295,6 +341,6 @@ export class PromptSessionsService implements OnModuleInit {
         }
       }
     })().catch(error=>console.error('Não foi possível finalizar a execução de prompt.',error));
-    return {id:run!.id,project_id:currentProject.id,model,effort,status:'running' as const};
+    return {id:run!.id,project_id:currentProject.id,model,effort,status:'queued' as const};
   }
 }

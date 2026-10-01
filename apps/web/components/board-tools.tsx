@@ -205,6 +205,17 @@ export function BoardTools({
   }
   return (
     <>
+      {!board.closed_at && (
+        <button
+          type="button"
+          onClick={() => open("ai")}
+          className="flex items-center gap-1.5 rounded bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-white/30"
+          title="Definir modelo, versão e esforço padrão para os cartões deste quadro"
+        >
+          <Sparkles size={15} />
+          <span className="hidden md:inline">Padrões de IA</span>
+        </button>
+      )}
       <div ref={menuRef} className="relative">
         <button
           onClick={() => setMenu(!menu)}
@@ -241,11 +252,11 @@ export function BoardTools({
               onClick={() => open("activity")}
             />
             {!board.closed_at && (
-              <MenuButton
-                icon={<Sparkles size={16} />}
-                label="IA do quadro"
-                onClick={() => open("ai")}
-              />
+            <MenuButton
+              icon={<Sparkles size={16} />}
+              label="Padrões de IA dos cartões"
+              onClick={() => open("ai")}
+            />
             )}
             {!board.closed_at && (
               <MenuButton
@@ -337,7 +348,7 @@ export function BoardTools({
                     : panel === "trello"
                       ? "Sincronização Trello"
                       : panel === "ai"
-                        ? "IA do quadro"
+                        ? "Padrões de IA do quadro"
                         : "Copiar quadro"}
             </h2>
             {error && (
@@ -386,6 +397,9 @@ export function BoardTools({
             )}
             {panel === "ai" && (
               <div className="space-y-5">
+                <p className="text-sm text-[#626f86]">
+                  Modelo, versão e esforço padrão para os cartões deste quadro. Cada cartão pode substituir esses valores nas configurações de IA do próprio cartão.
+                </p>
                 <div>
                   <label className="mb-2 block text-sm font-semibold">
                     Projeto padrão

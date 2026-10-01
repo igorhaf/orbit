@@ -1,13 +1,22 @@
 import type { NextConfig } from 'next';
 
 const apiProxy = process.env.ORBIT_API_PROXY_URL || 'http://127.0.0.1:4000';
+const forcedTheme = process.env.THEME === 'dark' ? 'dark' : '';
+const orbitEnvironment = process.env.THEME === 'dark' ? 'development' : '';
 
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_ORBIT_THEME: forcedTheme, NEXT_PUBLIC_ORBIT_ENV: orbitEnvironment },
+  skipTrailingSlashRedirect: true,
+  experimental: { useTypeScriptCli: false },
   async rewrites() {
     return [
       {
         source: '/api/:path*',
         destination: `${apiProxy}/:path*`,
+      },
+      {
+        source: '/socket.io',
+        destination: `${apiProxy}/socket.io/`,
       },
       {
         source: '/socket.io/:path*',

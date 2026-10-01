@@ -14,6 +14,7 @@ import {
 } from '@/lib/api';
 import { historyState, redo, undo } from '@/lib/history';
 import { CardDialog } from './card-dialog';
+import { io } from 'socket.io-client';
 
 export function Avatar({ name, url, size = 'md' }: { name: string; url?: string | null; size?: 'sm'|'md'|'lg' }) {
   const dimensions = size === 'sm' ? 'h-7 w-7 text-[10px]' : size === 'lg' ? 'h-16 w-16 text-xl' : 'h-8 w-8 text-xs';
@@ -157,6 +158,18 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     void loadPluginNavigation();
     window.addEventListener('plugins:changed', loadPluginNavigation);
     return () => { active = false; window.removeEventListener('plugins:changed', loadPluginNavigation); };
+  }, [user]);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const refresh = () => {
+      void api<AppNotification[]>('/notifications').then(items => {
+        if (active) setNotifications(items);
+      }).catch(() => undefined);
+    };
+    const socket = io({ path: '/socket.io', auth: { token: localStorage.getItem('orbit_token') || '' } });
+    socket.on('notification:changed', refresh);
+    return () => { active = false; socket.disconnect(); };
   }, [user]);
   useEffect(() => {
     if (panel !== 'search' || query.trim().length < 2) return;
@@ -323,7 +336,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => {setPanel(null);router.push('/profile')}} className="mt-1 flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><UserRound size={16}/> Perfil e atividade</button>
       <button onClick={() => {setPanel(null);router.push('/profile?tab=cards')}} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><CheckSquare size={16}/> Cartões atribuídos</button>
       <button onClick={() => {setPanel(null);router.push('/profile?tab=settings')}} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><Settings size={16}/> Configurações</button>
-      <button onClick={toggleTheme} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]">{user?.preferences?.theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {user?.preferences?.theme === 'dark' ? 'Tema claro' : 'Tema escuro'}</button>
+      <button onClick={toggleTheme} className="theme-preference-control flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]">{user?.preferences?.theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>} {user?.preferences?.theme === 'dark' ? 'Tema claro' : 'Tema escuro'}</button>
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
     </div>

@@ -4,6 +4,7 @@ export type Preferences = {
   browserNotifications: boolean;
   shortcuts: boolean;
   compactCards: boolean;
+  vaultCategoryOrder?: string[];
 };
 export type User = {
   id: string;
@@ -26,6 +27,7 @@ export type Card = {
   url_token?: string;
   execution?: {enabled:boolean;agent:string|null;executor:string|null}|null;
   result?: {status:string}|null;
+  prompt?: {status:'queued'|'running'|'success'|'error';finished_at?:string|null;unread?:boolean}|null;
   kind?: 'normal'|'template'|'board'|'separator'|'link'|'mirror';
   target_board_id?: string|null;
   target_board_title?: string|null;
@@ -96,7 +98,9 @@ export type Board = {
 export type AiModel = {id:string;name:string;version:string};
 export type AiEffort = 'low'|'medium'|'high'|'xhigh';
 export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_native?:boolean};
-export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;status:'running'|'success'|'error';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
+export type PromptFileChange={path:string;kind:'add'|'delete'|'update';additions?:number;deletions?:number;diff?:string};
+export type PromptActivity={id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
+export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'success'|'error';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
 export type TrelloConnection = { id:string; trello_board_id:string; trello_board_name:string; enabled:boolean; last_synced_at:string|null; last_error:string|null; created_at:string };
 export type TrelloBoardOption = { id:string; name:string; url:string|null };
 export type TrelloListOption = {connection_id:string;trello_board_name:string;mapped_list_id:string|null;lists:{id:string;name:string}[]};
@@ -106,7 +110,7 @@ export type VaultItem = {id:string;card_id?:string|null;url_token?:string|null;b
 export type VaultItemDetail = VaultItem & {fields:Record<string,string>};
 export type CommentAttachment = {id:string;kind:'file'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null};
 export type Comment = { id: string; body: string; created_at: string; edited_at?:string|null; author_id: string; author_name: string; is_ai?:boolean; ai_status?:'queued'|'running'|'success'|'error'|null; ai_error?:string|null; attachments?:CommentAttachment[] };
-export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string; text: string; completed: boolean; position: number; assignee_id: string | null; assignee_name?:string|null; due_date: string | null };
+export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string; text: string; completed: boolean; position: number; due_date: string | null };
 export type ExternalResource = {id:string;plugin_id:string;connection_id:string|null;resource_type:string;external_id:string;external_parent_id:string|null;url:string|null;etag:string|null;metadata:Record<string,unknown>;created_at:string;updated_at:string};
 export type CardDetails = { comments: Comment[]; checklist: ChecklistItem[]; externalResources:ExternalResource[] };
 export type WatchState = {card:boolean;list:boolean;board:boolean};
@@ -154,8 +158,9 @@ export const setUser = (user: User) => {
   window.dispatchEvent(new Event('account:changed'));
 };
 export const applyTheme = (theme: 'light' | 'dark') => {
-  const forcedTheme=process.env.NEXT_PUBLIC_ORBIT_FORCE_THEME==='dark'?'dark':theme;
-  if (typeof document !== 'undefined') document.documentElement.dataset.theme = forcedTheme;
+  if (typeof document === 'undefined') return;
+  if (process.env.NEXT_PUBLIC_ORBIT_THEME === 'dark') document.documentElement.dataset.theme = 'dark';
+  else document.documentElement.dataset.theme = theme;
 };
 export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   let response: Response;

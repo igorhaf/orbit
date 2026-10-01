@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
 import {api,send,Board,Card} from '@/lib/api';
-import {Catalog,ExecutionConfig,ExecutionDetails,Output,Run,executionStatus} from '@/lib/execution';
+import {Catalog,ExecutionConfig,ExecutionDetails,Output,executionStatus} from '@/lib/execution';
 
 const input='w-full min-w-0 rounded border border-[#8590a2] bg-white px-2 py-1.5 text-sm text-[#172b4d]';
 const button='rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50';
@@ -12,15 +12,20 @@ export function ExecutionOutput({output}:{output:Output}){
   const url=['url','pull_request'].includes(output.type)&&typeof output.value==='string'&&/^https?:\/\//.test(output.value);
   return <div className="min-w-0 rounded border border-[#dfe1e6] bg-white p-2"><h4 className="text-xs font-bold">{output.label||output.type}</h4>{url?<a href={text} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-[#0c66e4] underline">{text}</a>:<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{text}</pre>}</div>;
 }
-export function CardExecutionBadge({card}:{card:Card}){
+export function CardExecutionBadge({card,listColor='var(--orbit-list-color, #22272b)'}:{card:Card;listColor?:string|null}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   if(!card.execution?.enabled)return null;
   const active=busy||['queued','running'].includes(card.result?.status||'');
-  return <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#626f86]"><span>◈ {card.execution.agent||card.execution.executor} · {executionStatus[card.result?.status||'idle']}</span><button disabled={active} onPointerDown={e=>e.stopPropagation()} onClick={async e=>{e.stopPropagation();setBusy(true);setError('');try{await send(`/cards/${card.source_card_id||card.id}/runs`,'POST',{request_key:crypto.randomUUID()});window.dispatchEvent(new Event('data:changed'))}catch(error){setError((error as Error).message)}finally{setBusy(false)}}} className="rounded bg-[#e9eaed] px-2 py-1 text-[#0c66e4] disabled:opacity-50">{active?'Executando…':'Executar'}</button>{error&&<span role="alert" className="text-red-700">{error}</span>}</div>;
+  return <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-[#172b4d] bg-[#101828] px-3 py-2 text-[11px] text-[#d0d9e8]" style={listColor?{borderColor:listColor}:undefined}>
+    <span className={`h-2 w-2 rounded-full ${active?'bg-[#79c0ff] animate-pulse':'bg-[#4fd49a]'}`}/>
+    <span className="font-mono">{card.execution.agent||card.execution.executor} · {executionStatus[card.result?.status||'idle']}</span>
+    <button disabled={active} onPointerDown={e=>e.stopPropagation()} onClick={async e=>{e.stopPropagation();setBusy(true);setError('');try{await send(`/cards/${card.source_card_id||card.id}/runs`,'POST',{request_key:crypto.randomUUID()});window.dispatchEvent(new Event('data:changed'))}catch(error){setError((error as Error).message)}finally{setBusy(false)}}} className="rounded-md border border-white/15 px-2 py-1 font-mono text-[#79c0ff] hover:bg-white/5 disabled:opacity-50">{active?'Executando…':'Executar'}</button>
+    {error&&<span role="alert" className="text-[#ff776f]">{error}</span>}
+  </div>;
 }
 
 export function CardExecutionPanel({card,board,onChanged,mode='all'}:{card:Card;board:Board;onChanged:()=>Promise<void>;mode?:'all'|'settings'|'outputs'}){
-  const [details,setDetails]=useState<ExecutionDetails|null>(null),[draft,setDraft]=useState<ExecutionConfig|null>(null),[catalog,setCatalog]=useState<Catalog|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[dirty,setDirty]=useState(false),[selected,setSelected]=useState<Run|null>(null);
+  const [details,setDetails]=useState<ExecutionDetails|null>(null),[draft,setDraft]=useState<ExecutionConfig|null>(null),[catalog,setCatalog]=useState<Catalog|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[dirty,setDirty]=useState(false);
   useEffect(()=>{let live=true;api<ExecutionDetails>(`/cards/${card.id}/execution`).then(data=>{if(live){setDetails(data);setDraft(data.execution)}}).catch(e=>{if(live)setError(e.message)});return()=>{live=false}},[card.id]);
   const project=draft?.project_id;
   useEffect(()=>{let live=true;api<Catalog>('/execution/catalog'+(project?'?project_id='+project:'')).then(data=>{if(live)setCatalog(data)}).catch(e=>{if(live)setError(e.message)});return()=>{live=false}},[project]);
@@ -58,8 +63,6 @@ export function CardExecutionPanel({card,board,onChanged,mode='all'}:{card:Card;
     {details?.execution.enabled&&<div className="flex flex-wrap items-center gap-2"><button className={button} disabled={busy||Boolean(active)||dirty} onClick={()=>void work(()=>send(`/cards/${card.id}/runs`,'POST',{request_key:crypto.randomUUID()}))}>{active?'Executando…':'Executar'}</button>{active&&<button className="text-sm text-red-700" disabled={busy} onClick={()=>void work(()=>send(`/execution/runs/${details.runs.find(r=>['queued','running'].includes(r.status))!.id}/cancel`,'POST'))}>Cancelar execução</button>}<span className="text-xs">{executionStatus[details.result.status]}</span></div>}
     </>}
     {mode !== 'settings' && <>
-    <details className={section}><summary className="cursor-pointer text-sm font-semibold">Resultado · {executionStatus[details?.result.status||'idle']}</summary><div className="mt-3 space-y-2">{details?.result.summary&&<p className="whitespace-pre-wrap break-words text-sm">{details.result.summary}</p>}{details?.result.error&&<p className="text-sm text-red-700">{details.result.error}</p>}{details?.result.outputs?.map((output,i)=><ExecutionOutput key={i} output={output}/>)}</div></details>
-    <details className={section}><summary className="cursor-pointer text-sm font-semibold">Histórico de execuções ({details?.runs.length||0})</summary><div className="mt-3 space-y-2">{details?.runs.map(run=><button key={run.id} className="block w-full rounded border bg-white p-2 text-left text-xs" onClick={()=>void work(async()=>setSelected(await api<Run>(`/execution/runs/${run.id}`)))}>{run.agent||run.executor} · {executionStatus[run.status]} · {new Date(run.created_at).toLocaleString('pt-BR')}</button>)}{selected&&<div className="space-y-2 rounded bg-[#e9eaed] p-3"><p className="break-all text-xs">Run {selected.id} · etapa: {selected.stage}</p>{selected.error&&<p className="text-sm text-red-700">{selected.error}</p>}{selected.logs?.map((log,index)=><p key={index} className="break-words text-xs">{new Date(log.created_at).toLocaleTimeString('pt-BR')} · {log.stage}: {log.message}</p>)}{selected.output?.outputs.map((output,i)=><ExecutionOutput key={i} output={output}/>)}</div>}</div></details>
     </>}
   </section>;
 }

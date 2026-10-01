@@ -8,7 +8,6 @@ import {
   ExternalLink,
   Mail,
   MoveRight,
-  Palette,
   Printer,
   Plus,
   Tag,
@@ -60,6 +59,30 @@ function PromptPreview({ card, board }: { card: Card; board: Board }) {
     <div className="flex flex-wrap gap-3 text-xs"><span className="rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{run?.model || model}</b></span><span className="rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
     <p className="text-sm text-[#626f86]">Prévia da instrução usada na sessão. Após executar, esta aba mostra o prompt completo enviado.</p>
     <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-4 font-mono text-xs leading-5">{prompt}</pre>
+  </section>;
+}
+
+function CardPromptSummary({ card }: { card: Card }) {
+  const [run, setRun] = useState<PromptRun | null>(null);
+  useEffect(() => {
+    let live = true;
+    const refresh = async () => {
+      try {
+        const runs = await api<PromptRun[]>(`/cards/${card.id}/prompt-runs`);
+        if (live) setRun(runs.find((item) => item.source !== "comment") || null);
+      } catch { /* Mantém o último resumo carregado. */ }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { if (run && ["queued", "running"].includes(run.status)) void refresh(); }, 1200);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [card.id, run]);
+  if (!run || (!run.summary && !run.prompt?.includes("[[ORBIT_SUMMARY]]"))) return null;
+  return <section aria-label="Resultado do último prompt da descrição" className="mt-3 rounded-lg border border-[#c3b6f7] bg-[#f7f5ff] p-3 dark:border-[#594b86] dark:bg-[#302a43]">
+    <h3 className="text-sm font-semibold text-[#403294] dark:text-[#d4c7ff]">Resultado do último prompt</h3>
+    {run.summary ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#172b4d] dark:text-[#e6e0ff]">{run.summary}</p>
+      : run.status === "queued" || run.status === "running" ? <p className="mt-2 text-sm text-[#626f86] dark:text-[#c4bce0]">A execução está em andamento. O resumo aparecerá ao finalizar.</p>
+      : run.status === "error" ? <p className="mt-2 text-sm text-[#ae2a19] dark:text-[#ff9f8f]">A última execução falhou. Veja os detalhes na aba Execução.</p>
+      : <p className="mt-2 text-sm text-[#626f86] dark:text-[#c4bce0]">Esta execução não retornou o resumo estruturado.</p>}
   </section>;
 }
 
@@ -333,8 +356,8 @@ export function CardDialog({
                 onClick={() => setPanel("labels")}
                 className="rounded border border-[#dfe1e6] bg-white px-3 py-2 text-sm font-medium hover:bg-[#f1f2f4]"
               >
-                <Plus size={16} className="mr-1 inline" />
-                Adicionar
+                <Tag size={16} className="mr-1 inline" />
+                Etiquetas
               </button>
               <button
                 onClick={() => setPanel("date")}
@@ -413,23 +436,7 @@ export function CardDialog({
                 )}
               </div>
             </section>
-            <CardAi
-              card={card}
-              board={board}
-              onChanged={onChanged}
-              onExecutionStart={() => setTab("output")}
-              onApply={async (text) => {
-                const changed = await updateCard(
-                  { description: text },
-                  { description: card.description },
-                  "aplicar sugestão de IA",
-                );
-                if (changed) {
-                  setDescription(text);
-                  await onChanged();
-                }
-              }}
-            />
+            <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} />
             <CardSections
               key={card.id}
               card={card}
@@ -505,6 +512,24 @@ export function CardDialog({
             )}
           </div>
           <aside className="min-w-0 space-y-6 border-l border-[#dfe1e6] pl-0 xl:pl-7">
+            <CardAi
+              key={card.id}
+              card={card}
+              board={board}
+              onChanged={onChanged}
+              onExecutionStart={() => setTab("output")}
+              onApply={async (text) => {
+                const changed = await updateCard(
+                  { description: text },
+                  { description: card.description },
+                  "aplicar sugestão de IA",
+                );
+                if (changed) {
+                  setDescription(text);
+                  await onChanged();
+                }
+              }}
+            />
             <CardComments
               card={card}
               board={board}
@@ -514,45 +539,6 @@ export function CardDialog({
               run={run}
               user={user}
             />
-            <div>
-              <h4 className="mb-2 text-xs font-bold text-[#626f86]">
-                Mais opções
-              </h4>
-              <div className="space-y-2">
-                <button
-                  onClick={() => setPanel(panel === "labels" ? null : "labels")}
-                  className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"
-                >
-                  <Tag size={16} /> Etiquetas
-                </button>
-                <button
-                  onClick={() => setPanel(panel === "date" ? null : "date")}
-                  className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"
-                >
-                  <Clock3 size={16} /> Datas
-                </button>
-                <button
-                  onClick={() =>
-                    document
-                      .getElementById("card-checklists")
-                      ?.scrollIntoView({ behavior: "smooth" })
-                  }
-                  className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"
-                >
-                  <CheckSquare size={16} /> Checklists
-                </button>
-                <button
-                  onClick={() =>
-                    document
-                      .getElementById("card-fields")
-                      ?.scrollIntoView({ behavior: "smooth" })
-                  }
-                  className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"
-                >
-                  <Palette size={16} /> Campos
-                </button>
-              </div>
-            </div>
             <div>
               <h4 className="mb-2 text-xs font-bold text-[#626f86]">Ações</h4>
               <div className="space-y-2">
@@ -642,7 +628,7 @@ export function CardDialog({
                   </button>
                 </div>
                 {panel === "labels" && (
-                  <CardLabelsPanel board={board} card={card} run={run} busy={busy} />
+                  <CardLabelsPanel board={board} card={card} run={run} busy={busy} onClose={() => setPanel(null)} />
                 )}
                 {panel === "date" && (
                   <CardDatesPanel
@@ -669,7 +655,10 @@ export function CardDialog({
           </aside>
         </div>}
         {tab === "prompt" && <PromptPreview card={card} board={board} />}
-        {tab === "output" && <div className="mt-6 space-y-6"><CardExecutionPanel key={`execution-output:${card.id}`} card={card} board={board} onChanged={onChanged} mode="outputs"/><PromptExecution card={card} board={board} active /></div>}
+        {tab === "output" && <div className="mt-6"><CardExecutionPanel key={`execution-output:${card.id}`} card={card} board={board} onChanged={onChanged} mode="outputs"/></div>}
+        <div className={tab === "output" ? "mt-6" : "hidden"}>
+          <PromptExecution card={card} board={board} active={tab === "output"} />
+        </div>
       </div>
     </Modal>
     {confirmationModal}

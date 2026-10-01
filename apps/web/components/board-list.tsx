@@ -57,7 +57,7 @@ export function BoardList({
   onAdd: (listId: string, text: string, position: number) => Promise<void>;
   onRename: (listId: string, title: string) => Promise<void>;
   onAction: Action;
-  renderCard: (card: Card) => React.ReactNode;
+  renderCard: (card: Card, listColor?: string | null) => React.ReactNode;
   query: string;
   statusFilter: "all" | "open" | "completed";
   fieldFilter: string;
@@ -203,7 +203,8 @@ export function BoardList({
         transition,
         opacity: isDragging ? 0.5 : 1,
         borderTop: list.color ? `5px solid ${colors[list.color]}` : undefined,
-      }}
+        '--orbit-list-color': list.color ? colors[list.color] : undefined,
+      } as React.CSSProperties}
       className={`relative flex max-h-full shrink-0 flex-col rounded-xl bg-[#f1f2f4] shadow-sm ${list.collapsed ? "w-14" : "w-[272px] sm:w-[280px]"}`}
     >
       <div
@@ -310,7 +311,7 @@ export function BoardList({
                     + Inserir antes
                   </button>
                   <div onDoubleClick={() => onOpen(card)}>
-                    {renderCard(card)}
+                    {renderCard(card, list.color)}
                   </div>
                 </div>
               ))}
@@ -338,24 +339,14 @@ export function BoardList({
                   }
                 }}
               >
-                <textarea
+                <input
                   autoFocus
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      e.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                  placeholder="Uma linha por cartão; cole várias linhas para criar em massa"
-                  rows={3}
-                  className="w-full resize-none rounded-lg border-0 bg-white p-3 text-sm shadow-card"
+                  placeholder="Insira o título do cartão"
+                  maxLength={300}
+                  className="w-full rounded-lg border-0 bg-white p-3 text-sm shadow-card"
                 />
-                <p className="mt-1 text-[11px] text-[#626f86]">
-                  Cada linha vira um cartão. Datas como 25/12/2026 no título
-                  definem o prazo.
-                </p>
                 {insertPosition !== null && (
                   <p className="mt-1 text-xs text-[#626f86]">
                     Posição {insertPosition + 1} na lista
@@ -371,9 +362,7 @@ export function BoardList({
                     disabled={busy || !title.trim()}
                     className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
                   >
-                    {title.trim().split(/\r?\n/).filter(Boolean).length > 1
-                      ? "Adicionar cartões"
-                      : "Adicionar cartão"}
+                    Adicionar cartão
                   </button>
                   <button
                     type="button"

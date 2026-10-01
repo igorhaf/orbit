@@ -48,6 +48,7 @@ html[data-theme="dark"] {
   --orbit-text: #dee4ea;
   --orbit-muted: #9fadbc;
 }
+html[data-theme-forced="true"] .theme-preference-control { display: none; }
 html[data-theme="dark"] body { color: var(--orbit-text); background: #1d2125; }
 html[data-theme="dark"] button { color: var(--orbit-text); }
 html[data-theme="dark"] :is(.bg-white,[class~="bg-[#f7f8fa]"],[class~="bg-[#f8f9fb]"]) { background-color: var(--orbit-surface) !important; }

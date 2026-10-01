@@ -100,8 +100,8 @@ class Service {
       for(let i=0;i<groups.length;i++){
         const group=groups[i];
         const copy=(await client.query('INSERT INTO checklists(card_id,title,position) VALUES($1,$2,$3) RETURNING id',[targetCard,group.title,start+i])).rows[0];
-        await client.query(`INSERT INTO checklist_items(card_id,checklist_id,text,completed,position,assignee_id,due_date)
-          SELECT $1,$2,text,completed,position,assignee_id,due_date FROM checklist_items WHERE checklist_id=$3`,[targetCard,copy.id,group.id]);
+        await client.query(`INSERT INTO checklist_items(card_id,checklist_id,text,completed,position,due_date)
+          SELECT $1,$2,text,completed,position,due_date FROM checklist_items WHERE checklist_id=$3`,[targetCard,copy.id,group.id]);
       }
     }
     if(!parts.customFields)return;
@@ -164,19 +164,11 @@ class Service {
   async createVaultItem(userId:string,body:Payload) {
     const item=this.vaultPayload(body);
     await this.validateVaultCategory(userId,item.category);
-    const supplied=body.card_id===undefined?null:uuid(value(body.card_id,'Cartão',36));
-    let cardId=supplied;
-    if(supplied){
-      const card=await this.db.one<{id:string}>('SELECT c.id FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id WHERE c.id=$1 AND b.owner_id=$2 AND b.is_inbox AND c.archived_at IS NULL',[supplied,userId]);
-      if(!card)fail('Arraste um cartão da Inbox para o cofre.',409);
-      await this.db.query("UPDATE cards SET title=$2,description=$3,updated_at=now() WHERE id=$1",[supplied,item.title,item.notes]);
-    } else {
-      const inbox=await this.db.one<{id:string}>('SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL ORDER BY l.position LIMIT 1',[userId]);
-      if(!inbox)fail('Inbox não encontrada.',404);
-      const targetInbox=inbox as {id:string};
-      const card=await this.db.one<{id:string}>("INSERT INTO cards(list_id,title,description,position) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING id",[targetInbox.id,item.title,item.notes]);
-      cardId=card!.id;
-    }
+    const inbox=await this.db.one<{id:string}>('SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL ORDER BY l.position LIMIT 1',[userId]);
+    if(!inbox)fail('Inbox não encontrada.',404);
+    const targetInbox=inbox as {id:string};
+    const card=await this.db.one<{id:string}>("INSERT INTO cards(list_id,title,description,position) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING id",[targetInbox.id,item.title,item.notes]);
+    const cardId=card!.id;
     return this.db.one('INSERT INTO vault_items(owner_id,card_id,title,category,notes,secret_data) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,card_id,title,category,notes,created_at,updated_at',[userId,cardId,item.title,item.category,item.notes,this.encryptVault(item.fields)]);
   }
   async updateVaultItem(id:string,userId:string,body:Payload) {
@@ -349,6 +341,9 @@ class Service {
       CASE WHEN c.schedule_start_at IS NULL THEN NULL ELSE json_build_object('startAt',c.schedule_start_at,'endAt',c.schedule_end_at,'allDay',c.schedule_all_day,'timeZone',c.schedule_time_zone) END AS schedule,
       (SELECT json_build_object('enabled',e.enabled,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
       (SELECT json_build_object('status',r.status) FROM card_runs r WHERE r.card_id=c.id ORDER BY r.created_at DESC LIMIT 1) AS result,
+      (SELECT json_build_object('status',r.status,'finished_at',r.finished_at,'unread',EXISTS(
+        SELECT 1 FROM notifications n WHERE n.user_id=$2 AND n.card_id=c.id AND n.kind='prompt_execution'
+          AND n.title<>'Prompt na fila' AND n.read_at IS NULL)) FROM card_ai_runs r WHERE r.card_id=c.id ORDER BY r.started_at DESC,r.id DESC LIMIT 1) AS prompt,
       (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
       COALESCE((SELECT json_agg(json_build_object('id',label.id,'name',label.name,'color',label.color) ORDER BY label.name,label.id) FROM card_labels cl JOIN labels label ON label.id=cl.label_id WHERE cl.card_id=c.id),'[]'::json) AS labels,
       (SELECT count(*)::int FROM comments cm WHERE cm.card_id=c.id) AS comment_count,
@@ -856,12 +851,6 @@ class Service {
     const title=value(body.title,'Título',300);
     return (await this.createCards(listId,userId,[title],body.position))[0];
   }
-  async createCardsBulk(listId: string,userId: string,body: Payload) {
-    if (typeof body.text!=='string' || body.text.length>30000) fail('Texto inválido.');
-    const titles=(body.text as string).split(/\r?\n/).map(line=>line.replace(/\t/g,' ').trim()).filter(Boolean);
-    if (!titles.length || titles.length>100 || titles.some(title=>title.length>300)) fail('Informe de 1 a 100 linhas com até 300 caracteres cada.');
-    return this.createCards(listId,userId,titles,body.position);
-  }
   private async createCards(listId: string,userId: string,titles: string[],requestedPosition: unknown) {
     const boardId=await this.listBoard(listId,userId);
     const kinds=await Promise.all(titles.map(title=>this.classifyTitle(title,userId)));
@@ -875,7 +864,7 @@ class Service {
       for (let titleIndex=0;titleIndex<titles.length;titleIndex++) {
         const title=titles[titleIndex],kind=kinds[titleIndex];
         const dueDate=kind.kind==='normal'?dueDateFromTitle(title):null;
-        const card: {id:string;title:string}=(await client.query('INSERT INTO cards(list_id,title,position,due_date,kind,target_board_id,link_url) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[listId,title,order.length+created.length,dueDate,kind.kind,kind.targetBoardId,kind.linkUrl])).rows[0];
+        const card: {id:string;title:string}=(await client.query('INSERT INTO cards(list_id,title,description,position,due_date,kind,target_board_id,link_url) VALUES($1,$2,$2,$3,$4,$5,$6,$7) RETURNING *',[listId,title,order.length+created.length,dueDate,kind.kind,kind.targetBoardId,kind.linkUrl])).rows[0];
         created.push(card);
       }
       order.splice(index,0,...created.map(card=>card.id as string));
@@ -938,6 +927,8 @@ class Service {
     if(body.schedule_end_at!==undefined)scheduleEnd=optionalDate(body.schedule_end_at);
     if(body.schedule_all_day!==undefined){if(typeof body.schedule_all_day!=='boolean')fail('Configuração all-day inválida.');scheduleAllDay=body.schedule_all_day as boolean}
     if(body.schedule_time_zone!==undefined)scheduleTimeZone=body.schedule_time_zone===null||body.schedule_time_zone===''?null:optionalText(body.schedule_time_zone,100);
+    const scheduleAssigned=body.schedule_start_at!==undefined||(body.schedule!==undefined&&body.schedule!==null);
+    if(scheduleAssigned&&scheduleStart&&(body.due_date===undefined||body.due_date===null||body.due_date===''))dueDate=new Date(scheduleStart);
     if(scheduleStart&&scheduleEnd&&scheduleEnd<scheduleStart)fail('O fim do agendamento deve ser posterior ao início.');
     if(scheduleTimeZone)try{new Intl.DateTimeFormat('pt-BR',{timeZone:scheduleTimeZone}).format()}catch{fail('Fuso horário inválido.');}
     if (body.title!==undefined && body.due_date===undefined && !dueDate && kind==='normal') dueDate=dueDateFromTitle(title);
@@ -965,8 +956,8 @@ class Service {
       schedule_start_at=$14,schedule_end_at=$15,schedule_all_day=$16,schedule_time_zone=$17,updated_at=now()
       WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,completed,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url,scheduleStart,scheduleEnd,scheduleAllDay,scheduleTimeZone]);
     const moved=listId!==original.list_id;
-    if (body.title!==undefined || body.description!==undefined || body.due_date!==undefined || body.start_date!==undefined || body.completed!==undefined || moved) {
-      const action=body.completed===true&&recurrence?'avançou o vencimento recorrente':body.completed===true?'concluiu um cartão':moved?'moveu um cartão':body.title!==undefined?`renomeou o cartão para ${title}`:body.due_date!==undefined?'alterou a data de um cartão':'atualizou um cartão';
+    if (body.title!==undefined || body.description!==undefined || body.due_date!==undefined || body.start_date!==undefined || body.schedule!==undefined || body.schedule_start_at!==undefined || body.schedule_end_at!==undefined || body.completed!==undefined || moved) {
+      const action=body.completed===true&&recurrence?'avançou o vencimento recorrente':body.completed===true?'concluiu um cartão':moved?'moveu um cartão':body.title!==undefined?`renomeou o cartão para ${title}`:body.due_date!==undefined||scheduleAssigned?'alterou a data de um cartão':'atualizou um cartão';
       await this.features.record(userId,boardId,id,'card_updated',action);
       await this.features.notifyAssignees(userId,boardId,id,'card_updated','Cartão atualizado',action);
     }
@@ -986,7 +977,7 @@ class Service {
       jobs.status AS ai_status,jobs.error AS ai_error,
       COALESCE((SELECT json_agg(json_build_object('id',a.id,'kind',a.kind,'name',a.name,'url',a.url,'target_id',a.target_id,'mime_type',a.mime_type,'size_bytes',a.size_bytes)) FROM comment_attachments a WHERE a.comment_id=c.id),'[]'::json) AS attachments
       FROM comments c JOIN users u ON u.id=c.author_id LEFT JOIN card_ai_comment_jobs jobs ON jobs.comment_id=c.id WHERE c.card_id=$1 ORDER BY c.created_at ASC,c.id ASC`,[id]);
-    const checklist = await this.db.query('SELECT id,text,completed,position,assignee_id,due_date FROM checklist_items WHERE card_id=$1 ORDER BY position',[id]);
+    const checklist = await this.db.query('SELECT id,text,completed,position,due_date FROM checklist_items WHERE card_id=$1 ORDER BY position',[id]);
     const externalResources=await this.db.query(`SELECT id,plugin_id,connection_id,resource_type,external_id,external_parent_id,url,etag,metadata,created_at,updated_at
       FROM external_resources WHERE owner_id=$2 AND orbit_entity_type='card' AND orbit_entity_id=$1 ORDER BY created_at`,[id,userId]);
     return { comments, checklist, externalResources };
@@ -1066,14 +1057,12 @@ class Service {
   async createChecklist(id: string,userId: string,body: Payload) {
     const boardId=await this.contentCard(id,userId);
     const text = value(body.text,'Item',300);
-    const assigned=body.assigned===true?userId:null;
     const dueDate=body.due_date?optionalDate(body.due_date):null;
     if (dueDate && Number.isNaN(dueDate.getTime())) fail('Data inválida.');
     let group=await this.db.one('SELECT id FROM checklists WHERE card_id=$1 ORDER BY position LIMIT 1',[id]);
     if(!group)group=await this.db.one("INSERT INTO checklists(card_id,title,position) VALUES($1,'Checklist',0) RETURNING id",[id]);
-    const item=await this.db.one('INSERT INTO checklist_items(card_id,checklist_id,text,position,assignee_id,due_date) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM checklist_items WHERE checklist_id=$2),0),$4,$5) RETURNING *',[id,group!.id,text,assigned,dueDate]);
+    const item=await this.db.one('INSERT INTO checklist_items(card_id,checklist_id,text,position,due_date) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM checklist_items WHERE checklist_id=$2),0),$4) RETURNING *',[id,group!.id,text,dueDate]);
     await this.features.record(userId,boardId,id,'checklist_created',`adicionou o item ${text}`);
-    if (assigned) await this.features.notify(userId,boardId,id,'checklist','Item atribuído a você',text);
     return item;
   }
   async updateChecklist(id: string,userId: string,body: Payload) {
@@ -1084,12 +1073,10 @@ class Service {
     const dueDate=body.due_date===undefined?undefined:optionalDate(body.due_date);
     if (dueDate instanceof Date && Number.isNaN(dueDate.getTime())) fail('Data inválida.');
     const item=await this.db.one(`UPDATE checklist_items SET text=COALESCE($2,text),completed=COALESCE($3,completed),
-      assignee_id=CASE WHEN $4::boolean THEN $5::uuid ELSE assignee_id END,
-      due_date=CASE WHEN $6::boolean THEN $7::timestamptz ELSE due_date END WHERE id=$1 RETURNING *`,
+      due_date=CASE WHEN $4::boolean THEN $5::timestamptz ELSE due_date END WHERE id=$1 RETURNING *`,
       [id,body.text===undefined?null:value(body.text,'Item',300),typeof body.completed==='boolean'?body.completed:null,
-        typeof body.assigned==='boolean',body.assigned?userId:null,dueDate!==undefined,dueDate===undefined?null:dueDate]);
+        dueDate!==undefined,dueDate===undefined?null:dueDate]);
     if (body.completed!==undefined) await this.features.record(userId,boardId,row.card_id,'checklist_updated',body.completed?'concluiu um item de checklist':'reabriu um item de checklist');
-    if (body.assigned===true) await this.features.notify(userId,boardId,row.card_id,'checklist','Item atribuído a você',item!.text);
     return item;
   }
   async deleteChecklist(id: string,userId: string) {
@@ -1230,7 +1217,6 @@ class ApiController {
   @Post('cards/merge') mergeCards(@Req() req:Request,@Body() body:Payload){return this.service.mergeCards(this.service.user(req),body)}
   @Post('card-merges/:id/undo') undoMerge(@Req() req:Request,@Param('id') id:string){return this.service.undoMerge(id,this.service.user(req))}
   @Post('lists/:id/cards') createCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createCard(id,this.service.user(req),body); }
-  @Post('lists/:id/cards/bulk') createCardsBulk(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createCardsBulk(id,this.service.user(req),body); }
   @Patch('cards/:id') updateCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateCard(id,this.service.user(req),body); }
   @Delete('cards/:id') deleteCard(@Req() req: Request,@Param('id') id: string) { return this.service.deleteCard(id,this.service.user(req)); }
   @Get('cards/:id/details') cardDetails(@Req() req: Request,@Param('id') id: string) { return this.service.cardDetails(id,this.service.user(req)); }
@@ -1281,6 +1267,7 @@ async function bootstrap() {
     try{const token=socket.handshake.auth.token;if(typeof token!=='string')throw new Error('Missing token');const payload=jwt.verify(token,process.env.JWT_SECRET!) as jwt.JwtPayload;if(typeof payload.sub!=='string')throw new Error('Missing subject');socket.data.userId=payload.sub;next();}catch{next(new Error('Não autorizado.'));}
   });
   sockets.on('connection',socket=>{
+    socket.join(`user:${String(socket.data.userId)}`);
     socket.on('board:join',(boardId:unknown)=>{if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId))void features.member(boardId,String(socket.data.userId)).then(()=>socket.join(`board:${boardId}`)).catch(()=>undefined);});
     socket.on('board:leave',(boardId:unknown)=>{if(typeof boardId==='string')socket.leave(`board:${boardId}`);});
   });

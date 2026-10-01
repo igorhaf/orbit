@@ -232,7 +232,13 @@ export default function CalendarPage() {
             end={current.end}
             items={items}
             sources={sources}
-            choose={setSelected}
+            choose={(item) => {
+              if (item.cardId && item.metadata.boardId) {
+                router.push(cardUrl(String(item.metadata.boardId), item.cardId));
+                return;
+              }
+              setSelected(item);
+            }}
             drop={drop}
             dropInboxCard={dropInboxCard}
           /></div>

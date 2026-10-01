@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{"theme":"light","notifications":true,"browserNotifications":false,"shortcuts":true,"compactCards":false}'::jsonb;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_model varchar(100);
+ALTER TABLE users ALTER COLUMN ai_default_model SET DEFAULT 'gpt-5.6-luna';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_effort varchar(16) CHECK(ai_default_effort IN ('low','medium','high','xhigh'));
 CREATE TABLE IF NOT EXISTS notebooks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -194,6 +195,7 @@ CREATE TABLE IF NOT EXISTS checklists (
   title varchar(160) NOT NULL DEFAULT 'Checklist',
   position integer NOT NULL DEFAULT 0
 );
+UPDATE checklists SET title='Checklist' WHERE lower(trim(title))='checklist sugerido por ia';
 ALTER TABLE checklist_items ADD COLUMN IF NOT EXISTS checklist_id uuid REFERENCES checklists(id) ON DELETE CASCADE;
 INSERT INTO checklists(card_id,title,position)
 SELECT DISTINCT ci.card_id,'Checklist',0 FROM checklist_items ci
@@ -362,15 +364,21 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   model varchar(100) NOT NULL,
   effort varchar(16) NOT NULL DEFAULT 'medium',
   prompt text NOT NULL,
+  source varchar(16) NOT NULL DEFAULT 'description' CHECK(source IN ('description','comment')),
   codex_session_id text,
   output text,
-  status varchar(16) NOT NULL DEFAULT 'running' CHECK(status IN ('running','success','error')),
+  summary text,
+  file_changes jsonb NOT NULL DEFAULT '[]'::jsonb,
+  activities jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status varchar(16) NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','success','error')),
   error text,
   started_at timestamptz NOT NULL DEFAULT now(),
   finished_at timestamptz
 );
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS codex_session_id text;
+ALTER TABLE card_ai_runs DROP CONSTRAINT IF EXISTS card_ai_runs_status_check;
+ALTER TABLE card_ai_runs ADD CONSTRAINT card_ai_runs_status_check CHECK(status IN ('queued','running','success','error'));
 CREATE INDEX IF NOT EXISTS card_ai_runs_card_started_idx ON card_ai_runs(card_id, started_at DESC);
 CREATE TABLE IF NOT EXISTS card_ai_comment_jobs (
   comment_id uuid PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE,

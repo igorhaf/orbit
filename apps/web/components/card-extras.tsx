@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Pencil, Trash2 } from "lucide-react";
+import { Check, Pencil, Search, Trash2, X } from "lucide-react";
 import {
   Board,
   Card,
@@ -224,18 +224,22 @@ export function CardLabelsPanel({
   card,
   run,
   busy = false,
+  onClose,
 }: {
   board: Board;
   card: Card;
   run: Run;
   busy?: boolean;
+  onClose: () => void;
 }) {
   const { confirm, confirmationModal } = useConfirmModal();
   const [name, setName] = useState("");
   const [color, setColor] = useState("green");
   const [editing, setEditing] = useState<Label | null>(null);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
+  const colors = Object.entries(labelColors).filter(([key]) => !key.endsWith("_light") && !key.endsWith("_dark") && key !== "none");
   async function action(work: () => Promise<unknown>) {
     if (await run(work)) setError("");
   }
@@ -245,11 +249,12 @@ export function CardLabelsPanel({
       setError("O nome deve ter até 100 caracteres.");
       return;
     }
-    const path =
-      "/boards/" + board.id + "/labels" + (editing ? "/" + editing.id : "");
-    const success = await run(() =>
-      send(path, editing ? "PATCH" : "POST", { name: name.trim(), color }),
-    );
+    const path = "/boards/" + board.id + "/labels" + (editing ? "/" + editing.id : "");
+    const success = await run(async () => {
+      if (editing) return send(path, "PATCH", { name: name.trim(), color });
+      const label = await send<Label>(path, "POST", { name: name.trim(), color });
+      await send("/cards/" + card.id + "/labels/" + label.id + "/toggle", "POST");
+    });
     if (success) {
       setEditing(null);
       setName("");
@@ -265,12 +270,21 @@ export function CardLabelsPanel({
     setColor("green");
     setError("");
   }
+  const selectedIds = new Set(card.labels?.map((label) => label.id) || []);
+  const filteredLabels = (board.labels || []).filter((label) => label.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return (
     <>
-    <div className="text-xs">
-      <div className="max-h-44 space-y-1 overflow-y-auto">
-        {board.labels?.map((label) => (
-          <div key={label.id} className="flex items-center gap-1">
+    <Modal onClose={onClose}>
+    <div className="space-y-3 p-5 text-xs">
+      <div className="border-b border-[#dfe1e6] pb-3"><h2 className="pr-8 text-lg font-bold">Etiquetas</h2><p className="mt-1 text-xs text-[#626f86]">Selecione, renomeie ou crie etiquetas.</p></div>
+      {!editorOpen ? <>
+        <label className="relative block">
+          <Search size={14} className="absolute left-2.5 top-2.5 text-[#626f86]" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar etiquetas..." className="w-full rounded border border-[#8590a2] bg-white py-2 pl-8 pr-2 text-sm text-[#172b4d] outline-none focus:border-[#0c66e4]" />
+        </label>
+        <div className="max-h-56 space-y-1 overflow-y-auto">
+        {filteredLabels.map((label) => (
+          <div key={label.id} className="group flex items-center gap-1">
             <button
               type="button"
               disabled={busy}
@@ -282,16 +296,10 @@ export function CardLabelsPanel({
                   ),
                 )
               }
-              className="flex min-w-0 flex-1 items-center justify-between rounded px-2 py-1.5 text-left font-semibold"
-              style={{
-                background: labelColors[label.color] || label.color,
-                color: labelTextColor(label.color),
-              }}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-[#f1f2f4] disabled:opacity-60"
             >
-              <span className="truncate">{label.name || "Sem nome"}</span>
-              {card.labels?.some((selected) => selected.id === label.id) && (
-                <Check size={14} />
-              )}
+              <span className="flex min-h-8 min-w-0 flex-1 items-center rounded px-3 font-semibold" style={{ background: labelColors[label.color] || label.color, color: labelTextColor(label.color) }}>{label.name || <span className="opacity-60">Sem nome</span>}</span>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center">{selectedIds.has(label.id) && <Check size={16} />}</span>
             </button>
             <button
               type="button"
@@ -304,24 +312,13 @@ export function CardLabelsPanel({
                 setError("");
                 setEditorOpen(true);
               }}
-              className="rounded p-1 hover:bg-[#e9eaed]"
+              className="rounded p-1.5 text-[#626f86] opacity-0 hover:bg-[#e9eaed] hover:text-[#172b4d] focus:opacity-100 group-hover:opacity-100"
             >
               <Pencil size={14} />
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              title="Excluir etiqueta"
-              onClick={() => confirm(
-                { title: "Excluir etiqueta", description: "Excluir esta etiqueta do quadro e removê-la dos cartões?", confirmLabel: "Excluir" },
-                async () => { await action(() => send("/boards/" + board.id + "/labels/" + label.id, "DELETE")); },
-              )}
-              className="rounded p-1 text-[#ae2a19] hover:bg-[#ffebe6]"
-            >
-              <Trash2 size={14} />
-            </button>
           </div>
         ))}
+        {filteredLabels.length === 0 && <p className="px-2 py-3 text-center text-[#626f86]">{query ? "Nenhuma etiqueta encontrada." : "Nenhuma etiqueta criada neste quadro."}</p>}
       </div>
       <button
         type="button"
@@ -333,54 +330,58 @@ export function CardLabelsPanel({
           setError("");
           setEditorOpen(true);
         }}
-        className="mt-3 w-full rounded border border-[#dfe1e6] py-2 font-semibold hover:bg-[#f1f2f4] disabled:opacity-60"
+        className="w-full rounded bg-[#e9eaed] py-2 font-semibold hover:bg-[#dfe1e6] disabled:opacity-60"
       >
-        Criar etiqueta
+        Criar uma nova etiqueta
       </button>
-    </div>
-    {editorOpen && (
-      <Modal onClose={closeEditor}>
-        <form onSubmit={save} className="p-5">
-          <h2 className="text-lg font-bold">{editing ? "Editar etiqueta" : "Criar etiqueta"}</h2>
-          <label className="mt-4 block font-semibold">
-            Nome
+      </> : <form onSubmit={save} className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold">{editing ? "Editar etiqueta" : "Criar etiqueta"}</h3>
+            <button type="button" onClick={closeEditor} aria-label="Voltar para etiquetas" className="rounded p-1 hover:bg-[#e9eaed]"><X size={16} /></button>
+          </div>
+          <div className="rounded px-3 py-2 text-center text-sm font-semibold" style={{ background: labelColors[color] || color, color: labelTextColor(color) }}>{name.trim() || "Prévia da etiqueta"}</div>
+          <label className="block font-semibold">
+            Nome da etiqueta
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={100}
-              placeholder="Nome da etiqueta"
-              className="mt-1 w-full rounded border border-[#8590a2] px-3 py-2 font-normal"
+              placeholder="Digite um nome (opcional)"
+              className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
             />
           </label>
-          <fieldset className="mt-4">
-            <legend className="mb-2 font-semibold">Cor</legend>
-            <div className="grid grid-cols-6 gap-2">
-              {Object.entries(labelColors).map(([key, hex]) => (
+          <fieldset>
+            <legend className="mb-2 font-semibold">Selecione uma cor</legend>
+            <div className="grid grid-cols-5 gap-2">
+              {colors.map(([key, hex]) => (
                 <button
                   type="button"
-                  title={key === "none" ? "Sem cor" : key.replace("_", " ")}
-                  aria-label={key}
+                  title={key}
+                  aria-label={`Cor ${key}`}
                   aria-pressed={color === key}
                   key={key}
                   onClick={() => setColor(key)}
-                  className={"h-8 rounded " + (color === key ? "ring-2 ring-[#0c66e4] ring-offset-2" : "")}
+                  className={"h-8 rounded " + (color === key ? "ring-2 ring-[#0c66e4] ring-offset-2" : "hover:brightness-90")}
                   style={{ background: hex }}
                 />
               ))}
             </div>
           </fieldset>
-          {error && <p role="alert" className="mt-3 text-sm text-[#ae2a19]">{error}</p>}
-          <div className="mt-5 flex justify-end gap-2">
-            <button type="button" onClick={closeEditor} className="rounded px-3 py-2 font-semibold hover:bg-[#f1f2f4]">Cancelar</button>
-            <button disabled={busy} className="rounded bg-[#0c66e4] px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-              {editing ? "Salvar" : "Criar etiqueta"}
-            </button>
+          {error && <p role="alert" className="text-sm text-[#ae2a19]">{error}</p>}
+          <div className="flex items-center justify-between gap-2">
+            {editing ? <button type="button" disabled={busy} onClick={() => confirm({ title: "Excluir etiqueta", description: "Excluir esta etiqueta do quadro e removê-la dos cartões?", confirmLabel: "Excluir" }, async () => { const removed = await run(() => send("/boards/" + board.id + "/labels/" + editing.id, "DELETE")); if (removed) closeEditor(); })} className="inline-flex items-center gap-1 rounded px-2 py-2 text-[#ae2a19] hover:bg-[#ffebe6]"><Trash2 size={14} />Excluir</button> : <span />}
+            <div className="flex gap-2">
+              <button type="button" onClick={closeEditor} className="rounded px-3 py-2 font-semibold hover:bg-[#f1f2f4]">Cancelar</button>
+              <button disabled={busy} className="rounded bg-[#0c66e4] px-3 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
+                {editing ? "Salvar" : "Criar e adicionar"}
+              </button>
+            </div>
           </div>
-        </form>
-      </Modal>
-    )}
+        </form>}
+    </div>
     {confirmationModal}
+    </Modal>
     </>
   );
 }

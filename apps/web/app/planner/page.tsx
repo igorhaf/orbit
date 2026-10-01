@@ -1,3 +1,5 @@
-import PlannerPage from "@/plugins/planner/PlannerPage";
+import { redirect } from "next/navigation";
 
-export default PlannerPage;
+export default function PlannerRedirect() {
+  redirect("/calendar");
+}

@@ -39,25 +39,16 @@ type Props = {
   mutate: (action: () => Promise<unknown>) => Promise<void>;
 };
 type CatalogEntry = { id: string; title: string; card_title: string };
-const localDate = (value: string) => {
-  const date = new Date(value),
-    pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
 
 function Item({
   item,
   group,
   index,
-  groups,
-  board,
   mutate,
 }: {
   item: ChecklistItem;
   group: ChecklistGroup;
   index: number;
-  groups: ChecklistGroup[];
-  board: Board;
   mutate: Props["mutate"];
 }) {
   const { confirm, confirmationModal } = useConfirmModal();
@@ -116,56 +107,6 @@ function Item({
         </button>
         <button
           type="button"
-          title="Excluir item"
-          onClick={() => void mutate(() => send(path, "DELETE"))}
-          className="text-[#ae2a19]"
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 pl-7">
-        <select
-          value={item.assignee_id || ""}
-          onChange={(event) =>
-            update({ assignee_id: event.target.value || null })
-          }
-          aria-label="Responsável do item"
-          className="max-w-36 rounded border border-[#dfe1e6] bg-white p-1 text-xs"
-        >
-          <option value="">Sem responsável</option>
-          {board.members?.map((member) => (
-            <option key={member.id} value={member.id}>
-              {member.name}
-            </option>
-          ))}
-        </select>
-        <input
-          type="datetime-local"
-          value={item.due_date ? localDate(item.due_date) : ""}
-          onChange={(event) =>
-            update({
-              due_date: event.target.value
-                ? new Date(event.target.value).toISOString()
-                : null,
-            })
-          }
-          aria-label="Prazo do item"
-          className="max-w-44 rounded border border-[#dfe1e6] bg-white p-1 text-xs"
-        />
-        <select
-          value={group.id}
-          onChange={(event) => update({ checklist_id: event.target.value })}
-          aria-label="Mover para checklist"
-          className="max-w-36 rounded border border-[#dfe1e6] bg-white p-1 text-xs"
-        >
-          {groups.map((current) => (
-            <option key={current.id} value={current.id}>
-              {current.title}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
           title="Mover item para cima"
           disabled={index === 0}
           onClick={() => update({ position: index - 1 })}
@@ -182,6 +123,14 @@ function Item({
         >
           <ArrowDown size={13} />
         </button>
+        <button
+          type="button"
+          title="Excluir item"
+          onClick={() => void mutate(() => send(path, "DELETE"))}
+          className="text-[#ae2a19]"
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
     </div>
     {confirmationModal}
@@ -193,13 +142,11 @@ function Group({
   group,
   index,
   groups,
-  board,
   mutate,
 }: {
   group: ChecklistGroup;
   index: number;
   groups: ChecklistGroup[];
-  board: Board;
   mutate: Props["mutate"];
 }) {
   const { confirm, confirmationModal } = useConfirmModal();
@@ -303,8 +250,6 @@ function Group({
               item={item}
               group={group}
               index={itemIndex}
-              groups={groups}
-              board={board}
               mutate={mutate}
             />
           ))}
@@ -407,7 +352,6 @@ export function CardChecklists({ card, board, groups, mutate }: Props) {
                 group={group}
                 index={index}
                 groups={groups}
-                board={board}
                 mutate={mutate}
               />
             ))}

@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Optional, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { Db } from './db';
+import { OrbitEvents } from './orbit-events';
 
 export const SINGLE_EMAIL = 'igorhaf@gmail.com';
 const bad = (message: string, status = 400): never => { throw new HttpException({ message }, status); };
@@ -16,7 +17,7 @@ const bounded = (value: unknown, label: string, max: number) => {
 
 @Injectable()
 export class FeaturesService {
-  constructor(@Inject(Db) private db: Db) {}
+  constructor(@Inject(Db) private db: Db,@Optional() @Inject(OrbitEvents) private events?:OrbitEvents) {}
 
   user(req: Request): string {
     const token = req.headers.authorization?.replace(/^Bearer /i, '');
@@ -76,6 +77,15 @@ export class FeaturesService {
         if (typeof body[key] !== 'boolean') bad(`Preferência ${key} inválida.`);
         changes[key] = body[key];
       }
+    }
+    if (body.vaultCategoryOrder !== undefined) {
+      const order = Array.isArray(body.vaultCategoryOrder) ? body.vaultCategoryOrder : bad('Ordem das categorias do cofre inválida.');
+      if (order.some((id: unknown) => typeof id !== 'string') || new Set(order).size !== order.length) bad('Ordem das categorias do cofre inválida.');
+      const builtIn = new Set(['site','api','ssh','bank_test','license','custom']);
+      const custom = await this.db.query<{id:string}>('SELECT id FROM vault_categories WHERE owner_id=$1', [userId]);
+      const valid = new Set([...builtIn, ...custom.map((category) => category.id)]);
+      if (order.some((id: string) => !valid.has(id))) bad('Ordem das categorias do cofre inválida.');
+      changes.vaultCategoryOrder = order;
     }
     await this.db.query('UPDATE users SET preferences=preferences || $2::jsonb WHERE id=$1', [userId,JSON.stringify(changes)]);
     return this.account(userId);
@@ -156,6 +166,7 @@ export class FeaturesService {
     if (!account.preferences.notifications) return;
     await this.db.query(`INSERT INTO notifications(plugin_id,user_id,board_id,card_id,kind,title,body)
       VALUES('cards',$1,$2,$3,$4,$5,$6)`, [userId,boardId,cardId,kind,title,body.slice(0,300)]);
+    this.events?.notificationChanged(userId);
   }
 
   async mention(userId: string, boardId: string, cardId: string, body: string) {
@@ -315,7 +326,7 @@ export class FeaturesService {
     const boardId=body.board_id===undefined||body.board_id===null||body.board_id===""?null:typeof body.board_id==='string'?validId(body.board_id):bad('Quadro inválido.');const target=boardId?await this.db.one<{id:string}>(`SELECT l.id FROM lists l JOIN board_members bm ON bm.board_id=l.board_id WHERE l.board_id=$1 AND bm.user_id=$2 AND l.archived_at IS NULL ORDER BY l.position LIMIT 1`,[boardId,userId]):await this.db.one<{id:string}>('SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL ORDER BY l.position LIMIT 1',[userId]);
     if(!target)bad('Não encontrei uma lista disponível para criar o cartão.',404);
     if(body.all_day!==undefined&&typeof body.all_day!=='boolean')bad('Tipo de agendamento inválido.');const allDay=body.all_day===true;
-    const destination=target as {id:string};return this.db.one(`INSERT INTO cards(list_id,title,description,position,schedule_start_at,schedule_end_at,schedule_all_day) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0),$4,$5,$6) RETURNING id,title,schedule_start_at,schedule_end_at`,[destination.id,title,description,start,end,allDay]);
+    const destination=target as {id:string};return this.db.one(`INSERT INTO cards(list_id,title,description,due_date,position,schedule_start_at,schedule_end_at,schedule_all_day) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0),$5,$6,$7) RETURNING id,title,due_date,schedule_start_at,schedule_end_at`,[destination.id,title,description,start,start,end,allDay]);
   }
 
   async notifications(userId: string) {
@@ -342,11 +353,22 @@ export class FeaturesService {
     validId(id);
     const result=await this.db.one('UPDATE notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND user_id=$2 RETURNING id',[id,userId]);
     if (!result) bad('Notificação não encontrada.',404);
+    this.events?.notificationChanged(userId);
+    return {ok:true};
+  }
+
+  async markCardPromptNotificationsRead(userId:string,cardId:string) {
+    const boardId=await this.cardBoard(cardId,userId);
+    await this.db.query(`UPDATE notifications SET read_at=COALESCE(read_at,now())
+      WHERE user_id=$1 AND board_id=$2 AND card_id=$3 AND kind='prompt_execution'
+        AND title<>'Prompt na fila' AND read_at IS NULL`,[userId,boardId,cardId]);
+    this.events?.notificationChanged(userId);
     return {ok:true};
   }
 
   async markAllNotifications(userId: string) {
     await this.db.query('UPDATE notifications SET read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND read_at IS NULL',[userId]);
+    this.events?.notificationChanged(userId);
     return {ok:true};
   }
 }
@@ -378,6 +400,7 @@ export class FeaturesController {
   @Get('planner') planner(@Req() req:Request,@Query('board_id') boardId?:string){return this.features.planner(this.features.user(req),boardId);}
   @Post('planner/cards') createScheduledCard(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.createScheduledCard(this.features.user(req),body);}
   @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
+  @Patch('cards/:id/prompt-notifications/read') readCardPromptNotifications(@Req() req:Request,@Param('id') id:string){return this.features.markCardPromptNotificationsRead(this.features.user(req),id);}
   @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }
   @Patch('notifications/:id/read') read(@Req() req: Request,@Param('id') id: string) { return this.features.markNotification(this.features.user(req),id); }
 }

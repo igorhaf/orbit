@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, LoaderCircle, Play, Sparkles } from "lucide-react";
+import { Bot, Check, LoaderCircle, Sparkles } from "lucide-react";
 import {
   AiModel,
   AiProject,
   Board,
   Card,
+  CardExtensions,
   PromptRun,
   api,
   send,
@@ -40,7 +41,11 @@ export function CardAi({
   onExecutionStart?: () => void;
 }) {
   const [action, setAction] = useState<Action>("refine");
-  const [instruction, setInstruction] = useState("");
+  const [instruction, setInstruction] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : window.localStorage.getItem(`orbit:card:${card.id}:prompt-instruction`) || "",
+  );
   const [result, setResult] = useState<Result | null>(null);
   const [models, setModels] = useState<AiModel[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
@@ -55,6 +60,7 @@ export function CardAi({
   const inheritedEffort = board.ai_default_effort || selectedProject?.ai_default_effort || board.ai_global_effort || null;
   const effective = card.ai_model || inheritedModel;
   const effectiveEffort = card.ai_effort || inheritedEffort;
+  const instructionStorageKey = `orbit:card:${card.id}:prompt-instruction`;
   useEffect(() => {
     let active = true;
     Promise.all([
@@ -111,11 +117,12 @@ export function CardAi({
     setBusy(true);
     setError("");
     try {
-      const checklist = await send<{ id: string }>(
-        `/cards/${card.id}/checklists`,
-        "POST",
-        { title: "Checklist sugerido por IA" },
-      );
+      const details = await api<CardExtensions>(`/cards/${card.id}/extensions`);
+      const checklist = details.checklists[0] || await send<{ id: string }>(
+          `/cards/${card.id}/checklists`,
+          "POST",
+          { title: "Checklist" },
+        );
       await send(`/checklists/${checklist.id}/items`, "POST", {
         text: result.items.join("\n"),
       });
@@ -142,7 +149,6 @@ export function CardAi({
       await send<PromptRun>(`/cards/${card.id}/prompt-runs`, "POST", {
         instruction,
       });
-      setInstruction("");
       onExecutionStart?.();
     } catch (err) {
       setError((err as Error).message);
@@ -194,22 +200,17 @@ export function CardAi({
           Executar prompt no projeto
           <textarea
             value={instruction}
-            onChange={(event) => setInstruction(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setInstruction(value);
+              window.localStorage.setItem(instructionStorageKey, value);
+            }}
             maxLength={4000}
             rows={3}
             placeholder="Instrução adicional (opcional). A descrição do cartão será a instrução principal."
             className="mt-1 block w-full resize-y rounded border border-[#c3b6f7] bg-white p-2 text-sm font-normal text-[#172b4d]"
           />
         </label>
-        <button
-          type="button"
-          disabled={busy || !effectiveProjectId || !effective || !effectiveEffort}
-          onClick={() => void execute()}
-          className="mt-2 flex items-center gap-1.5 rounded bg-[#403294] px-3 py-2 text-xs font-semibold text-white hover:bg-[#35297d] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Play size={14} />}
-          Executar prompt
-        </button>
       </div>
       <div className="mt-4">
         <p className="mb-2 text-xs font-semibold text-[#5e5a87]">
@@ -230,9 +231,19 @@ export function CardAi({
         <button
           disabled={busy || !effective || !effectiveEffort}
           onClick={() => void generate()}
-          className="rounded bg-[#6554c0] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded bg-[#6554c0] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
         >
-          {busy ? <LoaderCircle size={14} className="animate-spin" /> : "Gerar"}
+          {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          Gerar
+        </button>
+        <button
+          type="button"
+          disabled={busy || !effectiveProjectId || !effective || !effectiveEffort}
+          onClick={() => void execute()}
+          className="flex items-center gap-1.5 rounded bg-[#403294] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#35297d] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Bot size={14} />}
+          Executar
         </button>
         </div>
       </div>
@@ -251,7 +262,7 @@ export function CardAi({
                 className="rounded bg-[#e9e5fa] px-2 py-1 text-xs font-semibold text-[#403294]"
               >
                 <Check size={13} className="mr-1 inline" />
-                Adicionar checklist
+                Adicionar à checklist
               </button>
             </div>
           )}
