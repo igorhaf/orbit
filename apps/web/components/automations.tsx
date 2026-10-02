@@ -6,11 +6,8 @@ import { api, send, Board } from "@/lib/api";
 import { Modal, useConfirmModal } from "./ui";
 import {
   ArrowDown,
-  ArrowRight,
   ArrowUp,
   Copy,
-  Filter,
-  GitBranch,
   Library,
   Play,
   Plus,
@@ -228,30 +225,17 @@ function FlowDiagram({
         : "bg-[#e3fcef] text-[#216e4e] border-[#7ee2b8]",
     }];
   });
-  const nodes = [
-    { id: "trigger", label: triggerLabel, detail: "Gatilho", icon: GitBranch, tone: "bg-[#e9f2ff] text-[#0c66e4] border-[#b3d4ff]" },
-    ...(definition.conditions.length
-      ? [{ id: "conditions", label: `${definition.conditions.length} ${definition.conditions.length === 1 ? "condição" : "condições"}`, detail: "Filtro", icon: Filter, tone: "bg-[#fff7d6] text-[#7f5f01] border-[#f5cd47]" }]
-      : []),
-    ...actionNodes,
+  const steps = [
+    `Início: ${triggerLabel}`,
+    ...(definition.conditions.length ? [`Verifica ${definition.conditions.length} ${definition.conditions.length === 1 ? "condição" : "condições"}`] : []),
+    ...actionNodes.map((node) => node.label),
   ];
   return (
-    <div className={`scrollbar-thin flex items-stretch overflow-x-auto ${compact ? "py-1" : "rounded-xl border border-[#dfe1e6] bg-[#f7f8fa] p-4"}`}>
-      {nodes.map((node, index) => {
-        const Icon = node.icon;
-        return (
-          <div key={node.id} className="flex shrink-0 items-center">
-            {index > 0 && <ArrowRight size={16} className="mx-2 shrink-0 text-[#8590a2]" />}
-            <div className={`flex min-w-[135px] items-center gap-2 rounded-lg border px-3 ${compact ? "py-2" : "py-3"} ${node.tone}`}>
-              <Icon size={16} className="shrink-0" />
-              <span className="min-w-0">
-                <small className="block text-[9px] font-bold uppercase tracking-wide opacity-75">{node.detail}</small>
-                <strong className="block max-w-[170px] truncate text-xs">{node.label}</strong>
-              </span>
-            </div>
-          </div>
-        );
-      })}
+    <div className={`${compact ? "py-1" : "rounded-xl border border-[#dfe1e6] bg-[#f7f8fa] p-4"}`}>
+      {!compact && <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#626f86]">O que esta operação faz</p>}
+      <ol className={`space-y-1 text-xs text-[#44546f] ${compact ? "" : "list-decimal pl-5"}`}>
+        {steps.map((step, index) => <li key={`${index}-${step}`} className={compact ? "inline after:mx-2 after:text-[#8590a2] after:content-['·'] last:after:content-none" : ""}>{step}</li>)}
+      </ol>
     </div>
   );
 }
@@ -662,7 +646,7 @@ function AutomationManager({
         { requestId: crypto.randomUUID() },
       );
       if (response.status === "error") throw new Error(response.error || "A execução falhou.");
-      setExecutionMessage(isDeploy ? "Publicação iniciada. Aguardando o Orbit reiniciar…" : `Fluxo concluído · ${response.affected || 0} ações executadas.`);
+      setExecutionMessage(isDeploy ? "Publicação iniciada. Aguardando o Orbit reiniciar…" : `Operação concluída · ${response.affected || 0} ações executadas.`);
       if (!isDeploy) {
         await load();
         setExecuting(null);
@@ -814,7 +798,7 @@ function AutomationManager({
                     {rule.definition.trigger.type === "board_button" && (
                       <button className={primary} disabled={Boolean(executing)} onClick={() => void executeRule(rule)}>
                         <Play size={13} className="mr-1 inline" />
-                        {executing === rule.id ? "Executando…" : "Executar fluxo"}
+                        {executing === rule.id ? "Executando…" : "Executar"}
                       </button>
                     )}
                     <button
@@ -926,7 +910,7 @@ function AutomationManager({
             }}
           >
             <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#626f86]">Prévia do fluxo</p>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#626f86]">Resumo da operação</p>
               <FlowDiagram definition={editing.definition} actionLabels={actionLabels} />
             </div>
             <Text
@@ -1321,7 +1305,7 @@ function AutomationManager({
                     )}
                   </div>
                   {a.type === "deploy.publish" && (
-                    <p className="rounded-lg bg-[#f0edff] p-3 text-xs text-[#5e2a96]">O plugin compila o ambiente develop, atualiza o main e reinicia o Orbit. A execução fica registrada no histórico deste fluxo.</p>
+                    <p className="rounded-lg bg-[#f0edff] p-3 text-xs text-[#5e2a96]">O plugin valida o develop, atualiza o main e reinicia o Orbit. A execução fica registrada no histórico desta operação.</p>
                   )}
                   {a.type === "report" && (
                     <div className="space-y-3">

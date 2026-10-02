@@ -2,13 +2,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
+  CheckCircle2,
   CheckSquare,
   Clock3,
   CreditCard,
   ExternalLink,
   Mail,
   MoveRight,
-  Printer,
   Plus,
   Tag,
   Trash2,
@@ -336,31 +336,6 @@ export function CardDialog({
                   </div>
                 </div>
               )}
-              <div>
-                <h3 className="mb-2 text-xs font-semibold text-[#626f86]">
-                  Status
-                </h3>
-                <label className="flex items-center gap-2 rounded bg-[#e9eaed] px-2 py-1 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={card.completed}
-                    onChange={(e) =>
-                      void updateCard(
-                        { completed: e.target.checked },
-                        { completed: card.completed },
-                        e.target.checked ? "concluir cartão" : "reabrir cartão",
-                      )
-                    }
-                  />
-                  <span
-                    className={
-                      card.completed ? "font-semibold text-[#216e4e]" : ""
-                    }
-                  >
-                    {card.completed ? "Concluído" : "Em andamento"}
-                  </span>
-                </label>
-              </div>
               {(card.start_date || card.due_date) && (
                 <div>
                   <h3 className="mb-2 text-xs font-semibold text-[#626f86]">
@@ -407,13 +382,29 @@ export function CardDialog({
                 </div>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-nowrap gap-2 overflow-x-auto pb-1">
               <button
                 onClick={() => setPanel("labels")}
                 className="rounded border border-[#dfe1e6] bg-white px-3 py-2 text-sm font-medium hover:bg-[#f1f2f4]"
               >
                 <Tag size={16} className="mr-1 inline" />
                 Etiquetas
+              </button>
+              <button
+                type="button"
+                aria-pressed={card.completed}
+                aria-label={`Status: ${card.completed ? "concluído" : "em andamento"}. Alternar status`}
+                onClick={() =>
+                  void updateCard(
+                    { completed: !card.completed },
+                    { completed: card.completed },
+                    card.completed ? "reabrir cartão" : "concluir cartão",
+                  )
+                }
+                className={`order-first flex shrink-0 items-center gap-1 rounded border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c66e4] ${card.completed ? "border-[#7ee2b8] bg-[#e3fcef] text-[#216e4e] hover:bg-[#dffcf0]" : "border-[#dfe1e6] bg-white text-[#626f86] hover:bg-[#f1f2f4]"}`}
+              >
+                <CheckCircle2 size={16} aria-hidden="true" />
+                {card.completed ? "Concluído" : "Em andamento"}
               </button>
               <button
                 onClick={() => setPanel("date")}
@@ -643,14 +634,6 @@ export function CardDialog({
                     )}
                   </>
                 )}
-                <a
-                  href={`/board/${board.id}/print?card=${card.id}&token=${card.url_token}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"
-                >
-                  <Printer size={16} /> Imprimir cartão
-                </a>
                 <button
                   onClick={() => confirm(
                     { title: "Arquivar cartão", description: `Arquivar o cartão “${card.title}”?`, confirmLabel: "Arquivar" },

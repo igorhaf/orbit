@@ -1298,7 +1298,7 @@ async function bootstrap() {
     socket.on('board:leave',(boardId:unknown)=>{if(typeof boardId==='string')socket.leave(`board:${boardId}`);});
   });
   events.attach(sockets);
-  await app.listen(Number(process.env.API_PORT || 4000), '0.0.0.0');
+  await app.listen(Number(process.env.API_PORT || 4000), process.env.API_HOST || '0.0.0.0');
   const planner=app.get(PlannerPlugin);
   if(plugins.isEnabled('planner'))void planner.prepareDailySchedules();
   const plannerTimer=setInterval(()=>{if(plugins.isEnabled('planner'))void planner.prepareDailySchedules()},60*60*1000);

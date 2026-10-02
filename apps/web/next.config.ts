@@ -5,6 +5,7 @@ const forcedTheme = process.env.THEME === 'dark' ? 'dark' : '';
 const orbitEnvironment = process.env.THEME === 'dark' ? 'development' : '';
 
 const nextConfig: NextConfig = {
+  distDir: process.env.ORBIT_NEXT_DIST_DIR || '.next',
   env: { NEXT_PUBLIC_ORBIT_THEME: forcedTheme, NEXT_PUBLIC_ORBIT_ENV: orbitEnvironment },
   skipTrailingSlashRedirect: true,
   experimental: { useTypeScriptCli: false },

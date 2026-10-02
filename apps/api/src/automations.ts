@@ -2,6 +2,7 @@ import {Body,Controller,Delete,Get,HttpException,Inject,Injectable,OnModuleDestr
 import {Request} from 'express';
 import {randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
+import {existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {PoolClient,QueryResultRow} from 'pg';
 import nodemailer from 'nodemailer';
@@ -27,9 +28,10 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
   }
   onModuleDestroy(){if(this.timer)clearInterval(this.timer)}
   private rebuildDevelopment(clean=false){return new Promise<void>((resolveRun,reject)=>{
-    const projectRoot=resolve(process.env.ORBIT_DEVELOPMENT_ROOT||process.cwd());
+    const siblingDevelopmentRoot=resolve(process.cwd(),'..','orbit-dev');
+    const projectRoot=resolve(process.env.ORBIT_DEVELOPMENT_ROOT||(existsSync(resolve(siblingDevelopmentRoot,'scripts/orbit-rebuild-dev.mjs'))?siblingDevelopmentRoot:process.cwd()));
     const script=resolve(process.env.ORBIT_REBUILD_SCRIPT||projectRoot,'scripts/orbit-rebuild-dev.mjs');
-    const child=spawn(process.execPath,[script,...(clean?['--clean']:[])],{cwd:projectRoot,stdio:'inherit',env:process.env});
+    const child=spawn(process.execPath,[script,...(clean?['--clean']:[])],{cwd:projectRoot,stdio:'inherit',env:{...process.env,ORBIT_DEVELOPMENT_ROOT:projectRoot}});
     child.on('error',reject);child.on('close',code=>code===0?resolveRun():reject(new Error(`Rebuild de desenvolvimento terminou com código ${code??'desconhecido'}.`)));
   })}
   async list(board:string,user:string){await this.features.member(board,user);return this.db.query('SELECT * FROM automations WHERE board_id=$1 ORDER BY created_at DESC',[board])}

@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const environment={...process.env,API_PORT:'4001',WEB_ORIGIN:'http://localhost:3001',ORBIT_API_PROXY_URL:'http://127.0.0.1:4001',ORBIT_ENV:'development',THEME:'dark',PORT:'3001'};
+const environment={...process.env,API_HOST:'127.0.0.1',API_PORT:'4001',WEB_HOSTNAME:'127.0.0.1',WEB_ORIGIN:'http://localhost:3001',ORBIT_API_PROXY_URL:'http://127.0.0.1:4001',ORBIT_ENV:'development',THEME:'dark',PORT:'3001'};
 const restartRequest=resolve(root,'.orbit-dev-restart-request');
 const restartAcknowledgement=resolve(root,'.orbit-dev-restart-ack');
 const managerLock=resolve(root,'.orbit-dev-manager.pid');
@@ -27,7 +27,7 @@ let restarting=false;
 const children=new Map();
 const services=new Map([
   ['API',{command:process.execPath,args:[resolve(root,'apps/api/dist/main.js')],cwd:resolve(root,'apps/api')}],
-  ['Web',{command:process.execPath,args:[resolve(root,'node_modules/next/dist/bin/next'),'start','--hostname','0.0.0.0'],cwd:resolve(root,'apps/web')}],
+  ['Web',{command:process.execPath,args:[resolve(root,'node_modules/next/dist/bin/next'),'start','--hostname',environment.WEB_HOSTNAME],cwd:resolve(root,'apps/web')}],
 ]);
 const launch=(name,service)=>{
   const child=spawn(service.command,service.args,{cwd:service.cwd,stdio:'inherit',env:environment,detached:process.platform!=='win32'});

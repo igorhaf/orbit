@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,15 +12,17 @@ const fronts = [
   ['API', ['run', 'build', '-w', 'apps/api']],
   ['Web', ['run', 'build', '-w', 'apps/web']],
 ];
+const missingPath = error => Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT');
 
 const database = async () => {
-  let connection = process.env.DATABASE_URL || '';
+  let connection = '';
   try {
     const env = await readFile(resolve(root, 'apps/api/.env'), 'utf8');
-    connection ||= env.match(/^DATABASE_URL=(?:"([^"]+)"|'([^']+)'|([^\n]+))/m)?.slice(1).find(Boolean) || '';
+    connection = env.match(/^DATABASE_URL=(?:"([^"]+)"|'([^']+)'|([^\n]+))/m)?.slice(1).find(Boolean) || '';
   } catch {
     // DATABASE_URL is optional when the caller provides PG* variables.
   }
+  connection ||= process.env.DATABASE_URL || '';
   let parsed;
   try {
     parsed = connection ? new URL(connection) : null;
@@ -67,9 +69,9 @@ const database = async () => {
   console.log('[rebuild-dev] Banco: disponível');
 };
 
-const run = (name, args) => new Promise((resolveRun, reject) => {
+const run = (name, args, environment = {}) => new Promise((resolveRun, reject) => {
   console.log(`[rebuild-dev] ${name}: iniciando`);
-  const child = spawn(npm, args, { cwd: root, stdio: 'inherit', env: process.env });
+  const child = spawn(npm, args, { cwd: root, stdio: 'inherit', env: { ...process.env, ...environment } });
   child.on('error', reject);
   child.on('close', code => {
     if (code === 0) {
@@ -82,6 +84,13 @@ const run = (name, args) => new Promise((resolveRun, reject) => {
 });
 
 let failed = false;
+const activeWebBuild=resolve(root,'apps/web/.next');
+const stagedWebBuild=resolve(root,'apps/web/.next-rebuild');
+const previousWebBuild=resolve(root,'apps/web/.next-previous');
+const retainedStatic=resolve(root,'.orbit-rebuild-previous-static');
+const nextEnvironmentFile=resolve(root,'apps/web/next-env.d.ts');
+const webTsConfigFile=resolve(root,'apps/web/tsconfig.json');
+let webTypeFiles;
 try {
   await database();
 } catch (error) {
@@ -89,12 +98,14 @@ try {
   console.error(`[rebuild-dev] Banco: falhou — ${error instanceof Error ? error.message : error}`);
 }
 if(!failed&&clean){
-  console.log('[rebuild-dev] Limpeza: removendo artefatos compilados da API e da Web');
+  console.log('[rebuild-dev] Limpeza: preservando os assets ativos e removendo artefatos da API');
   try{
-    await Promise.all([
-      rm(resolve(root,'apps/api/dist'),{recursive:true,force:true}),
-      rm(resolve(root,'apps/web/.next'),{recursive:true,force:true}),
-    ]);
+    await rm(retainedStatic,{recursive:true,force:true});
+    await rm(stagedWebBuild,{recursive:true,force:true});
+    await rm(previousWebBuild,{recursive:true,force:true});
+    try{await cp(resolve(activeWebBuild,'static'),retainedStatic,{recursive:true,force:true});}catch(error){if(!missingPath(error))throw error;}
+    webTypeFiles=await Promise.all([readFile(nextEnvironmentFile,'utf8'),readFile(webTsConfigFile,'utf8')]);
+    await rm(resolve(root,'apps/api/dist'),{recursive:true,force:true});
     console.log('[rebuild-dev] Limpeza: concluída');
   }catch(error){
     failed=true;
@@ -104,13 +115,23 @@ if(!failed&&clean){
 for (const [name, args] of fronts) {
   if (failed) break;
   try {
-    await run(name, args);
+    await run(name, args, clean&&name==='Web'?{ORBIT_NEXT_DIST_DIR:'.next-rebuild'}:{});
+    if(clean&&name==='Web'){
+      console.log('[rebuild-dev] Web: combinando chunks anteriores e ativando o novo build');
+      try{await cp(retainedStatic,resolve(stagedWebBuild,'static'),{recursive:true,force:false,errorOnExist:false});}catch(error){if(!missingPath(error))throw error;}
+      await rename(activeWebBuild,previousWebBuild);
+      await rename(stagedWebBuild,activeWebBuild);
+      await rm(previousWebBuild,{recursive:true,force:true});
+      await rm(retainedStatic,{recursive:true,force:true});
+      console.log('[rebuild-dev] Web: novo build ativado');
+    }
   } catch (error) {
     failed = true;
     console.error(`[rebuild-dev] ${name}: falhou — ${error instanceof Error ? error.message : error}`);
     break;
   }
 }
+if(webTypeFiles) await Promise.all([writeFile(nextEnvironmentFile,webTypeFiles[0]),writeFile(webTsConfigFile,webTypeFiles[1])]);
 
 if (failed) {
   console.error('[rebuild-dev] rebuild interrompido.');
