@@ -36,10 +36,16 @@ async function publishDevelopment() {
 }
 
 async function updateStableOrbit() {
-  if ((await gitOutput(root, ['status', '--porcelain'])).trim()) throw new Error('O Orbit em main tem alterações locais. Finalize-as antes do Deploy.');
+  const dirty=(await gitOutput(root,['status','--porcelain'])).trim();
+  let preservedStash=null;
+  if(dirty){
+    preservedStash=`orbit deploy safeguard ${new Date().toISOString()}`;
+    await git(root,['stash','push','--include-untracked','-m',preservedStash]);
+  }
   await git(root, ['checkout', 'main']);
   await git(root, ['pull', '--ff-only', 'origin', 'develop']);
   await git(root, ['push', 'origin', 'main']);
+  return preservedStash;
 }
 
 async function prepareAndValidate(directory) {
@@ -79,9 +85,9 @@ async function deploy() {
   try {
     await prepareAndValidate(developmentRoot);
     await publishDevelopment();
-    await updateStableOrbit();
+    const preservedStash=await updateStableOrbit();
     await prepareAndValidate(root);
-    await writeFile(status, JSON.stringify({ status: 'restarting', finished_at: new Date().toISOString() }));
+    await writeFile(status, JSON.stringify({ status: 'restarting', finished_at: new Date().toISOString(), preserved_main_stash: preservedStash }));
   } catch (error) {
     await writeFile(status, JSON.stringify({ status: 'failed', error: error instanceof Error ? error.message : 'Falha na compilação.' }));
     console.error('Deploy falhou:', error);
