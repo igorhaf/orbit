@@ -24,6 +24,7 @@ import {
   getUser,
   labelColors,
   labelTextColor,
+  withExpansion,
 } from "@/lib/api";
 import { remember } from "@/lib/history";
 import { Modal, useConfirmModal } from "./ui";
@@ -56,7 +57,7 @@ function PromptPreview({ card, board }: { card: Card; board: Board }) {
   const effort = card.ai_effort || board.ai_default_effort || card.ai_project_default_effort || board.ai_global_effort || card.ai_global_effort || "Não configurado";
   const prompt = run?.prompt || `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description || card.title}`;
   return <section className="mt-6 space-y-4" aria-label="Próximo prompt">
-    <div className="flex flex-wrap gap-3 text-xs"><span className="rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{run?.model || model}</b></span><span className="rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
+    <div className="flex min-w-max flex-nowrap gap-3 overflow-x-auto text-xs"><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{run?.model || model}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
     <p className="text-sm text-[#626f86]">Prévia da instrução usada na sessão. Após executar, esta aba mostra o prompt completo enviado.</p>
     <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-4 font-mono text-xs leading-5">{prompt}</pre>
   </section>;
@@ -563,14 +564,17 @@ export function CardDialog({
               board={board}
               onChanged={onChanged}
               onExecutionStart={() => setTab("output")}
-              onApply={async (text) => {
+              onApply={async (text, action) => {
+                const nextDescription = action === "elaborate"
+                  ? withExpansion(card.description, text)
+                  : text;
                 const changed = await updateCard(
-                  { description: text },
+                  { description: nextDescription },
                   { description: card.description },
-                  "aplicar sugestão de IA",
+                  action === "elaborate" ? "detalhar descrição" : "aplicar sugestão de IA",
                 );
                 if (changed) {
-                  setDescription(text);
+                  setDescription(nextDescription);
                   await onChanged();
                 }
               }}

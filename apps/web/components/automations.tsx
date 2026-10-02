@@ -174,6 +174,8 @@ Object.assign(actions, {
   run_agent: "Executar agente do cartão",
   run_skill: "Executar skill do cartão",
   execute_plugin_action: "Executar integrações do cartão",
+  rebuild_dev: "Rebuild retrocompatível do desenvolvimento",
+  rebuild_dev_clean: "Rebuild completo do desenvolvimento",
   create_card: "Criar cartão",
 });
 Object.assign(actions, {
@@ -476,6 +478,7 @@ export function AutomationControls({
             (r) =>
               r.enabled &&
               !r.definition.actions.some((action) => action.type === "deploy.publish") &&
+              !r.definition.actions.some((action) => ["rebuild_dev", "rebuild_dev_clean"].includes(action.type)) &&
               r.definition.trigger.type ===
                 (cardId ? "card_button" : "board_button"),
           )
@@ -731,7 +734,7 @@ function AutomationManager({
                 onChange={(e) => setFilter(e.target.value)}
               />
             </div>
-            {catalog.templates.length > 0 && !listId && (
+            {catalog.templates.length > 0 && (
               <section className="mb-6 rounded-xl border border-[#c3b6f7] bg-[#f7f5ff] p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <Library size={17} className="text-[#6554c0]" />

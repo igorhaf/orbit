@@ -24,7 +24,7 @@ export default function AutomationsPage() {
     Promise.all([api<User>("/auth/me"), api<Board[]>("/boards")])
       .then(([account, allBoards]) => {
         if (!active) return;
-        const available = allBoards.filter((board) => !board.is_inbox && !board.closed_at);
+        const available = allBoards.filter((board) => !board.is_inbox && !board.is_collection && !board.closed_at);
         const parameters = new URLSearchParams(window.location.search);
         const requestedBoard = parameters.get("board");
         setUser(account);
@@ -40,7 +40,7 @@ export default function AutomationsPage() {
     };
   }, [router]);
 
-  const available = boards.filter((board) => !board.is_inbox && !board.closed_at);
+  const available = boards.filter((board) => !board.is_inbox && !board.is_collection && !board.closed_at);
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f8fa]">
       {user && <AppHeader user={user} boards={boards} />}

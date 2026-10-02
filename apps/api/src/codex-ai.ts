@@ -83,12 +83,15 @@ export class CodexAiService {
         let settled=false;
         let timedOut=false;
         let killTimer:ReturnType<typeof setTimeout>|undefined;
+        let timeoutTimer:ReturnType<typeof setTimeout>|undefined;
         let finish:(error?:Error)=>void=()=>undefined;
         const heartbeatTimer=setInterval(()=>{
           if(child.exitCode===null&&child.signalCode===null)void Promise.resolve(onHeartbeat?.()).catch(()=>undefined);
-        },15_000);
+        },5_000);
         heartbeatTimer.unref();
-        const timer = setTimeout(() => {
+        const armTimeout=()=>{
+          if(timeoutTimer)clearTimeout(timeoutTimer);
+          timeoutTimer=setTimeout(() => {
           timedOut=true;
           try{child.kill('SIGTERM')}catch{ /* The Codex process may already have exited. */ }
           killTimer=setTimeout(()=>{
@@ -96,14 +99,18 @@ export class CodexAiService {
             finish(new Error('A resposta do Codex excedeu o tempo limite.'));
           },5_000);
           killTimer.unref();
-        }, timeout);
-        const clearTimers=()=>{clearTimeout(timer);if(killTimer)clearTimeout(killTimer);clearInterval(heartbeatTimer);};
+          }, timeout);
+          timeoutTimer.unref();
+        };
+        armTimeout();
+        const clearTimers=()=>{if(timeoutTimer)clearTimeout(timeoutTimer);if(killTimer)clearTimeout(killTimer);clearInterval(heartbeatTimer);};
         finish=(error?:Error)=>{
           if(settled)return;
           settled=true;clearTimers();
           if(error)reject(error);else resolve();
         };
         child.stdout?.on('data',(chunk:Buffer)=>{
+          armTimeout();
           stdout+=chunk.toString();const lines=stdout.split(/\r?\n/);stdout=lines.pop()||'';
           for(const line of lines){
             try {
@@ -149,8 +156,8 @@ export class CodexAiService {
             else if(update&&!update.fileChanges&&!update.activity)progress?.(update.message.slice(0,2000));
           }
         });
-        child.stderr?.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-2000); });
-        child.on('error', error => finish(error));
+        child.stderr?.on('data', (chunk: Buffer) => { armTimeout();stderr = (stderr + chunk.toString()).slice(-2000); });
+        child.on('error', error => {console.error('[CodexAi] Falha ao iniciar o processo.',error);finish(error)});
         child.on('close', code => {
           if(timedOut)finish(new Error('A resposta do Codex excedeu o tempo limite.'));
           else if (code === 0) finish();
@@ -165,6 +172,7 @@ export class CodexAiService {
       const result={output:text.slice(0, MAX_OUTPUT),sessionId:detectedSessionId,fileChanges,activities:[...activities.values()]};
       return progress ? result : result.output;
     } catch (error) {
+      console.error('[CodexAi] Execução falhou.',error);
       await sessionPersistence;
       const failure=sessionPersistenceError||error;
       const detail = failure instanceof Error ? failure.message : '';

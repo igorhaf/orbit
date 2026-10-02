@@ -230,8 +230,15 @@ export default function ProfilePage() {
         project = await send<AiProject>("/ai/projects", "POST", payload);
       } catch (err) {
         if ((err as Error & { code?:string }).code !== "PROJECT_DIRECTORY_MISSING") throw err;
-        if (!window.confirm(`${(err as Error).message}\n\nDeseja criar essa pasta no servidor do Orbit e cadastrar o projeto?`)) return;
-        project = await send<AiProject>("/ai/projects", "POST", { ...payload, create_directory:true });
+        confirm({ title: "Criar pasta do projeto", description: `${(err as Error).message}\n\nDeseja criar essa pasta no servidor do Orbit e cadastrar o projeto?`, confirmLabel: "Criar pasta", destructive: false }, async () => {
+          const createdProject = await send<AiProject>("/ai/projects", "POST", { ...payload, create_directory:true });
+          setProjects(current => [...current, createdProject].sort((a, b) => a.name.localeCompare(b.name)));
+          setProjectName("");
+          setProjectPath("");
+          setNotice("Projeto adicionado.");
+          setError("");
+        });
+        return;
       }
       setProjects(
         [...projects, project].sort((a, b) => a.name.localeCompare(b.name)),

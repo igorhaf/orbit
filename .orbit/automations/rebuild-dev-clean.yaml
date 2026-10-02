@@ -1,0 +1,10 @@
+id: rebuild-dev-clean
+name: Rebuild completo em desenvolvimento
+description: Limpa os artefatos compilados, aplica a estrutura atual, recompila a API e a Web do zero e reinicia o desenvolvimento.
+trigger:
+  type: board_button
+conditions: []
+actions:
+  - type: run_skill
+  - type: rebuild_dev_clean
+    target: board

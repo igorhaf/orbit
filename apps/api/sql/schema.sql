@@ -379,10 +379,12 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   created_at timestamptz NOT NULL DEFAULT now(),
   started_at timestamptz NOT NULL DEFAULT now(),
   heartbeat_at timestamptz NOT NULL DEFAULT now(),
+  worker_id text,
   finished_at timestamptz
 );
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS codex_session_id text;
+ALTER TABLE card_ai_runs ALTER COLUMN status SET DEFAULT 'queued';
 ALTER TABLE card_ai_runs DROP CONSTRAINT IF EXISTS card_ai_runs_status_check;
 ALTER TABLE card_ai_runs ADD CONSTRAINT card_ai_runs_status_check CHECK(status IN ('queued','running','success','error'));
 CREATE INDEX IF NOT EXISTS card_ai_runs_card_started_idx ON card_ai_runs(card_id, started_at DESC);

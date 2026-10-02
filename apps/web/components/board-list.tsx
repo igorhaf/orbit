@@ -91,9 +91,9 @@ export function BoardList({
     { id: string; title: string }[]
   >([]);
   const [busy, setBusy] = useState(false);
-  const [pendingScroll, setPendingScroll] = useState<
-    { direction: "start" | "end"; cardId: string } | null
-  >(null);
+  const [pendingScroll, setPendingScroll] = useState<{ cardId: string } | null>(
+    null,
+  );
   const cardsRef = useRef<HTMLDivElement>(null);
   const [actionError, setActionError] = useState("");
   const [trelloOptions, setTrelloOptions] = useState<TrelloListOption[]>([]);
@@ -123,14 +123,21 @@ export function BoardList({
     const frame = window.requestAnimationFrame(() => {
       const container = cardsRef.current;
       if (!container) return;
-      container.scrollTo({
-        top: pendingScroll.direction === "end" ? container.scrollHeight : 0,
-        behavior: "smooth",
-      });
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
       setPendingScroll(null);
     });
     return () => window.cancelAnimationFrame(frame);
   }, [list.cards, pendingScroll]);
+  useEffect(() => {
+    if (!adding) return;
+    const frame = window.requestAnimationFrame(() => {
+      cardsRef.current?.scrollTo({
+        top: cardsRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [adding]);
   const close = () => {
     setMenu(false);
     setSection("main");
@@ -350,14 +357,9 @@ export function BoardList({
                       title,
                       insertPosition ?? list.cards.length,
                     );
-                    const position = insertPosition ?? list.cards.length;
-                    const direction =
-                      position === 0
-                        ? "start"
-                        : position >= list.cards.length
-                          ? "end"
-                          : null;
-                    if (direction) setPendingScroll({ cardId: created.id, direction });
+                    // Newly created cards are appended by default. Always reveal
+                    // the footer after creation so the latest card stays readable.
+                    setPendingScroll({ cardId: created.id });
                     setTitle("");
                     setActionError("");
                   } catch (err) {

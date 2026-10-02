@@ -16,10 +16,11 @@ import { RichText } from "./rich-text";
 import { AiEffortField, AiModelFields } from "./ai-model-fields";
 
 type Action =
-  "write" | "refine" | "summarize" | "shorten" | "action_items" | "checklist";
-type Result = { output: string; items: string[] };
+  "write" | "elaborate" | "refine" | "summarize" | "shorten" | "action_items" | "checklist";
+type Result = { output: string; items: string[]; action?: Action };
 const actions: { id: Action; label: string }[] = [
   { id: "write", label: "Escrever descrição" },
+  { id: "elaborate", label: "Detalhar mantendo o original" },
   { id: "refine", label: "Refinar texto" },
   { id: "summarize", label: "Resumir" },
   { id: "shorten", label: "Encurtar" },
@@ -36,7 +37,7 @@ export function CardAi({
 }: {
   card: Card;
   board: Board;
-  onApply: (text: string) => Promise<void>;
+  onApply: (text: string, action?: Action) => Promise<void>;
   onChanged: () => Promise<void>;
   onExecutionStart?: () => void;
 }) {
@@ -46,7 +47,17 @@ export function CardAi({
       ? ""
       : window.localStorage.getItem(`orbit:card:${card.id}:prompt-instruction`) || "",
   );
-  const [result, setResult] = useState<Result | null>(null);
+  const suggestionStorageKey = `orbit:card:${card.id}:description-suggestion`;
+  const [result, setResult] = useState<Result | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const saved = window.localStorage.getItem(suggestionStorageKey);
+      return saved ? JSON.parse(saved) as Result : null;
+    } catch {
+      window.localStorage.removeItem(suggestionStorageKey);
+      return null;
+    }
+  });
   const [models, setModels] = useState<AiModel[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [busy, setBusy] = useState(false);
@@ -101,16 +112,21 @@ export function CardAi({
     setError("");
     setResult(null);
     try {
-      setResult(
-        await send<Result>(`/cards/${card.id}/ai`, "POST", {
-          action,
-        }),
-      );
+      const generated = await send<Result>(`/cards/${card.id}/ai`, "POST", {
+        action,
+      });
+      const suggestion = { ...generated, action };
+      setResult(suggestion);
+      window.localStorage.setItem(suggestionStorageKey, JSON.stringify(suggestion));
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+  function discardSuggestion() {
+    setResult(null);
+    window.localStorage.removeItem(suggestionStorageKey);
   }
   async function createChecklist() {
     if (!result?.items.length) return;
@@ -169,15 +185,13 @@ export function CardAi({
           Projeto
           <select
             disabled={busy}
-            value={card.ai_project_id || ""}
+            value={effectiveProjectId || ""}
             onChange={(event) =>
               void configure({ ai_project_id: event.target.value || null })
             }
             className="mt-1 block w-full rounded border border-[#c3b6f7] bg-white p-2 text-sm text-[#172b4d]"
           >
-              <option value="">
-                {board.ai_default_project_id ? "Herdar projeto do quadro" : "Escolher projeto"}
-              </option>
+              {!effectiveProjectId && <option value="">Selecione um projeto</option>}
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
@@ -254,7 +268,12 @@ export function CardAi({
       )}
       {result && (
         <div className="mt-3 rounded bg-white p-3 text-sm">
-          <RichText text={result.output} />
+              {result.action === "elaborate" && (
+                <p className="mb-2 rounded bg-[#e9f2ff] px-2 py-1 text-xs text-[#172b4d]">
+                  O texto atual será preservado. Este conteúdo será acrescentado como um bloco de detalhamento.
+                </p>
+              )}
+              <RichText text={result.output} />
           {result.items.length > 0 && (
             <div className="mt-3">
               <button
@@ -266,12 +285,20 @@ export function CardAi({
               </button>
             </div>
           )}
-          <button
-            onClick={() => void onApply(result.output)}
-            className="mt-3 rounded bg-[#6554c0] px-2 py-1 text-xs font-semibold text-white"
-          >
-            Aplicar à descrição
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={async () => { await onApply(result.output, result.action); discardSuggestion(); }}
+              className="rounded bg-[#6554c0] px-2 py-1 text-xs font-semibold text-white"
+            >
+              {result.action === "elaborate" ? "Adicionar detalhamento" : "Aplicar à descrição"}
+            </button>
+            <button
+              onClick={discardSuggestion}
+              className="rounded px-2 py-1 text-xs font-semibold text-[#626f86] hover:bg-[#f1f2f4]"
+            >
+              Descartar sugestão
+            </button>
+          </div>
         </div>
       )}
     </section>

@@ -22,6 +22,7 @@ import {
   getToken,
   send,
   WatchState,
+  withExpansion,
 } from "@/lib/api";
 import { Avatar } from "./ui";
 import { RichText } from "./rich-text";
@@ -88,6 +89,7 @@ export function CardComments({
   const [email, setEmail] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [aiResult, setAiResult] = useState("");
+  const [aiTarget, setAiTarget] = useState<Comment | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiAction, setAiAction] = useState<CommentAiAction>("elaborate");
   useEffect(() => {
@@ -124,13 +126,13 @@ export function CardComments({
     await addPendingFiles(Array.from(event.target.files || []));
     event.target.value = "";
   }
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit(execute: boolean) {
     if (!body.trim() && !pending.length) return;
     const ok = await run(() =>
       send(`/cards/${card.id}/comments`, "POST", {
         body: body.trim() || "Imagem anexada.",
         attachments: pending,
+        execute,
       }),
     );
     if (ok) {
@@ -140,21 +142,36 @@ export function CardComments({
   }
   async function commentAi(
     action: CommentAiAction,
+    target: Comment | null = null,
   ) {
     setAiBusy(true);
     setError("");
     setAiResult("");
+    setAiTarget(target);
     try {
       const result = await send<{ output: string }>(
         `/cards/${card.id}/comments/ai`,
         "POST",
-        { action, draft: body },
+        { action, draft: target?.body || body },
       );
       setAiResult(result.output);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setAiBusy(false);
+    }
+  }
+  async function publishExpansion() {
+    if (!aiTarget || !aiResult.trim()) return;
+    const expanded = withExpansion(aiTarget.body, aiResult, "Comentário original");
+    if (expanded.length > 5000) {
+      setError("O detalhamento ficou maior que o limite de 5.000 caracteres. Gere uma versão mais curta.");
+      return;
+    }
+    const ok = await run(() => send(`/cards/${card.id}/comments`, "POST", { body: expanded }));
+    if (ok) {
+      setAiResult("");
+      setAiTarget(null);
     }
   }
   async function copyLink(comment: Comment) {
@@ -278,7 +295,10 @@ export function CardComments({
           </div>
         )}
         <form
-          onSubmit={(event) => void submit(event)}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit(true);
+          }}
           className="rounded bg-white p-3 shadow-card"
         >
           <p className="mb-2 text-xs text-[#626f86]">
@@ -325,29 +345,61 @@ export function CardComments({
               <select aria-label="Ação de IA para o comentário" disabled={aiBusy} value={aiAction} onChange={(event) => setAiAction(event.target.value as CommentAiAction)} className="max-w-48 rounded border border-[#c3b6f7] bg-white px-2 py-1 text-xs text-[#403294]">
                 {commentAiActions.map((action) => <option key={action.id} value={action.id}>{action.label}</option>)}
               </select>
-              <button type="button" disabled={aiBusy} onClick={() => void commentAi(aiAction)} className="font-semibold underline disabled:opacity-50">Gerar</button>
+              <button type="button" disabled={aiBusy} onClick={() => void commentAi(aiAction)} className="rounded bg-[#6554c0] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#5243aa] disabled:opacity-50">Gerar</button>
               {aiBusy && <LoaderCircle size={12} className="animate-spin" />}
             </span>
             <button
+              type="button"
               disabled={!body.trim() && !pending.length}
-              className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              onClick={() => void submit(false)}
+              className="rounded bg-[#e9eaed] px-3 py-1.5 text-xs font-semibold text-[#172b4d] hover:bg-[#dfe1e6] disabled:opacity-50"
             >
-              Enviar
+              Salvar
+            </button>
+            <button
+              type="submit"
+              disabled={!body.trim() && !pending.length}
+              className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0052cc] disabled:opacity-50"
+            >
+              Executar
             </button>
           </div>
           {aiResult && (
             <div className="mt-2 rounded border border-[#c3b6f7] bg-[#f7f5ff] p-2 text-sm">
-              <RichText text={aiResult} />
-              <button
-                type="button"
-                onClick={() => {
-                  setBody(aiResult);
-                  setAiResult("");
-                }}
-                className="mt-2 rounded bg-[#6554c0] px-2 py-1 text-xs font-semibold text-white"
-              >
-                Usar no comentário
-              </button>
+              {aiTarget ? (
+                <>
+                  <p className="mb-2 text-xs font-semibold text-[#403294]">Detalhamento de {aiTarget.author_name} (o original será preservado)</p>
+                  <div className="rounded border border-[#dfe1e6] bg-white p-2">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#626f86]">Comentário original</p>
+                    <RichText text={aiTarget.body} />
+                  </div>
+                  <div className="mt-2 rounded border border-[#dfe1e6] bg-white p-2">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#626f86]">Detalhamento</p>
+                    <RichText text={aiResult} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void publishExpansion()}
+                    className="mt-2 rounded bg-[#6554c0] px-2 py-1 text-xs font-semibold text-white"
+                  >
+                    Publicar detalhamento editável
+                  </button>
+                </>
+              ) : (
+                <>
+                  <RichText text={aiResult} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBody(aiResult);
+                      setAiResult("");
+                    }}
+                    className="mt-2 rounded bg-[#6554c0] px-2 py-1 text-xs font-semibold text-white"
+                  >
+                    Usar no comentário
+                  </button>
+                </>
+              )}
             </div>
           )}
           {pending.length > 0 && (
@@ -453,6 +505,17 @@ export function CardComments({
                   <button onClick={() => void copyLink(comment)}>
                     <Copy size={12} className="mr-1 inline" />
                     Copiar link
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAiAction("elaborate");
+                      void commentAi("elaborate", comment);
+                    }}
+                    disabled={aiBusy}
+                    className="text-[#6554c0] disabled:opacity-50"
+                  >
+                    <Sparkles size={12} className="mr-1 inline" />
+                    Detalhar
                   </button>
                   {!comment.is_ai&&!comment.ai_status&&comment.author_id === user?.id && (
                     <>

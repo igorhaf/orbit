@@ -111,6 +111,12 @@ export type VaultItem = {id:string;card_id?:string|null;url_token?:string|null;b
 export type VaultItemDetail = VaultItem & {fields:Record<string,string>};
 export type CommentAttachment = {id:string;kind:'file'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null};
 export type Comment = { id: string; body: string; created_at: string; edited_at?:string|null; author_id: string; author_name: string; is_ai?:boolean; ai_status?:'queued'|'running'|'success'|'error'|null; ai_error?:string|null; attachments?:CommentAttachment[] };
+export const withExpansion = (original: string, expansion: string, originalHeading?: string) => {
+  const source = original.trim();
+  const detail = expansion.trim();
+  if (!source) return detail;
+  return `${originalHeading ? `### ${originalHeading}\n\n` : ""}${source}\n\n---\n\n### Detalhamento\n\n${detail}`;
+};
 export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string; text: string; completed: boolean; position: number; due_date: string | null };
 export type ExternalResource = {id:string;plugin_id:string;connection_id:string|null;resource_type:string;external_id:string;external_parent_id:string|null;url:string|null;etag:string|null;metadata:Record<string,unknown>;created_at:string;updated_at:string};
 export type CardDetails = { comments: Comment[]; checklist: ChecklistItem[]; externalResources:ExternalResource[] };

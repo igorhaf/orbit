@@ -1,6 +1,8 @@
 import {Body,Controller,Delete,Get,HttpException,Inject,Injectable,OnModuleDestroy,OnModuleInit,Optional,Param,Patch,Post,Req} from '@nestjs/common';
 import {Request} from 'express';
 import {randomUUID} from 'node:crypto';
+import {spawn} from 'node:child_process';
+import {resolve} from 'node:path';
 import {PoolClient,QueryResultRow} from 'pg';
 import nodemailer from 'nodemailer';
 import {Db} from './db';
@@ -24,11 +26,19 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
     this.timer=setInterval(()=>void this.tick(),5000);this.timer.unref();
   }
   onModuleDestroy(){if(this.timer)clearInterval(this.timer)}
+  private rebuildDevelopment(clean=false){return new Promise<void>((resolveRun,reject)=>{
+    const projectRoot=resolve(process.env.ORBIT_DEVELOPMENT_ROOT||process.cwd());
+    const script=resolve(process.env.ORBIT_REBUILD_SCRIPT||projectRoot,'scripts/orbit-rebuild-dev.mjs');
+    const child=spawn(process.execPath,[script,...(clean?['--clean']:[])],{cwd:projectRoot,stdio:'inherit',env:process.env});
+    child.on('error',reject);child.on('close',code=>code===0?resolveRun():reject(new Error(`Rebuild de desenvolvimento terminou com código ${code??'desconhecido'}.`)));
+  })}
   async list(board:string,user:string){await this.features.member(board,user);return this.db.query('SELECT * FROM automations WHERE board_id=$1 ORDER BY created_at DESC',[board])}
   async status(board:string,user:string){await this.features.member(board,user);return this.db.one('SELECT max(r.created_at) AS last FROM automation_runs r JOIN automations a ON a.id=r.automation_id WHERE a.board_id=$1',[board])}
   async catalog(board:string,user:string){
     await this.features.member(board,user);
     const templates=[
+      {id:'orbit.rebuild-development-compatible',name:'Rebuild retrocompatível em desenvolvimento',description:'Aplica migrações e backfills preservando os dados existentes, recompila API e Web e reinicia o ambiente.',category:'Desenvolvimento',pluginName:'Orbit',tags:['rebuild','desenvolvimento','retrocompatível'],definition:{trigger:{type:'board_button'},conditions:[],actions:[{type:'rebuild_dev',target:'board'}]}},
+      {id:'orbit.rebuild-development-clean',name:'Rebuild completo em desenvolvimento',description:'Remove os artefatos compilados, aplica a estrutura atual do banco, recompila API e Web do zero e reinicia o ambiente.',category:'Desenvolvimento',pluginName:'Orbit',tags:['rebuild','desenvolvimento','completo'],definition:{trigger:{type:'board_button'},conditions:[],actions:[{type:'rebuild_dev_clean',target:'board'}]}},
       {id:'orbit.celebrate-completion',name:'Registrar conclusão',description:'Quando um cartão for concluído, publica uma confirmação no próprio cartão.',category:'Organização',pluginName:'Orbit',tags:['conclusão','histórico'],definition:{trigger:{type:'event',event:'card_completed'},conditions:[{field:'completed',op:'eq',value:'true'}],actions:[{type:'comment',target:'card',value:'✅ Trabalho concluído e registrado pela automação.'}]}},
       {id:'orbit.archive-completed',name:'Limpeza semanal de concluídos',description:'Toda segunda-feira, arquiva os cartões concluídos do quadro.',category:'Organização',pluginName:'Orbit',tags:['limpeza','semanal'],definition:{trigger:{type:'scheduled',frequency:'weekly',time:'18:00',timezone:'America/Recife',weekday:1},conditions:[{field:'completed',op:'eq',value:'true'}],actions:[{type:'archive',target:'board'}]}},
       ...this.plugins.automationTemplates(),
@@ -196,6 +206,9 @@ export class AutomationsService implements OnModuleInit,OnModuleDestroy {
       let affected=0;
       const selections=new Map<string,string[]>();
       for(const action of rule.definition.actions){
+        if(action.type==='rebuild_dev'||action.type==='rebuild_dev_clean'){
+          await this.rebuildDevelopment(action.type==='rebuild_dev_clean');affected++;continue;
+        }
         const pluginAction=this.plugins.automationAction(action.type);
         if(pluginAction?.scope==='workspace'){
           if(!this.dispatcher.has(action.type))throw new Error(`Ação do plugin indisponível: ${action.type}`);

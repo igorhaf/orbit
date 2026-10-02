@@ -109,6 +109,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const [panel, setPanel] = useState<'search'|'boards'|'create'|'notifications'|'account'|null>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const boardsMenuRef = useRef<HTMLDivElement>(null);
+  const createMenuRef = useRef<HTMLDivElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<{query:string; data:SearchResults}>({query:'',data:{boards:[],cards:[]}});
@@ -273,6 +274,14 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       document.removeEventListener('focusin', closeOutside);
     };
   }, [panel]);
+  useEffect(() => {
+    if (panel !== 'create') return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!createMenuRef.current?.contains(event.target as Node)) setPanel(null);
+    };
+    document.addEventListener('mousedown', closeOutside);
+    return () => document.removeEventListener('mousedown', closeOutside);
+  }, [panel]);
 
   return <><header className="relative z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 py-1 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
@@ -305,7 +314,13 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   <LayoutDashboard size={19}/>
 </button>
     <button onClick={() => router.push('/')} className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden" title="Home"><Home size={19}/></button>
-    <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="ml-1 rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
+    <div ref={createMenuRef} className="relative ml-1">
+      <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
+      {panel === 'create' && <div className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
+        <button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>
+        <button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>
+      </div>}
+    </div>
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
@@ -327,10 +342,6 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         {!results.boards.length && !results.cards.length && <p className="p-4 text-center text-xs text-[#626f86]">Nenhum resultado encontrado.</p>}
         <button onClick={() => { setPanel(null); router.push(`/search?q=${encodeURIComponent(query)}`); }} className="mt-2 w-full border-t border-[#dfe1e6] px-3 py-2 text-left text-xs font-semibold text-[#0c66e4]">Abrir busca avançada</button>
       </>}</div>
-    </div>}
-    {panel === 'create' && <div className="absolute left-20 top-12 z-40 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:left-96">
-      <button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>
-      <button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>
     </div>}
     {panel === 'account' && <div className="absolute right-0 top-full z-40 w-64 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
       <div className="border-b border-[#dfe1e6] px-3 py-2"><p className="text-[11px] font-bold uppercase tracking-wide text-[#626f86]">Conta</p><div className="mt-2 flex items-center gap-2"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/><div className="min-w-0"><p className="truncate text-sm font-semibold">{user?.name}</p><p className="truncate text-xs text-[#626f86]">{user?.email}</p></div></div></div>
@@ -390,7 +401,7 @@ export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: strin
     sync(); window.addEventListener('sidebar:changed', sync);
     return () => window.removeEventListener('sidebar:changed', sync);
   }, []);
-  return <aside aria-label="Menu lateral" className={`scrollbar-thin shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] ${pinned?'w-[64px] px-2 lg:w-[245px] lg:px-3':'w-[56px] px-2'}`}>
+  return <aside aria-label="Menu lateral" className={`scrollbar-thin shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] ${pinned?'w-[64px] px-2 lg:w-[300px] lg:px-3':'w-[56px] px-2'}`}>
     <div className="mb-3 flex gap-1"><button onClick={()=>setTab('inbox')} aria-pressed={tab === 'inbox'} aria-label="Aba Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${tab === 'inbox' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button><button onClick={()=>setTab('collections')} aria-pressed={tab === 'collections'} aria-label="Aba Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${tab === 'collections' ? 'bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button></div>
     {pinned && <div className="hidden lg:block">{tab === 'collections' ? <CollectionPanel boards={boards}/> : <InboxPanel boards={boards}/>}</div>}
     <section className={`${tab === 'collections' ? 'hidden' : 'mt-4 border-t border-[#dfe1e6] pt-3'}`}>

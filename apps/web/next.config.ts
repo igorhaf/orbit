@@ -8,6 +8,12 @@ const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_ORBIT_THEME: forcedTheme, NEXT_PUBLIC_ORBIT_ENV: orbitEnvironment },
   skipTrailingSlashRedirect: true,
   experimental: { useTypeScriptCli: false },
+  async headers() {
+    return [{
+      source: '/:path*',
+      headers: [{ key: 'Cache-Control', value: 'no-store, max-age=0, must-revalidate' }],
+    }];
+  },
   async rewrites() {
     return [
       {

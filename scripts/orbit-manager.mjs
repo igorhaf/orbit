@@ -48,13 +48,18 @@ async function prepareAndValidate(directory) {
   await run(npm, ['run', 'test:unit'], { cwd: directory });
 }
 
-function stopChildren() {
-  for (const child of children) {
-    if (!child.pid) continue;
-    try { process.platform === 'win32' ? child.kill('SIGTERM') : process.kill(-child.pid, 'SIGTERM'); }
-    catch { child.kill('SIGTERM'); }
-  }
+const signalChild = (child, signal) => {
+  if (!child.pid) return;
+  try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); }
+  catch { try { child.kill(signal); } catch { /* The process already stopped. */ } }
+};
+
+async function stopChildren() {
+  const stopping = children;
   children = [];
+  for (const child of stopping) signalChild(child, 'SIGTERM');
+  await new Promise(resolveDelay => setTimeout(resolveDelay, 3000));
+  for (const child of stopping) signalChild(child, 'SIGKILL');
 }
 
 function startChildren() {
@@ -70,7 +75,7 @@ async function deploy() {
   deploying = true;
   await rm(request, { force: true });
   await writeFile(status, JSON.stringify({ status: 'building', started_at: new Date().toISOString() }));
-  stopChildren();
+  await stopChildren();
   try {
     await prepareAndValidate(developmentRoot);
     await publishDevelopment();
@@ -92,4 +97,4 @@ const timer = setInterval(() => {
   if (existsSync(request)) void deploy();
 }, 1000);
 
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { clearInterval(timer); stopChildren(); process.exit(0); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { clearInterval(timer); void stopChildren().finally(() => process.exit(0)); });
