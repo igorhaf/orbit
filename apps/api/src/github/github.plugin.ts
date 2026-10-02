@@ -3,7 +3,6 @@ import { Request, Response } from "express";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Db } from "../db";
 import { FeaturesService } from "../features";
-import { OrbitEvents } from "../orbit-events";
 import { PluginActionContext, PluginDefinition } from "../plugins/contract";
 import { SecretVault } from "../secrets";
 import { GitHubClient } from "./github.client";
@@ -18,7 +17,7 @@ const number = (input: unknown, label: string) => { const result = Number(input)
 
 @Injectable()
 export class GitHubPlugin {
-  constructor(@Inject(Db) private db: Db, @Inject(SecretVault) private vault: SecretVault, @Inject(GitHubClient) private client: GitHubClient, @Inject(FeaturesService) private features: FeaturesService, @Inject(OrbitEvents) private events: OrbitEvents) {}
+  constructor(@Inject(Db) private db: Db, @Inject(SecretVault) private vault: SecretVault, @Inject(GitHubClient) private client: GitHubClient, @Inject(FeaturesService) private features: FeaturesService) {}
 
   configured() { return Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET && process.env.GITHUB_WEBHOOK_SECRET); }
   connections(ownerId: string) { return this.db.query("SELECT id,display_name,label,status,metadata,created_at FROM integration_connections WHERE owner_id=$1 AND plugin_id='github' AND enabled ORDER BY created_at", [ownerId]); }
@@ -67,12 +66,12 @@ export class GitHubPlugin {
     const inserted = await this.db.one("INSERT INTO github_webhook_deliveries(delivery_id,event_name,action) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING delivery_id", [delivery, event, typeof payload.action === "string" ? payload.action : null]);
     if (!inserted) return { ok: true, duplicate: true };
     try {
-      const repository = (payload.repository as { full_name?: string } | undefined)?.full_name, action = typeof payload.action === "string" ? payload.action : "updated";
+      const repository = (payload.repository as { full_name?: string } | undefined)?.full_name;
       const rawResource = event === "pull_request" ? payload.pull_request : event === "issues" ? payload.issue : undefined;
       if (repository && rawResource && typeof rawResource === "object") {
         const item = rawResource as Issue | PullRequest, type = event === "pull_request" ? "pull_request" : "issue", externalId = `${repository}#${item.number}`;
-        const links = await this.db.query<{ owner_id: string; connection_id: string; orbit_entity_id: string; board_id: string }>(`SELECT er.owner_id,er.connection_id,er.orbit_entity_id,l.board_id FROM external_resources er JOIN cards c ON c.id=er.orbit_entity_id JOIN lists l ON l.id=c.list_id WHERE er.plugin_id='github' AND er.resource_type=$1 AND er.external_id=$2 AND er.orbit_entity_type='card'`, [type, externalId]);
-        for (const link of links) { const normalized = this.normalize(type, repository, item); await this.db.query("UPDATE external_resources SET url=$2,etag=$3,metadata=$4,updated_at=now() WHERE owner_id=$1 AND plugin_id='github' AND resource_type=$5 AND external_id=$6", [link.owner_id, normalized.url, normalized.etag, JSON.stringify(normalized.metadata), type, externalId]); const kind = event === "pull_request" && action === "closed" && (item as PullRequest).merged ? "github.pull_request.merged" : `github.${event === "issues" ? "issue" : "pull_request"}.${action}`; await this.events.publish({ boardId: link.board_id, cardId: link.orbit_entity_id, kind, sourcePlugin: "github", operationId: delivery, payload: { connectionId: link.connection_id, resource: normalized } }); }
+        const links = await this.db.query<{ owner_id: string; connection_id: string; orbit_entity_id: string }>(`SELECT er.owner_id,er.connection_id,er.orbit_entity_id FROM external_resources er JOIN cards c ON c.id=er.orbit_entity_id WHERE er.plugin_id='github' AND er.resource_type=$1 AND er.external_id=$2 AND er.orbit_entity_type='card'`, [type, externalId]);
+        for (const link of links) { const normalized = this.normalize(type, repository, item); await this.db.query("UPDATE external_resources SET url=$2,etag=$3,metadata=$4,updated_at=now() WHERE owner_id=$1 AND plugin_id='github' AND resource_type=$5 AND external_id=$6", [link.owner_id, normalized.url, normalized.etag, JSON.stringify(normalized.metadata), type, externalId]); }
       }
       await this.db.query("UPDATE github_webhook_deliveries SET processed_at=now() WHERE delivery_id=$1", [delivery]); return { ok: true };
     } catch (error) { await this.db.query("UPDATE github_webhook_deliveries SET error=$2 WHERE delivery_id=$1", [delivery, (error as Error).message.slice(0, 1000)]); throw error; }
@@ -96,7 +95,7 @@ export const githubPluginDefinition = (github: GitHubPlugin): PluginDefinition =
     action("comment_pull_request", "Comentar pull request", "pull_requests.write", schema(["repository","number","body"], { repository:string,number:integer,body:string }), (u,c,i) => github.commentPullRequest(u,c,i)),
     action("list_pull_request_files", "Listar arquivos do pull request", "pull_requests.read", schema(["repository","number"], { repository:string,number:integer }), (u,c,i) => github.pullFiles(u,c,String(i.repository),Number(i.number))),
     action("get_pull_request_diff", "Obter diff do pull request", "pull_requests.read", schema(["repository","number"], { repository:string,number:integer }), (u,c,i) => github.pullDiff(u,c,String(i.repository),Number(i.number))),
-  ], triggers: ["issue.created","issue.updated","pull_request.opened","pull_request.updated","pull_request.merged","pull_request.review_requested","check.completed"].map(id => ({ id, name: id, eventSchema: { type:"object", required:["connectionId","resource"], properties:{connectionId:{type:"string"},resource:{type:"object"}} }, metadata:{event:`github.${id}`} })), connectionProvider: { id:"github-app", name:"GitHub App", supportsMultiple:true, capabilities:["repository.read","repository.write","issues.read","issues.write","pull_requests.read","pull_requests.write","branches.read","branches.write"] }, contributions: { cardActions:[{id:"github.create_issue",label:"Criar GitHub Issue"},{id:"github.create_pull_request",label:"Criar GitHub Pull Request"},{id:"github.link",label:"Vincular recurso GitHub"}], automationActions:["create_issue","update_issue","create_branch","create_pull_request","comment_pull_request"].map(id=>({id:`github.${id}`,label:id})), automationTriggers:["issue.created","issue.updated","pull_request.opened","pull_request.updated","pull_request.merged","pull_request.review_requested","check.completed"].map(id=>({id:`github.${id}`,label:id})), resourceRenderers:[{resourceTypes:["repository","issue","pull_request","branch","commit"],component:"github-resource"}], settings:[{id:"github",label:"GitHub",href:"/profile?integration=github"}] } };
+  ], connectionProvider: { id:"github-app", name:"GitHub App", supportsMultiple:true, capabilities:["repository.read","repository.write","issues.read","issues.write","pull_requests.read","pull_requests.write","branches.read","branches.write"] }, contributions: { cardActions:[{id:"github.create_issue",label:"Criar GitHub Issue"},{id:"github.create_pull_request",label:"Criar GitHub Pull Request"},{id:"github.link",label:"Vincular recurso GitHub"}], resourceRenderers:[{resourceTypes:["repository","issue","pull_request","branch","commit"],component:"github-resource"}], settings:[{id:"github",label:"GitHub",href:"/profile?integration=github"}] } };
 };
 
 @Controller("github")

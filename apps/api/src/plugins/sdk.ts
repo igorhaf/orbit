@@ -5,7 +5,6 @@ import {
   ConnectionProviderDefinition,
   PluginContribution,
   PluginDefinition,
-  TriggerDefinition,
 } from "./contract";
 
 const idPattern = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
@@ -43,13 +42,6 @@ export const defineAction = <T extends ActionDefinition>(value: T) => {
   return Object.freeze({ ...value });
 };
 
-export const defineTrigger = <T extends TriggerDefinition>(value: T) => {
-  identifier(value.id, "Trigger");
-  if (!value.name.trim()) throw new Error("Nome do trigger obrigatório.");
-  schema(value.eventSchema, `Event schema de ${value.id}`);
-  return Object.freeze({ ...value });
-};
-
 export const defineConnectionProvider = <T extends ConnectionProviderDefinition>(
   value: T,
 ) => {
@@ -73,10 +65,8 @@ export const definePlugin = <T extends PluginDefinition>(definition: T): T => {
     throw new Error(`Versão inválida para ${definition.id}.`);
   const capabilities = (definition.capabilities || []).map(defineCapability);
   const actions = (definition.actions || []).map(defineAction);
-  const triggers = (definition.triggers || []).map(defineTrigger);
   unique(capabilities, "Capability");
   unique(actions, "Action");
-  unique(triggers, "Trigger");
   const known = new Set(capabilities.map((item) => item.id));
   for (const action of actions)
     for (const capability of action.requiredCapabilities || [])
@@ -90,7 +80,6 @@ export const definePlugin = <T extends PluginDefinition>(definition: T): T => {
     ...definition,
     capabilities,
     actions,
-    triggers,
     connectionProvider,
     contributions: definition.contributions
       ? ({ ...definition.contributions } as PluginContribution)

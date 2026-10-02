@@ -31,13 +31,6 @@ const example = (): PluginDefinition => ({
       },
     },
   ],
-  triggers: [
-    {
-      id: "event.created",
-      name: "Event created",
-      eventSchema: { type: "object", required: ["id"] },
-    },
-  ],
   connectionProvider: {
     id: "example-oauth",
     name: "Example OAuth",
@@ -47,12 +40,11 @@ const example = (): PluginDefinition => ({
   contributions: { settings: [{ id: "example-settings" }] },
 });
 
-test("plugin registry discovers definitions, actions, triggers, capabilities and connections", () => {
+test("plugin registry discovers definitions, actions, capabilities and connections", () => {
   const registry = new PluginRegistry();
   registry.register(example());
   assert.equal(registry.getById("example").version, "1.2.0");
   assert.equal(registry.getAction("example", "events.list").name, "List events");
-  assert.equal(registry.getTrigger("example", "event.created").name, "Event created");
   assert.equal(registry.getCapability("example", "calendar.events.read").name, "Read events");
   assert.equal(registry.connectionProviders()[0].supportsMultiple, true);
   assert.deepEqual(registry.catalog()[0].contributions.settings, [{ id: "example-settings" }]);

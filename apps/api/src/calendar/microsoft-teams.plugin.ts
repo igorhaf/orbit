@@ -270,8 +270,7 @@ export const microsoftTeamsPluginDefinition = (
         ),
       },
     ],
-    triggers: [],
-    connectionProvider: {
+        connectionProvider: {
       id: "microsoft-oauth",
       name: "Microsoft OAuth",
       supportsMultiple: true,
@@ -284,17 +283,7 @@ export const microsoftTeamsPluginDefinition = (
           label: "Criar reunião Teams standalone",
         },
       ],
-      automationActions: [
-        {
-          id: "microsoft_teams.create_online_meeting",
-          label: "Criar reunião Teams standalone",
-        },
-        {
-          id: "microsoft_teams.update_online_meeting",
-          label: "Atualizar reunião Teams",
-        },
-      ],
-      resourceRenderers: [
+            resourceRenderers: [
         { resourceTypes: ["online_meeting"], component: "teams-meeting" },
       ],
       settings: [

@@ -1,11 +1,9 @@
 import {HttpException,Inject,Injectable,OnModuleInit,OnModuleDestroy,Optional} from '@nestjs/common';
 import {randomUUID} from 'node:crypto';
-import {PoolClient} from 'pg';
 import {Db} from '../db';
 import {FeaturesService} from '../features';
 import {OrbitEvents} from '../orbit-events';
-import {ActionDispatcher} from '../action-dispatcher';
-import {isId} from '../automation-rules';
+import {isId} from './security';
 import {ProjectRegistry,stringList} from './project-registry';
 import {ContextBuilder} from './context-builder';
 import {ExecutorRegistry,PluginRegistry,filesystemPlugin} from './registries';
@@ -23,35 +21,15 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
   private timer?:ReturnType<typeof setInterval>;private active=false;private stopping=false;
   private controllers=new Map<string,AbortController>();
   private notifications:PluginNotifications;
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(ActionDispatcher) private actions:ActionDispatcher,@Inject(PluginRegistry) plugins:PluginRegistry,@Optional() @Inject(PluginNotifications) notifications?:PluginNotifications){
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(PluginRegistry) plugins:PluginRegistry,@Optional() @Inject(PluginNotifications) notifications?:PluginNotifications){
     this.plugins=plugins;
     this.notifications=notifications||new PluginNotifications(this.db);
-    this.runs=new RunRepository(db,events);this.context=new ContextBuilder(db,projects);
+    this.runs=new RunRepository(db);this.context=new ContextBuilder(db,projects);
     this.executors.register(new CodexExecutor());
     this.executors.register(new PluginActionExecutor(this.plugins,this.notifications));
     this.plugins.register(filesystemPlugin());
   }
   onModuleInit(){
-    for(const type of ['run_agent','run_skill','execute_plugin_action'])this.actions.register(type,async(request,client)=>{
-      const config=await this.config(request.cardId);
-      if(config.mode!=='automatic')throw new Error('O cartão não permite execução automática.');
-      const overrides:Partial<ExecutionConfig>={};
-      if(request.config.value&&type==='run_agent'){
-        const project=await this.projects.get(config.project_id!,request.userId),id=String(request.config.value);
-        if(!stringList(project.config.agents,'agents').includes(id))throw new Error('Agente não habilitado no projeto.');
-        const agent=await this.projects.document(project,'agents',id);
-        overrides.agent=id;overrides.skills=[];overrides.executor=String(agent.metadata.executor||config.executor);overrides.action=String(agent.metadata.action||config.action);
-        const ceiling=stringList(agent.metadata.permissions,'permissions');overrides.permissions=config.permissions.filter(p=>p==='execution.automatic'||!ceiling.length||ceiling.includes(p));
-      }
-      if(request.config.value&&type==='run_skill'){const skill=String(request.config.value);if(!config.skills.includes(skill))throw new Error('Skill não autorizada no cartão.');overrides.skills=[skill]}
-      if(type==='execute_plugin_action'&&config.executor!=='plugin')throw new Error('Configure o executor de plugin neste cartão.');
-      await this.enqueue(request.cardId,request.userId,{request_key:`automation:${randomUUID()}`},true,client,request.chain,overrides);
-    });
-    this.actions.register('move_card',async(request,client)=>{
-      const list=request.config.list_id;
-      if(!isId(list)||(await client.query('SELECT id FROM lists WHERE id=$1 AND board_id=$2 AND archived_at IS NULL',[list,request.boardId])).rowCount===0)throw new Error('Lista da automação indisponível.');
-      await client.query('UPDATE cards SET list_id=$2,position=COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$2),0),updated_at=now() WHERE id=$1',[request.cardId,list]);
-    });
     this.timer=setInterval(()=>void this.tick(),2000);this.timer.unref();
   }
   onModuleDestroy(){this.stopping=true;if(this.timer)clearInterval(this.timer);for(const controller of this.controllers.values())controller.abort()}
@@ -80,7 +58,6 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
     const enabledPlugins=stringList(project.config.plugins,'plugins');
     for(const integration of config.integrations){if(!enabledPlugins.includes(integration.plugin))throw new Error(`Plugin ${integration.plugin} não habilitado no projeto.`);this.plugins.validate(integration,config.permissions)}
     if(config.executor==='plugin'&&!config.integrations.length)throw new Error('Adicione uma integração.');
-    if(config.mode==='automatic'&&!config.permissions.includes('execution.automatic'))throw new Error('Autorize explicitamente execution.automatic.');
     return {project,context,executor};
   }
   async save(id:string,user:string,input:unknown){
@@ -89,27 +66,25 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
       config=validateConfig(input);
       if(config.enabled)await this.resolved(config,card,user);
       else if(config.project_id){const project=await this.projects.get(config.project_id,user);await safePath(project.root,config.working_directory,'directory')}
-      for(const list of Object.values(config.automation))if(!await this.db.one('SELECT id FROM lists WHERE id=$1 AND board_id=$2 AND archived_at IS NULL',[list,card.board_id]))throw new Error('Lista de resultado não pertence a este quadro.');
     }catch(error){throw new HttpException({message:redact((error as Error).message)},400)}
     const client=await this.db.pool.connect();try{
       await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[id]);
       if((await client.query("SELECT 1 FROM card_runs WHERE card_id=$1 AND status IN ('queued','running')",[id])).rowCount)throw new HttpException('Aguarde ou cancele a execução antes de mudar a configuração.',409);
-      await client.query(`INSERT INTO card_execution_configs(card_id,project_id,enabled,agent,executor,action,skills,working_directory,mode,permissions,context,integrations,automation)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(card_id) DO UPDATE SET project_id=EXCLUDED.project_id,enabled=EXCLUDED.enabled,agent=EXCLUDED.agent,executor=EXCLUDED.executor,action=EXCLUDED.action,skills=EXCLUDED.skills,working_directory=EXCLUDED.working_directory,mode=EXCLUDED.mode,permissions=EXCLUDED.permissions,context=EXCLUDED.context,integrations=EXCLUDED.integrations,automation=EXCLUDED.automation,updated_at=now()`,[id,config.project_id,config.enabled,config.agent,config.executor,config.action,config.skills,config.working_directory,config.mode,config.permissions,JSON.stringify(config.context),JSON.stringify(config.integrations),JSON.stringify(config.automation)]);
+      await client.query(`INSERT INTO card_execution_configs(card_id,project_id,enabled,agent,executor,action,skills,working_directory,mode,permissions,context,integrations)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(card_id) DO UPDATE SET project_id=EXCLUDED.project_id,enabled=EXCLUDED.enabled,agent=EXCLUDED.agent,executor=EXCLUDED.executor,action=EXCLUDED.action,skills=EXCLUDED.skills,working_directory=EXCLUDED.working_directory,mode=EXCLUDED.mode,permissions=EXCLUDED.permissions,context=EXCLUDED.context,integrations=EXCLUDED.integrations,updated_at=now()`,[id,config.project_id,config.enabled,config.agent,config.executor,config.action,config.skills,config.working_directory,config.mode,config.permissions,JSON.stringify(config.context),JSON.stringify(config.integrations)]);
       await client.query('COMMIT');this.events.boardChanged(card.board_id,'orbit');return config;
     }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
   }
-  async enqueue(id:string,user:string,body:{request_key?:string},automatic=false,transaction?:PoolClient,chain:string[]=[],overrides:Partial<ExecutionConfig>={}){
-    const card=await this.card(id,user),config={...await this.config(id),...overrides};
+  async enqueue(id:string,user:string,body:{request_key?:string}){
+    const card=await this.card(id,user),config=await this.config(id);
     if(!config.enabled)throw new HttpException('Habilite a execução neste cartão.',409);
-    if(automatic&&(config.mode!=='automatic'||!config.permissions.includes('execution.automatic')))throw new Error('Execução automática não autorizada.');
     try{await this.resolved(config,card,user)}catch(error){throw new HttpException({message:redact((error as Error).message)},400)}
     const key=body.request_key||randomUUID();if(typeof key!=='string'||key.length>150)throw new HttpException('Chave de execução inválida.',400);
-    const client=transaction||await this.db.pool.connect();try{
-      if(!transaction)await client.query('BEGIN');
-      const run=await this.runs.enqueue(client,card,user,config,key,chain);
-      if(!transaction)await client.query('COMMIT');this.events.boardChanged(card.board_id,'orbit');return {id:run.id,status:run.status};
-    }catch(error){if(!transaction)await client.query('ROLLBACK');if(error instanceof HttpException)throw error;throw new HttpException({message:redact((error as Error).message)},409)}finally{if(!transaction)client.release()}
+    const client=await this.db.pool.connect();try{
+      await client.query('BEGIN');
+      const run=await this.runs.enqueue(client,card,user,config,key);
+      await client.query('COMMIT');this.events.boardChanged(card.board_id,'orbit');return {id:run.id,status:run.status};
+    }catch(error){await client.query('ROLLBACK');if(error instanceof HttpException)throw error;throw new HttpException({message:redact((error as Error).message)},409)}finally{client.release()}
   }
   async cancel(id:string,user:string){const run=await this.runDetail(id,user);await this.db.query("UPDATE card_runs SET cancel_requested=true WHERE id=$1 AND status IN ('queued','running')",[id]);this.controllers.get(id)?.abort();if(run.status==='queued')await this.runs.finish(run as Run,'cancelled',undefined,'Cancelado pelo usuário.');return {ok:true}}
   async processRun(run:Run){
@@ -128,16 +103,11 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
       if(run.executor!=='plugin')for(const integration of run.input.config.integrations){if(controller.signal.aborted)throw new Error('Execução cancelada.');await this.runs.stage(run.id,'plugin',`Executando ${integration.plugin}.${integration.action}.`);result.outputs.push(await this.plugins.execute(integration,input,{notifications:{publish:(notification)=>this.notifications.publish(integration.plugin,input.userId,notification)}}))}
       if(!result||typeof result.summary!=='string'||!Array.isArray(result.outputs)||result.outputs.length>30||JSON.stringify(result).length>200000)throw new Error('Resultado do executor inválido.');
       await this.runs.stage(run.id,'result','Persistindo resultado.');
-      const destination=run.input.config.automation.on_success_list_id;
-      await this.runs.finish(run,controller.signal.aborted?'cancelled':'success',result,undefined,destination?client=>this.actions.dispatch({type:'move_card',cardId:run.card_id,boardId:card.board_id,userId:run.user_id,config:{list_id:destination},chain:run.chain},client):undefined);
+      await this.runs.finish(run,controller.signal.aborted?'cancelled':'success',result);
       if(!controller.signal.aborted)await this.features.notify(run.user_id,card.board_id,run.card_id,'card_execution','Execução concluída',`A execução do cartão “${run.input.card.title}” foi concluída.`);
     }catch(error){
       await this.runs.finish(run,controller.signal.aborted?'cancelled':'failed',undefined,redact((error as Error).message));
       if(!controller.signal.aborted){const card=await this.card(run.card_id,run.user_id).catch(()=>null);if(card)await this.features.notify(run.user_id,card.board_id,run.card_id,'card_execution','Falha na execução',`A execução do cartão “${run.input.card.title}” falhou: ${redact((error as Error).message)}`)}
-      if(!controller.signal.aborted&&run.input.config.automation.on_failure_list_id){
-        const card=await this.card(run.card_id,run.user_id).catch(()=>null);
-        if(card){const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query("SELECT set_config('orbit.automation_chain',$1,true)",['{'+run.chain.join(',')+'}']);await this.actions.dispatch({type:'move_card',cardId:run.card_id,boardId:card.board_id,userId:run.user_id,config:{list_id:run.input.config.automation.on_failure_list_id},chain:run.chain},client);await client.query('COMMIT')}catch(error){await client.query('ROLLBACK');await this.runs.stage(run.id,'automation',`Falha ao mover: ${(error as Error).message}`)}finally{client.release()}}
-      }
     }finally{clearInterval(heartbeat);this.controllers.delete(run.id);const row=await this.db.one('SELECT board_id FROM lists WHERE id=(SELECT list_id FROM cards WHERE id=$1)',[run.card_id]);if(row)this.events.boardChanged(row.board_id,'orbit')}
   }
   async tick(){

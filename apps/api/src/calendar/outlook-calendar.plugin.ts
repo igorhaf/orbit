@@ -294,7 +294,7 @@ export class OutlookCalendarPlugin
         [source.id, event.id, event["@odata.etag"] || event.changeKey || null],
       );
       if (row && !operationId)
-        await this.afterChange(source, row, "calendar.event.deleted");
+        await this.afterChange(source, row);
       return row ? this.toItem(row) : null;
     }
     if (!dates) return null;
@@ -374,7 +374,6 @@ export class OutlookCalendarPlugin
       await this.afterChange(
         source,
         row!,
-        old ? "calendar.event.updated" : "calendar.event.created",
       );
     return this.toItem(row!);
   }
@@ -382,7 +381,6 @@ export class OutlookCalendarPlugin
   private async afterChange(
     source: Source,
     item: Record<string, unknown>,
-    kind: string,
   ) {
     const settings = await this.db.one<Record<string, unknown>>(
       "SELECT * FROM calendar_source_settings WHERE source_id=$1",
@@ -441,33 +439,7 @@ export class OutlookCalendarPlugin
         ],
       );
     }
-    const board = cardId
-      ? await this.db.one<{ board_id: string }>(
-          "SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1",
-          [cardId],
-        )
-      : settings?.target_board_id
-        ? { board_id: String(settings.target_board_id) }
-        : null;
-    if (board)
-      await this.db.query(
-        "INSERT INTO automation_events(board_id,card_id,kind,payload,source_plugin) VALUES($1,$2,$3,$4,$5)",
-        [
-          board.board_id,
-          cardId,
-          kind,
-          JSON.stringify({
-            after: {
-              source_id: source.id,
-              provider_id: this.id,
-              item: this.toItem(item),
-            },
-          }),
-          this.id,
-        ],
-      );
   }
-
   private toItem(row: Record<string, unknown>): CalendarItem {
     return {
       id: String(row.id),
@@ -542,7 +514,7 @@ export class OutlookCalendarPlugin
             [source.id, start, end, [...seen]],
           );
           for (const item of stale)
-            await this.afterChange(source, item, "calendar.event.deleted");
+            await this.afterChange(source, item);
         }
         return delta;
       };
@@ -757,7 +729,7 @@ export class OutlookCalendarPlugin
       time_zone: row.source_time_zone as string | null,
       color: row.color as string | null, selected: Boolean(row.selected),
       metadata: (row.source_metadata || {}) as Record<string, unknown>,
-    }, cancelled, "calendar.event.deleted");
+    }, cancelled);
   }
 
   async getAvailability(
@@ -870,25 +842,7 @@ export class OutlookCalendarPlugin
     );
     for (const connection of connections)
       await this.discover(connection.owner_id, connection.id).catch(() => undefined);
-    const starting = await this.db.query<Record<string, unknown>>(
-      `SELECT i.*,s.owner_id,s.connection_id,s.external_id AS source_external_id,s.name AS source_name,s.time_zone AS source_time_zone,s.color,s.selected,s.metadata AS source_metadata FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE s.provider_id=$1 AND s.selected AND i.status<>'cancelled' AND i.start_at>now() AND i.start_at<=now()+interval '30 minutes' AND NOT (i.metadata ? 'startingPublishedAt')`,
-      [this.id],
-    );
-    for (const item of starting) {
-      const source: Source = {
-        id: String(item.source_id), owner_id: String(item.owner_id),
-        connection_id: String(item.connection_id),
-        external_id: String(item.source_external_id), name: String(item.source_name),
-        time_zone: item.source_time_zone as string | null,
-        color: item.color as string | null, selected: Boolean(item.selected),
-        metadata: (item.source_metadata || {}) as Record<string, unknown>,
-      };
-      await this.afterChange(source, item, "calendar.event.starting");
-      await this.db.query(
-        "UPDATE calendar_items SET metadata=metadata||jsonb_build_object('startingPublishedAt',now()::text) WHERE id=$1",
-        [item.id],
-      );
-    }
+
   }
 }
 
@@ -1033,16 +987,6 @@ export const outlookCalendarPluginDefinition = (
       outputSchema: output,
       execute: execute(action.name, action.run),
     })),
-    triggers: ["created", "updated", "deleted", "starting"].map((kind) => ({
-      id: `calendar.event.${kind}`,
-      name: `Evento ${kind}`,
-      eventSchema: {
-        type: "object",
-        required: ["sourceId", "item"],
-        properties: { sourceId: { type: "string" }, item: { type: "object" } },
-      },
-      metadata: { event: `calendar.event.${kind}` },
-    })),
     connectionProvider: {
       id: "microsoft-oauth",
       name: "Microsoft OAuth",
@@ -1054,8 +998,7 @@ export const outlookCalendarPluginDefinition = (
       ],
     },
     contributions: {
-      notifications: [{ id: "event_starting", label: "Evento começando" }],
-      calendarSources: [
+        calendarSources: [
         {
           providerId: plugin.id,
           label: plugin.name,
@@ -1069,13 +1012,6 @@ export const outlookCalendarPluginDefinition = (
           label: "Criar evento Outlook com Teams",
         },
       ],
-      automationActions: actions.map((action) => ({
-        id: `${plugin.id}.${action.id}`,
-        label: action.name,
-      })),
-      automationTriggers: ["created", "updated", "deleted", "starting"].map(
-        (kind) => ({ id: `calendar.event.${kind}`, label: `Evento ${kind}` }),
-      ),
       settings: [
         {
           id: plugin.id,

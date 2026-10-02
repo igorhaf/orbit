@@ -2,6 +2,7 @@ import {realpath,stat,readFile} from 'node:fs/promises';
 import {isAbsolute,relative,resolve,sep} from 'node:path';
 
 export const identifier=(value:unknown):value is string=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,79}$/.test(value);
+export const isId=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const sensitive=/(^|\/)(\.env(?:\..*)?|\.git|\.ssh|\.codex|node_modules|(?:.*\.)?(?:pem|key|p12|pfx)|credentials(?:\..*)?|auth\.json)(\/|$)/i;
 export async function safePath(root:string,path:string,kind:'file'|'directory'='file'){
   if(typeof path!=='string'||path.length>1000||path.includes('\0')||path.includes('\\'))throw new Error('Caminho inválido.');

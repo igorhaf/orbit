@@ -643,6 +643,15 @@ export function CardDialog({
                 >
                   <Trash2 size={16} /> Arquivar
                 </button>
+                <button
+                  onClick={() => confirm(
+                    { title: "Excluir cartão definitivamente", description: `O cartão “${card.title}” será apagado permanentemente. Essa ação não pode ser desfeita. Continuar?`, confirmLabel: "Excluir definitivamente" },
+                    async () => { await send(`/cards/${card.id}/archive`, "POST"); await send(`/cards/${card.id}`, "DELETE"); await onDeleted(); },
+                  )}
+                  className="flex w-full items-center gap-2 rounded bg-[#fff0ee] px-3 py-2 text-left text-sm font-semibold text-[#ae2a19] hover:bg-[#ffd9d2]"
+                >
+                  <Trash2 size={16} /> Excluir definitivamente
+                </button>
               </div>
             </div>
             {panel && (

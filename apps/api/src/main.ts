@@ -9,21 +9,19 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { join, resolve } from 'node:path';
 import { PoolClient } from 'pg';
 import { Db } from './db';
-import { ActionDispatcher } from './action-dispatcher';
 import { ProjectRegistry } from './execution/project-registry';
 import { CardExecutionService } from './execution/execution.service';
 import { CardExecutionController } from './execution/execution.controller';
 import { FeaturesController, FeaturesService, SINGLE_EMAIL } from './features';
 import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence, recurrenceOptions, reminderOptions } from './card-rules';
 import { CardExtensionsController, CardExtensionsService } from './card-extensions';
-import { AutomationsController, AutomationsService } from './automations';
 import { CodexAiService } from './codex-ai';
 import { Server } from 'socket.io';
 import { OrbitEvents } from './orbit-events';
 import { TrelloController, TrelloSyncService, trelloPluginDefinition } from './trello-sync';
 import { PromptSessionsService } from './prompt-sessions';
 import { PluginRegistry } from './execution/registries';
-import { PluginNotifications, automationNotificationPlugin, cardNotificationPlugin } from './plugins/notifications';
+import { PluginNotifications, cardNotificationPlugin } from './plugins/notifications';
 import { CalendarController, CalendarService } from './calendar/calendar.service';
 import { CalendarSourceRegistry } from './calendar/source-registry';
 import { OrbitCardCalendarSource } from './calendar/orbit-card-provider';
@@ -45,7 +43,6 @@ import { MicrosoftTeamsPlugin, microsoftTeamsPluginDefinition } from './calendar
 import { PlannerController, PlannerPlugin, plannerPluginDefinition } from './planner/planner.plugin';
 import { EnvironmentSettingsController } from './env-settings';
 import { createDatabaseBackup, listDatabaseBackups, restoreDatabaseBackup } from './database-backup';
-import { DeployPlugin, deployPluginDefinition } from './deploy/deploy.plugin';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;customFields:boolean};
@@ -1165,7 +1162,7 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Service) private service: Service,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(Db) private db:Db,@Inject(DeployPlugin) private deployPlugin:DeployPlugin) {}
+  constructor(@Inject(Service) private service: Service,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(Db) private db:Db) {}
   @Get('health') health() { return { status: 'ok' }; }
   @Get('plugins') pluginsCatalog(){return {plugins:this.plugins.catalog()}}
   @Patch('plugins/:id') async setPluginEnabled(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){this.service.user(req);if(typeof body.enabled!=='boolean')fail('Estado do plugin inválido.');const enabled=body.enabled as boolean;try{this.plugins.getById(id)}catch(error){return fail((error as Error).message,404)}await this.db.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);this.plugins.setEnabled(id,enabled);return {id,enabled}}
@@ -1206,7 +1203,6 @@ class ApiController {
   @Patch('cards/:id/prompt-settings') updateCardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateCard(id,this.service.user(req),body);}
   @Get('cards/:id/prompt-runs') promptRuns(@Req() req:Request,@Param('id') id:string){return this.prompts.runs(id,this.service.user(req));}
   @Post('cards/:id/prompt-runs') executePrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.execute(id,this.service.user(req),body);}
-  @Post('deploy') deploy(@Req() req:Request){return this.deployPlugin.publish(this.service.user(req));}
   @Get('boards') boards(@Req() req: Request,@Query('status') status='active') { return this.service.boards(this.service.user(req),status); }
   @Post('boards') createBoard(@Req() req: Request,@Body() body: Payload) { return this.service.createBoard(this.service.user(req),body); }
   @Get('boards/:id') board(@Req() req: Request,@Param('id') id: string) { return this.service.board(id,this.service.user(req)); }
@@ -1260,10 +1256,10 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, AutomationsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ActionDispatcher, ProjectRegistry, SecretVault, PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin, DeployPlugin,
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:async(db:Db,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,deploy:DeployPlugin)=>{const registry=new PluginRegistry();registry.register(cardNotificationPlugin);registry.register(automationNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));registry.register(deployPluginDefinition(deploy));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}return registry;},inject:[Db,GoogleCalendarPlugin,MailService,GitHubPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,DeployPlugin]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, AutomationsController, CardExecutionController, CalendarController, GoogleCalendarController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
+  {provide:PluginRegistry,useFactory:async(db:Db,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin)=>{const registry=new PluginRegistry();registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}return registry;},inject:[Db,GoogleCalendarPlugin,MailService,GitHubPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1280,7 +1276,6 @@ async function bootstrap() {
     else if(path==='/dropbox'||path.startsWith('/dropbox/'))pluginId='dropbox';
     else if(path==='/calendar/google'||path.startsWith('/calendar/google/'))pluginId='google_calendar';
     else if(path==='/calendar/microsoft'||path.startsWith('/calendar/microsoft/'))pluginId='outlook_calendar';
-    else if(/^\/boards\/[^/]+\/(?:automations|automation-status|automation-catalog|automation-suggestions)(?:\/|$)/.test(path)||/^\/automations\/[^/]+(?:\/|$)/.test(path))pluginId='automations';
     else if(path==='/mail'||path.startsWith('/mail/')){const provider=path.split('/')[2];if(provider==='gmail')pluginId='gmail';else if(provider==='outlook_mail')pluginId='outlook_mail';else if(!plugins.isEnabled('gmail')&&!plugins.isEnabled('outlook_mail'))return res.status(409).json({message:'Os plugins de e-mail estão desativados.'});}
     else if(/^\/(?:boards|lists)\/[^/]+\/trello(?:\/|$)/.test(path))pluginId='trello';
     if(pluginId&&!plugins.isEnabled(pluginId))return res.status(409).json({message:'Este plugin está desativado.'});

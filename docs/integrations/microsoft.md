@@ -28,11 +28,11 @@ Selected sources are mirrored into `calendar_items`. The first synchronization u
 
 CRUD writes through Graph and then updates the local mirror. Setting the generic `conference` flag creates an Outlook event with `isOnlineMeeting=true` and `onlineMeetingProvider=teamsForBusiness`; this is preferred over a standalone meeting because it remains calendar-backed. Drag/resize uses the same generic Calendar mutation path with ETag conflict protection and reconciliation.
 
-## Cards, ExternalResource, and automations
+## Cards and ExternalResource
 
 Outlook events use generic `ExternalResource` records. Event-to-Card, link-existing-Card, unlink, optional automatic mirror, linked-field ownership, cancellation behavior, and recurring-series strategy are the existing Calendar Workspace features, not Microsoft-specific Card logic.
 
-The plugin registers normalized `outlook_calendar.*` actions and `calendar.event.*` triggers. Agents and automations discover them through the Plugin Registry. Provider payloads are normalized before they reach the Event Bus or Automation Engine, and operation IDs plus ETags prevent feedback loops.
+The plugin registers normalized `outlook_calendar.*` actions through the Plugin Registry. Provider payloads are normalized before they reach the application, and operation IDs plus ETags prevent feedback loops.
 
 ## Teams
 

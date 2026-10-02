@@ -8,4 +8,5 @@ dist
 /.orbit-deploy-request
 /.orbit-deploy-manager
 /.orbit-deploy-status.json
+/.orbit-manager.pid
 /.orbit-rebuild-previous-static/

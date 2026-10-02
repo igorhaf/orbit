@@ -1,106 +1,75 @@
-import { existsSync } from 'node:fs';
-import { rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const developmentRoot = resolve(process.env.ORBIT_DEVELOPMENT_ROOT || join(root, '../orbit-dev'));
-const request = resolve(root, '.orbit-deploy-request');
-const heartbeat = resolve(root, '.orbit-deploy-manager');
-const status = resolve(root, '.orbit-deploy-status.json');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-let children = [];
-let deploying = false;
+const pidFile = resolve(root, '.orbit-manager.pid');
+const environment = { ...process.env };
+let stopping = false;
+const children = new Map();
 
-const run = (binary, args, options = {}) => new Promise((resolveRun, reject) => {
-  const child = spawn(binary, args, { cwd: root, stdio: 'inherit', detached: process.platform !== 'win32', ...options });
-  child.on('error', reject);
-  child.on('close', code => code === 0 ? resolveRun() : reject(new Error(`Comando terminou com código ${code}.`)));
-});
-
-const git = (directory, args) => run('git', args, { cwd: directory });
-const gitOutput = (directory, args) => new Promise((resolveOutput, reject) => {
-  const child = spawn('git', args, { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] });
-  let output = '', error = '';
-  child.stdout.on('data', chunk => { output += chunk; });
-  child.stderr.on('data', chunk => { error = (error + chunk).slice(-2000); });
-  child.on('error', reject);
-  child.on('close', code => code === 0 ? resolveOutput(output) : reject(new Error(error || `git ${args.join(' ')} terminou com código ${code}.`)));
-});
-
-async function publishDevelopment() {
-  await git(developmentRoot, ['add', '-A']);
-  if ((await gitOutput(developmentRoot, ['status', '--porcelain'])).trim()) await git(developmentRoot, ['commit', '-m', 'chore: deploy Orbit development changes']);
-  await git(developmentRoot, ['push', 'origin', 'develop']);
-}
-
-async function updateStableOrbit() {
-  const dirty=(await gitOutput(root,['status','--porcelain'])).trim();
-  let preservedStash=null;
-  if(dirty){
-    preservedStash=`orbit deploy safeguard ${new Date().toISOString()}`;
-    await git(root,['stash','push','--include-untracked','-m',preservedStash]);
+try {
+  const pid = Number(readFileSync(pidFile, 'utf8').trim());
+  process.kill(pid, 0);
+  console.error(`Orbit já está ativo no processo ${pid}.`);
+  process.exit(1);
+} catch (error) {
+  if (error?.code !== 'ENOENT') {
+    try { unlinkSync(pidFile); } catch { /* stale pid file */ }
   }
-  await git(root, ['checkout', 'main']);
-  await git(root, ['pull', '--ff-only', 'origin', 'develop']);
-  await git(root, ['push', 'origin', 'main']);
-  return preservedStash;
 }
 
-async function prepareAndValidate(directory) {
-  await run(npm, ['run', 'db:prepare'], { cwd: directory });
-  await run(npm, ['run', 'build'], { cwd: directory });
-  await run(npm, ['run', 'test:unit'], { cwd: directory });
-}
+writeFileSync(pidFile, `${process.pid}\n`, { flag: 'wx' });
 
-const signalChild = (child, signal) => {
+const services = [
+  ['API', 'npm', ['run', 'start', '-w', 'apps/api'], root],
+  ['Web', 'npm', ['run', 'start', '-w', 'apps/web'], root],
+];
+
+function signal(child, name) {
   if (!child.pid) return;
-  try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); }
-  catch { try { child.kill(signal); } catch { /* The process already stopped. */ } }
-};
+  try { process.kill(-child.pid, name); }
+  catch { try { child.kill(name); } catch { /* already stopped */ } }
+}
 
-async function stopChildren() {
-  const stopping = children;
-  children = [];
-  for (const child of stopping) signalChild(child, 'SIGTERM');
+function launch(name, command, args, cwd) {
+  const child = spawn(command, args, {
+    cwd,
+    env: environment,
+    stdio: 'inherit',
+    detached: process.platform !== 'win32',
+  });
+  children.set(name, child);
+  child.on('exit', (code, signalName) => {
+    if (children.get(name) !== child) return;
+    children.delete(name);
+    if (!stopping) {
+      console.error(`Orbit ${name} parou (código ${code ?? '-'}, sinal ${signalName ?? '-'}); reiniciando em 2s.`);
+      setTimeout(() => { if (!stopping) launch(name, command, args, cwd); }, 2000).unref();
+    }
+  });
+  child.on('error', error => console.error(`Falha ao iniciar Orbit ${name}:`, error.message));
+}
+
+for (const service of services) launch(...service);
+console.log('Orbit ativo em http://localhost:3000 (API: http://localhost:4000).');
+
+async function stop() {
+  if (stopping) return;
+  stopping = true;
+  for (const child of children.values()) signal(child, 'SIGTERM');
   await new Promise(resolveDelay => setTimeout(resolveDelay, 3000));
-  for (const child of stopping) signalChild(child, 'SIGKILL');
-}
-
-function startChildren() {
-  children = [
-    spawn(npm, ['run', 'start', '-w', 'apps/api'], { cwd: root, stdio: 'inherit', detached: process.platform !== 'win32' }),
-    spawn(npm, ['run', 'start', '-w', 'apps/web'], { cwd: root, stdio: 'inherit', detached: process.platform !== 'win32' }),
-  ];
-  for (const child of children) child.on('exit', code => { if (!deploying && code && code !== 0) console.error(`Orbit parou com código ${code}.`); });
-}
-
-async function deploy() {
-  if (deploying) return;
-  deploying = true;
-  await rm(request, { force: true });
-  await writeFile(status, JSON.stringify({ status: 'building', started_at: new Date().toISOString() }));
-  await stopChildren();
+  for (const child of children.values()) signal(child, 'SIGKILL');
+  children.clear();
   try {
-    await prepareAndValidate(developmentRoot);
-    await publishDevelopment();
-    const preservedStash=await updateStableOrbit();
-    await prepareAndValidate(root);
-    await writeFile(status, JSON.stringify({ status: 'restarting', finished_at: new Date().toISOString(), preserved_main_stash: preservedStash }));
-  } catch (error) {
-    await writeFile(status, JSON.stringify({ status: 'failed', error: error instanceof Error ? error.message : 'Falha na compilação.' }));
-    console.error('Deploy falhou:', error);
-  } finally {
-    startChildren();
-    deploying = false;
-  }
+    if (Number(readFileSync(pidFile, 'utf8').trim()) === process.pid) unlinkSync(pidFile);
+  } catch { /* already removed */ }
+  process.exit(0);
 }
 
-startChildren();
-const timer = setInterval(() => {
-  void writeFile(heartbeat, new Date().toISOString(), { mode: 0o600 });
-  if (existsSync(request)) void deploy();
-}, 1000);
-
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { clearInterval(timer); void stopChildren().finally(() => process.exit(0)); });
+process.on('SIGINT', () => void stop());
+process.on('SIGTERM', () => void stop());
+process.on('exit', () => {
+  try { if (Number(readFileSync(pidFile, 'utf8').trim()) === process.pid) unlinkSync(pidFile); } catch { /* already removed */ }
+});

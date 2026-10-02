@@ -17,7 +17,6 @@ import {
   X,
 } from "lucide-react";
 import { api, send, Board, Card, List, TrelloListOption } from "@/lib/api";
-import { AutomationControls } from "./automations";
 import { useConfirmModal } from "./ui";
 
 const colors: Record<string, string> = {
@@ -432,7 +431,6 @@ export function BoardList({
           )}
           {section === "main" && (
             <>
-              <AutomationControls boardId={list.board_id} listId={list.id} />
               {menuButton("Renomear", () => {
                 setListTitle(list.title);
                 setEditing(true);

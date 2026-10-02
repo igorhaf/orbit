@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, Check, LoaderCircle, Sparkles } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronUp, LoaderCircle, Sparkles } from "lucide-react";
 import {
   AiModel,
   AiProject,
@@ -62,6 +62,7 @@ export function CardAi({
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(true);
   const effectiveProjectId =
     card.ai_project_id || board.ai_default_project_id || null;
   const selectedProject = projects.find(
@@ -71,6 +72,7 @@ export function CardAi({
   const inheritedEffort = board.ai_default_effort || selectedProject?.ai_default_effort || board.ai_global_effort || null;
   const effective = card.ai_model || inheritedModel;
   const effectiveEffort = card.ai_effort || inheritedEffort;
+  const effectiveModel = models.find((model) => model.id === effective);
   const instructionStorageKey = `orbit:card:${card.id}:prompt-instruction`;
   useEffect(() => {
     let active = true;
@@ -174,41 +176,24 @@ export function CardAi({
   }
   return (
     <section className="rounded-lg border border-[#c3b6f7] bg-[#f7f5ff] p-3">
-      <h3 className="flex items-center gap-2 text-sm font-bold text-[#403294]">
-        <Sparkles size={17} /> IA do cartão
-      </h3>
-      <p className="mt-1 text-xs text-[#626f86]">
-        Referência do quadro; se não estiver configurada, usa a configuração global. O cartão pode ter valores próprios.
-      </p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <label className="text-xs font-semibold text-[#5e5a87]">
-          Projeto
-          <select
-            disabled={busy}
-            value={effectiveProjectId || ""}
-            onChange={(event) =>
-              void configure({ ai_project_id: event.target.value || null })
-            }
-            className="mt-1 block w-full rounded border border-[#c3b6f7] bg-white p-2 text-sm text-[#172b4d]"
-          >
-              {!effectiveProjectId && <option value="">Selecione um projeto</option>}
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="mt-3 grid gap-4 sm:grid-cols-2">
-        <AiModelFields value={card.ai_model || inheritedModel} inheritedValue={null} models={models} disabled={busy} onSave={(value) => configure({ ai_model: value })} />
-        <AiEffortField value={card.ai_effort || inheritedEffort} disabled={busy} onChange={(value) => configure({ ai_effort: value })} />
-      </div>
-      {selectedProject && (
-        <p className="mt-2 truncate text-xs text-[#5e5a87]">
-          Execução limitada a: {selectedProject.local_path}
+      <button type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded} className="flex w-full items-center justify-between gap-3 text-left text-sm font-bold text-[#403294]">
+        <span className="flex items-center gap-2"><Sparkles size={17} /> IA do cartão</span>
+        <span className="flex min-w-0 items-center gap-2 text-xs font-normal text-[#5e5a87]">
+          <span className="truncate">Modelo: {effectiveModel?.name || "não configurado"}</span>
+          <span className="shrink-0">Versão: {effectiveModel?.version || "—"}</span>
+          <span className="shrink-0">Esforço: {effectiveEffort || "não configurado"}</span>
+          {expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+        </span>
+      </button>
+      {expanded && <>
+        <p className="mt-1 text-xs text-[#626f86]">
+          Referência do quadro; se não estiver configurada, usa a configuração global. O cartão pode ter valores próprios.
         </p>
-      )}
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <AiModelFields value={card.ai_model || inheritedModel} inheritedValue={null} models={models} disabled={busy} saveOnChange onSave={(value) => configure({ ai_model: value })} showActions={false} actions={<label className="min-w-0 flex-1 text-xs font-semibold text-[#5e5a87]">Projeto<select disabled={busy} value={effectiveProjectId || ""} onChange={(event) => void configure({ ai_project_id: event.target.value || null })} className="mt-1 block w-full rounded border border-[#c3b6f7] bg-white p-1.5 text-sm font-normal text-[#172b4d]"><option value="">Selecione um projeto</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>} />
+          <AiEffortField value={card.ai_effort || inheritedEffort} disabled={busy} onChange={(value) => configure({ ai_effort: value })} />
+        </div>
+        {selectedProject && <p className="mt-2 truncate text-xs text-[#5e5a87]">Execução limitada a: {selectedProject.local_path}</p>}
       <div className="mt-4 rounded-lg border border-[#c3b6f7] bg-white p-3">
         <label className="text-xs font-semibold text-[#5e5a87]">
           Executar prompt no projeto
@@ -301,6 +286,7 @@ export function CardAi({
           </div>
         </div>
       )}
+      </>}
     </section>
   );
 }

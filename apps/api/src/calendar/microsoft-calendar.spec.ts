@@ -4,7 +4,6 @@ import test from "node:test";
 import { SecretVault } from "../secrets";
 import { PluginRegistry } from "../execution/registries";
 import { GoogleCalendarPlugin, googleCalendarPluginDefinition } from "./google-calendar.plugin";
-import { ActionDispatcher } from "../action-dispatcher";
 import { MicrosoftGraphClient, MicrosoftGraphError } from "./microsoft-graph";
 import { MicrosoftGraphSubscriptionManager } from "./microsoft-subscriptions";
 import { graphDateTime, graphLocalToDate, microsoftTimeZone, orbitTimeZone } from "./microsoft-timezones";
@@ -70,7 +69,7 @@ test("shared Microsoft connection isolates capability tokens without duplicating
 
 test("Outlook and Teams register beside Google without changing Calendar Workspace", () => {
   const outlook=new OutlookCalendarPlugin({} as never,{} as never,{} as never),teams=new MicrosoftTeamsPlugin({} as never,{} as never),plugins=new PluginRegistry();
-  plugins.register(googleCalendarPluginDefinition(new GoogleCalendarPlugin({} as never,{} as never,new ActionDispatcher())));
+  plugins.register(googleCalendarPluginDefinition(new GoogleCalendarPlugin({} as never,{} as never)));
   plugins.register(outlookCalendarPluginDefinition(outlook));plugins.register(microsoftTeamsPluginDefinition(teams));
   assert.deepEqual(plugins.list().map(item=>item.id),["google_calendar","outlook_calendar","microsoft_teams"]);
   for(const id of ["list_calendars","list_events","get_event","create_event","update_event","delete_event","get_availability"])assert.ok((plugins.getById("outlook_calendar").actions||[]).some(action=>action.id===id),id);
@@ -110,16 +109,6 @@ test("Outlook event CRUD uses Graph, ETags, recurrence and Teams fields", async 
   await plugin.createItem(connection.owner_id,source.id,{title:"Planning",start:"2026-10-01T13:00:00Z",end:"2026-10-01T14:00:00Z",recurrence:[{pattern:{type:"weekly"}} as never],conference:true});
   await plugin.updateItem(connection.owner_id,row.id,{title:"Changed"});await plugin.deleteItem(connection.owner_id,row.id);
   assert.equal(requests[0].init.method,"POST");assert.match(String(requests[0].init.body),/teamsForBusiness/);assert.match(String(requests[0].init.body),/weekly/);assert.equal(requests[1].init.method,"PATCH");assert.deepEqual((requests[1].init.headers as Record<string,string>)["If-Match"],'W/"etag"');assert.equal(requests[2].init.method,"DELETE");assert.ok(queries.some(sql=>sql.includes("status='cancelled'")));
-});
-
-test("Outlook maintenance publishes the normalized starting trigger for selected calendars", async () => {
-  const item={id:"item-1",source_id:"source-1",owner_id:connection.owner_id,connection_id:connection.id,source_external_id:"calendar",source_name:"Development",source_time_zone:"UTC",color:null,selected:true,source_metadata:{},title:"Review",start_at:new Date(Date.now()+5*60_000),end_at:new Date(Date.now()+35*60_000),all_day:false,time_zone:"UTC",status:"confirmed",metadata:{}};
-  const queries:string[]=[],db={query:async(sql:string)=>{queries.push(sql);return sql.includes("FROM calendar_items i JOIN calendar_sources")?[item]:[]}},subscriptions={renewDue:async()=>undefined};
-  const plugin=new OutlookCalendarPlugin(db as never,{} as never,subscriptions as never),published:string[]=[];
-  Object.defineProperty(plugin,"afterChange",{value:async(_source:unknown,_item:unknown,kind:string)=>{published.push(kind)}});
-  await (plugin as unknown as {maintenance():Promise<void>}).maintenance();
-  assert.deepEqual(published,["calendar.event.starting"]);
-  assert.ok(queries.some((sql)=>sql.includes("startingPublishedAt")));
 });
 
 test("Graph subscriptions create, validate, deduplicate, renew and delete safely", async () => {

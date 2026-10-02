@@ -40,10 +40,9 @@ export class ProjectRegistry {
       for(const key of ['agents','skills','rules','knowledge','plugins','permissions'])stringList(config[key],key);
       if(config.default_executor!==undefined&&!identifier(config.default_executor))throw new Error('Executor padrão inválido.');
       if(config.permissions&&stringList(config.permissions,'permissions').some(x=>!permissions.includes(x as typeof permissions[number])))throw new Error('Permissão de projeto desconhecida.');
-      if(config.workflow!==undefined&&(!config.workflow||typeof config.workflow!=='object'||Array.isArray(config.workflow)||Object.values(config.workflow).some(x=>!identifier(x))))throw new Error('Workflow inválido.');
     }catch(error){warnings.push((error as Error).message);config={}}
     const resources:Resource[]=[];
-    for(const kind of ['agents','skills','rules','knowledge','plugins','automations'] as ResourceKind[]){
+    for(const kind of ['agents','skills','rules','knowledge','plugins'] as ResourceKind[]){
       try{
         const directory=await safePath(resourcesRoot,kind,'directory');
         const entries=await readdir(directory,{withFileTypes:true});
@@ -69,8 +68,8 @@ export class ProjectRegistry {
   async document(project:Project,kind:ResourceKind,id:string):Promise<DocumentResource>{
     if(!identifier(id)||!project.resources.some(x=>x.id===id&&x.kind===kind))throw new Error(`${kind}: recurso ${id} não encontrado.`);
     const resource=project.resources.find(item=>item.id===id&&item.kind===kind)!;
-    const text=await readResource(project.resourcesRoot,`${kind}/${resource.file||id+'.'+(kind==='automations'||kind==='plugins'?'yaml':'md')}`);
-    const parsed=/\.ya?ml$/.test(resource.file||'')||kind==='automations'||kind==='plugins'?{metadata:parseYaml(text),body:''}:parseMarkdown(text);
+    const text=await readResource(project.resourcesRoot,`${kind}/${resource.file||id+(kind==='plugins'?'.yaml':'.md')}`);
+    const parsed=/\.ya?ml$/.test(resource.file||'')||kind==='plugins'?{metadata:parseYaml(text),body:''}:parseMarkdown(text);
     if(parsed.metadata.id!==undefined&&parsed.metadata.id!==id)throw new Error(`${kind}/${id}: ID não corresponde ao arquivo.`);
     for(const field of ['skills','rules','knowledge','permissions'])stringList(parsed.metadata[field],field);
     if(parsed.metadata.executor!==undefined&&!identifier(parsed.metadata.executor))throw new Error('Executor do agente inválido.');

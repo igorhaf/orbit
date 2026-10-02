@@ -10,8 +10,6 @@ import {Pool} from 'pg';
 import {Db} from '../db';
 import {FeaturesService} from '../features';
 import {OrbitEvents} from '../orbit-events';
-import {ActionDispatcher} from '../action-dispatcher';
-import {AutomationsService} from '../automations';
 import {migrateVersions} from '../migrations';
 import {ProjectRegistry} from './project-registry';
 import {CardExecutionService} from './execution.service';
@@ -22,19 +20,18 @@ import {defineAction,defineCapability,definePlugin} from '../plugins/sdk';
 test('executable cards preserve normal cards and persist audited runs',async t=>{
   const db=new Db(),schema='execution_test_'+randomUUID().replaceAll('-',''),root=await mkdtemp(join(tmpdir(),'orbit-execution-test-'));
   await db.query(`CREATE SCHEMA ${schema}`);await db.pool.end();db.pool=new Pool({connectionString:process.env.DATABASE_URL,options:`-c search_path=${schema},public`});
-  const features=new FeaturesService(db),projects=new ProjectRegistry(db),dispatcher=new ActionDispatcher(),plugins=new PluginRegistry(),service=new CardExecutionService(db,features,projects,new OrbitEvents(),dispatcher,plugins),automations=new AutomationsService(db,features,dispatcher);
+  const features=new FeaturesService(db),projects=new ProjectRegistry(db),plugins=new PluginRegistry(),service=new CardExecutionService(db,features,projects,new OrbitEvents(),plugins);
   try{
-    await db.query(await readFile(resolve(__dirname,'../../sql/schema.sql'),'utf8'));await db.query(await readFile(resolve(__dirname,'../../sql/automations.sql'),'utf8'));
+    await db.query(await readFile(resolve(__dirname,'../../sql/schema.sql'),'utf8'));await db.query(await readFile(resolve(__dirname,'../../sql/pre-022-compat.sql'),'utf8'));
     await migrateVersions(db.pool);await migrateVersions(db.pool);assert.ok(((await db.one('SELECT count(*)::int n FROM schema_migrations'))?.n as number)>=2);
     const user=(await db.one("INSERT INTO users(name,email,password_hash) VALUES('Test',$1,'test') RETURNING id",[randomUUID()+'@example.invalid']))!.id;
     const board=(await db.one("INSERT INTO boards(title,owner_id) VALUES('Test',$1) RETURNING id",[user]))!.id;
     await db.query("INSERT INTO board_members(board_id,user_id,role) VALUES($1,$2,'owner')",[board,user]);
     const list=(await db.one("INSERT INTO lists(board_id,title,position) VALUES($1,'Ready',0) RETURNING id",[board]))!.id;
-    const review=(await db.one("INSERT INTO lists(board_id,title,position) VALUES($1,'Review',1) RETURNING id",[board]))!.id;
     const card=(await db.one("INSERT INTO cards(list_id,title,description) VALUES($1,'Card','Description') RETURNING id",[list]))!.id;
     const project=(await db.one("INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,'Project',$2) RETURNING id",[user,root]))!.id;
     await mkdir(join(root,'agents'));await mkdir(join(root,'skills'));
-    await writeFile(join(root,'orbit.yaml'),'default_executor: fixture\nplugins: [filesystem, fixture-plugin]\npermissions: [filesystem.read, execution.automatic]\nagents: [developer, qa]\n');
+    await writeFile(join(root,'orbit.yaml'),'default_executor: fixture\nplugins: [filesystem, fixture-plugin]\npermissions: [filesystem.read]\nagents: [developer, qa]\n');
     await writeFile(join(root,'agents/developer.md'),'---\nid: developer\nexecutor: fixture\nskills: [review]\npermissions: [filesystem.read]\n---\nDeveloper instructions');
     await writeFile(join(root,'agents/qa.md'),'---\nid: qa\nexecutor: fixture\naction: analyze\npermissions: [filesystem.read]\n---\nQA instructions');
     await writeFile(join(root,'skills/review.md'),'---\nid: review\n---\nReview');await writeFile(join(root,'selected.txt'),'Project content');
@@ -44,7 +41,7 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
       return {summary:'Done',outputs:[{type:'json',value:{ok:true,token:'do-not-expose'}}]};
     }});
     plugins.register(definePlugin({id:'fixture-plugin',name:'Fixture plugin',version:'1.0.0',capabilities:[defineCapability({id:'project.read',name:'Read project',permissions:['filesystem.read']})],actions:[defineAction({id:'inspect',name:'Inspect',requiredCapabilities:['project.read'],inputSchema:{type:'object',properties:{subject:{type:'string'}},required:['subject'],additionalProperties:false},outputSchema:{type:'object',required:['type','value']},async execute(input,context){return {type:'json',label:'Plugin result',value:{subject:input.subject,userId:context.userId,projectId:context.projectId,cardId:context.cardId}}}})]}));
-    service.onModuleInit();automations.onModuleInit();
+    service.onModuleInit();
     const config={...emptyConfig(),enabled:true,project_id:project,agent:'developer',executor:'fixture',action:'analyze',permissions:['filesystem.read'],context:{files:['selected.txt']},integrations:[{plugin:'filesystem',action:'read',config:{path:'selected.txt'}}]};
     await t.test('normal card needs no execution configuration',async()=>{const data=await service.details(card,user);assert.equal(data.execution.enabled,false);assert.equal(data.result.status,'idle');assert.deepEqual(data.runs,[]);await assert.rejects(()=>service.enqueue(card,user,{}));assert.equal((await db.one('SELECT title FROM cards WHERE id=$1',[card]))?.title,'Card')});
     await t.test('permissions and paths are validated before persistence',async()=>{
@@ -82,20 +79,6 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
       for(let i=0;i<100;i++){if((await db.one('SELECT stage FROM card_runs WHERE id=$1',[running.id]))?.stage==='executor')break;await new Promise(r=>setTimeout(r,10))}
       await service.cancel(running.id,user);await task;assert.equal((await service.runDetail(running.id,user)).status,'cancelled');
     });
-    await t.test('results move cards and emit events handled by existing automations',async()=>{
-      await service.save(card,user,{...config,automation:{on_success_list_id:review}});
-      const rule=await automations.save(board,user,{name:'On complete',definition:{trigger:{type:'event',event:'execution.completed'},conditions:[],actions:[{type:'comment',value:'Execution completed'}]}});assert.ok(rule);
-      const run=await service.enqueue(card,user,{});await service.tick();await automations.tick();
-      assert.equal((await service.runDetail(run.id,user)).status,'success');assert.equal((await db.one('SELECT list_id FROM cards WHERE id=$1',[card]))?.list_id,review);
-      assert.equal((await db.one("SELECT count(*)::int n FROM comments WHERE card_id=$1 AND body='Execution completed'",[card]))?.n,1);
-    });
-    await t.test('automatic rules enqueue only explicitly authorized cards and prevent cycles',async()=>{
-      await service.save(card,user,{...config,mode:'automatic',permissions:['filesystem.read','execution.automatic']});
-      await automations.save(board,user,{name:'Run QA',definition:{trigger:{type:'event',event:'execution.completed'},conditions:[],actions:[{type:'run_agent',value:'qa'}]}});
-      await service.enqueue(card,user,{});await service.tick();await automations.tick();
-      const queued=await db.one("SELECT agent FROM card_runs WHERE status='queued'");assert.equal(queued?.agent,'qa');
-      await service.tick();await automations.tick();assert.equal((await db.one("SELECT count(*)::int n FROM card_runs WHERE status='queued'"))?.n,0);
-    });
     await t.test('invalid project YAML is visible but does not crash the catalog',async()=>{await writeFile(join(root,'orbit.yaml'),'permissions: [');const catalog=await service.catalog(user,project);assert.ok(catalog.project!.warnings.length);await assert.rejects(()=>service.save(card,user,config))});
-  }finally{service.onModuleDestroy();automations.onModuleDestroy();await db.query(`DROP SCHEMA ${schema} CASCADE`);await db.onModuleDestroy();await rm(root,{recursive:true,force:true})}
+  }finally{service.onModuleDestroy();await db.query(`DROP SCHEMA ${schema} CASCADE`);await db.onModuleDestroy();await rm(root,{recursive:true,force:true})}
 });

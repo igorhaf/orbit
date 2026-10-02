@@ -6,7 +6,7 @@ import Image from 'next/image';
 import {
   Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut,
   Moon, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
-  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Workflow, Circle, CheckCircle2, FolderOpen,
+  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Circle, CheckCircle2, FolderOpen,
 } from 'lucide-react';
 import {
   api, send, AppNotification, Board, Card, List, SearchResults, User,
@@ -303,7 +303,6 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       {pluginNavigation.map(item => <button key={item.id} onClick={() => router.push(item.href)} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{item.label}</button>)}
       <button onClick={() => router.push('/notebooks')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={15} className="mr-1 inline"/>Cadernos</button>
       <button onClick={() => router.push('/vault')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={15} className="mr-1 inline"/>Cofre</button>
-      <button onClick={() => router.push('/automations')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Workflow size={15} className="mr-1 inline"/>Automações</button>
       <button onClick={() => router.push('/plugins')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Plugins</button>
     </nav>
 <button

@@ -4,7 +4,7 @@
 
 Orbit continua usando Next.js/React/Tailwind, NestJS e PostgreSQL (`pg`, SQL explícito), sem Docker. `Board → List → Card`, autenticação JWT, permissões de membros, componentes de cartão, sessões de IA anteriores e suas tabelas permanecem disponíveis. Um cartão comum não precisa de configuração nem cria um Run automaticamente.
 
-A nova capacidade reutiliza o cadastro de projetos locais existente em **Perfil** (`ai_projects`, nome físico preservado), os eventos duráveis de `automation_events`, o worker de automações e os avisos Socket.IO `board:changed`. Não há novo serviço de filas ou infraestrutura externa.
+A nova capacidade reutiliza o cadastro de projetos locais existente em **Perfil** (`ai_projects`, nome físico preservado), o worker de execuções e os avisos Socket.IO `board:changed`. Não há novo serviço de filas ou infraestrutura externa.
 
 ## Modelo e migrations
 
@@ -15,14 +15,14 @@ As migrations `001_executable_cards.sql` e `002_project_defaults_and_completion_
 | Tabela | Responsabilidade |
 | --- | --- |
 | `card_execution_configs` | Relação opcional 1:1 com Card; projeto, agente, executor, action, skills, permissões, modo, diretório, referências de contexto, integrações e destinos após execução |
-| `card_runs` | Histórico independente, estados, timestamps, heartbeat, snapshot da configuração/cartão, hashes dos recursos, saída, erro e cadeia da automação |
+| `card_runs` | Histórico independente, estados, timestamps, heartbeat, snapshot da configuração/cartão, hashes dos recursos, saída e erro |
 | `card_run_logs` | Etapas e mensagens sanitizadas por execução |
 
 Campos consultáveis (estado, card, executor, projeto e datas) são colunas/indexes. Configurações e resultados extensíveis são JSONB. Nenhuma coluna específica de GitHub ou Codex é adicionada ao Card.
 
-O projeto do cartão é único e usa o vínculo já existente da **Sessão de prompt** (`ai_project_id`). A área de execução não repete um seletor de projeto. O projeto carrega `execution` de `orbit.yaml` como defaults para agente, executor, action, skills, diretório, permissões e contexto. O cartão persiste apenas diferenças em `overrides`; alterar o YAML atualiza automaticamente os campos que não foram personalizados no cartão. A opção **Salvar esta configuração como padrão do projeto** grava esses valores em `orbit.yaml`; destinos de automação continuam locais ao cartão, pois dependem das listas do quadro.
+O projeto do cartão é único e usa o vínculo já existente da **Sessão de prompt** (`ai_project_id`). A área de execução não repete um seletor de projeto. O projeto carrega `execution` de `orbit.yaml` como defaults para agente, executor, action, skills, diretório, permissões e contexto. O cartão persiste apenas diferenças em `overrides`; alterar o YAML atualiza automaticamente os campos que não foram personalizados no cartão. A opção **Salvar esta configuração como padrão do projeto** grava esses valores em `orbit.yaml`.
 
-Conceitualmente, o Card mantém seus campos e passa a ter `execution`, `context`, `integrations`, `automation`, `result` e `runs`. O detalhe de execução retorna a configuração completa; o Kanban carrega somente o resumo opcional de execução e o último estado. `result` é derivado do Run mais recente, não de comentários. Runs anteriores não são sobrescritos. A UI lista os últimos 50; os registros mais antigos permanecem no banco e acessíveis pelo ID.
+Conceitualmente, o Card mantém seus campos e passa a ter `execution`, `context`, `integrations`, `result` e `runs`. O detalhe de execução retorna a configuração completa; o Kanban carrega somente o resumo opcional de execução e o último estado. `result` é derivado do Run mais recente, não de comentários. Runs anteriores não são sobrescritos. A UI lista os últimos 50; os registros mais antigos permanecem no banco e acessíveis pelo ID.
 
 ## Conclusão por coluna
 
@@ -39,7 +39,6 @@ O `ProjectRegistry` concentra a descoberta e leitura. Usa `.orbit/` quando prese
 | `knowledge/*.md` | Contexto referenciado, carregado somente quando solicitado |
 | `rules/*.md` | Instruções obrigatórias; as declaradas pelo agente sempre entram no contexto |
 | `plugins/*.yaml` | Documentação declarativa das capacidades instaladas; não carrega código arbitrário |
-| `automations/*.yaml` | Modelos importáveis como regras inicialmente pausadas |
 
 Markdown aceita frontmatter YAML. O `id`, quando declarado, deve corresponder ao nome do arquivo. YAML duplicado, tipos inválidos e aliases excessivos são rejeitados. Configuração inválida aparece como aviso no catálogo e impede executar aquele projeto; não impede usar cartões comuns.
 
@@ -52,10 +51,7 @@ project:
 default_executor: codex
 agents: [developer, qa]
 plugins: [filesystem]
-permissions: [filesystem.read, filesystem.write, process.execute, execution.automatic]
-workflow:
-  ready: developer
-  review: qa
+permissions: [filesystem.read, filesystem.write, process.execute]
 execution:
   agent: developer
   executor: codex
@@ -67,7 +63,7 @@ execution:
     rules: [coding, git]
 ```
 
-`workflow` é metadado validado, não dispara regras implicitamente. Para disparar, configure/importa uma automação. Sem política declarada, somente leitura e execução de processo podem ser concedidas explicitamente; escrita e execução automática exigem autorização no projeto. As permissões selecionadas no cartão também precisam caber nas permissões do agente.
+As permissões selecionadas no cartão também precisam caber nas permissões do agente.
 
 O repositório inclui exemplos funcionais em `.orbit/`. O `AGENTS.md` da raiz pode entrar no contexto por opção explícita; seu conteúdo não é copiado para os arquivos de agentes.
 
@@ -107,7 +103,6 @@ Cancelamento não desfaz efeitos já executados. Falha numa integração posteri
 
 Reaproveitamos a fila transacional e o worker existentes. Eventos: aliases `card.created`, `card.updated`, `card.moved`, `card.completed`, além de `execution.queued`, `execution.started`, `execution.completed`, `execution.failed`, `execution.cancelled`. Os nomes antigos continuam válidos.
 
-As novas ações passam por `ActionDispatcher`: `run_agent`, `run_skill`, `execute_plugin_action`, `move_card`, `add_label`, `remove_label`, `create_card`, `add_comment`. As ações anteriores permanecem compatíveis. Execuções automáticas exigem cartão habilitado, modo automático e permissão `execution.automatic` no cartão/projeto. Um agente alternativo precisa constar em `orbit.yaml`; as permissões continuam limitadas pelas já concedidas ao cartão.
 
 No cartão, selecione destinos após sucesso/falha. Também é possível configurar regras no editor existente, por exemplo `execution.completed → run_agent` com valor `qa`. A cadeia existente limita ciclos a cinco níveis e impede repetir a mesma regra. Importe modelos da seção **Automações** do cartão, revise e ative no editor do quadro. Importar não ativa nem executa o modelo.
 
@@ -135,7 +130,6 @@ Todas as rotas exigem autenticação e acesso ao projeto/cartão/quadro:
 | `POST /cards/:id/runs` | Enfileirar; body opcional `{request_key}` |
 | `GET /execution/runs/:id` | Snapshot, resultado, erro e logs |
 | `POST /execution/runs/:id/cancel` | Cancelamento persistente |
-| `POST /execution/projects/:id/automations/:template` | Importar modelo pausado; body `{board_id}` |
 
 ```sh
 npm run db:migrate
@@ -146,14 +140,13 @@ npm run build
 npm run test:browser -w apps/api
 ```
 
-Testes unitários cobrem parsing, recursos, configuração, schemas, permissões e paths/symlinks. Integração PostgreSQL cobre compatibilidade, migrations repetidas, concorrência, idempotência, erros, cancelamento, histórico, transições e automações encadeadas com executor determinístico. Navegador cobre configuração, plugin real, resultado, movimentação e histórico em desktop/mobile. Uma chamada real do adapter Codex foi validada separadamente com prompt inofensivo; os testes automatizados não gastam créditos nem implementam tarefas reais de software.
+Testes unitários cobrem parsing, recursos, configuração, schemas, permissões e paths/symlinks. Integração PostgreSQL cobre compatibilidade, migrations repetidas, concorrência, idempotência, erros, cancelamento, histórico, transições com executor determinístico. Navegador cobre configuração, plugin real, resultado, movimentação e histórico em desktop/mobile. Uma chamada real do adapter Codex foi validada separadamente com prompt inofensivo; os testes automatizados não gastam créditos nem implementam tarefas reais de software.
 
 ## Arquivos principais
 
 - `apps/api/src/execution/`: engine, registries, contexto, adapter, repository, validação, APIs e testes.
-- `apps/api/src/action-dispatcher.ts`: extensões das ações.
 - `apps/api/src/migrations.ts` e `sql/migrations/001_executable_cards.sql`: migrations formais.
 - `apps/web/components/card-execution.tsx`: seis seções recolhíveis, execução e resultados.
 - `apps/web/lib/execution.ts`: contratos da interface.
 - `.orbit/`: recursos e fluxo de desenvolvimento de exemplo.
-- Alterações incrementais em `main.ts`, `automations.ts`, `automation-rules.ts`, `prompt-sessions.ts`, CardDialog e CardFace conectam a arquitetura sem reescrever o domínio existente.
+- Alterações incrementais em `main.ts` e `prompt-sessions.ts`, CardDialog e CardFace conectam a arquitetura sem reescrever o domínio existente.

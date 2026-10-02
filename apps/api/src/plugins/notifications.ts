@@ -13,11 +13,6 @@ export const cardNotificationPlugin: PluginDefinition = {
   ] },
 };
 
-export const automationNotificationPlugin: PluginDefinition = {
-  id: "automations", name: "Automações", version: "1.0.0",
-  contributions: { notifications: [{ id: "automation", label: "Avisos de automação" }] },
-};
-
 export type PluginNotificationInput = {
   kind: string;
   title: string;

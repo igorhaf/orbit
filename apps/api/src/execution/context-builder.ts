@@ -17,7 +17,7 @@ export class ContextBuilder {
     const agentPermissions=stringList(agent?.metadata.permissions,'permissions');
     for(const permission of config.permissions){
       if(!ceiling.includes(permission))throw new Error(`Projeto não autoriza ${permission}.`);
-      if(agentPermissions.length&&permission!=='execution.automatic'&&!agentPermissions.includes(permission))throw new Error(`Agente não autoriza ${permission}.`);
+      if(agentPermissions.length&&!agentPermissions.includes(permission))throw new Error(`Agente não autoriza ${permission}.`);
     }
     const blocks=[`# Card\n${card.title}\n\n${card.description}`];
     const resources:{kind:string;id:string;hash:string}[]=[];

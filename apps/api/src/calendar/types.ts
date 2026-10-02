@@ -114,15 +114,5 @@ export type PluginContribution = {
     connectPath?: string;
   }>;
   cardActions?: Array<{ id: string; label: string }>;
-  automationActions?: Array<{
-    id: string;
-    label: string;
-    inputSchema: Record<string, unknown>;
-  }>;
-  automationTriggers?: Array<{
-    id: string;
-    label: string;
-    payloadSchema: Record<string, unknown>;
-  }>;
   settingsPanels?: Array<{ id: string; label: string; href: string }>;
 };

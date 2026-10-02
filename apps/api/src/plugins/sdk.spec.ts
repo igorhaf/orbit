@@ -6,7 +6,6 @@ import {
   defineCapability,
   defineConnectionProvider,
   definePlugin,
-  defineTrigger,
 } from "./sdk";
 
 test("plugin SDK creates a registry-ready plugin using only public helpers", () => {
@@ -24,13 +23,6 @@ test("plugin SDK creates a registry-ready plugin using only public helpers", () 
         async execute(input) {
           return { type: "json", value: input };
         },
-      }),
-    ],
-    triggers: [
-      defineTrigger({
-        id: "page.updated",
-        name: "Page updated",
-        eventSchema: { type: "object", required: ["pageId"] },
       }),
     ],
     connectionProvider: defineConnectionProvider({

@@ -5,8 +5,6 @@ import { CalendarSourceRegistry } from "./source-registry";
 import { CalendarSourceProvider } from "./types";
 import { SecretVault } from "../secrets";
 import { GoogleCalendarPlugin, googleCalendarPluginDefinition } from "./google-calendar.plugin";
-import { ActionDispatcher } from "../action-dispatcher";
-import { validateDefinition } from "../automation-rules";
 import { PluginRegistry } from "../execution/registries";
 import { trelloPluginDefinition } from "../trello-sync";
 
@@ -35,7 +33,7 @@ test("calendar source registry supports many providers and rejects duplicate ids
 test("Google Calendar registration preserves the existing Trello integration", () => {
   const registry = new PluginRegistry();
   registry.register(trelloPluginDefinition);
-  registry.register(googleCalendarPluginDefinition(new GoogleCalendarPlugin({} as never,{} as never,new ActionDispatcher())));
+  registry.register(googleCalendarPluginDefinition(new GoogleCalendarPlugin({} as never,{} as never)));
   assert.deepEqual(
     registry.list().map((item) => item.id),
     ["trello", "google_calendar"],
@@ -62,13 +60,12 @@ test("secret vault encrypts OAuth tokens with authenticated encryption", () => {
   }
 });
 
-test("google provider advertises normalized actions, triggers and provider capabilities", () => {
+test("google provider advertises normalized actions and capabilities", () => {
   const plugin = new GoogleCalendarPlugin(
     {} as never,
     {} as never,
-    new ActionDispatcher(),
   );
-  const ids = plugin.contributions.automationActions.map((action) => action.id);
+  const ids = plugin.contributions.pluginActions.map((action) => action.id);
   for (const id of [
     "google_calendar.list_calendars",
     "google_calendar.list_events",
@@ -83,19 +80,11 @@ test("google provider advertises normalized actions, triggers and provider capab
   assert.equal(definition.actions?.length, 7);
   assert.ok(definition.actions?.every((action) => typeof action.execute === "function"));
   assert.ok(definition.actions?.find((action) => action.id === "google_calendar.create_event")?.requiredCapabilities?.includes("calendar.events.write"));
-  assert.deepEqual(
-    plugin.contributions.automationTriggers.map((trigger) => trigger.id),
-    [
-      "calendar.event.created",
-      "calendar.event.updated",
-      "calendar.event.deleted",
-      "calendar.event.starting",
-    ],
-  );
+
 });
 
 test("Google Calendar Registry actions have executable handlers", async () => {
-  const plugin = new GoogleCalendarPlugin({} as never, {} as never, new ActionDispatcher());
+  const plugin = new GoogleCalendarPlugin({} as never, {} as never);
   Object.assign(plugin, { listSources: async (owner: string, connection?: string) => [{ owner, connection }] });
   const definition = googleCalendarPluginDefinition(plugin);
   const action = definition.actions?.find((item) => item.id === "google_calendar.list_calendars");
@@ -109,7 +98,6 @@ test("google event normalization distinguishes all-day and timed values with tim
   const plugin = new GoogleCalendarPlugin(
     {} as never,
     {} as never,
-    new ActionDispatcher(),
   ) as unknown as {
     date(
       value: { date?: string; dateTime?: string; timeZone?: string },
@@ -126,18 +114,6 @@ test("google event normalization distinguishes all-day and timed values with tim
   assert.equal(timed.allDay, false);
   assert.equal(timed.at.toISOString(), "2026-10-01T13:00:00.000Z");
   assert.equal(timed.timeZone, "America/Recife");
-});
-
-test("automation contract accepts normalized calendar triggers and source conditions", () => {
-  const definition = validateDefinition({
-    trigger: { type: "event", event: "calendar.event.updated" },
-    conditions: [{ field: "source_id", op: "eq", value: "development" }],
-    actions: [
-      { type: "google_calendar.update_event", value: "", target: "card" },
-    ],
-  });
-  assert.equal(definition.trigger.event, "calendar.event.updated");
-  assert.equal(definition.conditions[0].field, "source_id");
 });
 
 test("OAuth start persists only a state hash and requests offline access", async () => {
@@ -158,8 +134,7 @@ test("OAuth start persists only a state hash and requests offline access", async
     const plugin = new GoogleCalendarPlugin(
         db as never,
         new SecretVault(),
-        new ActionDispatcher(),
-      ),
+          ),
       result = await plugin.oauthUrl("00000000-0000-4000-8000-000000000001"),
       url = new URL(result.url),
       state = url.searchParams.get("state")!;
@@ -212,8 +187,7 @@ test("expired access tokens are refreshed and re-encrypted without exposing refr
     const plugin = new GoogleCalendarPlugin(
       db as never,
       vault,
-      new ActionDispatcher(),
-    ) as unknown as {
+      ) as unknown as {
       token(connection: Record<string, unknown>): Promise<string>;
     };
     const access = await plugin.token({
@@ -266,8 +240,7 @@ test("watch notifications require the persisted channel secret before scheduling
     const plugin = new GoogleCalendarPlugin(
       db as never,
       vault,
-      new ActionDispatcher(),
-    );
+      );
     assert.equal(await plugin.notification("channel", "wrong"), false);
     assert.equal(await plugin.notification("channel", "expected"), true);
   } finally {

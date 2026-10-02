@@ -41,14 +41,6 @@ export type ActionDefinition = {
   ) => Promise<Output>;
 };
 
-export type TriggerDefinition = {
-  id: string;
-  name: string;
-  description?: string;
-  eventSchema: JsonSchema;
-  metadata?: Record<string, unknown>;
-};
-
 export type ConnectionProviderDefinition = {
   id: string;
   name: string;
@@ -62,9 +54,6 @@ export type PluginContribution = {
   settings?: Array<Record<string, unknown>>;
   cardActions?: Array<Record<string, unknown>>;
   calendarSources?: Array<Record<string, unknown>>;
-  automationActions?: Array<Record<string, unknown>>;
-  automationTriggers?: Array<Record<string, unknown>>;
-  automationTemplates?: Array<Record<string, unknown>>;
   resourceRenderers?: Array<Record<string, unknown>>;
   notifications?: Array<{ id: string; label: string }>;
 };
@@ -77,7 +66,6 @@ export type PluginDefinition = {
   scope?: PluginScope;
   capabilities?: CapabilityDefinition[];
   actions?: ActionDefinition[];
-  triggers?: TriggerDefinition[];
   connectionProvider?: ConnectionProviderDefinition;
   contributions?: PluginContribution;
 };

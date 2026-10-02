@@ -4,7 +4,7 @@ GitHub is an account-scoped Orbit plugin. Cards remain provider-neutral and rela
 
 ## Authentication decision
 
-Orbit uses a GitHub App rather than a classic OAuth App or personal access token. A GitHub App provides repository-level installation access, short-lived installation tokens, granular permissions, and signed webhooks. User-to-server tokens are used for actions performed on behalf of a person; installation tokens are used for app automations when an `installationId` is present on the connection. Both token types are encrypted by `SecretVault` and never sent to the browser or logs.
+Orbit uses a GitHub App rather than a classic OAuth App or personal access token. A GitHub App provides repository-level installation access, short-lived installation tokens, granular permissions, and signed webhooks. User-to-server tokens are used for actions performed on behalf of a person; installation tokens are used for app operations when an `installationId` is present on the connection. Both token types are encrypted by `SecretVault` and never sent to the browser or logs.
 
 Configure `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `GITHUB_WEBHOOK_SECRET`. The callback URL is `${API_PUBLIC_URL}/github/oauth/callback` and the webhook URL is `${API_PUBLIC_URL}/github/webhook`.
 

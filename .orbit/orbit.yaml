@@ -19,7 +19,3 @@ permissions:
   - filesystem.read
   - filesystem.write
   - process.execute
-  - execution.automatic
-workflow:
-  ready: developer
-  review: qa

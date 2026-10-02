@@ -22,12 +22,12 @@ O OAuth usa state de uso único com expiração e solicita acesso offline. Acces
 
 Após OAuth, o plugin usa CalendarList, cria fontes normalizadas e sincroniza as selecionadas. O primeiro sync pagina eventos e guarda `nextSyncToken`; os seguintes usam o cursor. Uma resposta 410 apaga somente o cursor da fonte e executa full sync controlado. CalendarList também usa cursor e a mesma recuperação. O webhook apenas valida o canal e agenda o sync incremental. Canais são renovados antes de expirar e o anterior é interrompido quando possível.
 
-## Cards e automações
+## Cards e integração com cartões
 
 Cards possuem agenda opcional independente de início/vencimento. Eventos podem criar Cards ou vincular Cards existentes via `ExternalResource`. Auto-mirror é desligado por padrão e configurado por calendário, incluindo Board/List, atualização, cancelamento e estratégia de recorrência.
 
-O plugin publica actions e triggers normalizados no manifest. Triggers entram no Automation Engine existente como `calendar.event.created`, `updated`, `deleted` e `starting`; o payload contém IDs e `CalendarItem` normalizado, nunca o payload bruto do Google.
+O plugin publica actions normalizadas no manifest. Eventos sincronizados são convertidos para `CalendarItem`; o payload bruto do Google não é exposto à interface.
 
 ## Microsoft 365
 
-Outlook Calendar é outro provider do mesmo registry e compartilha uma conexão Microsoft com Teams e Outlook Mail. A UI, o Card e o Automation Engine não conhecem IDs ou payloads do Graph. Consulte [Microsoft 365](integrations/microsoft.md) para configuração, delta sync, subscriptions, disponibilidade e Teams.
+Outlook Calendar é outro provider do mesmo registry e compartilha uma conexão Microsoft com Teams e Outlook Mail. A UI e o Card não conhecem IDs ou payloads do Graph. Consulte [Microsoft 365](integrations/microsoft.md) para configuração, delta sync, subscriptions, disponibilidade e Teams.

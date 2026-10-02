@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { ReactNode, useState } from "react";
 import { AiEffort, AiModel } from "@/lib/api";
 
 export function aiModelLabel(value: string | null | undefined, models: AiModel[]) {
@@ -14,12 +14,18 @@ export function AiModelFields({
   models,
   disabled = false,
   onSave,
+  showActions = true,
+  actions,
+  saveOnChange = false,
 }: {
   value: string | null | undefined;
   inheritedValue?: string | null;
   models: AiModel[];
   disabled?: boolean;
   onSave: (value: string | null) => Promise<void> | void;
+  showActions?: boolean;
+  actions?: ReactNode;
+  saveOnChange?: boolean;
 }) {
   const selected = models.find((model) => model.id === value);
   const [draft, setDraft] = useState<{ source: string | null | undefined; name: string; version: string } | null>(null);
@@ -42,17 +48,25 @@ export function AiModelFields({
         </label>
         <label className="block text-xs font-semibold">
           Versão
-          <select disabled={disabled || !name} value={version} onChange={(event) => setDraft({ source: value, name, version: event.target.value })} className="mt-1 w-full rounded border border-[#8590a2] bg-white p-2 text-sm font-normal">
+          <select disabled={disabled || !name} value={version} onChange={(event) => {
+            const nextVersion = event.target.value;
+            setDraft({ source: value, name, version: nextVersion });
+            const nextModel = models.find((model) => model.name === name && model.version === nextVersion);
+            if (saveOnChange && nextModel) void onSave(nextModel.id);
+          }} className="mt-1 w-full rounded border border-[#8590a2] bg-white p-2 text-sm font-normal">
             <option value="">Escolha uma versão</option>
             {versions.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
       </div>
       {inheritedValue && <p className="text-xs text-[#626f86]">Referência: {aiModelLabel(inheritedValue, models)}</p>}
-      <div className="flex items-center gap-3">
-        <button type="button" disabled={disabled || !next || next.id === value} onClick={() => next && void onSave(next.id)} className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Salvar modelo</button>
-        {value && <button type="button" disabled={disabled} onClick={() => void onSave(null)} className="text-xs font-semibold text-[#626f86] disabled:opacity-50">Usar referência</button>}
-      </div>
+      {(showActions !== false || actions) && <div className="flex items-center gap-3">
+        {showActions !== false && <>
+          <button type="button" disabled={disabled || !next || next.id === value} onClick={() => next && void onSave(next.id)} className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Salvar modelo</button>
+          {value && <button type="button" disabled={disabled} onClick={() => void onSave(null)} className="text-xs font-semibold text-[#626f86] disabled:opacity-50">Usar referência</button>}
+        </>}
+        {actions}
+      </div>}
     </div>
   );
 }

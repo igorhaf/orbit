@@ -71,14 +71,7 @@ O cadastro e os convites estão desativados nesta etapa de conta única. Exclus�
    npm run dev
    ```
 
-Para usar o botão **Deploy** do cabeçalho na instalação local, compile uma vez e inicie pelo gerenciador do Orbit:
-
-```bash
-npm run build
-npm run orbit:serve
-```
-
-O projeto nativo do Orbit fica em `/home/meada/projetos/orbit-dev` e aparece em **Perfil → Projetos** como integrado e protegido contra remoção. As sessões de prompt podem selecionar esse projeto diretamente; quando uma sessão altera seus arquivos, o Orbit aplica migrações, seed e compilação. Execute a aplicação principal pela cópia em `/home/meada/projetos/orbit`, na branch `main`. Depois, clique em **Deploy**: a validação é repetida em `orbit-dev`, os testes unitários rodam antes de publicar em `develop`; a cópia principal em `main` faz pull de `develop`, envia o avanço de `main` ao remoto, repete migrações, seed, compilação e testes unitários, e só então reinicia. A tela fica travada até a reconexão.
+Para publicar o Orbit DEV na instalação principal, execute `/home/meada/projetos/deploy-orbit.sh`. Ele valida e compila o desenvolvimento, atualiza `/home/meada/projetos/orbit`, aplica migrações e reinicia os serviços sem criar commits ou enviar alterações ao Git remoto.
 
 Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
 
@@ -114,12 +107,11 @@ Consulte [arquitetura, OAuth, sync incremental, watch channels, ExternalResource
 | Comando | Função |
 | --- | --- |
 | `npm run dev` | Inicia Next.js e NestJS em desenvolvimento |
-| `npm run orbit:serve` | Inicia o Orbit com o gerenciador local necessário para o botão Deploy |
 | `npm run lint` | Verifica o código da API e do front, sem aceitar avisos |
 | `npm run lint:fix` | Corrige automaticamente os problemas de lint possíveis |
 | `npm run build` | Executa o lint e compila a API e o front |
-| `npm run test -w apps/api` | Executa os testes das regras de cartões e automações |
-| `npm run test:integration -w apps/api` | Testa automações no PostgreSQL com dados temporários |
+| `npm run test -w apps/api` | Executa os testes unitários da API |
+| `npm run test:integration -w apps/api` | Testa recursos integrados da API com PostgreSQL temporário |
 | `npm run db:migrate` | Aplica o esquema SQL e prepara a conta inicial |
 | `npm run db:backup -- create` | Cria e verifica um backup PostgreSQL criptografado |
 | `npm run db:backup -- list` | Lista os backups locais |
@@ -131,19 +123,3 @@ Consulte [arquitetura, OAuth, sync incremental, watch channels, ExternalResource
 O SQL fica em `apps/api/sql/schema.sql`.
 
 Consulte [o plano de backup e recuperação](docs/database-backups.md) para configurar cópias agendadas, validar uma restauração e recuperar o serviço.
-
-## Automação
-
-Abra **Automação** no cabeçalho do quadro ou **Automatizar lista** no menu de uma lista. Botões cadastrados aparecem no cabeçalho do quadro ou no detalhe do cartão. O editor oferece gatilhos por evento, vencimento, agenda e botões, condições combinadas, até 20 ações ordenadas, tags, cópias e histórico. Cópias para outros quadros exigem mapear listas, etiquetas, pessoas e campos e começam pausadas.
-
-`npm run db:migrate` aplica também `apps/api/sql/automations.sql`. Eventos são registrados na mesma transação que altera os cartões, inclusive em operações em massa. O worker da API consulta a fila a cada cinco segundos. Cada regra/evento tem chave única; falhas revertem todas as ações daquela execução e ficam no histórico. Cadeias são limitadas a cinco níveis e uma mesma regra não pode executar duas vezes na cadeia. Uma execução alcança até 500 cartões; referências de cascata são anexos de cartões do mesmo quadro. Separadores, links e espelhos não são alvos de operações em massa.
-
-Agendamentos diários e semanais usam o fuso configurado. Intervalos têm mínimo de cinco minutos. Após uma parada, um agendamento atrasado executa uma vez e calcula a próxima ocorrência; não reproduz todas as ocorrências perdidas. Regras de vencimento usam minutos relativos ao prazo: `-1440` significa um dia antes e `0` significa no vencimento. Uma ocorrência de prazo é processada uma vez por cartão/regra; erros ou condições não atendidas ficam registrados. Prazos anteriores à criação da regra não são recuperados.
-
-Textos aceitam `{{title}}`, `{{description}}`, `{{list}}`, `{{board}}`, `{{user}}`, `{{members}}`, `{{due_date}}` e `{{custom:ID_DO_CAMPO}}`. Cálculos de data aceitam `now + 2 days`, `due - 30 minutes` e `today + 3 business_days`; formatos de variável: `{{now + 2 days|date}}`, `{{now|time}}` ou `iso`. Cálculos usam UTC. Dias úteis excluem sábados e domingos, sem calendário de feriados. O editor exibe os identificadores dos campos. Sugestões surgem após três movimentos manuais para a mesma lista em trinta dias e sempre exigem revisão e salvamento.
-
-Relatórios disponíveis: Board Snapshot, Due Soon (sete dias), Overdue Cards, My Cards e personalizado com filtros, Markdown e variáveis. Destinatários, assunto e mensagem por cartão são configurados na ação; use um gatilho agendado para envio periódico. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_FROM`, `SMTP_USER` e `SMTP_PASSWORD` em `apps/api/.env`. O transporte exige TLS. Sem SMTP, as mensagens permanecem na fila e a falta de configuração aparece no histórico. Erros de envio são tentados até cinco vezes, com cinco minutos entre tentativas. SMTP não garante exatamente uma entrega se a conexão cair após o servidor aceitar a mensagem; cada mensagem tem um Message-ID estável.
-
-Para testes visuais, com API e web em execução e Chromium disponível, use `npm run test:browser -w apps/api`. Os testes criam um quadro temporário e removem seus dados ao terminar. Para instalar o navegador de teste: `npx playwright install chromium`.
-
-Antes de cada commit, execute `npm run build`. Se houver erro ou aviso de lint, corrija e repita o build antes de criar o commit.

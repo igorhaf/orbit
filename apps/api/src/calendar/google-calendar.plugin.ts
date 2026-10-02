@@ -24,7 +24,6 @@ import { Db } from "../db";
 import { FeaturesService } from "../features";
 import { PluginActionContext, PluginDefinition } from "../plugins/contract";
 import { SecretVault } from "../secrets";
-import { ActionDispatcher } from "../action-dispatcher";
 import {
   Availability,
   AvailabilityRequest,
@@ -122,7 +121,7 @@ export class GoogleCalendarPlugin
         connectPath: "/calendar/google/oauth/start",
       },
     ],
-    automationActions: [
+    pluginActions: [
       {
         id: "google_calendar.list_calendars",
         label: "Listar calendários",
@@ -216,20 +215,6 @@ export class GoogleCalendarPlugin
         },
       },
     ],
-    automationTriggers: ["created", "updated", "deleted", "starting"].map(
-      (kind) => ({
-        id: `calendar.event.${kind}`,
-        label: `Evento ${kind}`,
-        payloadSchema: {
-          type: "object",
-          required: ["sourceId", "item"],
-          properties: {
-            sourceId: { type: "string" },
-            item: { type: "object" },
-          },
-        },
-      }),
-    ),
     settingsPanels: [
       {
         id: "google_calendar",
@@ -243,75 +228,11 @@ export class GoogleCalendarPlugin
   constructor(
     @Inject(Db) private db: Db,
     @Inject(SecretVault) private vault: SecretVault,
-    @Inject(ActionDispatcher) private dispatcher: ActionDispatcher,
   ) {}
   onModuleInit() {
-    this.dispatcher.register(
-      "google_calendar.create_event",
-      async (request, client) => {
-        const card = (
-          await client.query(
-            "SELECT c.title,c.description,c.schedule_start_at,c.schedule_end_at,c.schedule_all_day,c.schedule_time_zone FROM cards c WHERE c.id=$1",
-            [request.cardId],
-          )
-        ).rows[0];
-        if (!card?.schedule_start_at)
-          throw new Error(
-            "Defina o agendamento do Card antes de criar o evento.",
-          );
-        await this.createItem(
-          request.userId,
-          String(request.config.value || request.config.source_id),
-          {
-            title: card.title,
-            description: card.description,
-            start: new Date(card.schedule_start_at).toISOString(),
-            end: card.schedule_end_at
-              ? new Date(card.schedule_end_at).toISOString()
-              : undefined,
-            allDay: Boolean(card.schedule_all_day),
-            timeZone: card.schedule_time_zone || undefined,
-          },
-        );
-      },
-    );
-    this.dispatcher.register(
-      "google_calendar.update_event",
-      async (request, client) => {
-        const item = (
-          await client.query(
-            "SELECT id FROM calendar_items WHERE card_id=$1 AND owner_id=$2 AND source_id IN (SELECT id FROM calendar_sources WHERE provider_id=$3) ORDER BY updated_at DESC LIMIT 1",
-            [request.cardId, request.userId, this.id],
-          )
-        ).rows[0];
-        if (!item)
-          throw new Error("O Card não possui evento Google vinculado.");
-        const card = (
-          await client.query(
-            "SELECT title,description FROM cards WHERE id=$1",
-            [request.cardId],
-          )
-        ).rows[0];
-        await this.updateItem(request.userId, item.id, {
-          title: card.title,
-          description: card.description,
-        });
-      },
-    );
-    this.dispatcher.register(
-      "google_calendar.delete_event",
-      async (request, client) => {
-        const item = (
-          await client.query(
-            "SELECT id FROM calendar_items WHERE card_id=$1 AND owner_id=$2 AND source_id IN (SELECT id FROM calendar_sources WHERE provider_id=$3) ORDER BY updated_at DESC LIMIT 1",
-            [request.cardId, request.userId, this.id],
-          )
-        ).rows[0];
-        if (!item)
-          throw new Error("O Card não possui evento Google vinculado.");
-        await this.deleteItem(request.userId, item.id);
-      },
-    );
+
+
+
     this.timer = setInterval(() => void this.maintenance(), 30 * 60_000);
     this.timer.unref();
     setTimeout(() => void this.maintenance(), 5000).unref();
@@ -651,7 +572,6 @@ export class GoogleCalendarPlugin
         await this.afterChange(
           source,
           cancelled,
-          "calendar.event.deleted",
           cancelled.card_id as string | null,
         );
       return cancelled ? this.toItem(cancelled) : null;
@@ -715,7 +635,6 @@ export class GoogleCalendarPlugin
       await this.afterChange(
         source,
         row!,
-        old ? "calendar.event.updated" : "calendar.event.created",
         old?.card_id || null,
       );
     return this.toItem(row!);
@@ -723,7 +642,6 @@ export class GoogleCalendarPlugin
   private async afterChange(
     source: Source,
     item: Record<string, unknown>,
-    kind: string,
     linkedCard: string | null,
   ) {
     const settings = await this.db.one<Record<string, unknown>>(
@@ -782,30 +700,6 @@ export class GoogleCalendarPlugin
         ],
       );
     }
-    const board = cardId
-      ? await this.db.one<{ board_id: string }>(
-          "SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1",
-          [cardId],
-        )
-      : settings?.target_board_id
-        ? { board_id: String(settings.target_board_id) }
-        : null;
-    if (board)
-      await this.db.query(
-        "INSERT INTO automation_events(board_id,card_id,kind,payload) VALUES($1,$2,$3,$4)",
-        [
-          board.board_id,
-          cardId,
-          kind,
-          JSON.stringify({
-            after: {
-              source_id: source.id,
-              provider_id: this.id,
-              item: this.toItem(item),
-            },
-          }),
-        ],
-      );
   }
   private toItem(row: Record<string, unknown>): CalendarItem {
     return {
@@ -1077,7 +971,7 @@ export class GoogleCalendarPlugin
       time_zone: row.source_time_zone as string | null,
       color: row.color as string | null, selected: Boolean(row.selected),
       metadata: (row.source_metadata || {}) as Record<string, unknown>,
-    }, cancelled, "calendar.event.deleted", cancelled.card_id as string | null);
+    }, cancelled, cancelled.card_id as string | null);
   }
   async getAvailability(
     ownerId: string,
@@ -1243,33 +1137,7 @@ export class GoogleCalendarPlugin
       await this.discover(connection.owner_id, connection.id).catch(
         () => undefined,
       );
-    const starting = await this.db.query<Record<string, unknown>>(
-      `SELECT i.*,s.owner_id,s.connection_id,s.external_id AS source_external_id,s.name AS source_name,s.time_zone AS source_time_zone,s.color,s.selected,s.metadata AS source_metadata FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id WHERE s.provider_id=$1 AND s.selected AND i.status<>'cancelled' AND i.start_at>now() AND i.start_at<=now()+interval '30 minutes' AND NOT (i.metadata ? 'startingPublishedAt')`,
-      [this.id],
-    );
-    for (const item of starting) {
-      const source: Source = {
-        id: String(item.source_id),
-        owner_id: String(item.owner_id),
-        connection_id: String(item.connection_id),
-        external_id: String(item.source_external_id),
-        name: String(item.source_name),
-        time_zone: item.source_time_zone as string | null,
-        color: item.color as string | null,
-        selected: Boolean(item.selected),
-        metadata: item.source_metadata as Record<string, unknown>,
-      };
-      await this.afterChange(
-        source,
-        item,
-        "calendar.event.starting",
-        item.card_id as string | null,
-      );
-      await this.db.query(
-        "UPDATE calendar_items SET metadata=metadata||jsonb_build_object('startingPublishedAt',now()::text) WHERE id=$1",
-        [item.id],
-      );
-    }
+
   }
 }
 
@@ -1285,7 +1153,7 @@ export const googleCalendarPluginDefinition = (
     { id: "calendar.events.write", name: "Alterar eventos" },
     { id: "calendar.availability.read", name: "Consultar disponibilidade" },
   ],
-  actions: plugin.contributions.automationActions.map((action) => ({
+  actions: plugin.contributions.pluginActions.map((action) => ({
     id: action.id,
     name: action.label,
     requiredCapabilities: [
@@ -1342,13 +1210,7 @@ export const googleCalendarPluginDefinition = (
       return { type: "calendar", label: action.label, value };
     },
   })),
-  triggers: plugin.contributions.automationTriggers.map((trigger) => ({
-    id: trigger.id,
-    name: trigger.label,
-    eventSchema: trigger.payloadSchema,
-    metadata: { event: trigger.id },
-  })),
-  connectionProvider: {
+    connectionProvider: {
     id: "google-oauth",
     name: "Google OAuth",
     supportsMultiple: true,
@@ -1360,11 +1222,8 @@ export const googleCalendarPluginDefinition = (
   },
   contributions: {
     navigation: [{ id: "calendar", label: "Calendar", href: "/calendar" }],
-    notifications: [{ id: "event_starting", label: "Evento começando" }],
     calendarSources: plugin.contributions.calendarSources,
-    automationActions: plugin.contributions.automationActions,
-    automationTriggers: plugin.contributions.automationTriggers,
-    settings: plugin.contributions.settingsPanels,
+        settings: plugin.contributions.settingsPanels,
   },
 });
 

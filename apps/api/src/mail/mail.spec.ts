@@ -34,7 +34,7 @@ test("mail content is sanitized before reaching Orbit UI", () => {
   assert.throws(() => validateCompose({ to: [{ address: "bad" }], subject: "x", text: "y" }), /inválido/);
 });
 
-test("mail plugins expose actions, permissions and normalized trigger", () => {
+test("mail plugins expose actions, permissions and connection providers", () => {
   const fakeService = {
     compose: async () => ({}), list: async () => ({}), thread: async () => ({}), message: async () => ({}),
   } as never;
@@ -42,6 +42,5 @@ test("mail plugins expose actions, permissions and normalized trigger", () => {
   plugins.register(mailPluginDefinition("gmail", "Gmail", fakeService));
   plugins.register(mailPluginDefinition("outlook_mail", "Outlook Mail", fakeService));
   assert.equal(plugins.getAction("gmail", "send").permissions?.[0], "mail.send");
-  assert.equal(plugins.getTrigger("outlook_mail", "received").metadata?.event, "email.received");
   assert.equal(plugins.connectionProviders().length, 2);
 });
