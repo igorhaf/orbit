@@ -48,6 +48,8 @@ export function CardAi({
   onApply,
   onChanged,
   onExecutionStart,
+  onAiActionStart,
+  onExecutionEnd,
   aiLocked = false,
   variant = "settings",
 }: {
@@ -56,6 +58,8 @@ export function CardAi({
   onApply: (text: string, action?: Action) => Promise<void>;
   onChanged: () => Promise<void>;
   onExecutionStart?: () => void;
+  onAiActionStart?: () => void;
+  onExecutionEnd?: () => void;
   aiLocked?: boolean;
   variant?: "settings" | "text";
 }) {
@@ -129,11 +133,13 @@ export function CardAi({
     }
   }
   async function generate() {
+    if (aiLocked) return;
     if (!effective || !effectiveEffort) {
       setError("Configure modelo, versão e esforço em algum nível da hierarquia de IA.");
       return;
     }
     setBusy(true);
+    onAiActionStart?.();
     window.dispatchEvent(new CustomEvent("orbit:text-generation", { detail: { active: true } }));
     setError("");
     setResult(null);
@@ -153,6 +159,7 @@ export function CardAi({
     } finally {
       setBusy(false);
       window.dispatchEvent(new CustomEvent("orbit:text-generation", { detail: { active: false } }));
+      onExecutionEnd?.();
     }
   }
   function discardSuggestion() {
@@ -179,6 +186,7 @@ export function CardAi({
     }
   }
   async function execute() {
+    if (aiLocked) return;
     if (!effectiveProjectId) {
       setError("Selecione um projeto no cartão ou configure o padrão do quadro.");
       return;
@@ -188,16 +196,18 @@ export function CardAi({
       return;
     }
     setBusy(true);
+    onExecutionStart?.();
     setError("");
     try {
       await send<PromptRun>(`/cards/${card.id}/prompt-runs`, "POST", {
         instruction,
       });
-      onExecutionStart?.();
+      await onChanged();
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
+      onExecutionEnd?.();
     }
   }
   useEffect(() => {
@@ -238,6 +248,7 @@ export function CardAi({
         <label className="text-xs font-semibold text-[#5e5a87]">
           Executar prompt no projeto
           <textarea
+            disabled={aiLocked}
             value={instruction}
             onChange={(event) => {
               const value = event.target.value;
@@ -260,6 +271,7 @@ export function CardAi({
         <select
           value={action}
           onChange={(event) => setAction(event.target.value as Action)}
+          disabled={aiLocked}
           className="rounded border border-[#c3b6f7] bg-white px-2 py-1.5 text-xs text-[#172b4d]"
         >
           {actions.map((item) => (

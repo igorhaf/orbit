@@ -743,7 +743,7 @@ export default function ProfilePage() {
                       key={theme}
                       onClick={() => preference("theme", theme)}
                       aria-pressed={preferences.theme === theme}
-                      className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-sm font-semibold text-[#172b4d] transition-colors ${preferences.theme === theme ? "border-[#0c66e4] bg-[#e9f2ff] ring-2 ring-[#0c66e4]/30" : "border-[#dfe1e6] hover:border-[#8590a2]"}`}
+                      className={`profile-theme-option flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-sm font-semibold text-[#172b4d] transition-colors ${preferences.theme === theme ? "border-[#6554c0] bg-[#e9e5fa] ring-2 ring-[#6554c0]/30" : "border-[#dfe1e6] hover:border-[#8590a2]"}`}
                     >
                       {theme === "light" ? (
                         <Palette size={25} />

@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {Executor,ExecutionInput} from './types';
 import {redact} from './security';
+import {prepareOrbitCodexHome} from '../codex-home';
 
 // Adapter-specific process details never enter the Card domain or UI.
 export class CodexExecutor implements Executor {
@@ -18,15 +19,16 @@ export class CodexExecutor implements Executor {
     try{
       const env:NodeJS.ProcessEnv={};
       for(const key of ['PATH','HOME','CODEX_HOME','TMPDIR','LANG','LC_ALL'])if(process.env[key])env[key]=process.env[key];
+      env.CODEX_HOME=await prepareOrbitCodexHome();
       await new Promise<void>((resolve,reject)=>{
-        const child=spawn(process.env.CODEX_BIN||'codex',['exec','--ignore-user-config','--ephemeral','--skip-git-repo-check','--sandbox',input.permissions.includes('filesystem.write')?'workspace-write':'read-only','-c','approval_policy="never"','-c','sandbox_workspace_write.network_access=false','-c','mcp_servers={}','-C',input.workingDirectory,'--output-last-message',output,'-'],{env,stdio:['pipe','ignore','pipe'],detached:process.platform!=='win32'});
+        const child=spawn(process.env.CODEX_BIN||'codex',['exec','--ignore-user-config','--dangerously-bypass-approvals-and-sandbox','--skip-git-repo-check','-c','mcp_servers={}','-C',input.workingDirectory,'--output-last-message',output,'-'],{env,stdio:['pipe','ignore','pipe'],detached:process.platform!=='win32'});
         let reason:string|undefined,stderr='';let hardStop:ReturnType<typeof setTimeout>|undefined;
         const stop=()=>{reason=input.signal.aborted?'Execução cancelada.':'Tempo limite excedido.';try{process.kill(-child.pid!,'SIGTERM')}catch{child.kill('SIGTERM')}hardStop=setTimeout(()=>{try{process.kill(-child.pid!,'SIGKILL')}catch{child.kill('SIGKILL')}},2000);hardStop.unref()};
         input.signal.addEventListener('abort',stop,{once:true});
         const timer=setTimeout(stop,Math.min(Number(process.env.ORBIT_EXECUTION_TIMEOUT_MS)||300000,900000));
         child.stderr.on('data',(chunk:Buffer)=>{stderr=(stderr+chunk.toString()).slice(-2000)});
         child.stdin.on('error',()=>{});
-        child.stdin.end(`Action: ${input.action}\nPermissions: ${input.permissions.join(', ')}\nWork only inside the selected project. Never read credentials or contact external services.\n\n${input.prompt}`);
+        child.stdin.end(`Action: ${input.action}\nConfigured action permissions: ${input.permissions.join(', ')}\nYou have full local access. Work only inside the selected project. Never read credentials or contact external services.\n\n${input.prompt}`);
         const cleanup=()=>{clearTimeout(timer);if(hardStop)clearTimeout(hardStop);input.signal.removeEventListener('abort',stop)};
         child.on('error',error=>{cleanup();reject(new Error((error as NodeJS.ErrnoException).code==='ENOENT'?'Codex não encontrado no servidor.':'Não foi possível iniciar o executor.'))});
         child.on('close',code=>{cleanup();if(reason)reject(new Error(reason));else if(code!==0)reject(new Error(`Codex terminou com código ${code}: ${redact(stderr)}`));else resolve()});

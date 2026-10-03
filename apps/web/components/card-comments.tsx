@@ -74,6 +74,9 @@ export function CardComments({
   refreshDetails,
   run,
   user,
+  aiLocked,
+  onAiActionStart,
+  onAiActionEnd,
 }: {
   card: Card;
   board: Board;
@@ -82,6 +85,9 @@ export function CardComments({
   refreshDetails: () => Promise<void>;
   run: (action: () => Promise<unknown>) => Promise<boolean>;
   user: { id: string; name: string; avatar_url?: string | null } | null;
+  aiLocked: boolean;
+  onAiActionStart: () => void;
+  onAiActionEnd: () => void;
 }) {
   const [body, setBody] = useState("");
   const [pending, setPending] = useState<PendingAttachment[]>([]);
@@ -129,24 +135,32 @@ export function CardComments({
     event.target.value = "";
   }
   async function submit(execute: boolean) {
+    if (execute && aiLocked) return;
     if (!body.trim() && !pending.length) return;
-    const ok = await run(() =>
-      send(`/cards/${card.id}/comments`, "POST", {
-        body: body.trim() || "Imagem anexada.",
-        attachments: pending,
-        execute,
-      }),
-    );
-    if (ok) {
-      setBody("");
-      setPending([]);
+    if (execute) onAiActionStart();
+    try {
+      const ok = await run(() =>
+        send(`/cards/${card.id}/comments`, "POST", {
+          body: body.trim() || "Imagem anexada.",
+          attachments: pending,
+          execute,
+        }),
+      );
+      if (ok) {
+        setBody("");
+        setPending([]);
+      }
+    } finally {
+      if (execute) onAiActionEnd();
     }
   }
   async function commentAi(
     action: CommentAiAction,
     target: Comment | null = null,
   ) {
+    if (aiLocked) return;
     setAiBusy(true);
+    onAiActionStart();
     setError("");
     setAiResult("");
     setAiTarget(target);
@@ -161,6 +175,7 @@ export function CardComments({
       setError((err as Error).message);
     } finally {
       setAiBusy(false);
+      onAiActionEnd();
     }
   }
   async function publishExpansion() {
@@ -177,9 +192,13 @@ export function CardComments({
     }
   }
   async function executeComment(comment: Comment) {
-    await run(() =>
-      send(`/comments/${comment.id}/execute`, "POST"),
-    );
+    if (aiLocked) return;
+    onAiActionStart();
+    try {
+      await run(() => send(`/comments/${comment.id}/execute`, "POST"));
+    } finally {
+      onAiActionEnd();
+    }
   }
   async function copyLink(comment: Comment) {
     const link = `${window.location.origin}${cardUrl(board.id, card.id, card.url_token)}&comment=${comment.id}`;
@@ -349,10 +368,10 @@ export function CardComments({
             </label>
             <span className="inline-flex items-center gap-1 rounded bg-[#f0edff] px-2 py-1 text-xs text-[#403294]">
               <Sparkles size={13} />
-              <select aria-label="Ação de IA para o comentário" disabled={aiBusy} value={aiAction} onChange={(event) => setAiAction(event.target.value as CommentAiAction)} className="max-w-48 rounded border border-[#c3b6f7] bg-white px-2 py-1 text-xs text-[#403294]">
+              <select aria-label="Ação de IA para o comentário" disabled={aiBusy || aiLocked} value={aiAction} onChange={(event) => setAiAction(event.target.value as CommentAiAction)} className="max-w-48 rounded border border-[#c3b6f7] bg-white px-2 py-1 text-xs text-[#403294]">
                 {commentAiActions.map((action) => <option key={action.id} value={action.id}>{action.label}</option>)}
               </select>
-              <button type="button" disabled={aiBusy} onClick={() => void commentAi(aiAction)} className="rounded bg-[#6554c0] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#5243aa] disabled:opacity-50">Gerar</button>
+              <button type="button" disabled={aiBusy || aiLocked} onClick={() => void commentAi(aiAction)} className="rounded bg-[#6554c0] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#5243aa] disabled:opacity-50">Gerar</button>
               {aiBusy && <LoaderCircle size={12} className="animate-spin" />}
             </span>
             <button
@@ -365,7 +384,7 @@ export function CardComments({
             </button>
             <button
               type="submit"
-              disabled={!body.trim() && !pending.length}
+              disabled={aiLocked || (!body.trim() && !pending.length)}
               className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0052cc] disabled:opacity-50"
             >
               Executar
@@ -518,7 +537,7 @@ export function CardComments({
                       setAiAction("elaborate");
                       void commentAi("elaborate", comment);
                     }}
-                    disabled={aiBusy}
+                    disabled={aiBusy || aiLocked}
                     className="text-[#6554c0] disabled:opacity-50"
                   >
                     <Sparkles size={12} className="mr-1 inline" />
@@ -527,6 +546,7 @@ export function CardComments({
                   <button
                     type="button"
                     onClick={() => void executeComment(comment)}
+                    disabled={aiLocked}
                     className="inline-flex items-center gap-1 rounded bg-[#0c66e4] px-2 py-1 font-semibold text-white hover:bg-[#0052cc] disabled:opacity-50"
                   >
                     <Play size={12} fill="currentColor" />

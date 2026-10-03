@@ -79,6 +79,67 @@ Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferec
 
 As cópias principal (`orbit`, branch `main`) e de desenvolvimento (`orbit-dev`, branch `develop`) usam o mesmo banco e repositórios de arquivos, mas executam em portas distintas. A principal usa `http://localhost:3000` e API `4000`; desenvolvimento usa `http://localhost:3001` e API `4001`, sempre em tema escuro. Depois de preparar a cópia de desenvolvimento, inicie-a com `npm run orbit:dev`.
 
+### Operação essencial
+
+Use uma única instância de cada gerenciador. Se uma porta já estiver ocupada, verifique o estado antes de executar o comando de início novamente.
+
+Para parar o Orbit DEV:
+
+```bash
+cd /home/meada/projetos/orbit-dev
+test -f .orbit-dev-manager.pid && kill "$(cat .orbit-dev-manager.pid)"
+```
+
+Para parar o Orbit de produção:
+
+```bash
+cd /home/meada/projetos/orbit
+test -f .orbit-manager.pid && kill "$(cat .orbit-manager.pid)"
+```
+
+Se o arquivo de PID não existir ou algum processo filho continuar ativo, derrube os servidores diretamente pelas portas:
+
+```bash
+# Orbit DEV: web 3001 e API 4001
+fuser -k 3001/tcp 4001/tcp
+
+# Orbit produção: web 3000 e API 4000
+fuser -k 3000/tcp 4000/tcp
+```
+
+Confira se as portas foram liberadas:
+
+```bash
+ss -ltnp | rg ':(3000|3001|4000|4001)\\b'
+```
+
+Para reconstruir e levantar o Orbit DEV:
+
+```bash
+cd /home/meada/projetos/orbit-dev
+npm run db:prepare
+npm run build
+npm run orbit:dev
+```
+
+Com o gerenciador DEV já ativo, `npm run orbit:rebuild-dev` recompila e solicita o reinício automático; não execute `npm run orbit:dev` em paralelo.
+
+Para reconstruir e levantar o Orbit de produção:
+
+```bash
+cd /home/meada/projetos/orbit
+npm run db:prepare
+npm run build
+npm run orbit:serve
+```
+
+Para conferir as instâncias:
+
+```bash
+curl http://localhost:4001/health # DEV
+curl http://localhost:4000/health # produção
+```
+
 Para acessar pelo celular, conecte-o à mesma rede Wi-Fi da máquina e abra no navegador o endereço `http://IP-DA-MAQUINA:3000` (por exemplo, `http://192.168.68.57:3000`). O frontend usa um proxy local para encaminhar as chamadas à API, então não é necessário configurar o IP do celular.
 
 ## Conta inicial

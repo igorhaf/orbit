@@ -19,9 +19,9 @@ test('project creation reports a duplicate path instead of an internal error',as
 });
 
 test('card prompt settings inherit the board default project',async()=>{
-  const db={one:async(sql:string)=>sql.includes('SELECT c.id')?{id:'card-1',title:'Card',description:'',ai_project_id:null,ai_model:null,ai_effort:null,ai_default_project_id:'project-1',ai_default_model:'gpt-5.6-luna',ai_default_effort:'high'}:null};
+  const db={one:async(sql:string)=>sql.includes('SELECT c.id')?{id:'card-1',title:'Card',description:'',ai_project_id:null,ai_model:null,ai_effort:null,ai_default_project_id:'project-1',ai_default_model:'gpt-6-luna',ai_default_effort:'high'}:null};
   const service=new PromptSessionsService(db as never,{cardBoard:async()=> 'board-1'} as never,{} as never,{} as never);
-  assert.deepEqual(await service.settingsForCard('card-1','user-1'),{projectId:'project-1',model:'gpt-5.6-luna',effort:'high'});
+  assert.deepEqual(await service.settingsForCard('card-1','user-1'),{projectId:'project-1',model:'gpt-6-luna',effort:'high'});
 });
 
 test('connecting Trello only registers the board and does not import cards',async()=>{

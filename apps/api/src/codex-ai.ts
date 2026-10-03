@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { execFile } from 'node:child_process';
+import { prepareOrbitCodexHome } from './codex-home';
 
 const MAX_OUTPUT = 20_000;
 const stripAnsi=(value:string)=>value.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`,'g'),'');
@@ -24,11 +25,11 @@ export const codexErrorMessage=(detail:string) => {
 @Injectable()
 export class CodexAiService {
   async complete(instruction: string, model?: string, effort?: string): Promise<string> {
-    const result=await this.run(instruction, process.cwd(), 'read-only', model, effort);
+    const result=await this.run(instruction, process.cwd(), model, effort);
     return typeof result==='string'?result:result.output;
   }
   async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void): Promise<CodexExecution> {
-    const result=await this.run(instruction, projectPath, 'workspace-write', model, effort, progress, sessionId, onSessionId, onHeartbeat);
+    const result=await this.run(instruction, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat);
     return typeof result==='string'?{output:result,sessionId:sessionId||null,fileChanges:[],activities:[]}:result;
   }
   private progressMessage(line:string):{message:string;output?:boolean;delta?:boolean;replace?:boolean;cumulative?:boolean;itemId?:string;fileChanges?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:PromptActivity}|null {
@@ -54,7 +55,8 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
-  private async run(instruction: string, workingDirectory: string, sandbox: 'read-only'|'workspace-write', model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void): Promise<string|CodexExecution> {
+  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void): Promise<string|CodexExecution> {
+    const codexHome = await prepareOrbitCodexHome();
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
     const executable = process.env.CODEX_BIN || 'codex';
@@ -69,13 +71,13 @@ export class CodexAiService {
     try {
       await new Promise<void>((resolve, reject) => {
         const command = sessionId
-          ? ['exec', '-C', workingDirectory, 'resume', sessionId, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
-          : ['exec', '--sandbox', sandbox, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
+          ? ['exec', '-C', workingDirectory, 'resume', sessionId, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
+          : ['exec', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
         const child = spawn(executable, [
           ...command,
           ...(progress ? ['--json'] : []),
           '--output-last-message', output, instruction,
-        ], { stdio: ['ignore', progress?'pipe':'ignore', 'pipe'] });
+        ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['ignore', progress?'pipe':'ignore', 'pipe'] });
         let stderr = '';
         let stdout = '';
         let receivedOutputDelta=false;
@@ -172,11 +174,16 @@ export class CodexAiService {
       const result={output:text.slice(0, MAX_OUTPUT),sessionId:detectedSessionId,fileChanges,activities:[...activities.values()]};
       return progress ? result : result.output;
     } catch (error) {
+      const detail = error instanceof Error ? error.message : '';
+      if (sessionId && /(?:no (?:saved )?(?:session|conversation|thread)|(?:session|conversation|thread).*(?:not found|does not exist|could not be found)|could not find (?:the )?(?:session|conversation|thread))/i.test(detail)) {
+        progress?.('A sessão anterior não está disponível neste armazenamento; iniciando uma nova sessão.');
+        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat);
+      }
       console.error('[CodexAi] Execução falhou.',error);
       await sessionPersistence;
       const failure=sessionPersistenceError||error;
-      const detail = failure instanceof Error ? failure.message : '';
-      throw new HttpException(codexErrorMessage(detail), 502);
+      const failureDetail = failure instanceof Error ? failure.message : '';
+      throw new HttpException(codexErrorMessage(failureDetail), 502);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

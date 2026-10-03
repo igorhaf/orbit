@@ -95,9 +95,11 @@ Confirme primeiro que o executável responde e informa a versão esperada:
 "$HOME/.local/opt/orbit-codex/node_modules/.bin/codex" --version
 ```
 
-Para verificar a escrita através do mesmo modo usado pelo Orbit, peça ao executor para criar uma pasta de teste vazia dentro de um projeto confiável. Confira que a pasta existe e remova-a em seguida. Use um nome único e confira o caminho antes de remover arquivos. Uma falha de inicialização do sandbox deve aparecer como falha de execução; não considere como sucesso somente porque o processo Codex encerrou com código zero.
+O Orbit mantém as sessões do Codex em `.orbit/sessions` na raiz do repositório. O login existente continua sendo usado por meio de um link simbólico para o `auth.json` do `CODEX_HOME` global. As sessões iniciadas pelo Orbit usam acesso total ao ambiente e não ficam limitadas pelo sandbox; execute apenas instruções e projetos confiáveis.
 
-Na instalação documentada nesta revisão, uma chamada real em `/home/meada/projetos/pindorama` usou `codex-cli 0.159.2`, criou `.orbit-sandbox-check-20260930` no modo `workspace-write`, confirmou que estava vazia e removeu a pasta de teste após a verificação.
+Para verificar a escrita pelo executor, peça para criar uma pasta de teste vazia dentro de um projeto confiável. Confira que a pasta existe e remova-a em seguida. Use um nome único e confira o caminho antes de remover arquivos.
+
+Antes de as sessões do Orbit passarem a usar acesso total, uma chamada real em `/home/meada/projetos/pindorama` usou `codex-cli 0.159.2`, criou `.orbit-sandbox-check-20260930` no modo `workspace-write`, confirmou que estava vazia e removeu a pasta de teste após a verificação.
 
 ## Aplicar o esquema e iniciar
 

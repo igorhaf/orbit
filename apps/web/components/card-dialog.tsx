@@ -75,7 +75,7 @@ function PromptPreview({ card, board }: { card: Card; board: Board }) {
   </section>;
 }
 
-function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecutionStart }: { card: Card; onOpenExecution: () => void; onChanged: () => Promise<void>; aiLocked: boolean; onExecutionStart: () => void }) {
+function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecutionStart, onExecutionEnd }: { card: Card; onOpenExecution: () => void; onChanged: () => Promise<void>; aiLocked: boolean; onExecutionStart: () => void; onExecutionEnd: () => void }) {
   const [run, setRun] = useState<PromptRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -92,9 +92,10 @@ function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecu
     return () => { live = false; window.clearInterval(timer); };
   }, [card.id, run]);
   if (!run || (!run.summary && !run.prompt?.includes("[[ORBIT_SUMMARY]]"))) return null;
-  async function perform(action: () => Promise<unknown>) {
+  async function perform(action: () => Promise<unknown>, startsExecution = false) {
     setBusy(true);
     setError("");
+    if (startsExecution) onExecutionStart();
     try {
       await action();
       await onChanged();
@@ -106,6 +107,7 @@ function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecu
       setError((err as Error).message);
     } finally {
       setBusy(false);
+      if (startsExecution) onExecutionEnd();
     }
   }
   const summary = run.summary || "";
@@ -116,7 +118,7 @@ function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecu
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" disabled={busy} onClick={() => void perform(() => send<Card>(`/cards/${card.id}`, "PATCH", { description: summary }))} className="rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50">Sobrescrever como descrição</button>
         <button type="button" disabled={busy} onClick={() => void perform(() => send(`/cards/${card.id}/comments`, "POST", { body: summary }))} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><MessageSquare size={14} /> Adicionar como comentário</button>
-        <button type="button" disabled={busy || aiLocked} onClick={() => { onExecutionStart(); onOpenExecution(); void perform(() => send(`/cards/${card.id}/prompt-runs`, "POST", {})); }} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><RotateCcw size={14} /> Reexecutar</button>
+        <button type="button" disabled={busy || aiLocked} onClick={() => { onOpenExecution(); void perform(() => send(`/cards/${card.id}/prompt-runs`, "POST", {}), true); }} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><RotateCcw size={14} /> Reexecutar</button>
       </div>
       {error && <p role="alert" className="mt-2 text-xs text-[#ae2a19]">{error}</p>}
     </>
@@ -152,7 +154,7 @@ export function CardDialog({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"card" | "prompt" | "output">("card");
-  const [aiLocked, setAiLocked] = useState(false);
+  const [aiActionPending, setAiActionPending] = useState(false);
   const [previousCard, setPreviousCard] = useState(card);
   const markedActivityRead = useRef("");
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
@@ -171,20 +173,13 @@ export function CardDialog({
   const promptRunning = card.prompt?.status === "queued" || card.prompt?.status === "running";
   const executionRunning = card.result?.status === "queued" || card.result?.status === "running";
   const mainTabExecution = promptRunning || executionRunning;
+  const aiLocked = aiActionPending || mainTabExecution;
   const mainTabStatus = promptRunning
     ? card.prompt?.status === "queued" ? "Na fila" : "Executando"
     : executionRunning
       ? card.result?.status === "queued" ? "Na fila" : "Executando"
       : card.prompt?.status === "error" || card.result?.status === "failed" ? "Falhou"
         : card.prompt?.status === "success" || card.result?.status === "success" ? "Concluído" : "";
-  useEffect(() => {
-    if (!promptRunning && !executionRunning) {
-      const timer = window.setTimeout(() => setAiLocked(false), 0);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [promptRunning, executionRunning]);
-
   useEffect(() => {
     if (!card.prompt?.unread && !card.result?.unread) return;
     const activityId = `${card.id}:${card.prompt?.finished_at || card.prompt?.status || card.result?.status || "complete"}`;
@@ -510,7 +505,7 @@ export function CardDialog({
                       </button>
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={busy || aiLocked}
                         onClick={() => void (async () => {
                           if (await saveDescription()) {
                             window.dispatchEvent(new CustomEvent("orbit:card-description-saved", { detail: card.id }));
@@ -553,7 +548,9 @@ export function CardDialog({
                 board={board}
                 variant="text"
                 onChanged={onChanged}
-                onExecutionStart={() => { setAiLocked(true); setTab("output"); }}
+                onExecutionStart={() => { setAiActionPending(true); setTab("output"); }}
+                onAiActionStart={() => setAiActionPending(true)}
+                onExecutionEnd={() => setAiActionPending(false)}
                 aiLocked={aiLocked}
                 onApply={async (text, action) => {
                   const nextDescription = action === "elaborate" ? withExpansion(card.description, text) : text;
@@ -566,19 +563,21 @@ export function CardDialog({
                 }}
               />
             </div>
-            <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} onOpenExecution={() => setTab("output")} onChanged={onChanged} aiLocked={aiLocked} onExecutionStart={() => setAiLocked(true)} />
+            <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} onOpenExecution={() => setTab("output")} onChanged={onChanged} aiLocked={aiLocked} onExecutionStart={() => setAiActionPending(true)} onExecutionEnd={() => setAiActionPending(false)} />
             <CardSections
               key={card.id}
               card={card}
               board={board}
               onChanged={onChanged}
             />
-            <CardExecutionPanel
+              <CardExecutionPanel
               key={"execution:" + card.id}
               card={card}
               board={board}
               onChanged={onChanged}
-              onExecutionStart={() => setAiLocked(true)}
+              onExecutionStart={() => setAiActionPending(true)}
+              onExecutionEnd={() => setAiActionPending(false)}
+              aiLocked={aiLocked}
               mode="settings"
             />
             {details.externalResources.length > 0 && (
@@ -648,7 +647,9 @@ export function CardDialog({
               card={card}
               board={board}
               onChanged={onChanged}
-              onExecutionStart={() => { setAiLocked(true); setTab("output"); }}
+              onExecutionStart={() => { setAiActionPending(true); setTab("output"); }}
+              onAiActionStart={() => setAiActionPending(true)}
+              onExecutionEnd={() => setAiActionPending(false)}
               aiLocked={aiLocked}
               onApply={async (text, action) => {
                 const nextDescription = action === "elaborate"
@@ -673,6 +674,9 @@ export function CardDialog({
               refreshDetails={loadDetails}
               run={run}
               user={user}
+              aiLocked={aiLocked}
+              onAiActionStart={() => setAiActionPending(true)}
+              onAiActionEnd={() => setAiActionPending(false)}
             />
             <div>
               <h4 className="mb-2 text-xs font-bold text-[#626f86]">Ações</h4>
@@ -752,7 +756,7 @@ export function CardDialog({
           </aside>
         </div>}
         {tab === "prompt" && <PromptPreview card={card} board={board} />}
-        {tab === "output" && <div className="mt-6"><CardExecutionPanel key={`execution-output:${card.id}`} card={card} board={board} onChanged={onChanged} mode="outputs"/></div>}
+          {tab === "output" && <div className="mt-6"><CardExecutionPanel key={`execution-output:${card.id}`} card={card} board={board} onChanged={onChanged} mode="outputs" aiLocked={aiLocked}/></div>}
         <div className={tab === "output" ? "mt-6" : "hidden"}>
           <PromptExecution card={card} board={board} active={tab === "output"} />
         </div>
@@ -769,10 +773,10 @@ export function CardDialog({
       )}
       {panel === "date" && (
         <Modal onClose={() => setPanel(null)}>
-          <div className="space-y-3 p-5 text-xs">
-            <div className="border-b border-[#dfe1e6] pb-3">
-              <h2 className="pr-8 text-lg font-bold">Datas</h2>
-              <p className="mt-1 text-xs text-[#626f86]">
+          <div className="space-y-5 p-6 text-sm sm:p-8">
+            <div className="border-b border-[#dfe1e6] pb-4">
+              <h2 className="pr-12 text-xl font-bold">Datas</h2>
+              <p className="mt-2 text-sm text-[#626f86]">
                 Configure início, vencimento, lembretes e agendamento.
               </p>
             </div>
@@ -791,10 +795,10 @@ export function CardDialog({
       )}
       {panel === "move" && (
         <Modal onClose={() => setPanel(null)}>
-          <div className="space-y-3 p-5 text-xs">
-            <div className="border-b border-[#dfe1e6] pb-3">
-              <h2 className="pr-8 text-lg font-bold">Mover cartão</h2>
-              <p className="mt-1 text-xs text-[#626f86]">
+          <div className="space-y-5 p-6 text-sm sm:p-8">
+            <div className="border-b border-[#dfe1e6] pb-4">
+              <h2 className="pr-12 text-xl font-bold">Mover cartão</h2>
+              <p className="mt-2 text-sm text-[#626f86]">
                 Mova, copie ou crie um espelho deste cartão.
               </p>
             </div>

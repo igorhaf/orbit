@@ -1,5 +1,9 @@
 # Orbit agent instructions
 
+## Ciclo de vida das aplicações
+
+Não reinicie, levante ou derrube as instâncias Orbit automaticamente. Só faça qualquer ação de ciclo de vida (parar, iniciar ou reiniciar develop ou produção) quando o usuário pedir explicitamente.
+
 Follow the repository Git conventions in [`.agents/skills/orbit-git-conventions/SKILL.md`](.agents/skills/orbit-git-conventions/SKILL.md) whenever branch or commit work is requested. Do not create or rename a branch, stage files for a commit, or create a commit unless the user explicitly requests that Git action. A request to implement or fix code alone does not authorize it.
 
 After every user-requested commit, follow [`.agents/skills/orbit-post-commit-validation/SKILL.md`](.agents/skills/orbit-post-commit-validation/SKILL.md) to rebuild, restart, and run unit tests, repeating after repairs until all available checks pass or a prerequisite blocks verification.

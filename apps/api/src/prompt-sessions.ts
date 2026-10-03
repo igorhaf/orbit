@@ -18,9 +18,9 @@ type CommentSettings = {projectId:string;model:string;effort:Effort};
 type CommentJob = {comment_id:string;card_id:string;user_id:string;project_id:string;model:string;effort:Effort};
 type CommentReply = CommentJob & {authorLabel:string};
 const catalog=[
-  {id:'gpt-5.6-luna',name:'Luna',version:'GPT-5.6'},
-  {id:'gpt-5.6-sol',name:'Sol',version:'GPT-5.6'},
-  {id:'gpt-5.6-terra',name:'Terra',version:'GPT-5.6'},
+  {id:'gpt-6-astra',name:'Astra',version:'GPT-6'},
+  {id:'gpt-6.1-sol',name:'Sol',version:'GPT-6.1'},
+  {id:'gpt-6-luna',name:'Luna',version:'GPT-6'},
 ] as const;
 const fail=(message:string,status=400):never=>{throw new HttpException({message},status)};
 const value=(raw:unknown,label:string,max:number)=>{if(typeof raw!=='string'||!raw.trim()||raw.trim().length>max)fail(`${label} inválido.`);return String(raw).trim();};

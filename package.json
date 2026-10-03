@@ -15,6 +15,7 @@
     "db:migrate": "npm run db:migrate -w apps/api",
     "db:seed": "npm run db:seed -w apps/api",
     "db:prepare": "npm run db:migrate && npm run db:seed",
+    "test:selenium:card-click": "node .orbit/validations/card-click/card-click.selenium.mjs",
     "test:unit": "npm test -w apps/api",
     "db:backup": "npm run db:backup -w apps/api --"
   },
@@ -23,6 +24,7 @@
     "concurrently": "^9.2.1",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.6",
+    "selenium-webdriver": "^4.50.0",
     "typescript-eslint": "^8.70.1"
   }
 }

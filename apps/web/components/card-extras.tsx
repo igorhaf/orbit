@@ -102,14 +102,14 @@ export function CardDatesPanel({
     if (await update(body, undo, "alterar datas")) setError("");
   }
   return (
-    <div className="space-y-3 text-xs">
+    <div className="space-y-4 text-sm">
       <label className="block font-semibold">
         Data inicial
         <input
           type="datetime-local"
           value={start}
           onChange={(e) => setStart(e.target.value)}
-          className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
+          className="mt-2 min-h-11 w-full rounded-lg border border-[#8590a2] bg-white px-3 py-2.5 text-sm font-normal text-[#172b4d]"
         />
       </label>
       <label className="block font-semibold">
@@ -118,7 +118,7 @@ export function CardDatesPanel({
           type="datetime-local"
           value={due}
           onChange={(e) => setDue(e.target.value)}
-          className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
+          className="mt-2 min-h-11 w-full rounded-lg border border-[#8590a2] bg-white px-3 py-2.5 text-sm font-normal text-[#172b4d]"
         />
       </label>
       <label className="block font-semibold">
@@ -127,7 +127,7 @@ export function CardDatesPanel({
           value={reminder}
           onChange={(e) => setReminder(e.target.value)}
           disabled={!due}
-          className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
+          className="mt-2 min-h-11 w-full rounded-lg border border-[#8590a2] bg-white px-3 py-2.5 text-sm font-normal text-[#172b4d]"
         >
           <option value="">Sem lembrete</option>
           <option value="0">No vencimento</option>
@@ -147,7 +147,7 @@ export function CardDatesPanel({
           value={recurrence}
           onChange={(e) => setRecurrence(e.target.value)}
           disabled={!due}
-          className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
+          className="mt-2 min-h-11 w-full rounded-lg border border-[#8590a2] bg-white px-3 py-2.5 text-sm font-normal text-[#172b4d]"
         >
           <option value="">Não repetir</option>
           <option value="daily">Diariamente</option>
@@ -156,9 +156,10 @@ export function CardDatesPanel({
           <option value="yearly">Anualmente</option>
         </select>
       </label>
-      <div className="border-t border-[#dfe1e6] pt-3">
+      <div className="border-t border-[#dfe1e6] pt-4">
         <label className="flex items-center gap-2 font-semibold">
           <input
+            className="size-4 accent-[#0c66e4]"
             type="checkbox"
             checked={scheduled}
             onChange={(event) => setScheduled(event.target.checked)}
@@ -169,6 +170,7 @@ export function CardDatesPanel({
           <div className="mt-2 space-y-2">
             <label className="flex items-center gap-2">
               <input
+                className="size-4 accent-[#0c66e4]"
                 type="checkbox"
                 checked={allDay}
                 onChange={(event) => setAllDay(event.target.checked)}
@@ -181,7 +183,7 @@ export function CardDatesPanel({
                 type="datetime-local"
                 value={scheduleStart}
                 onChange={(event) => setScheduleStart(event.target.value)}
-                className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
+                className="mt-2 min-h-11 w-full rounded-lg border border-[#8590a2] bg-white px-3 py-2.5 text-sm font-normal text-[#172b4d]"
               />
             </label>
             <label className="block font-semibold">
@@ -190,7 +192,7 @@ export function CardDatesPanel({
                 type="datetime-local"
                 value={scheduleEnd}
                 onChange={(event) => setScheduleEnd(event.target.value)}
-                className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
+                className="mt-2 min-h-11 w-full rounded-lg border border-[#8590a2] bg-white px-3 py-2.5 text-sm font-normal text-[#172b4d]"
               />
             </label>
             <label className="block font-semibold">
@@ -198,7 +200,7 @@ export function CardDatesPanel({
               <input
                 value={timeZone}
                 onChange={(event) => setTimeZone(event.target.value)}
-                className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
+                className="mt-2 min-h-11 w-full rounded-lg border border-[#8590a2] bg-white px-3 py-2.5 text-sm font-normal text-[#172b4d]"
               />
             </label>
           </div>
@@ -211,7 +213,7 @@ export function CardDatesPanel({
       )}
       <button
         onClick={() => void save()}
-        className="w-full rounded bg-[#0c66e4] px-3 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+        className="min-h-11 w-full rounded-lg bg-[#0c66e4] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0055cc] disabled:cursor-not-allowed disabled:opacity-60"
       >
         Salvar datas
       </button>
@@ -275,14 +277,14 @@ export function CardLabelsPanel({
   return (
     <>
     <Modal onClose={onClose}>
-    <div className="space-y-3 p-5 text-xs">
-      <div className="border-b border-[#dfe1e6] pb-3"><h2 className="pr-8 text-lg font-bold">Etiquetas</h2><p className="mt-1 text-xs text-[#626f86]">Selecione, renomeie ou crie etiquetas.</p></div>
+    <div className="space-y-5 p-6 text-sm sm:p-8">
+      <div className="border-b border-[#dfe1e6] pb-4"><h2 className="pr-12 text-xl font-bold">Etiquetas</h2><p className="mt-2 text-sm text-[#626f86]">Selecione, renomeie ou crie etiquetas.</p></div>
       {!editorOpen ? <>
         <label className="relative block">
-          <Search size={14} className="absolute left-2.5 top-2.5 text-[#626f86]" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar etiquetas..." className="w-full rounded border border-[#8590a2] bg-white py-2 pl-8 pr-2 text-sm text-[#172b4d] outline-none focus:border-[#0c66e4]" />
+          <Search size={18} className="absolute left-3 top-3 text-[#626f86]" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar etiquetas..." className="min-h-11 w-full rounded-lg border border-[#8590a2] bg-white py-2.5 pl-10 pr-3 text-sm text-[#172b4d] outline-none focus:border-[#0c66e4]" />
         </label>
-        <div className="max-h-56 space-y-1 overflow-y-auto">
+        <div className="max-h-72 space-y-2 overflow-y-auto">
         {filteredLabels.map((label) => (
           <div key={label.id} className="group flex items-center gap-1">
             <button
@@ -296,10 +298,10 @@ export function CardLabelsPanel({
                   ),
                 )
               }
-              className="flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-[#f1f2f4] disabled:opacity-60"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-[#f1f2f4] disabled:opacity-60"
             >
-              <span className="flex min-h-8 min-w-0 flex-1 items-center rounded px-3 font-semibold" style={{ background: labelColors[label.color] || label.color, color: labelTextColor(label.color) }}>{label.name || <span className="opacity-60">Sem nome</span>}</span>
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center">{selectedIds.has(label.id) && <Check size={16} />}</span>
+              <span className="flex min-h-10 min-w-0 flex-1 items-center rounded-lg px-4 font-semibold" style={{ background: labelColors[label.color] || label.color, color: labelTextColor(label.color) }}>{label.name || <span className="opacity-60">Sem nome</span>}</span>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center">{selectedIds.has(label.id) && <Check size={18} />}</span>
             </button>
             <button
               type="button"
@@ -312,9 +314,9 @@ export function CardLabelsPanel({
                 setError("");
                 setEditorOpen(true);
               }}
-              className="rounded p-1.5 text-[#626f86] opacity-0 hover:bg-[#e9eaed] hover:text-[#172b4d] focus:opacity-100 group-hover:opacity-100"
+              className="rounded-lg p-2.5 text-[#626f86] hover:bg-[#e9eaed] hover:text-[#172b4d] focus:opacity-100"
             >
-              <Pencil size={14} />
+              <Pencil size={17} />
             </button>
           </div>
         ))}
@@ -330,16 +332,16 @@ export function CardLabelsPanel({
           setError("");
           setEditorOpen(true);
         }}
-        className="w-full rounded bg-[#e9eaed] py-2 font-semibold hover:bg-[#dfe1e6] disabled:opacity-60"
+        className="min-h-11 w-full rounded-lg bg-[#e9eaed] py-2.5 text-sm font-semibold transition-colors hover:bg-[#dfe1e6] disabled:opacity-60"
       >
         Criar uma nova etiqueta
       </button>
-      </> : <form onSubmit={save} className="space-y-3">
+      </> : <form onSubmit={save} className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-bold">{editing ? "Editar etiqueta" : "Criar etiqueta"}</h3>
             <button type="button" onClick={closeEditor} aria-label="Voltar para etiquetas" className="rounded p-1 hover:bg-[#e9eaed]"><X size={16} /></button>
           </div>
-          <div className="rounded px-3 py-2 text-center text-sm font-semibold" style={{ background: labelColors[color] || color, color: labelTextColor(color) }}>{name.trim() || "Prévia da etiqueta"}</div>
+          <div className="rounded-lg px-4 py-3 text-center text-sm font-semibold" style={{ background: labelColors[color] || color, color: labelTextColor(color) }}>{name.trim() || "Prévia da etiqueta"}</div>
           <label className="block font-semibold">
             Nome da etiqueta
             <input
@@ -348,7 +350,7 @@ export function CardLabelsPanel({
               onChange={(e) => setName(e.target.value)}
               maxLength={100}
               placeholder="Digite um nome (opcional)"
-              className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
+              className="mt-2 min-h-11 w-full rounded-lg border border-[#8590a2] bg-white px-3 py-2.5 text-sm font-normal text-[#172b4d]"
             />
           </label>
           <fieldset>
@@ -362,7 +364,7 @@ export function CardLabelsPanel({
                   aria-pressed={color === key}
                   key={key}
                   onClick={() => setColor(key)}
-                  className={"h-8 rounded " + (color === key ? "ring-2 ring-[#0c66e4] ring-offset-2" : "hover:brightness-90")}
+                  className={"h-10 rounded-lg " + (color === key ? "ring-2 ring-[#0c66e4] ring-offset-2" : "hover:brightness-90")}
                   style={{ background: hex }}
                 />
               ))}
@@ -372,8 +374,8 @@ export function CardLabelsPanel({
           <div className="flex items-center justify-between gap-2">
             {editing ? <button type="button" disabled={busy} onClick={() => confirm({ title: "Excluir etiqueta", description: "Excluir esta etiqueta do quadro e removê-la dos cartões?", confirmLabel: "Excluir" }, async () => { const removed = await run(() => send("/boards/" + board.id + "/labels/" + editing.id, "DELETE")); if (removed) closeEditor(); })} className="inline-flex items-center gap-1 rounded px-2 py-2 text-[#ae2a19] hover:bg-[#ffebe6]"><Trash2 size={14} />Excluir</button> : <span />}
             <div className="flex gap-2">
-              <button type="button" onClick={closeEditor} className="rounded px-3 py-2 font-semibold hover:bg-[#f1f2f4]">Cancelar</button>
-              <button disabled={busy} className="rounded bg-[#0c66e4] px-3 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="button" onClick={closeEditor} className="min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#f1f2f4]">Cancelar</button>
+              <button disabled={busy} className="min-h-11 rounded-lg bg-[#0c66e4] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
                 {editing ? "Salvar" : "Criar e adicionar"}
               </button>
             </div>

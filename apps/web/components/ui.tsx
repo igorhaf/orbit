@@ -46,10 +46,10 @@ export function Modal({ children, onClose, wide = false, extraWide = false }: { 
     };
   }, []);
   if (!mounted) return null;
-  return createPortal(<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#091e42a6] p-3 pt-[8vh] sm:p-6 sm:pt-[10vh]" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div onMouseDown={e => e.stopPropagation()} className={`fade-in relative w-full ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[760px]' : 'max-w-[430px]'} rounded-xl bg-white shadow-dialog`} role="dialog" aria-modal="true">
+  return createPortal(<div className="fixed inset-0 z-50 flex min-h-full items-center justify-center overflow-y-auto bg-[#091e42b8] p-4 backdrop-blur-[3px] sm:p-6" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div onMouseDown={e => e.stopPropagation()} className={`fade-in relative max-h-[calc(100dvh-2rem)] w-full overflow-y-auto ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[820px]' : 'max-w-[560px]'} rounded-2xl border border-[#dfe1e6] bg-white shadow-dialog`} role="dialog" aria-modal="true">
       {children}
-      <button aria-label="Fechar" onClick={onClose} className="absolute right-3 top-3 rounded-md p-2 text-[#626f86] hover:bg-[#091e4214]"><X size={18}/></button>
+      <button aria-label="Fechar" onClick={onClose} className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-lg text-[#626f86] transition-colors hover:bg-[#f1f2f4] hover:text-[#172b4d]"><X size={20}/></button>
     </div>
   </div>, document.body);
 }

@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{"theme":"light","notifications":true,"browserNotifications":false,"shortcuts":true,"compactCards":false}'::jsonb;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_model varchar(100);
-ALTER TABLE users ALTER COLUMN ai_default_model SET DEFAULT 'gpt-5.6-luna';
-ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_effort varchar(16) CHECK(ai_default_effort IN ('low','medium','high','xhigh'));
+ALTER TABLE users ALTER COLUMN ai_default_model SET DEFAULT 'gpt-6-luna';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_effort varchar(16) DEFAULT 'high' CHECK(ai_default_effort IN ('low','medium','high','xhigh'));
 CREATE TABLE IF NOT EXISTS notebooks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
