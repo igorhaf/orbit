@@ -262,6 +262,20 @@ export default function ProfilePage() {
     } catch(err) { setDirectoryPickerError((err as Error).message); }
     finally { setDirectoryPickerLoading(false); }
   }
+  async function createProjectDirectory() {
+    if (!directoryPicker) return;
+    const name = window.prompt("Nome da nova pasta");
+    if (!name?.trim()) return;
+    setDirectoryPickerLoading(true);
+    setDirectoryPickerError("");
+    try {
+      const created = await send<{ path:string }>("/ai/projects/directories", "POST", { path: directoryPicker.path, name: name.trim() });
+      setProjectPath(created.path);
+      await browseProjectDirectory(directoryPicker.path);
+      setNotice("Pasta criada. Selecione-a para cadastrar o projeto.");
+    } catch (err) { setDirectoryPickerError((err as Error).message); }
+    finally { setDirectoryPickerLoading(false); }
+  }
   async function connectDropbox() {
     try {
       const { url } = await api<{ url: string }>("/dropbox/oauth/start");
@@ -642,7 +656,7 @@ export default function ProfilePage() {
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       {directoryPickerLoading ? <p className="p-5 text-sm text-[#626f86]">Carregando pastas…</p> : directoryPicker?.folders.length ? directoryPicker.folders.map(folder=><button key={folder.path} type="button" onClick={()=>void browseProjectDirectory(folder.path)} className="flex w-full items-center gap-3 border-b border-[#f1f2f4] px-5 py-3 text-left text-sm hover:bg-[#f7f8fa]"><Folder size={17} className="shrink-0 text-[#6554c0]"/><span className="truncate">{folder.name}</span></button>) : !directoryPickerError && <p className="p-5 text-sm text-[#626f86]">Nenhuma subpasta acessível.</p>}
                     </div>
-                    <footer className="flex justify-end gap-2 border-t border-[#dfe1e6] p-4"><button type="button" onClick={()=>setDirectoryPickerOpen(false)} className="rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>{if(directoryPicker)setProjectPath(directoryPicker.path);setDirectoryPickerOpen(false);}} className="rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Selecionar esta pasta</button></footer>
+                    <footer className="flex flex-wrap justify-end gap-2 border-t border-[#dfe1e6] p-4"><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>void createProjectDirectory()} className="mr-auto rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold text-[#344563] disabled:opacity-50">Criar nova pasta</button><button type="button" onClick={()=>setDirectoryPickerOpen(false)} className="rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>{if(directoryPicker)setProjectPath(directoryPicker.path);setDirectoryPickerOpen(false);}} className="rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Selecionar esta pasta</button></footer>
                   </section>
                 </div>
               )}

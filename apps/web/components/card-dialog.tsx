@@ -7,12 +7,14 @@ import {
   Clock3,
   CreditCard,
   ExternalLink,
+  LoaderCircle,
   Mail,
   MoveRight,
   Plus,
+  RotateCcw,
   Tag,
   Trash2,
-  X,
+  MessageSquare,
 } from "lucide-react";
 import {
   api,
@@ -46,6 +48,7 @@ const imageData = (file: File) => new Promise<string>((resolve, reject) => {
 
 function PromptPreview({ card, board }: { card: Card; board: Board }) {
   const [run, setRun] = useState<PromptRun | null>(null);
+  const [models, setModels] = useState<{ id: string; name: string; version: string }[]>([]);
   useEffect(() => {
     let live = true;
     void api<PromptRun[]>(`/cards/${card.id}/prompt-runs`).then((runs) => {
@@ -53,18 +56,29 @@ function PromptPreview({ card, board }: { card: Card; board: Board }) {
     }).catch(() => undefined);
     return () => { live = false; };
   }, [card.id]);
+  useEffect(() => {
+    let live = true;
+    void api<{ id: string; name: string; version: string }[]>("/ai/models").then((available) => {
+      if (live) setModels(available);
+    }).catch(() => undefined);
+    return () => { live = false; };
+  }, []);
   const model = card.ai_model || board.ai_default_model || card.ai_project_default_model || board.ai_global_model || card.ai_global_model || "Não configurado";
   const effort = card.ai_effort || board.ai_default_effort || card.ai_project_default_effort || board.ai_global_effort || card.ai_global_effort || "Não configurado";
-  const prompt = run?.prompt || `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description || card.title}`;
+  const selectedModel = models.find((item) => item.id === (run?.model || model));
+  const modelLabel = selectedModel ? `${selectedModel.name} · ${selectedModel.version}` : run?.model || model;
+  const prompt = run?.prompt || `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description || card.title}`;
   return <section className="mt-6 space-y-4" aria-label="Próximo prompt">
-    <div className="flex min-w-max flex-nowrap gap-3 overflow-x-auto text-xs"><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{run?.model || model}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
+    <div className="flex min-w-max flex-nowrap gap-3 overflow-x-auto text-xs"><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{modelLabel}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
     <p className="text-sm text-[#626f86]">Prévia da instrução usada na sessão. Após executar, esta aba mostra o prompt completo enviado.</p>
     <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-4 font-mono text-xs leading-5">{prompt}</pre>
   </section>;
 }
 
-function CardPromptSummary({ card }: { card: Card }) {
+function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecutionStart }: { card: Card; onOpenExecution: () => void; onChanged: () => Promise<void>; aiLocked: boolean; onExecutionStart: () => void }) {
   const [run, setRun] = useState<PromptRun | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   useEffect(() => {
     let live = true;
     const refresh = async () => {
@@ -78,11 +92,36 @@ function CardPromptSummary({ card }: { card: Card }) {
     return () => { live = false; window.clearInterval(timer); };
   }, [card.id, run]);
   if (!run || (!run.summary && !run.prompt?.includes("[[ORBIT_SUMMARY]]"))) return null;
+  async function perform(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      await onChanged();
+      if (run?.id) {
+        const runs = await api<PromptRun[]>(`/cards/${card.id}/prompt-runs`);
+        setRun(runs.find((item) => item.id === run.id) || runs[0] || null);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const summary = run.summary || "";
   return <section aria-label="Resultado do último prompt da descrição" className="mt-3 rounded-lg border border-[#c3b6f7] bg-[#f7f5ff] p-3 dark:border-[#594b86] dark:bg-[#302a43]">
     <h3 className="text-sm font-semibold text-[#403294] dark:text-[#d4c7ff]">Resultado do último prompt</h3>
-    {run.summary ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#172b4d] dark:text-[#e6e0ff]">{run.summary}</p>
+    {run.summary ? <>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#172b4d] dark:text-[#e6e0ff]">{summary}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" disabled={busy} onClick={() => void perform(() => send<Card>(`/cards/${card.id}`, "PATCH", { description: summary }))} className="rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50">Sobrescrever como descrição</button>
+        <button type="button" disabled={busy} onClick={() => void perform(() => send(`/cards/${card.id}/comments`, "POST", { body: summary }))} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><MessageSquare size={14} /> Adicionar como comentário</button>
+        <button type="button" disabled={busy || aiLocked} onClick={() => { onExecutionStart(); onOpenExecution(); void perform(() => send(`/cards/${card.id}/prompt-runs`, "POST", {})); }} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><RotateCcw size={14} /> Reexecutar</button>
+      </div>
+      {error && <p role="alert" className="mt-2 text-xs text-[#ae2a19]">{error}</p>}
+    </>
       : run.status === "queued" || run.status === "running" ? <p className="mt-2 text-sm text-[#626f86] dark:text-[#c4bce0]">A execução está em andamento. O resumo aparecerá ao finalizar.</p>
-      : run.status === "error" ? <p className="mt-2 text-sm text-[#ae2a19] dark:text-[#ff9f8f]">A última execução falhou. Veja os detalhes na aba Execução.</p>
+      : run.status === "error" ? <p className="mt-2 text-sm text-[#ae2a19] dark:text-[#ff9f8f]">A última execução falhou. <button type="button" onClick={onOpenExecution} className="underline hover:text-[#7f1d1d] dark:hover:text-[#ffd0c7]">Veja os detalhes na aba Execução.</button></p>
       : <p className="mt-2 text-sm text-[#626f86] dark:text-[#c4bce0]">Esta execução não retornou o resumo estruturado.</p>}
   </section>;
 }
@@ -113,12 +152,13 @@ export function CardDialog({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"card" | "prompt" | "output">("card");
+  const [aiLocked, setAiLocked] = useState(false);
   const [previousCard, setPreviousCard] = useState(card);
   const markedActivityRead = useRef("");
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
   const descriptionRef = useRef(description);
-  const saveDescriptionRef = useRef<() => Promise<void>>(async () => undefined);
-  const savingDescriptionRef = useRef(false);
+  const saveDescriptionRef = useRef<() => Promise<boolean>>(async () => false);
+  const savingDescriptionRef = useRef<Promise<boolean> | null>(null);
   if (card !== previousCard) {
     setPreviousCard(card);
     setTitle(card.title);
@@ -128,6 +168,22 @@ export function CardDialog({
   }
   const user = getUser();
   const list = board.lists?.find((current) => current.id === card.list_id);
+  const promptRunning = card.prompt?.status === "queued" || card.prompt?.status === "running";
+  const executionRunning = card.result?.status === "queued" || card.result?.status === "running";
+  const mainTabExecution = promptRunning || executionRunning;
+  const mainTabStatus = promptRunning
+    ? card.prompt?.status === "queued" ? "Na fila" : "Executando"
+    : executionRunning
+      ? card.result?.status === "queued" ? "Na fila" : "Executando"
+      : card.prompt?.status === "error" || card.result?.status === "failed" ? "Falhou"
+        : card.prompt?.status === "success" || card.result?.status === "success" ? "Concluído" : "";
+  useEffect(() => {
+    if (!promptRunning && !executionRunning) {
+      const timer = window.setTimeout(() => setAiLocked(false), 0);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [promptRunning, executionRunning]);
 
   useEffect(() => {
     if (!card.prompt?.unread && !card.result?.unread) return;
@@ -212,11 +268,11 @@ export function CardDialog({
     return success;
   }
 
-  const saveDescription = useCallback(async () => {
-    if (!editingDescription || savingDescriptionRef.current) return;
-    savingDescriptionRef.current = true;
-    const nextDescription = descriptionRef.current;
-    try {
+  const saveDescription = useCallback(async (): Promise<boolean> => {
+    if (!editingDescription) return false;
+    if (savingDescriptionRef.current) return savingDescriptionRef.current;
+    const save = (async () => {
+      const nextDescription = descriptionRef.current;
       if (nextDescription !== card.description) {
         const success = await updateCard(
           { description: nextDescription },
@@ -224,11 +280,17 @@ export function CardDialog({
           "editar descrição",
         );
         if (success) setEditingDescription(false);
+        return success;
       } else {
         setEditingDescription(false);
+        return true;
       }
+    })();
+    savingDescriptionRef.current = save;
+    try {
+      return await save;
     } finally {
-      savingDescriptionRef.current = false;
+      if (savingDescriptionRef.current === save) savingDescriptionRef.current = null;
     }
   // updateCard is intentionally kept local to the dialog and is recreated with its current card state.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -303,7 +365,7 @@ export function CardDialog({
           </div>
         )}
         <nav className="mt-6 flex gap-1 border-b border-[#dfe1e6]" aria-label="Abas do cartão">
-          {[ ["card", "Cartão"], ["prompt", "Próximo prompt"], ["output", "Execução"] ].map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as typeof tab)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === id ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86] hover:text-[#172b4d]"}`}>{label}</button>)}
+          {[ ["card", "Cartão"], ["prompt", "Próximo prompt"], ["output", "Execução"] ].map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as typeof tab)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === id ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86] hover:text-[#172b4d]"}`}>{id === "card" && mainTabExecution && <LoaderCircle size={14} className="mr-1 inline animate-spin" aria-label="Execução em andamento" />}<span>{label}</span>{id === "card" && mainTabStatus && <span className={`ml-1 text-[11px] font-medium ${mainTabExecution ? "text-[#579dff]" : mainTabStatus === "Falhou" ? "text-[#ae2a19]" : "text-[#216e4e]"}`}>({mainTabStatus})</span>}</button>)}
         </nav>
         {tab === "card" && <div className="mt-6 grid gap-7 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]">
           <div className="min-w-0 space-y-7">
@@ -425,11 +487,11 @@ export function CardDialog({
                 Checklist
               </button>
             </div>
-            <section>
-              <div className="pl-0 sm:pl-8">
+            <div className="pl-0 sm:pl-8">
+              <section>
                 {editingDescription ? (
-                  <div>
-                    <div ref={descriptionEditorRef}>
+                  <div ref={descriptionEditorRef}>
+                    <div>
                       <MarkdownEditor
                         value={description}
                         onChange={setDescription}
@@ -439,6 +501,7 @@ export function CardDialog({
                     </div>
                     <div className="mt-2 flex gap-2">
                       <button
+                        type="button"
                         disabled={busy}
                         onClick={() => void saveDescription()}
                         className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
@@ -446,7 +509,19 @@ export function CardDialog({
                         Salvar
                       </button>
                       <button
-                        onClick={() => void saveDescription()}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void (async () => {
+                          if (await saveDescription()) {
+                            window.dispatchEvent(new CustomEvent("orbit:card-description-saved", { detail: card.id }));
+                          }
+                        })()}
+                        className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        Salvar e executar
+                      </button>
+                      <button
+                        onClick={() => { setDescription(card.description || ""); setEditingDescription(false); }}
                         className="rounded px-3 py-1.5 text-sm hover:bg-[#e9eaed]"
                       >
                         Cancelar
@@ -471,9 +546,27 @@ export function CardDialog({
                     )}
                   </div>
                 )}
-              </div>
-            </section>
-            <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} />
+              </section>
+              <CardAi
+                key={`text-assistant:${card.id}`}
+                card={card}
+                board={board}
+                variant="text"
+                onChanged={onChanged}
+                onExecutionStart={() => { setAiLocked(true); setTab("output"); }}
+                aiLocked={aiLocked}
+                onApply={async (text, action) => {
+                  const nextDescription = action === "elaborate" ? withExpansion(card.description, text) : text;
+                  const changed = await updateCard(
+                    { description: nextDescription },
+                    { description: card.description },
+                    action === "elaborate" ? "detalhar descrição" : "aplicar sugestão de IA",
+                  );
+                  if (changed) setDescription(nextDescription);
+                }}
+              />
+            </div>
+            <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} onOpenExecution={() => setTab("output")} onChanged={onChanged} aiLocked={aiLocked} onExecutionStart={() => setAiLocked(true)} />
             <CardSections
               key={card.id}
               card={card}
@@ -485,6 +578,7 @@ export function CardDialog({
               card={card}
               board={board}
               onChanged={onChanged}
+              onExecutionStart={() => setAiLocked(true)}
               mode="settings"
             />
             {details.externalResources.length > 0 && (
@@ -554,7 +648,8 @@ export function CardDialog({
               card={card}
               board={board}
               onChanged={onChanged}
-              onExecutionStart={() => setTab("output")}
+              onExecutionStart={() => { setAiLocked(true); setTab("output"); }}
+              aiLocked={aiLocked}
               onApply={async (text, action) => {
                 const nextDescription = action === "elaborate"
                   ? withExpansion(card.description, text)
@@ -648,51 +743,12 @@ export function CardDialog({
                     { title: "Excluir cartão definitivamente", description: `O cartão “${card.title}” será apagado permanentemente. Essa ação não pode ser desfeita. Continuar?`, confirmLabel: "Excluir definitivamente" },
                     async () => { await send(`/cards/${card.id}/archive`, "POST"); await send(`/cards/${card.id}`, "DELETE"); await onDeleted(); },
                   )}
-                  className="flex w-full items-center gap-2 rounded bg-[#fff0ee] px-3 py-2 text-left text-sm font-semibold text-[#ae2a19] hover:bg-[#ffd9d2]"
+                  className="flex w-full items-center gap-2 rounded bg-[#ffebe6] px-3 py-2 text-left text-sm font-semibold text-[#ae2a19] hover:bg-[#ffd9d2]"
                 >
                   <Trash2 size={16} /> Excluir definitivamente
                 </button>
               </div>
             </div>
-            {panel && (
-              <div className="rounded-lg border border-[#dfe1e6] bg-white p-3 shadow-card">
-                <div className="mb-3 flex items-center justify-between text-sm font-bold">
-                  <span>
-                    {panel === "labels"
-                      ? "Etiquetas"
-                      : panel === "date"
-                        ? "Datas"
-                        : "Mover cartão"}
-                  </span>
-                  <button onClick={() => setPanel(null)}>
-                    <X size={15} />
-                  </button>
-                </div>
-                {panel === "labels" && (
-                  <CardLabelsPanel board={board} card={card} run={run} busy={busy} onClose={() => setPanel(null)} />
-                )}
-                {panel === "date" && (
-                  <CardDatesPanel
-                    key={
-                      String(card.start_date) +
-                      String(card.due_date) +
-                      String(card.recurrence) +
-                      String(card.reminder_minutes)
-                    }
-                    card={card}
-                    update={updateCard}
-                  />
-                )}
-                {panel === "move" && (
-                  <CardOperations
-                    card={card}
-                    board={board}
-                    onChanged={onChanged}
-                    onMoved={onDeleted}
-                  />
-                )}
-              </div>
-            )}
           </aside>
         </div>}
         {tab === "prompt" && <PromptPreview card={card} board={board} />}
@@ -700,8 +756,57 @@ export function CardDialog({
         <div className={tab === "output" ? "mt-6" : "hidden"}>
           <PromptExecution card={card} board={board} active={tab === "output"} />
         </div>
-      </div>
-    </Modal>
+        </div>
+      </Modal>
+      {panel === "labels" && (
+        <CardLabelsPanel
+          board={board}
+          card={card}
+          run={run}
+          busy={busy}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {panel === "date" && (
+        <Modal onClose={() => setPanel(null)}>
+          <div className="space-y-3 p-5 text-xs">
+            <div className="border-b border-[#dfe1e6] pb-3">
+              <h2 className="pr-8 text-lg font-bold">Datas</h2>
+              <p className="mt-1 text-xs text-[#626f86]">
+                Configure início, vencimento, lembretes e agendamento.
+              </p>
+            </div>
+            <CardDatesPanel
+              key={
+                String(card.start_date) +
+                String(card.due_date) +
+                String(card.recurrence) +
+                String(card.reminder_minutes)
+              }
+              card={card}
+              update={updateCard}
+            />
+          </div>
+        </Modal>
+      )}
+      {panel === "move" && (
+        <Modal onClose={() => setPanel(null)}>
+          <div className="space-y-3 p-5 text-xs">
+            <div className="border-b border-[#dfe1e6] pb-3">
+              <h2 className="pr-8 text-lg font-bold">Mover cartão</h2>
+              <p className="mt-1 text-xs text-[#626f86]">
+                Mova, copie ou crie um espelho deste cartão.
+              </p>
+            </div>
+            <CardOperations
+              card={card}
+              board={board}
+              onChanged={onChanged}
+              onMoved={onDeleted}
+            />
+          </div>
+        </Modal>
+      )}
     {confirmationModal}
     </>
   );

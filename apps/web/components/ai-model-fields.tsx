@@ -41,7 +41,14 @@ export function AiModelFields({
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="block text-xs font-semibold">
           Modelo
-          <select disabled={disabled} value={name} onChange={(event) => setDraft({ source: value, name: event.target.value, version: "" })} className="mt-1 w-full rounded border border-[#8590a2] bg-white p-2 text-sm font-normal">
+          <select disabled={disabled} value={name} onChange={(event) => {
+            const nextName = event.target.value;
+            const nextVersions = models.filter((model) => model.name === nextName).map((model) => model.version);
+            const preservedVersion = nextVersions.includes(version) ? version : "";
+            const nextModel = models.find((model) => model.name === nextName && model.version === preservedVersion);
+            setDraft({ source: value, name: nextName, version: preservedVersion });
+            if (saveOnChange && nextModel) void onSave(nextModel.id);
+          }} className="mt-1 w-full rounded border border-[#8590a2] bg-white p-2 text-sm font-normal">
             <option value="">Escolha um modelo</option>
             {modelNames.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>

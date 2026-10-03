@@ -8,6 +8,7 @@ import {
   Mail,
   Paperclip,
   Pencil,
+  Play,
   Send,
   Sparkles,
   X,
@@ -34,13 +35,14 @@ type PendingAttachment = {
   mime_type?: string;
   data?: string;
 };
-type CommentAiAction = "write" | "elaborate" | "refine" | "summarize" | "shorten";
+type CommentAiAction = "write" | "elaborate" | "refine" | "summarize" | "shorten" | "negative";
 const commentAiActions: { id: CommentAiAction; label: string }[] = [
   { id: "write", label: "Escrever comentário" },
   { id: "elaborate", label: "Elaborar melhor o texto" },
   { id: "refine", label: "Refinar texto" },
   { id: "summarize", label: "Resumir" },
   { id: "shorten", label: "Encurtar" },
+  { id: "negative", label: "Gerar prompt negativo" },
 ];
 const asData = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -173,6 +175,11 @@ export function CardComments({
       setAiResult("");
       setAiTarget(null);
     }
+  }
+  async function executeComment(comment: Comment) {
+    await run(() =>
+      send(`/comments/${comment.id}/execute`, "POST"),
+    );
   }
   async function copyLink(comment: Comment) {
     const link = `${window.location.origin}${cardUrl(board.id, card.id, card.url_token)}&comment=${comment.id}`;
@@ -501,7 +508,7 @@ export function CardComments({
                     )}
                   </div>
                 ) : null}
-                <div className="mt-1 flex gap-3 text-xs text-[#626f86]">
+                <div className="mt-1 flex items-center gap-3 text-xs text-[#626f86]">
                   <button onClick={() => void copyLink(comment)}>
                     <Copy size={12} className="mr-1 inline" />
                     Copiar link
@@ -516,6 +523,14 @@ export function CardComments({
                   >
                     <Sparkles size={12} className="mr-1 inline" />
                     Detalhar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void executeComment(comment)}
+                    className="inline-flex items-center gap-1 rounded bg-[#0c66e4] px-2 py-1 font-semibold text-white hover:bg-[#0052cc] disabled:opacity-50"
+                  >
+                    <Play size={12} fill="currentColor" />
+                    Executar
                   </button>
                   {!comment.is_ai&&!comment.ai_status&&comment.author_id === user?.id && (
                     <>

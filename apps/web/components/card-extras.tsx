@@ -103,31 +103,31 @@ export function CardDatesPanel({
   }
   return (
     <div className="space-y-3 text-xs">
-      <label className="block">
+      <label className="block font-semibold">
         Data inicial
         <input
           type="datetime-local"
           value={start}
           onChange={(e) => setStart(e.target.value)}
-          className="mt-1 w-full rounded border border-[#8590a2] p-1.5"
+          className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
         />
       </label>
-      <label className="block">
+      <label className="block font-semibold">
         Vencimento
         <input
           type="datetime-local"
           value={due}
           onChange={(e) => setDue(e.target.value)}
-          className="mt-1 w-full rounded border border-[#8590a2] p-1.5"
+          className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
         />
       </label>
-      <label className="block">
+      <label className="block font-semibold">
         Lembrete
         <select
           value={reminder}
           onChange={(e) => setReminder(e.target.value)}
           disabled={!due}
-          className="mt-1 w-full rounded border border-[#8590a2] p-1.5"
+          className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
         >
           <option value="">Sem lembrete</option>
           <option value="0">No vencimento</option>
@@ -141,13 +141,13 @@ export function CardDatesPanel({
           <option value="10080">1 semana antes</option>
         </select>
       </label>
-      <label className="block">
+      <label className="block font-semibold">
         Repetir ao concluir
         <select
           value={recurrence}
           onChange={(e) => setRecurrence(e.target.value)}
           disabled={!due}
-          className="mt-1 w-full rounded border border-[#8590a2] p-1.5"
+          className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
         >
           <option value="">Não repetir</option>
           <option value="daily">Diariamente</option>
@@ -175,30 +175,30 @@ export function CardDatesPanel({
               />
               Dia inteiro
             </label>
-            <label className="block">
+            <label className="block font-semibold">
               Início
               <input
                 type="datetime-local"
                 value={scheduleStart}
                 onChange={(event) => setScheduleStart(event.target.value)}
-                className="mt-1 w-full rounded border border-[#8590a2] p-1.5"
+                className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
               />
             </label>
-            <label className="block">
+            <label className="block font-semibold">
               Fim
               <input
                 type="datetime-local"
                 value={scheduleEnd}
                 onChange={(event) => setScheduleEnd(event.target.value)}
-                className="mt-1 w-full rounded border border-[#8590a2] p-1.5"
+                className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
               />
             </label>
-            <label className="block">
+            <label className="block font-semibold">
               Fuso horário
               <input
                 value={timeZone}
                 onChange={(event) => setTimeZone(event.target.value)}
-                className="mt-1 w-full rounded border border-[#8590a2] p-1.5"
+                className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal text-[#172b4d]"
               />
             </label>
           </div>
@@ -211,7 +211,7 @@ export function CardDatesPanel({
       )}
       <button
         onClick={() => void save()}
-        className="w-full rounded bg-[#0c66e4] py-1.5 font-semibold text-white"
+        className="w-full rounded bg-[#0c66e4] px-3 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
       >
         Salvar datas
       </button>

@@ -10,3 +10,5 @@ dist
 /.orbit-deploy-status.json
 /.orbit-manager.pid
 /.orbit-rebuild-previous-static/
+/.orbit-dev-manager.pid
+/.orbit-dev-restart-ack

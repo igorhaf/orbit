@@ -12,7 +12,7 @@ export class OrbitEvents {
   notificationChanged(userId:string) {
     this.server?.to(`user:${userId}`).emit('notification:changed',{at:new Date().toISOString()});
   }
-  promptProgress(boardId:string,cardId:string,event:{runId:string;status:'queued'|'running'|'success'|'error';message:string;output?:boolean;replace?:boolean;files?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}}) {
+  promptProgress(boardId:string,cardId:string,event:{runId:string;status:'queued'|'running'|'success'|'error'|'cancelled';message:string;output?:boolean;replace?:boolean;files?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}}) {
     this.server?.to(`board:${boardId}`).emit('prompt:progress',{boardId,cardId,...event,at:new Date().toISOString()});
   }
   commentChanged(boardId:string,cardId:string) {

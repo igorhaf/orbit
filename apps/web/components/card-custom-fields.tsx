@@ -207,7 +207,7 @@ export function CardCustomFields({
   const [name, setName] = useState("");
   const [type, setType] = useState<CustomField["type"]>("text");
   const [options, setOptions] = useState("");
-  const fields = board.custom_fields || [];
+  const fields = (board.custom_fields || []).filter(field => !/^(contexto?|contexts?)$/i.test(field.name.trim()));
   return (
     <section id="card-fields">
       <div className="mb-3 flex items-center justify-between gap-2">

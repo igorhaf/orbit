@@ -16,18 +16,18 @@ export function CardActivityIndicator({card}:{card:Card}){
   return null;
 }
 
-const input='w-full min-w-0 rounded border border-[#8590a2] bg-white px-2 py-1.5 text-sm text-[#172b4d]';
-const button='rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50';
+const input='w-full min-w-0 rounded border border-white/15 bg-[#0b1220] px-2 py-1.5 text-sm text-[#d0d9e8]';
+const button='rounded bg-[#1f6feb] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50';
 function Select({label,value,options,onChange}:{label:string;value:string;options:{id:string;name:string}[];onChange:(v:string)=>void}){return <label className="block text-xs font-semibold">{label}<select aria-label={label} className={input+' mt-1'} value={value} onChange={e=>onChange(e.target.value)}><option value="">Selecione</option>{options.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>}
 function Multi({label,value,options,onChange}:{label:string;value:string[];options:{id:string;name:string}[];onChange:(v:string[])=>void}){return <fieldset className="space-y-1 text-xs"><legend className="mb-1 font-semibold">{label}</legend>{!options.length&&<p className="text-[#626f86]">Nenhum recurso registrado.</p>}{options.map(o=><label key={o.id} className="mr-3 inline-flex items-center gap-1"><input type="checkbox" checked={value.includes(o.id)} onChange={e=>onChange(e.target.checked?[...value,o.id]:value.filter(x=>x!==o.id))}/>{o.name}</label>)}</fieldset>}
 export function ExecutionOutput({output}:{output:Output}){
   const text=typeof output.value==='string'?output.value:JSON.stringify(output.value,null,2);
   const url=['url','pull_request'].includes(output.type)&&typeof output.value==='string'&&/^https?:\/\//.test(output.value);
-  return <div className="min-w-0 rounded border border-[#dfe1e6] bg-white p-2"><h4 className="text-xs font-bold">{output.label||output.type}</h4>{url?<a href={text} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-[#0c66e4] underline">{text}</a>:<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{text}</pre>}</div>;
+  return <div className="min-w-0 rounded border border-white/10 bg-[#151b24] p-2 text-[#d0d9e8]"><h4 className="text-xs font-bold">{output.label||output.type}</h4>{url?<a href={text} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-[#79c0ff] underline">{text}</a>:<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{text}</pre>}</div>;
 }
 export function CardExecutionBadge({card}:{card:Card;listColor?:string|null}){
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
-  if(!card.execution?.enabled)return null;
+  if(!card.execution?.enabled||!card.execution.project_id)return null;
   const active=busy||['queued','running'].includes(card.result?.status||'');
   return <div className="mt-2 flex flex-wrap items-center gap-2 overflow-hidden rounded-lg border border-[#172b4d] bg-[#101828] px-3 py-2 text-[11px] text-[#d0d9e8] dark:border-[#dfe1e6] dark:bg-white dark:text-[#172b4d]">
     <span className={`h-2 w-2 rounded-full ${active?'bg-[#79c0ff] animate-pulse':'bg-[#4fd49a]'}`}/>
@@ -37,7 +37,7 @@ export function CardExecutionBadge({card}:{card:Card;listColor?:string|null}){
   </div>;
 }
 
-export function CardExecutionPanel({card,board,onChanged,mode='all'}:{card:Card;board:Board;onChanged:()=>Promise<void>;mode?:'all'|'settings'|'outputs'}){
+export function CardExecutionPanel({card,board,onChanged,onExecutionStart,mode='all'}:{card:Card;board:Board;onChanged:()=>Promise<void>;onExecutionStart?:()=>void;mode?:'all'|'settings'|'outputs'}){
   const [details,setDetails]=useState<ExecutionDetails|null>(null),[draft,setDraft]=useState<ExecutionConfig|null>(null),[catalog,setCatalog]=useState<Catalog|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[dirty,setDirty]=useState(false);
   useEffect(()=>{let live=true;api<ExecutionDetails>(`/cards/${card.id}/execution`).then(data=>{if(live){setDetails(data);setDraft(data.execution)}}).catch(e=>{if(live)setError(e.message)});return()=>{live=false}},[card.id]);
   const project=draft?.project_id;
@@ -46,16 +46,17 @@ export function CardExecutionPanel({card,board,onChanged,mode='all'}:{card:Card;
   const active=details?.runs.some(r=>['queued','running'].includes(r.status));
   useEffect(()=>{const timer=setInterval(()=>{if(!document.hidden)void api<ExecutionDetails>(`/cards/${card.id}/execution`).then(setDetails).catch(e=>setError(e.message))},active?1500:5000);return()=>clearInterval(timer)},[card.id,active]);
   function edit(patch:Partial<ExecutionConfig>){setDraft(current=>current?{...current,...patch}:null);setDirty(true)}
-  async function work(fn:()=>Promise<unknown>){setBusy(true);setError('');try{await fn();await refresh();await onChanged()}catch(error){setError((error as Error).message)}finally{setBusy(false)}}
+  async function work(fn:()=>Promise<unknown>,startsExecution=false){setBusy(true);setError('');if(startsExecution)onExecutionStart?.();try{await fn();await refresh();await onChanged()}catch(error){setError((error as Error).message)}finally{setBusy(false)}}
   if(!draft||!catalog)return error?<p role="alert" className="text-sm text-red-700">{error}</p>:null;
+  if(!draft.project_id)return null;
   const resources=(kind:string)=>catalog.project?.resources.filter(r=>r.kind===kind)||[];
   const enabledPlugins=Array.isArray(catalog.project?.config.plugins)?catalog.project.config.plugins.filter((id):id is string=>typeof id==='string'):[];
   const plugins=catalog.plugins.filter(plugin=>enabledPlugins.includes(plugin.id));
   const actions=catalog.executors.find(e=>e.id===draft.executor)?.actions||[];
-  const section='rounded border border-[#dfe1e6] bg-white/50 p-3';
+  const section='rounded-lg border border-white/10 bg-[#151b24] p-3';
   const textList=(text:string)=>text.split('\n').map(x=>x.trim()).filter(Boolean);
   const context=(patch:Partial<ExecutionConfig['context']>)=>edit({context:{...draft.context,...patch}});
-  return <section className="space-y-2" aria-label="Capacidades do cartão">
+  return <section className="space-y-2 rounded-lg bg-[#101828] p-3 text-[#d0d9e8]" aria-label="Capacidades do cartão">
     {mode !== 'outputs' && <>
     {error&&<p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
     <details className={section}><summary className="cursor-pointer text-sm font-semibold">Execução opcional {draft.enabled&&<span className="ml-2 text-xs font-normal">{executionStatus[details?.result.status||'idle']}</span>}</summary><fieldset disabled={Boolean(active)} className="mt-3 space-y-3 disabled:opacity-60">
@@ -71,8 +72,8 @@ export function CardExecutionPanel({card,board,onChanged,mode='all'}:{card:Card;
     </fieldset></details>
     <details className={section}><summary className="cursor-pointer text-sm font-semibold">Contexto</summary><fieldset disabled={Boolean(active)} className="mt-3 space-y-3"><Multi label="Knowledge" value={draft.context.knowledge||[]} options={resources('knowledge')} onChange={knowledge=>context({knowledge})}/><Multi label="Rules" value={draft.context.rules||[]} options={resources('rules')} onChange={rules=>context({rules})}/><label className="block text-xs font-semibold">Arquivos (um caminho relativo por linha)<textarea className={input+' mt-1'} rows={2} value={draft.context.files?.join('\n')||''} onChange={e=>context({files:textList(e.target.value)})}/></label><Multi label="Cartões de contexto deste quadro" value={draft.context.cards||[]} options={(board.lists||[]).flatMap(l=>l.cards).filter(c=>c.id!==card.id).map(c=>({id:c.id,name:c.title}))} onChange={cards=>context({cards})}/><label className="block text-xs font-semibold">Instruções adicionais<textarea rows={3} className={input+' mt-1'} value={draft.context.instructions||''} onChange={e=>context({instructions:e.target.value})}/></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={Boolean(draft.context.include_agents_md)} onChange={e=>context({include_agents_md:e.target.checked})}/>Incluir orientação geral do AGENTS.md</label></fieldset></details>
     <details className={section}><summary className="cursor-pointer text-sm font-semibold">Integrações ({draft.integrations.length})</summary><fieldset disabled={Boolean(active)} className="mt-3 space-y-3">{draft.integrations.map((integration,index)=>{const plugin=plugins.find(p=>p.id===integration.plugin),action=plugin?.actions.find(a=>a.id===integration.action);const change=(patch:Partial<typeof integration>)=>edit({integrations:draft.integrations.map((x,i)=>i===index?{...x,...patch}:x)});return <div key={index} className="space-y-2 rounded border p-2"><Select label="Plugin" value={integration.plugin} options={plugins} onChange={plugin=>change({plugin,action:'',config:{}})}/><Select label="Capacidade" value={integration.action} options={plugin?.actions||[]} onChange={action=>change({action,config:{}})}/>{Object.entries(action?.inputSchema.properties||{}).map(([name,schema])=><label key={name} className="block text-xs font-semibold">{name}<input className={input} type={schema.type==='number'?'number':'text'} value={String(integration.config?.[name]||'')} onChange={e=>change({config:{...integration.config,[name]:schema.type==='number'?Number(e.target.value):e.target.value}})}/></label>)}<button type="button" className="text-xs text-red-700" onClick={()=>edit({integrations:draft.integrations.filter((_,i)=>i!==index)})}>Remover integração</button></div>})}<button disabled={draft.integrations.length>=10||!plugins.length} className="text-sm text-[#0c66e4]" onClick={()=>edit({integrations:[...draft.integrations,{plugin:plugins[0]?.id||'',action:plugins[0]?.actions[0]?.id||'',config:{}}]})}>Adicionar integração</button><p className="text-xs text-[#626f86]">Credenciais ficam no servidor. Somente capacidades registradas e habilitadas no projeto podem executar.</p></fieldset></details>
-    {dirty&&<button className={button} disabled={busy||Boolean(active)} onClick={()=>void work(async()=>{const saved=await send<ExecutionConfig>(`/cards/${card.id}/execution`,'PATCH',draft);setDraft(saved);setDirty(false)})}>Salvar capacidades</button>}
-    {details?.execution.enabled&&<div className="flex flex-wrap items-center gap-2"><button className={button} disabled={busy||Boolean(active)||dirty} onClick={()=>void work(()=>send(`/cards/${card.id}/runs`,'POST',{request_key:crypto.randomUUID()}))}>{active?'Executando…':'Executar'}</button>{active&&<button className="text-sm text-red-700" disabled={busy} onClick={()=>void work(()=>send(`/execution/runs/${details.runs.find(r=>['queued','running'].includes(r.status))!.id}/cancel`,'POST'))}>Cancelar execução</button>}<span className="text-xs">{executionStatus[details.result.status]}</span></div>}
+    {dirty&&<button className={button} disabled={busy} onClick={()=>void work(async()=>{const saved=await send<ExecutionConfig>(`/cards/${card.id}/execution`,'PATCH',draft);setDraft(saved);setDirty(false)})}>Salvar capacidades</button>}
+    {details?.execution.enabled&&details.execution.project_id&&<div className="flex flex-wrap items-center gap-2"><button className={button} disabled={busy||Boolean(active)||dirty} onClick={()=>void work(()=>send(`/cards/${card.id}/runs`,'POST',{request_key:crypto.randomUUID()}),true)}>{active?'Executando…':'Executar'}</button>{active&&<button className="text-sm text-red-700" disabled={busy} onClick={()=>void work(()=>send(`/execution/runs/${details.runs.find(r=>['queued','running'].includes(r.status))!.id}/cancel`,'POST'))}>Cancelar execução</button>}<span className="text-xs">{executionStatus[details.result.status]}</span></div>}
     </>}
     {mode !== 'settings' && <>
     </>}

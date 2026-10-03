@@ -374,7 +374,7 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   summary text,
   file_changes jsonb NOT NULL DEFAULT '[]'::jsonb,
   activities jsonb NOT NULL DEFAULT '[]'::jsonb,
-  status varchar(16) NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','success','error')),
+  status varchar(16) NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','success','error','cancelled')),
   error text,
   created_at timestamptz NOT NULL DEFAULT now(),
   started_at timestamptz NOT NULL DEFAULT now(),
@@ -386,7 +386,7 @@ ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DE
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS codex_session_id text;
 ALTER TABLE card_ai_runs ALTER COLUMN status SET DEFAULT 'queued';
 ALTER TABLE card_ai_runs DROP CONSTRAINT IF EXISTS card_ai_runs_status_check;
-ALTER TABLE card_ai_runs ADD CONSTRAINT card_ai_runs_status_check CHECK(status IN ('queued','running','success','error'));
+ALTER TABLE card_ai_runs ADD CONSTRAINT card_ai_runs_status_check CHECK(status IN ('queued','running','success','error','cancelled'));
 CREATE INDEX IF NOT EXISTS card_ai_runs_card_started_idx ON card_ai_runs(card_id, started_at DESC);
 CREATE TABLE IF NOT EXISTS card_ai_comment_jobs (
   comment_id uuid PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE,

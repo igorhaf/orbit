@@ -63,6 +63,7 @@ export function BoardList({
   labelFilter?: string;
   dueFilter?: string;
 }) {
+  void onOpen;
   const { confirm, confirmationModal } = useConfirmModal();
   const {
     attributes,
@@ -336,9 +337,7 @@ export function BoardList({
                   >
                     + Inserir antes
                   </button>
-                  <div onDoubleClick={() => onOpen(card)}>
-                    {renderCard(card, list.color)}
-                  </div>
+                  {renderCard(card, list.color)}
                 </div>
               ))}
             </SortableContext>

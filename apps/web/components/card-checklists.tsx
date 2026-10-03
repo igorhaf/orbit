@@ -259,9 +259,10 @@ function Group({
         onSubmit={async (event) => {
           event.preventDefault();
           if (!bulk.trim()) return;
-          await mutate(() =>
-            send("/checklists/" + group.id + "/items", "POST", { text: bulk }),
-          );
+          const items = bulk.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+          for (const item of items) {
+            await mutate(() => send("/checklists/" + group.id + "/items", "POST", { text: item }));
+          }
           setBulk("");
         }}
         className="mt-3"

@@ -7,7 +7,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Board, Card, PromptActivity, PromptFileChange, PromptRun, api, getToken } from '@/lib/api';
 
-type ProgressEvent={runId:string;cardId:string;status:'queued'|'running'|'success'|'error';message:string;output?:boolean;replace?:boolean;files?:PromptFileChange[];activity?:PromptActivity;at:string};
+type ProgressEvent={runId:string;cardId:string;status:'queued'|'running'|'success'|'error'|'cancelled';message:string;output?:boolean;replace?:boolean;files?:PromptFileChange[];activity?:PromptActivity;at:string};
 const withoutSummary=(value:string)=>value.replace(/\[\[ORBIT_SUMMARY\]\][\s\S]*(?:\[\[\/ORBIT_SUMMARY\]\]|$)/i,'').trimEnd();
 
 function LiveMarkdown({text}:{text:string}) {
@@ -109,6 +109,7 @@ export function PromptExecution({card,board,active}:{card:Card;board:Board;activ
   },[runs,loadRuns]);
   const displayedRunId=historyRunId||runId||runs[0]?.id||null;
   const displayedRun=runs.find(run=>run.id===displayedRunId)||null;
+  const cancel=async()=>{if(!displayedRun||displayedRun.status!=='queued')return;await api(`/cards/${card.id}/prompt-runs/${displayedRun.id}/cancel`,{method:'POST'});await loadRuns();};
   const current=events.filter(event=>event.runId===displayedRunId),last=current.at(-1);
   const dot=last?.status==='error'?'bg-[#ff8f73]':last?.status==='success'?'bg-[#0c66e4]':runId?'animate-pulse bg-[#579dff]':'bg-[#8590a2]';
   const rawOutput=streamedOutput[displayedRunId||'']??displayedRun?.output;
@@ -123,11 +124,11 @@ export function PromptExecution({card,board,active}:{card:Card;board:Board;activ
   return <section className={active?'':'hidden'} aria-label="Execução de prompt">
     <div className="mb-3 flex items-center gap-2 font-semibold"><Terminal size={21}/> Execução</div>
     <div className="overflow-hidden rounded-lg border border-[#172b4d] bg-[#101828] text-[#d0d9e8] dark:border-[#dfe1e6] dark:bg-white dark:text-[#172b4d]">
-      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs dark:border-[#dfe1e6]"><span className={`h-2 w-2 rounded-full ${dot}`}/>{(last?.status==='running'||displayedRun?.status==='running')&&<LoaderCircle size={14} className="animate-spin text-[#579dff]"/>}<span>{last?.status==='error'||displayedRun?.status==='error'?'Falhou':last?.status==='success'||displayedRun?.status==='success'?'Concluída':last?.status==='queued'||displayedRun?.status==='queued'?'Na fila':runId?'Em execução':'Aguardando execução'}</span></div>
+      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs dark:border-[#dfe1e6]"><span className={`h-2 w-2 rounded-full ${dot}`}/>{(last?.status==='running'||displayedRun?.status==='running')&&<LoaderCircle size={14} className="animate-spin text-[#579dff]"/>}<span>{last?.status==='error'||displayedRun?.status==='error'?'Falhou':displayedRun?.status==='cancelled'?'Cancelada':last?.status==='success'||displayedRun?.status==='success'?'Concluída':last?.status==='queued'||displayedRun?.status==='queued'?'Na fila':runId?'Em execução':'Aguardando execução'}</span>{displayedRun?.status==='queued'&&<button type="button" onClick={()=>void cancel()} className="ml-auto rounded border border-[#ff8f73] px-2 py-1 font-semibold text-[#ff8f73]">Cancelar</button>}</div>
       <div ref={outputRef} className="min-h-48 max-h-[44vh] overflow-y-auto p-3 font-mono text-xs leading-5">
         {current.map((event,index)=><p key={`${event.at}:${index}`} className={event.status==='error'?'text-[#ff8f73] dark:text-[#ae2a19]':event.status==='success'?'text-[#7ee2b8] dark:text-[#216e4e]':'text-[#d0d9e8] dark:text-[#172b4d]'}><span className="mr-2 text-[#738496] dark:text-[#626f86]">{new Date(event.at).toLocaleTimeString('pt-BR')}</span>{event.message}</p>)}
         {displayedRun?<div className={current.length?'mt-3 border-t border-white/10 pt-3 dark:border-[#dfe1e6]':''}>
-          <p className="flex items-center gap-2 text-[#d0d9e8] dark:text-[#172b4d]">{displayedRun.status==='success'?<span className="h-2 w-2 rounded-full bg-[#0c66e4]"/>:displayedRun.status==='error'?<XCircle size={15} className="text-[#ff8f73] dark:text-[#ae2a19]"/>:<LoaderCircle size={15} className="animate-spin text-[#579dff]"/>}<span>Execução: {displayedRun.status==='success'?'concluída':displayedRun.status==='error'?'falhou':displayedRun.status==='queued'?'na fila':'em andamento'}.</span></p>
+          <p className="flex items-center gap-2 text-[#d0d9e8] dark:text-[#172b4d]">{displayedRun.status==='success'?<span className="h-2 w-2 rounded-full bg-[#0c66e4]"/>:displayedRun.status==='error'?<XCircle size={15} className="text-[#ff8f73] dark:text-[#ae2a19]"/>:displayedRun.status==='cancelled'?<XCircle size={15}/>:<LoaderCircle size={15} className="animate-spin text-[#579dff]"/>}<span>Execução: {displayedRun.status==='success'?'concluída':displayedRun.status==='error'?'falhou':displayedRun.status==='cancelled'?'cancelada':displayedRun.status==='queued'?'na fila':'em andamento'}.</span></p>
           {displayedRun.error&&<p className="mt-3 text-[#ff8f73] dark:text-[#ae2a19]">{displayedRun.error}</p>}
         </div>:null}
         {output&&<LiveMarkdown text={output}/>}
@@ -136,6 +137,6 @@ export function PromptExecution({card,board,active}:{card:Card;board:Board;activ
         {!displayedRun&&current.length===0&&!output?<p className="text-[#9fadbc] dark:text-[#626f86]">Inicie uma execução na sessão de prompt para acompanhar o Codex aqui.</p>:null}
       </div>
     </div>
-    {runs.length>0&&<div className="mt-4"><h4 className="mb-2 text-sm font-semibold">Histórico de execuções</h4><div className="space-y-1">{runs.map(run=><button key={run.id} type="button" onClick={()=>setHistoryRunId(run.id)} className={`flex w-full items-center justify-between rounded border px-3 py-2 text-left text-xs ${displayedRunId===run.id?'border-[#0c66e4] bg-[#e9f2ff]':'border-[#dfe1e6] bg-white'}`}><span>{new Date(run.started_at).toLocaleString('pt-BR')} · {run.model} · {run.effort}</span><span className={run.status==='error'?'text-[#ae2a19]':run.status==='success'?'text-[#0c66e4]':'text-[#626f86]'}>{run.status==='success'?'Concluída':run.status==='error'?'Falhou':run.status==='queued'?'Na fila':'Executando'}</span></button>)}</div></div>}
+    {runs.length>0&&<div className="mt-4"><h4 className="mb-2 text-sm font-semibold">Histórico de execuções</h4><div className="space-y-1">{runs.map(run=><button key={run.id} type="button" onClick={()=>setHistoryRunId(run.id)} className={`flex w-full items-center justify-between rounded border px-3 py-2 text-left text-xs ${displayedRunId===run.id?'border-[#0c66e4] bg-[#e9f2ff]':'border-[#dfe1e6] bg-white'}`}><span className="min-w-0 truncate"><span className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${run.source==='comment'?'bg-[#e9ddff] text-[#403294]':'bg-[#dfeeff] text-[#0747a6]'}`}>{run.source==='comment'?'Comentário':'Descrição'}</span>{new Date(run.started_at).toLocaleString('pt-BR')} · {run.model} · {run.effort}</span><span className={run.status==='error'?'text-[#ae2a19]':run.status==='success'?'text-[#0c66e4]':'text-[#626f86]'}>{run.status==='success'?'Concluída':run.status==='error'?'Falhou':run.status==='cancelled'?'Cancelada':run.status==='queued'?'Na fila':'Executando'}</span></button>)}</div></div>}
   </section>;
 }

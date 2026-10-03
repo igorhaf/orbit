@@ -25,7 +25,7 @@ export type CardExtensions = { checklists:ChecklistGroup[];values:CustomValue[] 
 export type Card = {
   id: string;
   url_token?: string;
-  execution?: {enabled:boolean;agent:string|null;executor:string|null}|null;
+  execution?: {enabled:boolean;project_id:string|null;agent:string|null;executor:string|null}|null;
   result?: {status:string;unread?:boolean}|null;
   prompt?: {status:'queued'|'running'|'success'|'error';finished_at?:string|null;unread?:boolean}|null;
   kind?: 'normal'|'template'|'board'|'separator'|'link'|'mirror';
@@ -101,7 +101,7 @@ export type AiEffort = 'low'|'medium'|'high'|'xhigh';
 export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_native?:boolean};
 export type PromptFileChange={path:string;kind:'add'|'delete'|'update';additions?:number;deletions?:number;diff?:string};
 export type PromptActivity={id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
-export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'success'|'error';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
+export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
 export type TrelloConnection = { id:string; trello_board_id:string; trello_board_name:string; enabled:boolean; last_synced_at:string|null; last_error:string|null; created_at:string };
 export type TrelloBoardOption = { id:string; name:string; url:string|null };
 export type TrelloListOption = {connection_id:string;trello_board_name:string;mapped_list_id:string|null;lists:{id:string;name:string}[]};
@@ -222,16 +222,16 @@ export const boardColors: Record<string,string> = {
   ocean: 'linear-gradient(135deg,#4c94b0 0%,#31748d 50%,#1a4e73 100%)',
 };
 export const labelColors: Record<string,string> = {
-  green:'#4bce97', green_light:'#baf3db', green_dark:'#216e4e',
-  yellow:'#f5cd47', yellow_light:'#f8e6a0', yellow_dark:'#7f5f01',
-  orange:'#fea362', orange_light:'#ffdcc0', orange_dark:'#974f0c',
-  red:'#f87168', red_light:'#ffd5d2', red_dark:'#ae2a19',
-  purple:'#9f8fef', purple_light:'#dfd8fd', purple_dark:'#5e4db2',
-  blue:'#579dff', blue_light:'#cce0ff', blue_dark:'#0c66e4',
-  pink:'#e774bb', pink_light:'#fdd0ec', pink_dark:'#a63586',
-  teal:'#60c6d2', teal_light:'#c6edfb', teal_dark:'#206a83',
-  lime:'#94c748', lime_light:'#d3f1a7', lime_dark:'#4c6b1f',
-  gray:'#8590a2', gray_light:'#dfe1e6', gray_dark:'#44546f',
-  none:'#e9eaed',
+  green:'linear-gradient(135deg,#5ed6a1,#2d9d73)', green_light:'linear-gradient(135deg,#c9f7e0,#a7e9cc)', green_dark:'linear-gradient(135deg,#31865f,#17533d)',
+  yellow:'linear-gradient(135deg,#f8d85f,#d9aa2e)', yellow_light:'linear-gradient(135deg,#fbedb6,#f2d77e)', yellow_dark:'linear-gradient(135deg,#9b760c,#644901)',
+  orange:'linear-gradient(135deg,#ffb276,#df784c)', orange_light:'linear-gradient(135deg,#ffead9,#ffcda9)', orange_dark:'linear-gradient(135deg,#b46216,#773807)',
+  red:'linear-gradient(135deg,#fa8178,#d9534f)', red_light:'linear-gradient(135deg,#ffe4e1,#ffc2be)', red_dark:'linear-gradient(135deg,#c43e31,#861c14)',
+  purple:'linear-gradient(135deg,#ad9ff4,#7966ca)', purple_light:'linear-gradient(135deg,#ebe7ff,#d1c8fa)', purple_dark:'linear-gradient(135deg,#705fca,#49388f)',
+  blue:'linear-gradient(135deg,#70adff,#397bd6)', blue_light:'linear-gradient(135deg,#deebff,#b8d5fb)', blue_dark:'linear-gradient(135deg,#2174e6,#084da9)',
+  pink:'linear-gradient(135deg,#ed8bc5,#c05296)', pink_light:'linear-gradient(135deg,#ffe3f3,#f6bcdd)', pink_dark:'linear-gradient(135deg,#bd4c98,#7a2260)',
+  teal:'linear-gradient(135deg,#76d3dc,#3f9eaa)', teal_light:'linear-gradient(135deg,#dcf7fb,#afe4ef)', teal_dark:'linear-gradient(135deg,#2f8199,#155367)',
+  lime:'linear-gradient(135deg,#a8d95b,#74a832)', lime_light:'linear-gradient(135deg,#e1f7bd,#c3e890)', lime_dark:'linear-gradient(135deg,#658c2d,#3a5515)',
+  gray:'linear-gradient(135deg,#9aa4b4,#687587)', gray_light:'linear-gradient(135deg,#edf0f3,#d0d6dd)', gray_dark:'linear-gradient(135deg,#596a7d,#354254)',
+  none:'linear-gradient(135deg,#f2f3f5,#dfe1e6)',
 };
-export const labelTextColor = (color:string) => /_dark$/.test(color) ? '#fff' : '#172b4d';
+export const labelTextColor = (color:string) => /_light$|^none$/.test(color) ? '#172b4d' : '#fff';

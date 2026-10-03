@@ -128,6 +128,7 @@ export class CardExtensionsService {
     const client=await this.db.pool.connect();
     try{await client.query('BEGIN');
       const card=(await client.query(`INSERT INTO cards(list_id,title,due_date,position) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING *`,[listId,item.text,item.due_date])).rows[0];
+      await client.query(`INSERT INTO card_labels(card_id,label_id) SELECT $1,label_id FROM card_labels WHERE card_id=$2 ON CONFLICT DO NOTHING`,[card.id,item.card_id]);
       await client.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);
       await client.query('COMMIT');await this.features.record(userId,item.board_id,card.id,'card_created',`converteu o item ${item.text} em cartão`);return card;
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
