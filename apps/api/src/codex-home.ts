@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 
 /** Keeps Orbit's Codex history in the repository while reusing the server login. */
 export async function prepareOrbitCodexHome(): Promise<string> {
-  const orbitHome = resolve(process.cwd(), '.orbit', 'sessions');
+  const orbitHome = resolve(__dirname, '..', '..', '..', '.orbit', 'sessions');
   const globalHome = resolve(process.env.CODEX_HOME || join(process.env.HOME || homedir(), '.codex'));
   await mkdir(orbitHome, { recursive: true });
 

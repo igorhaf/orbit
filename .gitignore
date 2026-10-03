@@ -13,3 +13,4 @@ dist
 /.orbit-dev-manager.pid
 /.orbit-dev-restart-ack
 /.orbit/sessions/
+/apps/api/.orbit/

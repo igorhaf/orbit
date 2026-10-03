@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { codexErrorMessage } from './codex-ai';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { CodexAiService, codexErrorMessage } from './codex-ai';
 import { PromptSessionsService } from './prompt-sessions';
 import { TrelloSyncService } from './trello-sync';
 
@@ -8,6 +11,23 @@ test('Codex errors distinguish account quota, context tokens and timeouts',()=>{
   assert.match(codexErrorMessage('You have exceeded your current quota: insufficient_quota'),/limite de uso ou de tokens/);
   assert.match(codexErrorMessage('maximum context length and too many tokens'),/limite de tokens do modelo/);
   assert.equal(codexErrorMessage('A resposta do Codex excedeu o tempo limite.'),'A resposta do Codex excedeu o tempo limite.');
+});
+
+test('Codex receives long prompts through stdin instead of process arguments',async()=>{
+  const directory=await mkdtemp(join(tmpdir(),'orbit-codex-test-'));
+  const executable=join(directory,'fake-codex.mjs');
+  const previousBin=process.env.CODEX_BIN;const previousHome=process.env.CODEX_HOME;
+  const prompt='context '.repeat(20_000);
+  try{
+    await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst args=process.argv.slice(2);\nconst output=args[args.indexOf('--output-last-message')+1];\nif(args.at(-1)!=='-')process.exit(2);\nlet prompt='';for await(const chunk of process.stdin)prompt+=chunk;\nawait writeFile(output,String(prompt.length));\n`);
+    await chmod(executable,0o755);
+    process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;
+    assert.equal(await new CodexAiService().complete(prompt,'gpt-6-luna','high'),String(prompt.length));
+  }finally{
+    if(previousBin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previousBin;
+    if(previousHome===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previousHome;
+    await rm(directory,{recursive:true,force:true});
+  }
 });
 
 test('project creation reports a duplicate path instead of an internal error',async()=>{

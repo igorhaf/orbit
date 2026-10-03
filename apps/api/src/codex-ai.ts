@@ -76,8 +76,10 @@ export class CodexAiService {
         const child = spawn(executable, [
           ...command,
           ...(progress ? ['--json'] : []),
-          '--output-last-message', output, instruction,
-        ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['ignore', progress?'pipe':'ignore', 'pipe'] });
+          '--output-last-message', output, '-',
+        ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['pipe', progress?'pipe':'ignore', 'pipe'] });
+        child.stdin?.on('error', () => { /* The Codex process may exit before consuming the prompt. */ });
+        child.stdin?.end(instruction);
         let stderr = '';
         let stdout = '';
         let receivedOutputDelta=false;
