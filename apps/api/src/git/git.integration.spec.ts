@@ -36,7 +36,7 @@ test('Git plugin versions without deploy, uses configured branches and tracks a 
     const card=(await db.one<{id:string}>('INSERT INTO cards(list_id,title,description) VALUES($1,$2,$3) RETURNING id',[list,'Build feature','']))!.id;
     const plugin=new GitPlugin(db,new FeaturesService(db),new SecretVault());
     const registry=new PluginRegistry();registry.register(gitPluginDefinition(plugin));
-    assert.deepEqual(registry.catalog().find(item=>item.id==='git')?.actions.map(action=>action.id),['history','commit','operation','deploy']);
+    assert.deepEqual(registry.catalog().find(item=>item.id==='git')?.actions.map(action=>action.id),['history','commit','operation','repository_operation','deploy']);
     const repo=await plugin.addRepository(project,owner,{name:'App',relative_path:'.',branches:['main','develop'],remote_name:'origin'}) as {id:string};
     const empty=await plugin.projectConfig(project,owner);assert.equal(empty.targets.length,0);
     await assert.rejects(()=>plugin.commit(card,owner,{repository_id:repo.id,type:'feat',paths:['.env']}),/Caminho de arquivo inválido/);

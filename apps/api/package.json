@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "npm run lint && tsc -p tsconfig.json",
-    "test": "tsx --test src/card-rules.spec.ts src/notebook-markdown.spec.ts src/execution/execution.spec.ts src/plugins/contract.spec.ts src/plugins/sdk.spec.ts src/calendar/calendar.spec.ts src/calendar/microsoft-calendar.spec.ts src/mail/mail.spec.ts src/github/github.spec.ts src/git/rules.spec.ts src/git/pipeline.spec.ts src/dropbox/dropbox.spec.ts src/pending-fixes.spec.ts",
-    "test:integration": "tsx --test --test-concurrency=1 src/execution/execution.integration.spec.ts src/calendar/calendar.integration.spec.ts src/planner/planner.integration.spec.ts src/git/git.integration.spec.ts",
+    "test": "tsx --test src/card-rules.spec.ts src/notebook-markdown.spec.ts src/execution/execution.spec.ts src/plugins/contract.spec.ts src/plugins/sdk.spec.ts src/calendar/calendar.spec.ts src/calendar/microsoft-calendar.spec.ts src/mail/mail.spec.ts src/github/github.spec.ts src/git/rules.spec.ts src/git/pipeline.spec.ts src/delivery/delivery.spec.ts src/dropbox/dropbox.spec.ts src/pending-fixes.spec.ts",
+    "test:integration": "tsx --test --test-concurrency=1 src/execution/execution.integration.spec.ts src/calendar/calendar.integration.spec.ts src/planner/planner.integration.spec.ts src/git/git.integration.spec.ts src/delivery/delivery.integration.spec.ts",
     "test:browser": "tsx --test --test-concurrency=1 src/execution/execution.browser.spec.ts src/calendar/calendar.browser.spec.ts src/pending-fixes.browser.spec.ts",
     "db:backup": "tsx src/backup.ts",
     "db:seed": "tsx src/seed.ts",
@@ -28,6 +28,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "socket.io": "^4.8.4",
+    "ssh2": "^1.17.0",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2",
     "yaml": "^2.9.1"
@@ -39,6 +40,7 @@
     "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.15.5",
+    "@types/ssh2": "^1.15.6",
     "@types/turndown": "^5.0.6",
     "playwright": "^1.63.0",
     "tsx": "^4.20.0",

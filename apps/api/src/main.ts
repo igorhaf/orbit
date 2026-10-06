@@ -5,7 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { Request, Response, json } from 'express';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { PoolClient } from 'pg';
 import { Db } from './db';
@@ -45,6 +45,13 @@ import { notebookHtmlToMarkdown } from './notebook-markdown';
 import { PlannerController, PlannerPlugin, plannerPluginDefinition } from './planner/planner.plugin';
 import { EnvironmentSettingsController } from './env-settings';
 import { createDatabaseBackup, listDatabaseBackups, restoreDatabaseBackup } from './database-backup';
+import {CommandExecutorRegistry,DeliveryCredentialService,LocalCommandExecutor,SshCommandExecutor} from './delivery/executors';
+import {DeliveryGitService} from './delivery/git-service';
+import {DeliveryHandlers,DeploymentStrategyRegistry,PromotionStrategyRegistry} from './delivery/handlers';
+import {StepHandlerRegistry} from './delivery/contracts';
+import {DeliveryManagement} from './delivery/management';
+import {DeliveryRunner} from './delivery/runner';
+import {DeliveryController,deliveryPluginDefinition,sshPluginDefinition} from './delivery/controller';
 
 type Payload = Record<string, unknown>;
 type CopyParts = {checklists:boolean;customFields:boolean};
@@ -86,7 +93,7 @@ const listColors = new Set(['blue','green','yellow','orange','red','purple','pin
 
 @Injectable()
 class Service {
-  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Inject(CodexAiService) private codex: CodexAiService,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(OrbitEvents) private events:OrbitEvents) {}
+  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Inject(CodexAiService) private codex: CodexAiService,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(DeliveryRunner) private delivery:DeliveryRunner) {}
   private async classifyTitle(title:string,userId:string){
     const result=cardKindFromTitle(title,process.env.WEB_ORIGIN||'http://localhost:3000');
     if(result.targetBoardId)await this.member(result.targetBoardId,userId);
@@ -1032,6 +1039,11 @@ class Service {
       await this.features.record(userId,boardId,id,'card_updated',action);
       await this.features.notifyAssignees(userId,boardId,id,'card_updated','Cartão atualizado',action);
     }
+    const [previousList,nextList]=await Promise.all([this.db.one<{is_completion_list:boolean}>('SELECT is_completion_list FROM lists WHERE id=$1',[original.list_id]),this.db.one<{is_completion_list:boolean}>('SELECT is_completion_list FROM lists WHERE id=$1',[listId])]);
+    if(!(original.completed||previousList?.is_completion_list)&&(completed||nextList?.is_completion_list)){
+      const projectId=original.ai_project_id||(await this.db.one<{ai_default_project_id:string|null}>('SELECT ai_default_project_id FROM boards WHERE id=$1',[boardId]))?.ai_default_project_id;
+      if(projectId){const triggerKey=randomUUID();const pipelines=await this.db.query<{id:string}>('SELECT id FROM delivery_pipelines WHERE project_id=$1 AND owner_id=$2 AND trigger_type=$3 AND enabled',[projectId,userId,'card.completed']);for(const pipeline of pipelines){try{await this.delivery.start(userId,pipeline.id,{cardId:id,triggerType:'card.completed',triggerKey,mode:'normal'})}catch(error){await this.features.record(userId,boardId,id,'pipeline_trigger_failed',`Pipeline ${pipeline.id}: ${(error as Error).message.slice(0,200)}`)}}}
+    }
     return card;
   }
   async deleteCard(id: string,userId: string) {
@@ -1315,10 +1327,14 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
+  {provide:CommandExecutorRegistry,useFactory:(local:LocalCommandExecutor,ssh:SshCommandExecutor)=>{const registry=new CommandExecutorRegistry();registry.register(local);registry.register(ssh);return registry},inject:[LocalCommandExecutor,SshCommandExecutor]},
+  {provide:DeploymentStrategyRegistry,useFactory:()=>new DeploymentStrategyRegistry()},
+  {provide:PromotionStrategyRegistry,useFactory:()=>new PromotionStrategyRegistry()},
+  {provide:StepHandlerRegistry,useFactory:(handlers:DeliveryHandlers,deployments:DeploymentStrategyRegistry,promotions:PromotionStrategyRegistry)=>{const registry=new StepHandlerRegistry();handlers.register(registry,deployments,promotions);return registry},inject:[DeliveryHandlers,DeploymentStrategyRegistry,PromotionStrategyRegistry]},
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:async(db:Db,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin)=>{const registry=new PluginRegistry();registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}return registry;},inject:[Db,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController, OutlookCalendarController, MailController, GitHubController, GitController, DropboxController, PlannerController, TrelloController] })
+  {provide:PluginRegistry,useFactory:async(db:Db,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService)=>{const registry=new PluginRegistry();registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}return registry;},inject:[Db,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController, GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1333,6 +1349,7 @@ async function bootstrap() {
     if(path==='/planner'||path.startsWith('/planner/')||path==='/ai/schedule')pluginId='planner';
     else if(path==='/github'||path.startsWith('/github/'))pluginId='github';
     else if(path==='/git'||path.startsWith('/git/'))pluginId='git';
+    else if(path==='/delivery'||path.startsWith('/delivery/'))pluginId='delivery';
     else if(path==='/dropbox'||path.startsWith('/dropbox/'))pluginId='dropbox';
     else if(path==='/calendar/google'||path.startsWith('/calendar/google/'))pluginId='google_calendar';
     else if(path==='/calendar/microsoft'||path.startsWith('/calendar/microsoft/'))pluginId='outlook_calendar';
@@ -1354,6 +1371,10 @@ async function bootstrap() {
   });
   events.attach(sockets);
   await app.listen(Number(process.env.API_PORT || 4000), process.env.API_HOST || '0.0.0.0');
+  const deliveryRunner=app.get(DeliveryRunner);
+  if(plugins.isEnabled('delivery'))void deliveryRunner.recoverQueued();
+  const deliveryTimer=setInterval(()=>{if(plugins.isEnabled('delivery'))void deliveryRunner.recoverQueued()},5000);
+  deliveryTimer.unref();
   const planner=app.get(PlannerPlugin);
   if(plugins.isEnabled('planner'))void planner.prepareDailySchedules();
   const plannerTimer=setInterval(()=>{if(plugins.isEnabled('planner'))void planner.prepareDailySchedules()},60*60*1000);
