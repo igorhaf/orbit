@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { remember } from "@/lib/history";
 import { GitProjectSettings } from "@/components/git-project-settings";
+import { DeliveryProjectSettings } from "@/components/delivery-project-settings";
 import {
   Activity as ActivityIcon,
   CheckSquare,
@@ -601,6 +602,7 @@ export default function ProfilePage() {
                             </div>
                           </details>
                           <GitProjectSettings projectId={project.id} />
+                          <DeliveryProjectSettings projectId={project.id} />
                         </div>
                         {project.is_native ? (
                           <span className="text-xs text-[#626f86]">Integrado</span>

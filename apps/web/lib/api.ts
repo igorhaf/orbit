@@ -203,7 +203,7 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
   }
   return data as T;
 }
-export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown) =>
+export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body?: unknown) =>
   api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 export async function commentAttachmentBlob(id:string):Promise<Blob>{
   const response=await fetch(`${BASE}/comment-attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`}});
