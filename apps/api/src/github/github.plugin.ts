@@ -10,6 +10,10 @@ import { GitHubClient } from "./github.client";
 type Repository = { id: number; full_name: string; name: string; owner: { login: string }; default_branch: string; html_url: string; private: boolean; permissions?: Record<string, boolean> };
 type Issue = { id: number; number: number; title: string; body?: string | null; state: string; html_url: string; updated_at: string; labels?: unknown[]; assignees?: unknown[]; pull_request?: unknown };
 type PullRequest = Issue & { head?: { ref: string }; base?: { ref: string }; merged?: boolean; draft?: boolean; mergeable?: boolean | null; requested_reviewers?: unknown[] };
+type GitHubCommit = { sha: string; html_url: string; commit: { message: string; author?: { name?: string; date?: string } }; author?: { login?: string } | null; parents?: { sha: string }[] };
+type CommitResource = { connection_id: string | null; resource_type: string; external_id: string; external_parent_id: string | null; url: string | null; metadata: Record<string, unknown> };
+export type CardCommit = { sha: string; repository: string; message: string; author: string | null; date: string | null; url: string | null; merge: boolean };
+const normalizeCommit = (repository: string, item: GitHubCommit): CardCommit => ({ sha: item.sha, repository, message: item.commit.message, author: item.commit.author?.name || item.author?.login || null, date: item.commit.author?.date || null, url: item.html_url, merge: (item.parents?.length || 0) > 1 });
 const uid = (value: unknown, label = "ID") => { if (typeof value !== "string" || !/^[0-9a-f-]{36}$/i.test(value)) throw new HttpException(`${label} inválido.`, 400); return value; };
 const value = (input: unknown, label: string, max = 500) => { if (typeof input !== "string" || !input.trim() || input.length > max) throw new HttpException(`${label} inválido.`, 400); return input.trim(); };
 const repo = (input: unknown) => { const result = value(input, "Repositório", 300); if (!/^[\w.-]+\/[\w.-]+$/.test(result)) throw new HttpException("Repositório inválido.", 400); return result; };
@@ -51,6 +55,45 @@ export class GitHubPlugin {
   commentPullRequest(ownerId: string, connectionId: string, input: Record<string, unknown>) { return this.client.request(ownerId, connectionId, `/repos/${repo(input.repository)}/issues/${number(input.number, "Pull request")}/comments`, { method: "POST", body: JSON.stringify({ body: value(input.body, "Comentário", 65_000) }) }); }
   pullFiles(ownerId: string, connectionId: string, repository: string, pull: number) { return this.client.request(ownerId, connectionId, `/repos/${repo(repository)}/pulls/${pull}/files?per_page=100`); }
   pullDiff(ownerId: string, connectionId: string, repository: string, pull: number) { return this.client.request<string>(ownerId, connectionId, `/repos/${repo(repository)}/pulls/${pull}`, { headers: { Accept: "application/vnd.github.diff" } }); }
+
+  async cardCommits(ownerId: string, cardId: string) {
+    await this.features.cardBoard(cardId, ownerId);
+    const resources = await this.db.query<CommitResource>(`SELECT connection_id,resource_type,external_id,external_parent_id,url,metadata FROM external_resources
+      WHERE owner_id=$1 AND plugin_id='github' AND orbit_entity_type='card' AND orbit_entity_id=$2 AND resource_type IN ('commit','pull_request') ORDER BY created_at`, [ownerId, cardId]);
+    const commits = new Map<string, CardCommit>(), warnings: string[] = [];
+    for (const resource of resources) {
+      const metadata = resource.metadata || {}, repository = String(metadata.repository || resource.external_parent_id || '');
+      if (resource.resource_type === 'commit') {
+        const sha = String(metadata.sha || resource.external_id);
+        const item: CardCommit = { sha, repository, message: String(metadata.message || metadata.title || sha), author: typeof metadata.author === 'string' ? metadata.author : null, date: typeof metadata.date === 'string' ? metadata.date : null, url: resource.url, merge: metadata.merge === true };
+        commits.set(`${repository}:${sha}`, item);
+        continue;
+      }
+      try {
+        if (!resource.connection_id) throw new HttpException('Conexão GitHub indisponível.', 400);
+        const pull = number(metadata.number || resource.external_id.split('#').at(-1), 'Pull request');
+        for (let page = 1; page <= 3; page++) {
+          const items = await this.client.request<GitHubCommit[]>(ownerId, resource.connection_id, `/repos/${repo(repository)}/pulls/${pull}/commits?per_page=100&page=${page}`);
+          for (const item of items) commits.set(`${repository}:${item.sha}`, normalizeCommit(repository, item));
+          if (items.length < 100) break;
+          if (page === 3) warnings.push(`${repository}: a lista do pull request foi limitada a 300 commits.`);
+        }
+      } catch (error) {
+        warnings.push(`${repository || 'GitHub'}: ${error instanceof HttpException ? error.message : 'Não foi possível carregar os commits do pull request.'}`);
+      }
+    }
+    return { commits: [...commits.values()].sort((a, b) => (Date.parse(b.date || '') || 0) - (Date.parse(a.date || '') || 0)), warnings };
+  }
+
+  async linkCommit(ownerId: string, connectionId: string, cardId: string, repository: string, sha: unknown) {
+    await this.features.cardBoard(cardId, ownerId);
+    const commitSha = value(sha, 'SHA do commit', 40);
+    if (!/^[a-f0-9]{7,40}$/i.test(commitSha)) throw new HttpException('SHA do commit inválido.', 400);
+    const item = await this.client.request<GitHubCommit>(ownerId, connectionId, `/repos/${repo(repository)}/commits/${commitSha}`), commit = normalizeCommit(repository, item);
+    return this.db.one(`INSERT INTO external_resources(owner_id,plugin_id,connection_id,resource_type,external_id,external_parent_id,url,orbit_entity_type,orbit_entity_id,metadata)
+      VALUES($1,'github',$2,'commit',$3,$4,$5,'card',$6,$7)
+      ON CONFLICT(owner_id,plugin_id,connection_id,resource_type,external_id) DO UPDATE SET orbit_entity_type='card',orbit_entity_id=$6,url=EXCLUDED.url,metadata=EXCLUDED.metadata,updated_at=now() RETURNING *`, [ownerId, connectionId, commit.sha, repository, commit.url, cardId, JSON.stringify(commit)]);
+  }
 
   private normalize(resourceType: "issue" | "pull_request", repository: string, item: Issue | PullRequest) { const pull = item as PullRequest; return { resourceType, externalId: `${repository}#${item.number}`, externalParentId: repository, url: item.html_url, etag: item.updated_at, metadata: { repository, number: item.number, title: item.title, state: item.state, merged: pull.merged || false, draft: pull.draft || false, reviewState: pull.requested_reviewers?.length ? "review_requested" : "none" } }; }
   async link(ownerId: string, connectionId: string, cardId: string, resourceType: "issue" | "pull_request", repository: string, itemNumber: number) { await this.features.cardBoard(cardId, ownerId); const item = resourceType === "issue" ? await this.getIssue(ownerId, connectionId, repository, itemNumber) : await this.getPullRequest(ownerId, connectionId, repository, itemNumber), resource = this.normalize(resourceType, repository, item); return this.db.one(`INSERT INTO external_resources(owner_id,plugin_id,connection_id,resource_type,external_id,external_parent_id,url,etag,orbit_entity_type,orbit_entity_id,metadata) VALUES($1,'github',$2,$3,$4,$5,$6,$7,'card',$8,$9)
@@ -105,6 +148,8 @@ export class GitHubController {
   @Get("oauth/start") start(@Req() req: Request) { return this.github.oauthUrl(this.features.user(req)); }
   @Get("oauth/callback") async callback(@Query("code") code:string,@Query("state") state:string,@Res() response:Response) { try { await this.github.oauthCallback(code,state); response.redirect(`${process.env.WEB_ORIGIN||"http://localhost:3000"}/profile?integration=github&connected=true`); } catch(error) { response.redirect(`${process.env.WEB_ORIGIN||"http://localhost:3000"}/profile?integration=github&error=${encodeURIComponent((error as Error).message)}`); } }
   @Get("repositories") repositories(@Req() req:Request,@Query("connectionId") connection:string) { return this.github.repositories(this.features.user(req),uid(connection,"Conexão")); }
+  @Get("cards/:cardId/commits") commits(@Req() req:Request,@Param("cardId") card:string) { return this.github.cardCommits(this.features.user(req),uid(card,"Cartão")); }
+  @Post("cards/:cardId/commits") linkCommit(@Req() req:Request,@Param("cardId") card:string,@Body() body:Record<string,unknown>) { return this.github.linkCommit(this.features.user(req),uid(body.connectionId,"Conexão"),uid(card,"Cartão"),repo(body.repository),body.sha); }
   @Post("cards/:cardId/issues") issue(@Req() req:Request,@Param("cardId") card:string,@Body() body:Record<string,unknown>) { return this.github.cardToIssue(this.features.user(req),uid(body.connectionId,"Conexão"),uid(card,"Cartão"),repo(body.repository)); }
   @Post("cards/:cardId/pull-requests") pull(@Req() req:Request,@Param("cardId") card:string,@Body() body:Record<string,unknown>) { return this.github.cardToPullRequest(this.features.user(req),uid(body.connectionId,"Conexão"),uid(card,"Cartão"),body); }
   @Post("cards/:cardId/link") link(@Req() req:Request,@Param("cardId") card:string,@Body() body:Record<string,unknown>) { const type=body.resourceType==='pull_request'?'pull_request':'issue'; return this.github.link(this.features.user(req),uid(body.connectionId,"Conexão"),uid(card,"Cartão"),type,repo(body.repository),number(body.number,type)); }

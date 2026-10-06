@@ -55,6 +55,7 @@ export type Card = {
   ai_project_id?: string | null;
   ai_model?: string | null;
   ai_effort?: AiEffort | null;
+  ai_execution_mode?: 'planning' | 'bypass';
   ai_project_default_model?: string | null;
   ai_project_default_effort?: AiEffort | null;
   ai_global_model?: string | null;
@@ -75,6 +76,7 @@ export type Board = {
   title: string;
   background: string;
   background_image?: string | null;
+  created_at?: string;
   description?: string;
   closed_at?: string | null;
   starred: boolean;
@@ -107,8 +109,8 @@ export type TrelloBoardOption = { id:string; name:string; url:string|null };
 export type TrelloListOption = {connection_id:string;trello_board_name:string;mapped_list_id:string|null;lists:{id:string;name:string}[]};
 export type Workspace = { id: string; name: string; board_count: number };
 export type Notebook = {id:string;title:string;content_html:string;created_at:string;updated_at:string};
-export type VaultItem = {id:string;card_id?:string|null;url_token?:string|null;board_id?:string|null;title:string;category:string;notes:string;created_at:string;updated_at:string};
-export type VaultItemDetail = VaultItem & {fields:Record<string,string>};
+export type VaultItem = {id:string;title:string;category:string;created_at:string;updated_at:string};
+export type VaultItemDetail = VaultItem & {content_html:string};
 export type CommentAttachment = {id:string;kind:'file'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null};
 export type Comment = { id: string; body: string; created_at: string; edited_at?:string|null; author_id: string; author_name: string; is_ai?:boolean; ai_status?:'queued'|'running'|'success'|'error'|null; ai_error?:string|null; attachments?:CommentAttachment[] };
 export const withExpansion = (original: string, expansion: string, originalHeading?: string) => {
@@ -235,3 +237,6 @@ export const labelColors: Record<string,string> = {
   none:'linear-gradient(135deg,#f2f3f5,#dfe1e6)',
 };
 export const labelTextColor = (color:string) => /_light$|^none$/.test(color) ? '#172b4d' : '#fff';
+
+export type CardCommit = { sha: string; repository: string; message: string; author: string | null; date: string | null; url: string | null; merge: boolean };
+export type CardCommits = { commits: CardCommit[]; warnings: string[] };

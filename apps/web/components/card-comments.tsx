@@ -3,9 +3,7 @@ import { ChangeEvent, ClipboardEvent, DragEvent, useEffect, useState } from "rea
 import { io } from "socket.io-client";
 import {
   Copy,
-  Eye,
   LoaderCircle,
-  Mail,
   Paperclip,
   Pencil,
   Play,
@@ -22,7 +20,6 @@ import {
   cardUrl,
   getToken,
   send,
-  WatchState,
   withExpansion,
 } from "@/lib/api";
 import { Avatar } from "./ui";
@@ -93,8 +90,6 @@ export function CardComments({
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [editing, setEditing] = useState<Comment | null>(null);
   const [editBody, setEditBody] = useState("");
-  const [watches, setWatches] = useState<WatchState | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [aiResult, setAiResult] = useState("");
   const [aiTarget, setAiTarget] = useState<Comment | null>(null);
@@ -221,104 +216,18 @@ export function CardComments({
       setError((err as Error).message);
     }
   }
-  async function toggle(scope: "card" | "list" | "board") {
-    const target =
-      scope === "card" ? card.id : scope === "list" ? card.list_id : board.id;
-    await run(async () => {
-      await send(
-        `/${scope === "card" ? "cards" : scope === "list" ? "lists" : "boards"}/${target}/watch/toggle`,
-        "POST",
-      );
-      setWatches(
-        (await (
-          await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/cards/${card.id}/watches`,
-            { headers: { Authorization: `Bearer ${getToken() || ""}` } },
-          )
-        ).json()) as WatchState,
-      );
-    });
-  }
-  async function loadWatches() {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/cards/${card.id}/watches`,
-        { headers: { Authorization: `Bearer ${getToken() || ""}` } },
-      );
-      setWatches((await response.json()) as WatchState);
-    } catch {
-      setError("Não foi possível carregar acompanhamentos.");
-    }
-  }
-  async function loadEmail() {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/cards/${card.id}/comment-email`,
-        { headers: { Authorization: `Bearer ${getToken() || ""}` } },
-      );
-      const data = (await response.json()) as { address: string };
-      setEmail(data.address);
-    } catch {
-      setError("Não foi possível gerar o endereço de e-mail.");
-    }
-  }
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-3 font-semibold">
           <Send size={21} /> Atividade
         </h3>
-        <div className="flex gap-1">
-          <button
-            onClick={() => void loadWatches()}
-            className="rounded bg-[#e9eaed] px-2 py-1 text-xs"
-          >
-            <Eye size={13} className="mr-1 inline" />
-            Acompanhar
-          </button>
-          <button
-            onClick={() => void loadEmail()}
-            className="rounded bg-[#e9eaed] px-2 py-1 text-xs"
-          >
-            <Mail size={13} className="mr-1 inline" />
-            E-mail
-          </button>
-        </div>
       </div>
       <div className="pl-0 sm:pl-8">
         {error && (
           <p role="alert" className="mb-2 text-xs text-[#ae2a19]">
             {error}
           </p>
-        )}
-        {watches && (
-          <div className="mb-3 flex flex-wrap gap-2 rounded bg-[#e9f2ff] p-2 text-xs">
-            <span>Receber atualizações:</span>
-            {(["card", "list", "board"] as const).map((scope) => (
-              <button
-                key={scope}
-                onClick={() => void toggle(scope)}
-                className={`rounded px-2 py-1 ${watches[scope] ? "bg-[#0c66e4] text-white" : "bg-white text-[#172b4d]"}`}
-              >
-                {scope === "card"
-                  ? "Cartão"
-                  : scope === "list"
-                    ? "Lista"
-                    : "Quadro"}{" "}
-                {watches[scope] ? "✓" : ""}
-              </button>
-            ))}
-          </div>
-        )}
-        {email && (
-          <div className="mb-3 rounded bg-[#f1f2f4] p-2 text-xs">
-            <strong>Endereço para comentar:</strong>{" "}
-            <code className="select-all">{email}</code>
-            <p className="mt-1 text-[#626f86]">
-              Configure o encaminhamento do provedor para o endpoint de entrada
-              do Orbit.
-            </p>
-          </div>
         )}
         <form
           onSubmit={(event) => {

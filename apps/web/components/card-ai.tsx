@@ -226,13 +226,22 @@ export function CardAi({
           <span className="flex items-center gap-2"><Sparkles size={17} /> IA do cartão</span>
           <button type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded} aria-label={expanded ? "Recolher IA do cartão" : "Expandir IA do cartão"} className="shrink-0">{expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}</button>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-        <label className="sr-only" htmlFor={`card-ai-model-${card.id}`}>Modelo e versão</label>
-        <select id={`card-ai-model-${card.id}`} value={effective || ""} disabled={busy} onChange={(event) => void configure({ ai_model: event.target.value || null })} className="min-w-[220px] flex-1 rounded border border-[#c3b6f7] bg-white p-2 text-sm font-normal text-[#172b4d]">
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <label className="min-w-0 text-xs font-semibold text-[#5e5a87]">
+          Modelo
+          <select id={`card-ai-model-${card.id}`} aria-label="Modelo e versão" value={effective || ""} disabled={busy} onChange={(event) => void configure({ ai_model: event.target.value || null })} className="mt-1 block w-full min-w-0 rounded border border-[#c3b6f7] bg-white p-2 text-sm font-normal text-[#172b4d]">
           <option value="">Modelo: não configurado</option>
           {models.map((model) => <option key={model.id} value={model.id}>Modelo: {model.name} · Versão: {model.version}</option>)}
-        </select>
-        <div className="min-w-[220px] flex-1 text-sm font-normal text-[#5e5a87]"><AiEffortField value={card.ai_effort || inheritedEffort} disabled={busy} onChange={(value) => configure({ ai_effort: value })} /></div>
+          </select>
+        </label>
+        <label className="min-w-0 text-xs font-semibold text-[#5e5a87]">
+          Modo
+          <select aria-label="Modo de execução da IA" value={card.ai_execution_mode || "bypass"} disabled={busy} onChange={(event) => void configure({ ai_execution_mode: event.target.value })} className="mt-1 block w-full min-w-0 rounded border border-[#c3b6f7] bg-white p-2 text-sm font-normal text-[#172b4d]">
+            <option value="planning">Planejamento</option>
+            <option value="bypass">Bypass</option>
+          </select>
+        </label>
+        <div className="min-w-0 text-sm font-normal text-[#5e5a87]"><AiEffortField value={card.ai_effort || inheritedEffort} disabled={busy} onChange={(value) => configure({ ai_effort: value })} /></div>
         </div>
       </div>}
       {(variant === "text" || expanded) && <>

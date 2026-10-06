@@ -33,7 +33,7 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
     this.timer=setInterval(()=>void this.tick(),2000);this.timer.unref();
   }
   onModuleDestroy(){this.stopping=true;if(this.timer)clearInterval(this.timer);for(const controller of this.controllers.values())controller.abort()}
-  async card(id:string,user:string){await this.features.cardBoard(id,user);const row=await this.db.one('SELECT c.*,l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1',[id]);return row as {id:string;title:string;description:string;board_id:string}}
+  async card(id:string,user:string){await this.features.cardBoard(id,user);const row=await this.db.one('SELECT c.*,l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1 AND NOT EXISTS(SELECT 1 FROM vault_items WHERE card_id=c.id)',[id]);if(!row)throw new HttpException('Cartões no cofre não possuem execução.',409);return row as {id:string;title:string;description:string;board_id:string}}
   async config(id:string):Promise<ExecutionConfig>{const row=await this.db.one('SELECT * FROM card_execution_configs WHERE card_id=$1',[id]);return row?validateConfig(row):emptyConfig()}
   async catalog(user:string,id?:string){
     if(id&&!isId(id))throw new HttpException('Projeto inválido.',400);

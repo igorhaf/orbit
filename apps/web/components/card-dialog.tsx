@@ -34,6 +34,8 @@ import { MarkdownEditor, RichText } from "./rich-text";
 import { CardDatesPanel, CardLabelsPanel } from "./card-extras";
 import { CardSections } from "./card-sections";
 import { CardOperations } from "./card-operations";
+import { CardCommitsPanel } from "./card-commits";
+import { GitCardPanel } from "./git-card-panel";
 import { CardComments } from "./card-comments";
 import { CardAi } from "./card-ai";
 import { CardExecutionPanel } from "./card-execution";
@@ -319,7 +321,11 @@ export function CardDialog({
               <input
                 value={title}
                 maxLength={300}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  const nextTitle = e.target.value;
+                  if (description === title) setDescription(nextTitle);
+                  setTitle(nextTitle);
+                }}
                 onBlur={() => {
                   if (title.trim() && title !== card.title)
                     updateCard(
@@ -490,6 +496,7 @@ export function CardDialog({
                       <MarkdownEditor
                         value={description}
                         onChange={setDescription}
+                        maxLength={1_000_000}
                         placeholder="Adicione contexto, links e imagens em Markdown..."
                         onImageFiles={uploadDescriptionImages}
                       />
@@ -548,7 +555,7 @@ export function CardDialog({
                 board={board}
                 variant="text"
                 onChanged={onChanged}
-                onExecutionStart={() => { setAiActionPending(true); setTab("output"); }}
+                onExecutionStart={() => setAiActionPending(true)}
                 onAiActionStart={() => setAiActionPending(true)}
                 onExecutionEnd={() => setAiActionPending(false)}
                 aiLocked={aiLocked}
@@ -580,6 +587,8 @@ export function CardDialog({
               aiLocked={aiLocked}
               mode="settings"
             />
+            <GitCardPanel key={`git:${card.id}`} cardId={card.id} />
+            <CardCommitsPanel key={`commits:${card.id}`} cardId={card.id} resources={details.externalResources} />
             {details.externalResources.length > 0 && (
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
@@ -647,7 +656,7 @@ export function CardDialog({
               card={card}
               board={board}
               onChanged={onChanged}
-              onExecutionStart={() => { setAiActionPending(true); setTab("output"); }}
+              onExecutionStart={() => setAiActionPending(true)}
               onAiActionStart={() => setAiActionPending(true)}
               onExecutionEnd={() => setAiActionPending(false)}
               aiLocked={aiLocked}

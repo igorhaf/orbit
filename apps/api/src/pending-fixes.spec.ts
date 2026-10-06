@@ -13,6 +13,12 @@ test('Codex errors distinguish account quota, context tokens and timeouts',()=>{
   assert.equal(codexErrorMessage('A resposta do Codex excedeu o tempo limite.'),'A resposta do Codex excedeu o tempo limite.');
 });
 
+test('Codex errors explain authentication, unavailable models and CLI incompatibility',()=>{
+  assert.match(codexErrorMessage('Error: not logged in; run codex login'),/codex login/);
+  assert.match(codexErrorMessage('model_not_found: gpt-6-luna'),/Escolha outro modelo/);
+  assert.match(codexErrorMessage('unknown argument --new-option'),/Atualize o Codex CLI/);
+});
+
 test('Codex receives long prompts through stdin instead of process arguments',async()=>{
   const directory=await mkdtemp(join(tmpdir(),'orbit-codex-test-'));
   const executable=join(directory,'fake-codex.mjs');

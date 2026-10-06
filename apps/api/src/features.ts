@@ -43,6 +43,7 @@ export class FeaturesService {
     await this.member(row.board_id, userId);
     if (row.list_archived || row.card_archived) bad('Este cartão está arquivado.',409);
     if(!['normal','template'].includes(row.kind))bad('Este tipo de cartão não possui detalhes editáveis.',409);
+    if(await this.db.one('SELECT id FROM vault_items WHERE card_id=$1',[cardId]))bad('Cartões no cofre não possuem recursos de IA.',409);
     return row.board_id;
   }
 

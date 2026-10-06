@@ -13,7 +13,7 @@ import { ProjectRegistry } from './execution/project-registry';
 import { CardExecutionService } from './execution/execution.service';
 import { CardExecutionController } from './execution/execution.controller';
 import { FeaturesController, FeaturesService, SINGLE_EMAIL } from './features';
-import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence, recurrenceOptions, reminderOptions } from './card-rules';
+import { cardKindFromTitle, descriptionAfterTitleEdit, dueDateFromTitle, labelColorOptions, nextOccurrence, recurrenceOptions, reminderOptions } from './card-rules';
 import { CardExtensionsController, CardExtensionsService } from './card-extensions';
 import { CodexAiService } from './codex-ai';
 import { Server } from 'socket.io';
@@ -34,12 +34,14 @@ import { MailConnectionClient } from './mail/connection-client';
 import { MailController, MailService, mailPluginDefinition } from './mail/mail.service';
 import { GitHubClient } from './github/github.client';
 import { GitHubController, GitHubPlugin, githubPluginDefinition } from './github/github.plugin';
+import { GitController, GitPlugin, gitPluginDefinition } from './git/git.plugin';
 import { DropboxClient } from './dropbox/dropbox.client';
 import { DropboxController, DropboxPlugin, dropboxPluginDefinition } from './dropbox/dropbox.plugin';
 import { MicrosoftGraphClient } from './calendar/microsoft-graph';
 import { MicrosoftGraphSubscriptionManager } from './calendar/microsoft-subscriptions';
 import { OutlookCalendarController, OutlookCalendarPlugin, outlookCalendarPluginDefinition } from './calendar/outlook-calendar.plugin';
 import { MicrosoftTeamsPlugin, microsoftTeamsPluginDefinition } from './calendar/microsoft-teams.plugin';
+import { notebookHtmlToMarkdown } from './notebook-markdown';
 import { PlannerController, PlannerPlugin, plannerPluginDefinition } from './planner/planner.plugin';
 import { EnvironmentSettingsController } from './env-settings';
 import { createDatabaseBackup, listDatabaseBackups, restoreDatabaseBackup } from './database-backup';
@@ -147,37 +149,58 @@ class Service {
     if(BUILT_IN_VAULT_CATEGORIES.has(category))return;
     if(!await this.db.one('SELECT id FROM vault_categories WHERE id=$1 AND owner_id=$2',[uuid(category),userId]))fail('Categoria do cofre inválida.',400);
   }
-  async vault(userId:string) { return this.db.query('SELECT v.id,v.card_id,COALESCE(c.title,v.title) AS title,v.category,COALESCE(c.description,v.notes) AS notes,v.created_at,v.updated_at,c.url_token,l.board_id FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id LEFT JOIN lists l ON l.id=c.list_id WHERE v.owner_id=$1 ORDER BY v.updated_at DESC',[userId]); }
+  async vault(userId:string) { return this.db.query('SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,v.created_at,v.updated_at FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id WHERE v.owner_id=$1 ORDER BY v.updated_at DESC',[userId]); }
   async vaultItem(id:string,userId:string) {
-    uuid(id); const item=await this.db.one<Payload>('SELECT v.id,v.card_id,COALESCE(c.title,v.title) AS title,v.category,COALESCE(c.description,v.notes) AS notes,v.secret_data,v.created_at,v.updated_at,c.url_token,l.board_id FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id LEFT JOIN lists l ON l.id=c.list_id WHERE v.id=$1 AND v.owner_id=$2',[id,userId]);
-    if(!item) return fail('Item do cofre não encontrado.',404); const {secret_data,...visible}=item; return {...visible,fields:this.decryptVault(String(secret_data))};
-  }
-  private vaultPayload(body:Payload) {
-    const title=value(body.title,'Título',160); const category=value(body.category,'Categoria',48); const notes=body.notes===undefined?'':optionalText(body.notes,4000);
-    if(!body.fields || typeof body.fields!=='object' || Array.isArray(body.fields)) fail('Campos do cofre inválidos.');
-    const fields:Payload={}; for(const [key,raw] of Object.entries(body.fields as Payload)){if(key.trim().length<1||key.length>80||typeof raw!=='string'||raw.length>20_000)fail('Campos do cofre inválidos.');fields[key.trim()]=raw;}
-    return {title,category,notes,fields};
+    uuid(id); const item=await this.db.one<{id:string;title:string;category:string;notes:string;secret_data:string;created_at:string;updated_at:string}>('SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,COALESCE(c.description,v.notes) AS notes,v.secret_data,v.created_at,v.updated_at FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id WHERE v.id=$1 AND v.owner_id=$2',[id,userId]);
+    if(!item) return fail('Item do cofre não encontrado.',404);
+    const stored=this.decryptVault(item.secret_data);
+    const escape=(text:string)=>text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const legacyNotes=item.notes?`<p>${escape(item.notes).replace(/\n/g,'<br>')}</p>`:'';
+    const legacyFields=Object.entries(stored).filter((entry):entry is [string,string]=>typeof entry[1]==='string').map(([label,content])=>`<h2>${escape(label)}</h2><p>${escape(content).replace(/\n/g,'<br>')}</p>`).join('');
+    const content_html=typeof stored.content_html==='string'?stored.content_html:legacyNotes+legacyFields;
+    const {notes,secret_data,...visible}=item;void notes;void secret_data;
+    return {...visible,content_html};
   }
   async createVaultItem(userId:string,body:Payload) {
-    const item=this.vaultPayload(body);
-    await this.validateVaultCategory(userId,item.category);
-    const inbox=await this.db.one<{id:string}>('SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL ORDER BY l.position LIMIT 1',[userId]);
-    if(!inbox)fail('Inbox não encontrada.',404);
-    const targetInbox=inbox as {id:string};
-    const card=await this.db.one<{id:string}>("INSERT INTO cards(list_id,title,description,position) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING id",[targetInbox.id,item.title,item.notes]);
-    const cardId=card!.id;
-    return this.db.one('INSERT INTO vault_items(owner_id,card_id,title,category,notes,secret_data) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,card_id,title,category,notes,created_at,updated_at',[userId,cardId,item.title,item.category,item.notes,this.encryptVault(item.fields)]);
+    const title=value(body.title??'Novo texto','Título',300);const category=value(body.category??'custom','Categoria',48);await this.validateVaultCategory(userId,category);
+    const content_html=body.content_html===undefined?'':sanitizeNotebookHtml(body.content_html);
+    const row=await this.db.one<{id:string}>('INSERT INTO vault_items(owner_id,title,category,secret_data) VALUES($1,$2,$3,$4) RETURNING id',[userId,title,category,this.encryptVault({content_html})]);
+    return this.vaultItem(row!.id,userId);
   }
   async updateVaultItem(id:string,userId:string,body:Payload) {
-    uuid(id); const existing=await this.db.one<{id:string;card_id:string|null}>('SELECT id,card_id FROM vault_items WHERE id=$1 AND owner_id=$2',[id,userId]); if(!existing) fail('Item do cofre não encontrado.',404);
-    const savedItem=existing as {id:string;card_id:string|null};
-    const title=body.title===undefined?null:value(body.title,'Título',160); const category=body.category===undefined?null:value(body.category,'Categoria',48); const notes=body.notes===undefined?null:optionalText(body.notes,4000);
+    uuid(id);const existing=await this.vaultItem(id,userId);
+    const title=body.title===undefined?null:value(body.title,'Título',300);const category=body.category===undefined?null:value(body.category,'Categoria',48);
     if(category!==null)await this.validateVaultCategory(userId,category);
-    let encrypted:string|null=null; if(body.fields!==undefined){const fields=body.fields;if(!fields||typeof fields!=='object'||Array.isArray(fields))fail('Campos do cofre inválidos.'); const clean:Payload={};for(const [key,raw] of Object.entries(fields as Payload)){if(key.trim().length<1||key.length>80||typeof raw!=='string'||raw.length>20_000)fail('Campos do cofre inválidos.');clean[key.trim()]=raw;}encrypted=this.encryptVault(clean);}
-    if(savedItem.card_id&&(title!==null||notes!==null))await this.db.query('UPDATE cards SET title=COALESCE($2,title),description=COALESCE($3,description),updated_at=now() WHERE id=$1',[savedItem.card_id,title,notes]);
-    return this.db.one('UPDATE vault_items SET title=COALESCE($3,title),category=COALESCE($4,category),notes=COALESCE($5,notes),secret_data=COALESCE($6,secret_data),updated_at=now() WHERE id=$1 AND owner_id=$2 RETURNING id,card_id,title,category,notes,created_at,updated_at',[id,userId,title,category,notes,encrypted]);
+    const content_html=body.content_html===undefined?existing.content_html:sanitizeNotebookHtml(body.content_html);
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const row=(await client.query('SELECT card_id FROM vault_items WHERE id=$1 AND owner_id=$2 FOR UPDATE',[id,userId])).rows[0];
+      if(!row)fail('Item do cofre não encontrado.',404);
+      await client.query("UPDATE vault_items SET card_id=NULL,title=$3,category=COALESCE($4,category),notes='',secret_data=$5,updated_at=now() WHERE id=$1 AND owner_id=$2",[id,userId,title??existing.title,category,this.encryptVault({content_html})]);
+      if(row.card_id)await client.query('DELETE FROM cards WHERE id=$1',[row.card_id]);
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+    return this.vaultItem(id,userId);
   }
-  async deleteVaultItem(id:string,userId:string) { uuid(id);const item=await this.db.one<{card_id:string|null}>('DELETE FROM vault_items WHERE id=$1 AND owner_id=$2 RETURNING card_id',[id,userId]);if(!item)fail('Item do cofre não encontrado.',404);return {ok:true}; }
+  async deleteVaultItem(id:string,userId:string) {
+    uuid(id);const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const item=(await client.query('DELETE FROM vault_items WHERE id=$1 AND owner_id=$2 RETURNING card_id',[id,userId])).rows[0];
+      if(!item)fail('Item do cofre não encontrado.',404);
+      if(item.card_id)await client.query('DELETE FROM cards WHERE id=$1',[item.card_id]);
+      await client.query('COMMIT');return {ok:true};
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+  }
+  async copyVaultToCard(id:string,userId:string,body:Payload) {
+    uuid(id);const listId=uuid(value(body.list_id,'Lista',36));const boardId=await this.listBoard(listId,userId);
+    const item=await this.vaultItem(id,userId);
+    const description=notebookHtmlToMarkdown(item.content_html);
+    const card=await this.db.one<{id:string;url_token:string}>(`INSERT INTO cards(list_id,title,description,position,kind)
+      VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0),'normal') RETURNING id,url_token`,[listId,item.title,description]);
+    return {card_id:card!.id,board_id:boardId,url_token:card!.url_token};
+  }
   async notebooks(userId:string) {
     return this.db.query('SELECT id,title,content_html,created_at,updated_at FROM notebooks WHERE owner_id=$1 ORDER BY updated_at DESC',[userId]);
   }
@@ -198,6 +221,19 @@ class Service {
     uuid(id); const row=await this.db.one('DELETE FROM notebooks WHERE id=$1 AND owner_id=$2 RETURNING id',[id,userId]);
     if(!row) fail('Anotação não encontrada.',404); return {ok:true};
   }
+  async copyNotebookToCard(id:string,userId:string,body:Payload) {
+    uuid(id);
+    const listId=uuid(value(body.list_id,'Lista',36));
+    const boardId=await this.listBoard(listId,userId);
+    const notebook=await this.db.one<{title:string;content_html:string}>('SELECT title,content_html FROM notebooks WHERE id=$1 AND owner_id=$2',[id,userId]);
+    if(!notebook)fail('Caderno não encontrado.',404);
+    const source=notebook as {title:string;content_html:string};
+    const description=notebookHtmlToMarkdown(source.content_html);
+    const card=await this.db.one<{id:string;url_token:string}>(`INSERT INTO cards(list_id,title,description,position,kind)
+      VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0),'normal')
+      RETURNING id,url_token`,[listId,source.title,description]);
+    return {card_id:card!.id,board_id:boardId,url_token:card!.url_token};
+  }
   async member(boardId: string, userId: string, allowClosed = false) {
     uuid(boardId);
     const row = await this.db.one('SELECT bm.role,b.closed_at FROM board_members bm JOIN boards b ON b.id=bm.board_id WHERE bm.board_id=$1 AND bm.user_id=$2', [boardId, userId]);
@@ -215,15 +251,16 @@ class Service {
   }
   async cardBoard(cardId: string, userId: string, allowClosed = false) {
     uuid(cardId);
-    const row = await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at AS card_archived FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
+    const row = await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at AS card_archived,EXISTS(SELECT 1 FROM vault_items WHERE card_id=c.id) AS in_vault FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
     if (!row) return fail('Cartão não encontrado.', 404);
+    if (row.in_vault) fail('Este cartão está no cofre.',409);
     await this.member(row.board_id, userId, allowClosed);
     if ((row.list_archived || row.card_archived) && !allowClosed) fail('Este cartão está arquivado.',409);
     return row.board_id as string;
   }
   private async contentCard(cardId:string,userId:string){
     const boardId=await this.cardBoard(cardId,userId);
-    const row=await this.db.one('SELECT kind FROM cards WHERE id=$1',[cardId]);
+    const row=await this.db.one('SELECT kind FROM cards WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM vault_items WHERE card_id=$1)',[cardId]);
     if(!row||!['normal','template'].includes(row.kind))fail('Este tipo de cartão não possui detalhes editáveis.',409);
     return boardId;
   }
@@ -248,7 +285,7 @@ class Service {
     const normalized=output.trim().replace(/^```(?:json|text|markdown)?\s*/i,'').replace(/\s*```$/,'').trim();
     let lines:string[]=[];
     try{const parsed=JSON.parse(normalized);if(Array.isArray(parsed))lines=parsed.map(item=>typeof item==='string'?item:'');else if(Array.isArray(parsed.items))lines=parsed.items.map((item:unknown)=>typeof item==='string'?item:'');}catch{lines=normalized.split(/\r?\n/)}
-    return lines.map(line=>line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/,'').replace(/^\s*#+\s*/,'').trim()).filter(line=>line.length>0&&line.length<=300&&!/^```/.test(line)).slice(0,30)
+    return lines.map(line=>line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/,'').replace(/^\s*\[[ xX]?\]\s*/,'').replace(/^\s*#+\s*/,'').trim()).filter(line=>line.length>0&&line.length<=300&&!/^```/.test(line)).slice(0,30)
   }
   private cardAiPrompt(action:string,instruction:string,card:Payload,comments:Payload[]){
     const task:Record<string,string>={write:'Write a new Portuguese Markdown description for the card.',elaborate:'Write only a complementary detailed expansion in Portuguese for the supplied text. Do not repeat or rewrite the original, do not add a title, and add useful context, examples, assumptions, or next steps when appropriate.',refine:'Rewrite and improve the current description in Portuguese Markdown.',summarize:'Summarize the card context in concise Portuguese Markdown.',shorten:'Shorten the current description while preserving its decisions and tasks.',negative:'Create a Portuguese negative prompt: describe clearly the opposite of what the supplied content asks for or describes, focusing on what must not happen. Return only the negative prompt, without explanation or heading.',action_items:'Extract actionable tasks. Return one task per line, with no heading or commentary.',checklist:'Create a practical checklist. Return one concise item per line, with no heading or commentary.'};
@@ -338,7 +375,7 @@ class Service {
       slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
       source_board.id AS source_board_id,source_board.title AS source_board_title,
       (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
-      c.title,c.description,slot.url_token,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,CASE WHEN EXISTS(SELECT 1 FROM lists completion WHERE completion.board_id=li.board_id AND completion.archived_at IS NULL AND completion.is_completion_list) THEN li.is_completion_list ELSE c.completed END AS completed,c.ai_project_id,c.ai_model,c.ai_effort,p.ai_default_model AS ai_project_default_model,p.ai_default_effort AS ai_project_default_effort,u.ai_default_model AS ai_global_model,u.ai_default_effort AS ai_global_effort,c.created_at,c.updated_at,
+      c.title,c.description,slot.url_token,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,CASE WHEN EXISTS(SELECT 1 FROM lists completion WHERE completion.board_id=li.board_id AND completion.archived_at IS NULL AND completion.is_completion_list) THEN li.is_completion_list ELSE c.completed END AS completed,c.ai_project_id,c.ai_model,c.ai_effort,c.ai_execution_mode,p.ai_default_model AS ai_project_default_model,p.ai_default_effort AS ai_project_default_effort,u.ai_default_model AS ai_global_model,u.ai_default_effort AS ai_global_effort,c.created_at,c.updated_at,
       c.schedule_start_at,c.schedule_end_at,c.schedule_all_day,c.schedule_time_zone,
       CASE WHEN c.schedule_start_at IS NULL THEN NULL ELSE json_build_object('startAt',c.schedule_start_at,'endAt',c.schedule_end_at,'allDay',c.schedule_all_day,'timeZone',c.schedule_time_zone) END AS schedule,
       (SELECT json_build_object('enabled',e.enabled,'project_id',e.project_id,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
@@ -371,6 +408,7 @@ class Service {
       JOIN lists source_list ON source_list.id=c.list_id JOIN boards source_board ON source_board.id=source_list.board_id
       LEFT JOIN ai_projects p ON p.id=COALESCE(c.ai_project_id,(SELECT ai_default_project_id FROM boards WHERE id=source_board.id)) JOIN users u ON u.id=$2
       WHERE li.board_id=$1 AND li.archived_at IS NULL AND slot.archived_at IS NULL AND c.archived_at IS NULL
+        AND NOT EXISTS(SELECT 1 FROM vault_items vaulted WHERE vaulted.card_id=c.id)
       ORDER BY slot.position,slot.created_at`, [boardId,userId]);
     const labels = await this.db.query('SELECT id,board_id,name,color FROM labels WHERE board_id=$1 ORDER BY name', [boardId]);
     const members = await this.db.query('SELECT u.id,u.name,u.email,u.avatar_url,bm.role FROM board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
@@ -384,6 +422,9 @@ class Service {
     if (background && !/^[a-z0-9-]+$/.test(background)) fail('Cor inválida.');
     const starred = typeof body.starred === 'boolean' ? body.starred : null;
     const description = body.description === undefined ? undefined : optionalText(body.description);
+    const rawFavoritePosition = body.favorite_position;
+    if (rawFavoritePosition !== undefined && (typeof rawFavoritePosition !== 'number' || !Number.isInteger(rawFavoritePosition) || rawFavoritePosition < 0)) fail('Ordem de favorito inválida.');
+    const requestedFavoritePosition = typeof rawFavoritePosition === 'number' ? rawFavoritePosition : undefined;
     let workspaceId: string | null = null;
     if (body.workspace_id !== undefined) {
       workspaceId=uuid(value(body.workspace_id, 'Área de trabalho', 36));
@@ -395,6 +436,8 @@ class Service {
       const row=await this.db.one('SELECT COALESCE(max(favorite_position)+1,0) AS next FROM boards WHERE owner_id=$1 AND starred',[userId]);
       favoritePosition=Number(row?.next||0);
     } else if (starred===false) favoritePosition=null;
+    if (starred!==false && requestedFavoritePosition!==undefined) favoritePosition=requestedFavoritePosition;
+    if (requestedFavoritePosition!==undefined && starred!==false && !before?.starred && starred!==true) fail('O quadro precisa ser favorito para alterar sua ordem.');
     const updated=await this.db.one(`UPDATE boards SET title=COALESCE($2,title),background=COALESCE($3,background),
       starred=COALESCE($4,starred),workspace_id=COALESCE($5,workspace_id),
       favorite_position=CASE WHEN $6::boolean THEN $7::double precision ELSE favorite_position END,
@@ -927,7 +970,8 @@ class Service {
         EXISTS(SELECT 1 FROM comments WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM card_custom_values WHERE card_id=c.id)) AS has_content FROM cards c WHERE c.id=$1`,[id]);
       if(content?.has_content)fail('Crie um novo cartão para usar este tipo especial.',409);
     }
-    const description=body.description===undefined?original.description as string:optionalText(body.description);
+    const description=descriptionAfterTitleEdit(original.title as string,original.description as string,title,
+      body.description===undefined?undefined:optionalText(body.description,1_000_000));
     let scheduleStart=original.schedule_start_at as Date|null;
     let scheduleEnd=original.schedule_end_at as Date|null;
     let scheduleAllDay=original.schedule_all_day as boolean;
@@ -1185,11 +1229,13 @@ class ApiController {
   @Post('vault') createVaultItem(@Req() req:Request,@Body() body:Payload){return this.service.createVaultItem(this.service.user(req),body);}
   @Get('vault/:id') vaultItem(@Req() req:Request,@Param('id') id:string){return this.service.vaultItem(id,this.service.user(req));}
   @Patch('vault/:id') updateVaultItem(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateVaultItem(id,this.service.user(req),body);}
+  @Post('vault/:id/copy-to-card') copyVaultToCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.copyVaultToCard(id,this.service.user(req),body);}
   @Delete('vault/:id') deleteVaultItem(@Req() req:Request,@Param('id') id:string){return this.service.deleteVaultItem(id,this.service.user(req));}
   @Get('notebooks') notebooks(@Req() req:Request){return this.service.notebooks(this.service.user(req));}
   @Post('notebooks') createNotebook(@Req() req:Request,@Body() body:Payload){return this.service.createNotebook(this.service.user(req),body);}
   @Patch('notebooks/:id') updateNotebook(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateNotebook(id,this.service.user(req),body);}
   @Delete('notebooks/:id') deleteNotebook(@Req() req:Request,@Param('id') id:string){return this.service.deleteNotebook(id,this.service.user(req));}
+  @Post('notebooks/:id/copy-to-card') copyNotebookToCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.copyNotebookToCard(id,this.service.user(req),body);}
   @Post('cards/ai/merge') aiMerge(@Req() req:Request,@Body() body:Payload){return this.service.aiMerge(this.service.user(req),body);}
   @Post('ai/email-summary') aiEmailSummary(@Req() req:Request,@Body() body:Payload){return this.service.aiEmailSummary(this.service.user(req),body);}
   @Post('email/cards') createEmailCard(@Req() req:Request,@Body() body:Payload){return this.service.createEmailCard(this.service.user(req),body);}
@@ -1269,10 +1315,10 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:async(db:Db,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin)=>{const registry=new PluginRegistry();registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}return registry;},inject:[Db,GoogleCalendarPlugin,MailService,GitHubPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
+  {provide:PluginRegistry,useFactory:async(db:Db,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin)=>{const registry=new PluginRegistry();registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}return registry;},inject:[Db,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController, OutlookCalendarController, MailController, GitHubController, GitController, DropboxController, PlannerController, TrelloController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1286,6 +1332,7 @@ async function bootstrap() {
     const path=req.path;let pluginId:string|undefined;
     if(path==='/planner'||path.startsWith('/planner/')||path==='/ai/schedule')pluginId='planner';
     else if(path==='/github'||path.startsWith('/github/'))pluginId='github';
+    else if(path==='/git'||path.startsWith('/git/'))pluginId='git';
     else if(path==='/dropbox'||path.startsWith('/dropbox/'))pluginId='dropbox';
     else if(path==='/calendar/google'||path.startsWith('/calendar/google/'))pluginId='google_calendar';
     else if(path==='/calendar/microsoft'||path.startsWith('/calendar/microsoft/'))pluginId='outlook_calendar';

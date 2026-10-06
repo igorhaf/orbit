@@ -53,7 +53,7 @@ test("secret vault encrypts OAuth tokens with authenticated encryption", () => {
       access_token: "access",
       refresh_token: "refresh",
     });
-    assert.throws(() => vault.open(sealed.slice(0, -1) + "x"));
+    assert.throws(() => vault.open(sealed.slice(0, -1) + (sealed.endsWith("x") ? "y" : "x")));
   } finally {
     if (previous === undefined) delete process.env.ORBIT_SECRET_KEY;
     else process.env.ORBIT_SECRET_KEY = previous;

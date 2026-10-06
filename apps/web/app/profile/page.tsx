@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { remember } from "@/lib/history";
+import { GitProjectSettings } from "@/components/git-project-settings";
 import {
   Activity as ActivityIcon,
   CheckSquare,
@@ -599,6 +600,7 @@ export default function ProfilePage() {
                               <AiEffortField value={project.ai_default_effort} inheritedValue={user?.ai_default_effort} onChange={(value) => saveProjectAi(project.id, { ai_default_effort: value })} />
                             </div>
                           </details>
+                          <GitProjectSettings projectId={project.id} />
                         </div>
                         {project.is_native ? (
                           <span className="text-xs text-[#626f86]">Integrado</span>

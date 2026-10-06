@@ -6,13 +6,16 @@ import Image from 'next/image';
 import {
   Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut,
   Moon, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
-  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Circle, CheckCircle2, FolderOpen,
+  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Circle, CheckCircle2, FolderOpen, GripVertical, MoreHorizontal, Paintbrush,
 } from 'lucide-react';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   api, send, AppNotification, Board, Card, List, SearchResults, User,
   boardColors, cardUrl, clearSession, getUser, initials, setUser,
 } from '@/lib/api';
-import { historyState, redo, undo } from '@/lib/history';
+import { historyState, redo, remember, undo } from '@/lib/history';
 import { CardDialog } from './card-dialog';
 import { CardActivityIndicator } from './card-execution';
 import { io } from 'socket.io-client';
@@ -28,6 +31,18 @@ const modalStack: symbol[] = [];
 const subscribeToHydration = () => () => {};
 const getHydratedSnapshot = () => true;
 const getServerSnapshot = () => false;
+const subscribeFavoriteIds = (callback: () => void) => {
+  window.addEventListener('storage', callback);
+  window.addEventListener('sidebar:favorite-order-changed', callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener('sidebar:favorite-order-changed', callback);
+  };
+};
+const getFavoriteIdsSnapshot = (): string => {
+  return localStorage.getItem('orbit_sidebar_favorite_ids') || '';
+};
+const getFavoriteIdsServerSnapshot = (): string => '';
 
 export function Modal({ children, onClose, wide = false, extraWide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; extraWide?: boolean }) {
   const mounted = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerSnapshot);
@@ -361,19 +376,25 @@ function InboxPanel({boards}:{boards:Board[]}) {
   const [error,setError]=useState('');
   const [transfer,setTransfer]=useState<Card|null>(null);
   const inboxId=boards.find(board=>board.is_inbox)?.id;
+  const {setNodeRef: setInboxDropRef,isOver: isInboxOver}=useDroppable({id:'inbox:panel',data:{type:'inbox'},disabled:!inboxId});
   const load=useCallback(async()=>{if(!inboxId)return;try{const full=await api<Board>(`/boards/${inboxId}`);setInbox(full);setSelected(current=>current?full.lists?.flatMap(list=>list.cards).find(card=>card.id===current.id)||current:null);setError('')}catch(err){setError((err as Error).message)}},[inboxId]);
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
   useEffect(()=>{if(!inbox?.id)return;const boardId=inbox.id;const socket=io({path:'/socket.io',auth:{token:localStorage.getItem('orbit_token')||''}});socket.on('connect',()=>socket.emit('board:join',boardId));const refresh=(event?:{boardId?:string})=>{if(!event?.boardId||event.boardId===boardId)void load()};socket.on('board:changed',refresh);socket.on('comment:changed',refresh);socket.on('prompt:progress',refresh);socket.on('notification:changed',()=>void load());return()=>{socket.emit('board:leave',boardId);socket.disconnect()}},[inbox?.id,load]);
   useEffect(()=>{const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card'))event.preventDefault()});document.addEventListener('drop',drop);return()=>document.removeEventListener('drop',drop)},[load]);
   const cards=inbox?.lists?.flatMap(list=>list.cards)||[];
   const collection=boards.find(board=>board.is_collection);
-  return <><section className="pt-1"><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{cards.map(card=><div key={card.id} className="flex items-center gap-1 rounded bg-[#f1f2f4] px-2 py-1 shadow-sm"><button draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.setData('application/x-orbit-inbox-title',card.title);event.dataTransfer.effectAllowed='move'}} onClick={()=>setSelected(card)} className="min-w-0 flex-1 py-1 text-left text-sm hover:bg-[#e9eaed]"><span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{card.title}</span><CardActivityIndicator card={card}/></span></button>{collection&&<button title="Enviar para Coleções" onClick={()=>setTransfer(card)} className="rounded px-1 text-xs text-[#6554c0] hover:bg-[#e2dffc]">↗</button>}</div>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem rascunhos.</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste cartões para o Planner ou Calendário para agendá-los.</p></section>{selected&&inbox&&<CardDialog card={selected} board={inbox} onClose={()=>setSelected(null)} onChanged={async()=>{await load();const updated=await api<Board>(`/boards/${inbox.id}`);setInbox(updated);setSelected(updated.lists?.flatMap(list=>list.cards).find(card=>card.id===selected.id)||null)}} onDeleted={async()=>{setSelected(null);await load()}}/>}{transfer&&collection&&<TransferCardModal card={transfer} target={collection} label="Enviar para Coleções" onClose={()=>setTransfer(null)} onDone={async()=>{setTransfer(null);await load();window.dispatchEvent(new Event('data:changed'))}}/>}</>
+  return <><section ref={setInboxDropRef} data-orbit-inbox-drop className={`rounded-lg pt-1 ${isInboxOver?'bg-[#e9f2ff] ring-2 ring-[#0c66e4]':''}`}><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{cards.map(card=><div key={card.id} className="flex items-center gap-1 rounded bg-[#f1f2f4] px-2 py-1 shadow-sm"><button draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.setData('application/x-orbit-inbox-title',card.title);event.dataTransfer.effectAllowed='move'}} onClick={()=>setSelected(card)} className="min-w-0 flex-1 py-1 text-left text-sm hover:bg-[#e9eaed]"><span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{card.title}</span><CardActivityIndicator card={card}/></span></button>{collection&&<button title="Enviar para Coleções" onClick={()=>setTransfer(card)} className="rounded px-1 text-xs text-[#6554c0] hover:bg-[#e2dffc]">↗</button>}</div>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem itens</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste cartões para o Planner ou Calendário para agendá-los.</p></section>{selected&&inbox&&<CardDialog card={selected} board={inbox} onClose={()=>setSelected(null)} onChanged={async()=>{await load();const updated=await api<Board>(`/boards/${inbox.id}`);setInbox(updated);setSelected(updated.lists?.flatMap(list=>list.cards).find(card=>card.id===selected.id)||null)}} onDeleted={async()=>{setSelected(null);await load()}}/>}{transfer&&collection&&<TransferCardModal card={transfer} target={collection} label="Enviar para Coleções" onClose={()=>setTransfer(null)} onDone={async()=>{setTransfer(null);await load();window.dispatchEvent(new Event('data:changed'))}}/>}</>
 }
 
 function TransferCardModal({card,target,label,onClose,onDone}:{card:Card;target:Board;label:string;onClose:()=>void;onDone:()=>Promise<void>}) {
   const [listId,setListId]=useState(target.lists?.[0]?.id||''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
   async function submit(){if(!listId)return;setBusy(true);try{await send('/cards/move','POST',{card_ids:[card.id],list_id:listId});await onDone()}catch(err){setError((err as Error).message)}finally{setBusy(false)}}
   return <Modal onClose={onClose}><div className="p-5"><h2 className="text-lg font-bold">{label}</h2><p className="mt-1 text-sm text-[#626f86]">Escolha a categoria de destino.</p><select value={listId} onChange={event=>setListId(event.target.value)} className="mt-4 w-full rounded border p-2 text-sm">{target.lists?.map(list=><option key={list.id} value={list.id}>{list.title}</option>)}</select>{error&&<p className="mt-2 text-xs text-[#ae2a19]">{error}</p>}<button disabled={busy||!listId} onClick={()=>void submit()} className="mt-4 rounded bg-[#6554c0] px-4 py-2 text-sm font-semibold text-white">{busy?'Enviando…':'Enviar cartão'}</button></div></Modal>;
+}
+
+function CollectionDropTarget({listId,children}:{listId:string;children:React.ReactNode}) {
+  const {setNodeRef,isOver}=useDroppable({id:`collection:${listId}`,data:{type:'collection',listId}});
+  return <div ref={setNodeRef} data-orbit-collection-drop={listId} className={`rounded ${isOver?'bg-[#f0edff] ring-2 ring-[#6554c0]':''}`}>{children}</div>;
 }
 
 function CollectionPanel({boards}:{boards:Board[]}) {
@@ -395,34 +416,124 @@ function CollectionPanel({boards}:{boards:Board[]}) {
   async function createCard(event:React.FormEvent){event.preventDefault();const list=lists.find(item=>item.id===openId)||lists[0];if(!list||!cardTitle.trim())return;await send(`/lists/${list.id}/cards`,'POST',{title:cardTitle});setCardTitle('');setOpenId(list.id);await load()}
   async function updateCategory(id:string,changes:{position?:number;parent_list_id?:string|null}){await send(`/lists/${id}`,'PATCH',changes);await load()}
   function removeCategory(list:List){confirm({title:'Remover categoria?',description:`A categoria “${list.title}” e seus cards serão removidos.`,confirmLabel:'Remover'},async()=>{await send(`/lists/${list.id}/archive`,'POST');await send(`/lists/${list.id}`,'DELETE');if(openId===list.id)setOpenId('');await load()})}
-  const render=(list:List,depth=0):React.ReactNode=>{const siblings=lists.filter(item=>item.parent_list_id===list.parent_list_id);const index=siblings.findIndex(item=>item.id===list.id);return <div key={list.id} className="mt-1" style={{marginLeft:`${Math.min(depth,4)*10}px`}}><div className={`flex items-center gap-1 rounded px-1 hover:bg-[#f1f2f4] ${openId===list.id?'bg-[#f0edff]':''}`}><button onClick={()=>toggle(list.id)} aria-expanded={openId===list.id} className="flex min-w-0 flex-1 items-center gap-1 py-1.5 text-left text-sm"><ChevronDown size={14} className={`shrink-0 transition-transform ${openId===list.id?'':'-rotate-90'}`}/><FolderOpen size={15} className="shrink-0"/><span className="min-w-0 flex-1 truncate">{list.title}</span><span className="text-[10px] text-[#626f86]">{list.cards.length}</span></button><button title="Adicionar subcategoria" onClick={()=>{setParentId(list.id);setCategoryModal(true)}} className="px-1 text-xs text-[#6554c0]">+</button><button title="Mover categoria para cima" disabled={index===0} onClick={()=>void updateCategory(list.id,{position:index-1})} className="px-0.5 text-xs disabled:opacity-30">↑</button><button title="Mover categoria para baixo" disabled={index===siblings.length-1} onClick={()=>void updateCategory(list.id,{position:index+1})} className="px-0.5 text-xs disabled:opacity-30">↓</button><button title="Remover categoria" onClick={()=>removeCategory(list)} className="px-1 text-xs text-[#ae2a19]">×</button></div>{openId===list.id&&<div className="ml-5 space-y-1 border-l border-[#dfe1e6] pl-2">{list.cards.map(card=><div key={card.id} className="flex items-center gap-1"><button onClick={()=>setSelected(card)} className="flex min-w-0 flex-1 items-center gap-1 rounded px-2 py-1 text-left text-xs text-[#44546f] hover:bg-[#f1f2f4]"><CardActivityIndicator card={card}/><span className="min-w-0 truncate">{card.title}</span></button><button title="Enviar para Inbox" onClick={()=>setTransfer(card)} className="rounded px-1 text-xs text-[#0c66e4] hover:bg-[#e9f2ff]">↗</button><select aria-label="Mover card" value={list.id} onChange={event=>void send('/cards/move','POST',{card_ids:[card.id],list_id:event.target.value}).then(load)} className="w-4 rounded border bg-white text-[9px]"><option value={list.id}>↔</option>{lists.filter(target=>target.id!==list.id).map(target=><option key={target.id} value={target.id}>{target.title}</option>)}</select></div>)}{list.cards.length===0&&<p className="px-2 py-1 text-[11px] text-[#626f86]">Nenhum card.</p>}</div>}{lists.filter(child=>child.parent_list_id===list.id).map(child=>render(child,depth+1))}</div>};
+  const render=(list:List,depth=0):React.ReactNode=>{const siblings=lists.filter(item=>item.parent_list_id===list.parent_list_id);const index=siblings.findIndex(item=>item.id===list.id);return <div key={list.id} className="mt-1" style={{marginLeft:`${Math.min(depth,4)*10}px`}}><CollectionDropTarget listId={list.id}><div className={`flex items-center gap-1 rounded px-1 hover:bg-[#f1f2f4] ${openId===list.id?'bg-[#f0edff]':''}`}><button onClick={()=>toggle(list.id)} aria-expanded={openId===list.id} className="flex min-w-0 flex-1 items-center gap-1 py-1.5 text-left text-sm"><ChevronDown size={14} className={`shrink-0 transition-transform ${openId===list.id?'':'-rotate-90'}`}/><FolderOpen size={15} className="shrink-0"/><span className="min-w-0 flex-1 truncate">{list.title}</span><span className="text-[10px] text-[#626f86]">{list.cards.length}</span></button><button title="Adicionar subcategoria" onClick={()=>{setParentId(list.id);setCategoryModal(true)}} className="px-1 text-xs text-[#6554c0]">+</button><button title="Mover categoria para cima" disabled={index===0} onClick={()=>void updateCategory(list.id,{position:index-1})} className="px-0.5 text-xs disabled:opacity-30">↑</button><button title="Mover categoria para baixo" disabled={index===siblings.length-1} onClick={()=>void updateCategory(list.id,{position:index+1})} className="px-0.5 text-xs disabled:opacity-30">↓</button><button title="Remover categoria" onClick={()=>removeCategory(list)} className="px-1 text-xs text-[#ae2a19]">×</button></div>{openId===list.id&&<div className="ml-5 space-y-1 border-l border-[#dfe1e6] pl-2">{list.cards.map(card=><div key={card.id} className="flex items-center gap-1"><button onClick={()=>setSelected(card)} className="flex min-w-0 flex-1 items-center gap-1 rounded px-2 py-1 text-left text-xs text-[#44546f] hover:bg-[#f1f2f4]"><CardActivityIndicator card={card}/><span className="min-w-0 truncate">{card.title}</span></button><button title="Enviar para Inbox" onClick={()=>setTransfer(card)} className="rounded px-1 text-xs text-[#0c66e4] hover:bg-[#e9f2ff]">↗</button><select aria-label="Mover card" value={list.id} onChange={event=>void send('/cards/move','POST',{card_ids:[card.id],list_id:event.target.value}).then(load)} className="w-4 rounded border bg-white text-[9px]"><option value={list.id}>↔</option>{lists.filter(target=>target.id!==list.id).map(target=><option key={target.id} value={target.id}>{target.title}</option>)}</select></div>)}{list.cards.length===0&&<p className="px-2 py-1 text-[11px] text-[#626f86]">Nenhum card.</p>}</div>}</CollectionDropTarget>{lists.filter(child=>child.parent_list_id===list.id).map(child=>render(child,depth+1))}</div>};
   const inbox=boards.find(board=>board.is_inbox);
   return <section className="pt-1"><div className="flex items-center justify-between px-2"><strong className="flex items-center gap-2 text-sm"><FolderOpen size={17}/> Coleções</strong><button onClick={()=>{setParentId('');setCategoryModal(true)}} className="text-[11px] font-semibold text-[#6554c0]">+ Categoria</button></div><form onSubmit={createCard} className="mt-2 px-2"><input value={cardTitle} onChange={event=>setCardTitle(event.target.value)} placeholder="Adicionar card" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form>{collection?<div className="mt-2 max-h-[calc(100vh-230px)] overflow-y-auto px-1">{lists.filter(list=>!list.parent_list_id).map(list=>render(list))}{lists.length===0&&<p className="px-2 py-3 text-xs text-[#626f86]">Crie uma categoria para começar.</p>}</div>:<p className="px-2 py-3 text-xs text-[#626f86]">Carregando coleções…</p>}{selected&&collection&&<CardDialog card={selected} board={collection} onClose={()=>setSelected(null)} onChanged={async()=>{await load();setSelected(null)}} onDeleted={async()=>{setSelected(null);await load()}}/>}{transfer&&inbox&&<TransferCardModal card={transfer} target={inbox} label="Enviar para Inbox" onClose={()=>setTransfer(null)} onDone={async()=>{setTransfer(null);await load();window.dispatchEvent(new Event('data:changed'))}}/>}{categoryModal&&<Modal onClose={()=>setCategoryModal(false)}><form onSubmit={createCategory} className="p-5"><h2 className="pr-8 text-lg font-bold">Nova categoria</h2><input autoFocus value={categoryTitle} onChange={event=>setCategoryTitle(event.target.value)} placeholder="Nome da categoria" className="mt-4 w-full rounded border px-3 py-2 text-sm"/><label className="mt-3 block text-sm font-semibold">Categoria pai<select value={parentId} onChange={event=>setParentId(event.target.value)} className="mt-1 w-full rounded border px-3 py-2 text-sm"><option value="">Nenhuma (raiz)</option>{lists.map(list=><option key={list.id} value={list.id}>{list.title}</option>)}</select></label><button disabled={!categoryTitle.trim()} className="mt-4 w-full rounded bg-[#6554c0] px-4 py-2 text-sm font-semibold text-white">Criar</button></form></Modal>}{confirmationModal}</section>;
+}
+
+function SortableFavoriteBoard({ board, pinned, onChoose, onBackground, onToggleStar }: { board: Board; pinned: boolean; onChoose: (id: string) => void; onBackground: (id: string) => void; onToggleStar: (board: Board) => void }) {
+  const {attributes,listeners,setNodeRef,setActivatorNodeRef,transform,transition,isDragging} = useSortable({id:board.id});
+  const [menu,setMenu] = useState(false);
+  return <div ref={setNodeRef} style={{transform:CSS.Transform.toString(transform),transition}} className={`group relative flex h-9 items-center gap-1 rounded-lg text-sm text-[#44546f] hover:bg-[#f1f2f4] ${pinned?'lg:px-2':''} ${isDragging?'z-10 bg-white shadow-md':''}`}>
+    <button ref={setActivatorNodeRef} type="button" {...attributes} {...listeners} aria-label={`Reordenar ${board.title}`} title="Arraste para reordenar" className="flex w-3 shrink-0 cursor-grab items-center justify-center text-[#8590a2] active:cursor-grabbing"><GripVertical size={14}/></button>
+    <button onClick={() => onChoose(board.id)} title={board.title} aria-label={`${board.title}, favorito`} className={`flex h-full min-w-0 flex-1 items-center gap-2 text-left ${pinned?'justify-center lg:justify-start':''}`}>
+      <span className="relative h-5 w-6 shrink-0 rounded" style={{background:board.background_image?`url("${board.background_image}") center/cover`:boardColors[board.background]||boardColors.blue}}/>
+      {pinned&&<><span className="hidden min-w-0 flex-1 truncate lg:block">{board.title}</span><Star size={14} fill="currentColor" className="hidden shrink-0 text-[#e2b203] lg:block"/></>}
+    </button>
+    <button type="button" title={`Menu de ${board.title}`} aria-label={`Menu de ${board.title}`} aria-expanded={menu} onClick={event=>{event.stopPropagation();setMenu(!menu)}} className="pointer-events-none absolute right-1 grid h-7 w-7 place-items-center rounded bg-white/90 opacity-0 hover:bg-[#dfe1e6] focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto"><MoreHorizontal size={17}/></button>
+    {menu&&<div className="absolute right-1 top-8 z-40 w-52 rounded-lg border border-[#dfe1e6] bg-white p-1.5 text-sm text-[#172b4d] shadow-dialog"><button type="button" onClick={()=>{setMenu(false);onToggleStar(board)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Star size={16} fill="currentColor" className="text-[#e2b203]"/> Remover estrela</button><button type="button" onClick={()=>{setMenu(false);onBackground(board.id)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Paintbrush size={16}/> Trocar cor de fundo</button></div>}
+  </div>;
+}
+
+function BoardBackgroundPopup({ board, onClose, onChanged }: { board: Board; onClose: () => void; onChanged: (background: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function choose(background: string) {
+    setBusy(true);
+    setError('');
+    try {
+      await send(`/boards/${board.id}`, 'PATCH', { background });
+      if (board.background_image) await send(`/boards/${board.id}/background`, 'DELETE');
+      onChanged(background);
+      onClose();
+      window.dispatchEvent(new Event('data:changed'));
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <Modal onClose={onClose}><div className="w-[min(92vw,400px)] p-6"><h2 className="mb-1 pr-8 text-lg font-bold">Plano de fundo</h2><p className="mb-4 text-sm text-[#626f86]">Escolha uma cor para “{board.title}”.</p>{error&&<p role="alert" className="mb-3 rounded bg-[#ffebe6] p-2 text-sm text-[#ae2a19]">{error}</p>}<div className="grid grid-cols-4 gap-2">{Object.entries(boardColors).map(([name,color])=><button key={name} type="button" title={name} aria-label={`Cor ${name}`} disabled={busy} onClick={()=>void choose(name)} className={`h-14 rounded disabled:opacity-60 ${board.background===name&&!board.background_image?'ring-2 ring-[#0c66e4] ring-offset-2':''}`} style={{background:color}}/>)}</div></div></Modal>;
 }
 
 export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {
   const router = useRouter();
   const pathname = usePathname();
+  const {setNodeRef: setInboxTabDropRef,isOver: isInboxTabOver}=useDroppable({id:'inbox:tab',data:{type:'inbox'},disabled:!boards.some(board=>board.is_inbox)});
   const [pinned, setPinned] = useState(true);
+  const favoriteIdsJson = useSyncExternalStore(subscribeFavoriteIds, getFavoriteIdsSnapshot, getFavoriteIdsServerSnapshot);
+  const [favoriteOrderError,setFavoriteOrderError] = useState('');
+  const [sidebarActionError,setSidebarActionError] = useState('');
+  const [contextBoardId, setContextBoardId] = useState('');
+  const [backgroundBoardId, setBackgroundBoardId] = useState('');
+  const [backgroundOverrides, setBackgroundOverrides] = useState<Record<string,string>>({});
+  const sensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}),useSensor(KeyboardSensor,{coordinateGetter:sortableKeyboardCoordinates}));
   const [tab, setTab] = useState<'inbox'|'collections'>(pathname === '/collections' ? 'collections' : 'inbox');
   useEffect(() => {
     const sync = () => setPinned(localStorage.getItem('orbit_sidebar_pinned') !== 'false');
     sync(); window.addEventListener('sidebar:changed', sync);
     return () => window.removeEventListener('sidebar:changed', sync);
   }, []);
+  const regularBoards = boards.filter(board => !board.is_inbox && !board.is_collection);
+  const createdFavorites = regularBoards.filter(board => board.starred).sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '') || a.id.localeCompare(b.id));
+  let savedFavoriteIds: string[] = [];
+  try { const parsed: unknown = JSON.parse(favoriteIdsJson); if (Array.isArray(parsed)) savedFavoriteIds = parsed.filter((id): id is string => typeof id === 'string'); } catch { /* An invalid local order falls back to creation order. */ }
+  const favoriteRanks = new Map(savedFavoriteIds.map((id,index)=>[id,index]));
+  const favorites = savedFavoriteIds.length ? [...createdFavorites].sort((a,b)=>(favoriteRanks.get(a.id)??savedFavoriteIds.length)-(favoriteRanks.get(b.id)??savedFavoriteIds.length)) : createdFavorites;
+  const otherBoards = regularBoards.filter(board => !board.starred);
+  const renderBoard = (board: Board) => <div key={board.id} className={`group relative flex h-9 w-full items-center rounded-lg text-sm text-[#44546f] hover:bg-[#f1f2f4] ${pinned?'justify-center lg:justify-start lg:px-2':'justify-center'}`}>
+    <button onClick={() => router.push(`/board/${board.id}`)} title={board.title} aria-label={`${board.title}${board.starred ? ', favorito' : ''}`} className={`flex h-full min-w-0 flex-1 items-center gap-2 text-left ${pinned?'justify-center lg:justify-start':'justify-center'}`}>
+      <span className="relative h-5 w-6 shrink-0 rounded" style={{background:board.background_image&&!backgroundOverrides[board.id]?`url("${board.background_image}") center/cover`:boardColors[backgroundOverrides[board.id]||board.background]||boardColors.blue}}/>
+      {pinned&&<><span className="hidden min-w-0 flex-1 truncate lg:block">{board.title}</span>{board.starred&&<Star size={14} fill="currentColor" className="hidden shrink-0 text-[#e2b203] lg:block"/>}</>}
+    </button>
+    <button type="button" title={`Menu de ${board.title}`} aria-label={`Menu de ${board.title}`} aria-expanded={contextBoardId===board.id} onClick={event=>{event.stopPropagation();setContextBoardId(current=>current===board.id?'':board.id)}} className="pointer-events-none absolute right-1 grid h-7 w-7 place-items-center rounded opacity-0 hover:bg-[#dfe1e6] focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto"><MoreHorizontal size={17}/></button>
+    {contextBoardId===board.id&&<div className="absolute right-1 top-8 z-40 w-52 rounded-lg border border-[#dfe1e6] bg-white p-1.5 text-sm shadow-dialog"><button type="button" onClick={()=>{setContextBoardId('');void toggleBoardStar(board)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Star size={16}/> Adicionar estrela</button><button type="button" onClick={()=>{setContextBoardId('');setBackgroundBoardId(board.id)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Paintbrush size={16}/> Trocar cor de fundo</button></div>}
+  </div>;
+  async function toggleBoardStar(board: Board) {
+    setSidebarActionError('');
+    try {
+      await send(`/boards/${board.id}`, 'PATCH', { starred: !board.starred });
+      remember({
+        label: board.starred ? 'remover favorito' : 'favoritar quadro',
+        undo: [{ path: `/boards/${board.id}`, method: 'PATCH', body: { starred: board.starred } }],
+        redo: [{ path: `/boards/${board.id}`, method: 'PATCH', body: { starred: !board.starred } }],
+      });
+      window.dispatchEvent(new Event('data:changed'));
+    } catch (error) {
+      setSidebarActionError((error as Error).message);
+    }
+  }
+  async function reorderFavorites(event: DragEndEvent) {
+    if (!event.over || event.active.id === event.over.id) return;
+    const from = favorites.findIndex(board => board.id === event.active.id);
+    const to = favorites.findIndex(board => board.id === event.over?.id);
+    if (from < 0 || to < 0) return;
+    const next = [...favorites];
+    const [moved] = next.splice(from,1);
+    next.splice(to,0,moved);
+    localStorage.setItem('orbit_sidebar_favorite_ids',JSON.stringify(next.map(board=>board.id)));
+    window.dispatchEvent(new Event('sidebar:favorite-order-changed'));
+    setFavoriteOrderError('');
+    try { await Promise.all(next.map((board,index)=>send(`/boards/${board.id}`,'PATCH',{favorite_position:index}))); }
+    catch { setFavoriteOrderError('Não foi possível salvar a ordem dos favoritos.'); }
+  }
   return <aside aria-label="Menu lateral" className={`scrollbar-thin shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] ${pinned?'w-[64px] px-2 lg:w-[300px] lg:px-3':'w-[56px] px-2'}`}>
-    <div className="mb-3 flex gap-1"><button onClick={()=>setTab('inbox')} aria-pressed={tab === 'inbox'} aria-label="Aba Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${tab === 'inbox' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button><button onClick={()=>setTab('collections')} aria-pressed={tab === 'collections'} aria-label="Aba Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${tab === 'collections' ? 'bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button></div>
+    <div className="mb-3 flex gap-1"><button ref={setInboxTabDropRef} data-orbit-inbox-tab-drop onClick={()=>setTab('inbox')} aria-pressed={tab === 'inbox'} aria-label="Aba Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${isInboxTabOver?'ring-2 ring-[#0c66e4]':''} ${tab === 'inbox' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button><button onClick={()=>setTab('collections')} aria-pressed={tab === 'collections'} aria-label="Aba Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${tab === 'collections' ? 'bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button></div>
     {pinned && <div className="hidden lg:block">{tab === 'collections' ? <CollectionPanel boards={boards}/> : <InboxPanel boards={boards}/>}</div>}
     <section className={`${tab === 'collections' ? 'hidden' : 'mt-4 border-t border-[#dfe1e6] pt-3'}`}>
+      {favorites.length > 0 && <div className="mb-3">
+        {pinned&&<h2 className="mb-1 hidden px-2 text-xs font-bold uppercase tracking-wide text-[#626f86] lg:block">Favoritos <span className="font-normal normal-case tracking-normal">· arraste para ordenar</span></h2>}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={event=>void reorderFavorites(event)}><SortableContext items={favorites.map(board=>board.id)} strategy={verticalListSortingStrategy}><nav aria-label="Favoritos" className="space-y-1">{favorites.map(board=><SortableFavoriteBoard key={board.id} board={board} pinned={pinned} onChoose={id=>router.push(`/board/${id}`)} onBackground={id=>setBackgroundBoardId(id)} onToggleStar={toggleBoardStar}/>)}</nav></SortableContext></DndContext>
+      {favoriteOrderError&&<p role="alert" className="px-2 pt-1 text-[11px] text-[#ae2a19]">{favoriteOrderError}</p>}
+      </div>}
+      {sidebarActionError&&<p role="alert" className="px-2 pb-2 text-[11px] text-[#ae2a19]">{sidebarActionError}</p>}
       {pinned&&<h2 className="mb-2 hidden px-2 text-xs font-bold uppercase tracking-wide text-[#626f86] lg:block">Seus quadros</h2>}
       <nav aria-label="Seus quadros" className="space-y-1">
-        {boards.filter(board=>!board.is_inbox&&!board.is_collection).map(board=><button key={board.id} onClick={()=>router.push(`/board/${board.id}`)} title={board.title} className={`flex h-9 w-full items-center gap-2 rounded-lg text-left text-sm text-[#44546f] hover:bg-[#f1f2f4] ${pinned?'justify-center lg:justify-start lg:px-2':'justify-center'}`}>
-          <span className="h-5 w-6 shrink-0 rounded" style={{background:board.background_image?`url("${board.background_image}") center/cover`:boardColors[board.background]||boardColors.blue}}/>
-          {pinned&&<span className="hidden min-w-0 truncate lg:block">{board.title}</span>}
-        </button>)}
+        {otherBoards.map(renderBoard)}
         {pinned&&<button onClick={()=>router.push('/boards')} className="hidden w-full rounded-lg px-2 py-2 text-left text-xs font-semibold text-[#0c66e4] hover:bg-[#f1f2f4] lg:block">Ver todos os quadros</button>}
       </nav>
     </section>
+    {backgroundBoardId&&(()=>{const board=regularBoards.find(item=>item.id===backgroundBoardId);return board?<BoardBackgroundPopup board={board} onClose={()=>setBackgroundBoardId('')} onChanged={background=>setBackgroundOverrides(current=>({...current,[board.id]:background}))}/>:null})()}
   </aside>;
 }
 
