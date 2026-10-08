@@ -45,7 +45,6 @@ import { useHydrated } from "@/lib/use-hydrated";
 import { CalendarIntegrations } from "@/components/calendar-integrations";
 import { AiEffortField, AiModelFields } from "@/components/ai-model-fields";
 
-type DropboxStatus = { configured: boolean; connections: Array<{ id: string; display_name: string; label: string; status: string; metadata: { email?: string | null } }> };
 type EnvironmentSettings = { groups: Array<{ id:string; label:string; fields:Array<{key:string;label:string;secret:boolean;value:string;configured:boolean}> }> };
 type Tab = "profile" | "activity" | "cards" | "projects" | "integrations" | "settings";
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -67,12 +66,14 @@ export default function ProfilePage() {
   const [models, setModels] = useState<AiModel[]>([]);
   const [projectName, setProjectName] = useState("");
   const [projectPath, setProjectPath] = useState("");
+  const [editingProjectPath, setEditingProjectPath] = useState<string | null>(null);
+  const [projectPathDraft, setProjectPathDraft] = useState("");
+  const [savingProjectPath, setSavingProjectPath] = useState(false);
   const [directoryPicker, setDirectoryPicker] = useState<{path:string;parent:string|null;name:string;folders:Array<{name:string;path:string}>}|null>(null);
   const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
   const [directoryPickerLoading, setDirectoryPickerLoading] = useState(false);
   const [directoryPickerError, setDirectoryPickerError] = useState("");
   const [savingProject, setSavingProject] = useState(false);
-  const [dropbox, setDropbox] = useState<DropboxStatus | null>(null);
   const [environment, setEnvironment] = useState<EnvironmentSettings | null>(null);
   const [environmentDraft, setEnvironmentDraft] = useState<Record<string,string>>({});
   const [clearEnvironment, setClearEnvironment] = useState<string[]>([]);
@@ -85,14 +86,13 @@ export default function ProfilePage() {
   const [create, setCreate] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [account, all, activity, assigned, projectList, dropboxStatus, availableModels] = await Promise.all(
+      const [account, all, activity, assigned, projectList, availableModels] = await Promise.all(
         [
           api<User>("/account"),
           api<Board[]>("/boards"),
           api<Activity[]>("/account/activity"),
           api<HomeCard[]>("/account/cards"),
           api<AiProject[]>("/ai/projects"),
-          api<DropboxStatus>("/dropbox/status"),
           api<AiModel[]>("/ai/models"),
         ],
       );
@@ -104,7 +104,6 @@ export default function ProfilePage() {
       setCards(assigned);
       setProjects(projectList);
       setModels(availableModels);
-      setDropbox(dropboxStatus);
       setError("");
     } catch (err) {
       setError((err as Error).message);
@@ -205,6 +204,18 @@ export default function ProfilePage() {
       setError("");
     } catch (err) { setError((err as Error).message); }
   }
+  async function saveProjectPath(event: React.FormEvent, projectId: string) {
+    event.preventDefault();
+    setSavingProjectPath(true);
+    setError("");
+    try {
+      const updated = await send<AiProject>(`/ai/projects/${projectId}`, "PATCH", { local_path: projectPathDraft.trim() });
+      setProjects(current => current.map(project => project.id === projectId ? updated : project));
+      setEditingProjectPath(null);
+      setNotice("Caminho do projeto atualizado.");
+    } catch (err) { setError((err as Error).message); }
+    finally { setSavingProjectPath(false); }
+  }
   async function browserNotifications() {
     if (!user?.preferences) return;
     if (user.preferences.browserNotifications)
@@ -277,14 +288,6 @@ export default function ProfilePage() {
       setNotice("Pasta criada. Selecione-a para cadastrar o projeto.");
     } catch (err) { setDirectoryPickerError((err as Error).message); }
     finally { setDirectoryPickerLoading(false); }
-  }
-  async function connectDropbox() {
-    try {
-      const { url } = await api<{ url: string }>("/dropbox/oauth/start");
-      window.location.assign(url);
-    } catch (err) {
-      setError((err as Error).message);
-    }
   }
   async function saveEnvironment(event: React.FormEvent) {
     event.preventDefault();
@@ -594,6 +597,16 @@ export default function ProfilePage() {
                           <code className="block truncate text-xs text-[#626f86]">
                             {project.local_path}
                           </code>
+                          {editingProjectPath === project.id ? (
+                            <form onSubmit={event => void saveProjectPath(event, project.id)} className="mt-2 flex flex-wrap items-center gap-2">
+                              <input autoFocus aria-label={`Novo caminho de ${project.name}`} value={projectPathDraft} onChange={event => setProjectPathDraft(event.target.value)} className="min-w-64 flex-1 rounded border border-[#8590a2] bg-white px-2 py-1 text-sm" required />
+                              <button type="button" disabled={savingProjectPath} onClick={() => { setDirectoryPickerOpen(true); void browseProjectDirectory(projectPathDraft || undefined); }} className="rounded border border-[#c1c7d0] px-2.5 py-1 text-xs font-semibold">Navegar</button>
+                              <button type="submit" disabled={savingProjectPath} className="rounded bg-[#0c66e4] px-2.5 py-1 text-xs font-semibold text-white">Salvar caminho</button>
+                              <button type="button" disabled={savingProjectPath} onClick={() => setEditingProjectPath(null)} className="rounded px-2 py-1 text-xs hover:bg-[#e9eaed]">Cancelar</button>
+                            </form>
+                          ) : (
+                            <button type="button" onClick={() => { setEditingProjectPath(project.id); setProjectPathDraft(project.local_path); setError(""); }} className="mt-1 text-xs font-semibold text-[#0c66e4] hover:underline">Alterar caminho</button>
+                          )}
                           <details className="mt-3 max-w-2xl rounded-lg border border-[#dfe1e6] p-3">
                             <summary className="cursor-pointer text-xs font-semibold">Configuração de IA do projeto</summary>
                             <div className="mt-3 space-y-3">
@@ -601,7 +614,7 @@ export default function ProfilePage() {
                               <AiEffortField value={project.ai_default_effort} inheritedValue={user?.ai_default_effort} onChange={(value) => saveProjectAi(project.id, { ai_default_effort: value })} />
                             </div>
                           </details>
-                          <GitProjectSettings projectId={project.id} />
+                          <GitProjectSettings projectId={project.id} isNative={project.is_native} />
                           <DeliveryProjectSettings projectId={project.id} />
                         </div>
                         {project.is_native ? (
@@ -646,7 +659,7 @@ export default function ProfilePage() {
                   />
                 </label>
                 <button type="button" onClick={() => { setDirectoryPickerOpen(true); void browseProjectDirectory(); }} className="mt-2 rounded border border-[#c1c7d0] px-3 py-2 text-xs font-semibold text-[#344563] hover:bg-[#f7f8fa]">Navegar pelas pastas</button>
-                <p className="mt-2 text-xs text-[#626f86]">Informe um caminho absoluto acessível pelo servidor do Orbit. Se a pasta não existir, perguntaremos antes de criá-la.</p>
+                    <p className="mt-2 text-xs text-[#626f86]">Informe ou selecione um caminho absoluto acessível pelo servidor do Orbit. Se a pasta não existir, perguntaremos antes de criá-la.</p>
                 <button disabled={savingProject || !projectName.trim() || !projectPath.trim()} className="mt-4 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   {savingProject ? "Salvando..." : "Adicionar"}
                 </button>
@@ -660,7 +673,7 @@ export default function ProfilePage() {
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       {directoryPickerLoading ? <p className="p-5 text-sm text-[#626f86]">Carregando pastas…</p> : directoryPicker?.folders.length ? directoryPicker.folders.map(folder=><button key={folder.path} type="button" onClick={()=>void browseProjectDirectory(folder.path)} className="flex w-full items-center gap-3 border-b border-[#f1f2f4] px-5 py-3 text-left text-sm hover:bg-[#f7f8fa]"><Folder size={17} className="shrink-0 text-[#6554c0]"/><span className="truncate">{folder.name}</span></button>) : !directoryPickerError && <p className="p-5 text-sm text-[#626f86]">Nenhuma subpasta acessível.</p>}
                     </div>
-                    <footer className="flex flex-wrap justify-end gap-2 border-t border-[#dfe1e6] p-4"><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>void createProjectDirectory()} className="mr-auto rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold text-[#344563] disabled:opacity-50">Criar nova pasta</button><button type="button" onClick={()=>setDirectoryPickerOpen(false)} className="rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>{if(directoryPicker)setProjectPath(directoryPicker.path);setDirectoryPickerOpen(false);}} className="rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Selecionar esta pasta</button></footer>
+                    <footer className="flex flex-wrap justify-end gap-2 border-t border-[#dfe1e6] p-4"><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>void createProjectDirectory()} className="mr-auto rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold text-[#344563] disabled:opacity-50">Criar nova pasta</button><button type="button" onClick={()=>setDirectoryPickerOpen(false)} className="rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>{if(directoryPicker){if(editingProjectPath)setProjectPathDraft(directoryPicker.path);else setProjectPath(directoryPicker.path);}setDirectoryPickerOpen(false);}} className="rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Selecionar esta pasta</button></footer>
                   </section>
                 </div>
               )}
@@ -668,24 +681,14 @@ export default function ProfilePage() {
           )}
           {tab === "integrations" && (
             <div className="space-y-6">
-            <CalendarIntegrations />
+            <CalendarIntegrations providerId="orbit_cards" />
             <form onSubmit={saveEnvironment} className="max-w-4xl rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-bold">Configurações do servidor</h2>
-              <p className="mt-1 text-sm leading-6 text-[#626f86]">Variáveis do arquivo .env agrupadas por integração e serviço. Os valores sensíveis são exibidos integralmente nesta tela. Campos vazios mantêm o valor atual; use “Remover” para apagar uma configuração.</p>
+              <h2 className="text-lg font-bold">Configurações do core</h2>
+              <p className="mt-1 text-sm leading-6 text-[#626f86]">Credenciais compartilhadas e configurações da aplicação ficam aqui. Variáveis específicas de serviços ficam no botão Configurar de cada plugin. Campos vazios mantêm o valor atual; use “Remover” para apagar uma configuração.</p>
               <div className="mt-5 space-y-5">
                 {environment?.groups.map((group) => (
                   <section key={group.id} className="rounded-lg border border-[#dfe1e6] p-4">
                     <h3 className="mb-3 text-sm font-bold">{group.label}</h3>
-                    {group.id === "dropbox" && dropbox && (!dropbox.configured ? (
-                      <div className="mb-4 rounded-lg bg-[#fff7d6] p-3 text-sm text-[#7f5f01]">Preencha as credenciais do app nos campos abaixo e reinicie a API para habilitar conexões Dropbox.</div>
-                    ) : dropbox.connections.length === 0 ? (
-                      <button type="button" onClick={() => void connectDropbox()} className="mb-4 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]">Conectar Dropbox</button>
-                    ) : (
-                      <div className="mb-4 space-y-3">
-                        {dropbox.connections.map((connection) => <div key={connection.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#dfe1e6] p-3"><div><strong className="block text-sm">{connection.display_name || connection.label}</strong><span className="text-xs text-[#626f86]">{connection.metadata?.email || "Conta Dropbox"} · {connection.status === "active" ? "Conectada" : connection.status}</span></div><span className="rounded-full bg-[#e3fcef] px-2 py-1 text-xs font-semibold text-[#216e4e]">Ativa</span></div>)}
-                        <button type="button" onClick={() => void connectDropbox()} className="text-sm font-semibold text-[#0c66e4] hover:underline">Conectar outra conta</button>
-                      </div>
-                    ))}
                     <div className="grid gap-3 md:grid-cols-2">
                       {group.fields.map((field) => (
                         <label key={field.key} className="min-w-0 text-xs font-semibold text-[#344563]">
@@ -697,7 +700,7 @@ export default function ProfilePage() {
                               rows={Math.min(5, Math.max(2, (environmentDraft[field.key] || "").split("\n").length))}
                               value={environmentDraft[field.key] || ""}
                               onChange={(event) => { setEnvironmentDraft((current) => ({ ...current, [field.key]:event.target.value })); if (event.target.value) setClearEnvironment((current) => current.filter((key) => key !== field.key)); }}
-                              placeholder="Não configurado"
+                              placeholder={field.configured ? "Configurado; deixe vazio para manter" : "Não configurado"}
                               className="mt-1 w-full resize-y rounded border border-[#c1c7d0] px-3 py-2 text-sm font-normal text-[#172b4d]"
                             />
                           ) : (

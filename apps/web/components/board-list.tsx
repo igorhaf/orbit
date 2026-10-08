@@ -91,6 +91,8 @@ export function BoardList({
     { id: string; title: string }[]
   >([]);
   const [busy, setBusy] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [pendingScroll, setPendingScroll] = useState<{ cardId: string } | null>(
     null,
   );
@@ -138,6 +140,33 @@ export function BoardList({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [adding]);
+  useEffect(() => {
+    if (!menu) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !menuRef.current?.contains(target) &&
+        !menuButtonRef.current?.contains(target)
+      ) {
+        setMenu(false);
+        setSection("main");
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [menu]);
+  const closeWhenFocusLeavesMenu = (relatedTarget: EventTarget | null) => {
+    if (
+      relatedTarget instanceof Node &&
+      (menuRef.current?.contains(relatedTarget) ||
+        menuButtonRef.current?.contains(relatedTarget))
+    ) {
+      return;
+    }
+    setMenu(false);
+    setSection("main");
+  };
   const close = () => {
     setMenu(false);
     setSection("main");
@@ -292,7 +321,9 @@ export function BoardList({
         </button>
         <button
           type="button"
-          onClick={() => setMenu(!menu)}
+          ref={menuButtonRef}
+          onBlur={(event) => closeWhenFocusLeavesMenu(event.relatedTarget)}
+          onClick={() => setMenu((open) => !open)}
           aria-label={`Menu da lista ${list.title}`}
           className="rounded p-1 text-[#44546f] hover:bg-[#dfe1e6]"
         >
@@ -345,6 +376,21 @@ export function BoardList({
           <div className="shrink-0 px-2 pb-2">
             {adding ? (
               <form
+                onBlur={(event) => {
+                  const nextFocus = event.relatedTarget;
+                  if (
+                    nextFocus instanceof Node &&
+                    event.currentTarget.contains(nextFocus)
+                  ) {
+                    return;
+                  }
+                  if (!title.trim() && !busy) {
+                    setAdding(false);
+                    setTitle("");
+                    setInsertPosition(null);
+                    setActionError("");
+                  }
+                }}
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!title.trim()) return;
@@ -413,7 +459,11 @@ export function BoardList({
         </>
       )}
       {menu && (
-        <div className="absolute left-0 top-10 z-30 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-[#dfe1e6] bg-white p-2 text-[#172b4d] shadow-dialog">
+        <div
+          ref={menuRef}
+          onBlur={(event) => closeWhenFocusLeavesMenu(event.relatedTarget)}
+          className="absolute left-0 top-10 z-30 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-[#dfe1e6] bg-white p-2 text-[#172b4d] shadow-dialog"
+        >
           <div className="mb-2 flex items-center justify-between border-b border-[#dfe1e6] pb-1">
             <strong className="truncate text-sm">{list.title}</strong>
             <button onClick={close} aria-label="Fechar menu">

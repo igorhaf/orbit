@@ -21,6 +21,10 @@ export class PluginRegistry {
     const capabilities=plugin.capabilities||[],actions=plugin.actions||[],notifications=plugin.contributions?.notifications||[];
     this.unique(capabilities,'Capability');this.unique(actions,'Action');
     this.unique(notifications,'Plugin notification');
+    const configuration=plugin.configuration||[];
+    if(new Set(configuration.map(field=>field.key)).size!==configuration.length||configuration.some(field=>!/^[A-Z][A-Z0-9_]*$/.test(field.key)||!field.label))throw new Error(`Configuração inválida para ${plugin.id}.`);
+    const owned=new Set([...this.items.values()].flatMap(item=>(item.configuration||[]).map(field=>field.key)));
+    if(configuration.some(field=>owned.has(field.key)))throw new Error(`Variável de plugin já registrada: ${plugin.id}.`);
     const known=new Set(capabilities.map(item=>item.id));
     for(const action of actions){for(const capability of action.requiredCapabilities||[])if(!known.has(capability))throw new Error(`Capability não registrada: ${capability}`);this.ajv.compile(action.inputSchema);if(action.outputSchema)this.ajv.compile(action.outputSchema)}
     if(plugin.connectionProvider){this.id(plugin.connectionProvider.id,'Connection provider');for(const capability of plugin.connectionProvider.capabilities)if(!known.has(capability))throw new Error(`Capability não registrada: ${capability}`)}
@@ -50,6 +54,6 @@ export class PluginRegistry {
     const action=this.validate(integration,input.permissions),output=await action.execute(integration.config||{},{userId:input.userId,projectId:input.projectId,cardId:input.cardId,runId:input.runId,connectionId:integration.connection_id,execution:input,services,logger:{info(){},warn(){}}});
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;
   }
-  catalog(){return [...this.items.values()].map(p=>({id:p.id,name:p.name,version:p.version,enabled:this.isEnabled(p.id),capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}
+  catalog(){return [...this.items.values()].map(p=>({id:p.id,name:p.name,version:p.version,enabled:this.isEnabled(p.id),configurable:Boolean(p.configuration?.length),capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}
 }
 export function filesystemPlugin():PluginDefinition{return {id:'filesystem',name:'Arquivos do projeto',version:'1.0.0',capabilities:[{id:'filesystem.read',name:'Ler arquivos',permissions:['filesystem.read']}],actions:[{id:'read',name:'Ler arquivo',permissions:['filesystem.read'],requiredCapabilities:['filesystem.read'],inputSchema:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:1000}},required:['path'],additionalProperties:false},async execute(config,context){const input=context.execution;if(!input)throw new Error('Contexto de execução ausente.');return {type:'text',label:String(config.path),value:await readResource(input.projectRoot,String(config.path))}}}]}}

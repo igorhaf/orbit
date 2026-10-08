@@ -1,5 +1,5 @@
 import { HttpException, Injectable } from '@nestjs/common';
-import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -13,6 +13,7 @@ export type PromptActivity = {id:string;kind:'command';command:string;output:str
 type ProgressDetails = {fileChanges?:Array<Pick<PromptFileChange,'path'|'kind'>>;activity?:PromptActivity};
 type Progress = (message:string,output?:boolean,replace?:boolean,details?:ProgressDetails)=>void;
 export type CodexExecution = { output:string; sessionId:string|null;fileChanges:PromptFileChange[];activities:PromptActivity[] };
+export type CodexPromptImage = { name:string; mimeType:string; data:Buffer };
 export const codexErrorMessage=(detail:string) => {
   if (/ENOENT/.test(detail)) return 'O executável local do Codex não foi encontrado. Configure CODEX_BIN no servidor.';
   if (/mountinfo path is not absolute/i.test(detail)) return 'O Codex CLI instalado tem uma falha no sandbox Linux (mountinfo path is not absolute). Atualize o CODEX_BIN para uma versão estável posterior à correção e reinicie a API.';
@@ -33,8 +34,8 @@ export class CodexAiService {
     const result=await this.run(instruction, process.cwd(), model, effort);
     return typeof result==='string'?result:result.output;
   }
-  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass'): Promise<CodexExecution> {
-    const result=await this.run(instruction, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode);
+  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[]): Promise<CodexExecution> {
+    const result=await this.run(instruction, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode, images);
     return typeof result==='string'?{output:result,sessionId:sessionId||null,fileChanges:[],activities:[]}:result;
   }
   private progressMessage(line:string):{message:string;output?:boolean;delta?:boolean;replace?:boolean;cumulative?:boolean;itemId?:string;fileChanges?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:PromptActivity}|null {
@@ -60,10 +61,11 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
-  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass'): Promise<string|CodexExecution> {
+  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[]): Promise<string|CodexExecution> {
     const codexHome = await prepareOrbitCodexHome();
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
+    const imageFiles:string[]=[];
     const executable = process.env.CODEX_BIN || 'codex';
     const timeout = Number(process.env.CODEX_AI_TIMEOUT_MS || 300_000);
     let detectedSessionId: string|null = sessionId || null;
@@ -74,13 +76,20 @@ export class CodexAiService {
     let sessionPersistenceError:unknown;
 
     try {
+      for(let index=0;index<images.length;index++){
+        const image=images[index];
+        const extension=image.mimeType==='image/png'?'.png':image.mimeType==='image/webp'?'.webp':image.mimeType==='image/gif'?'.gif':image.mimeType==='image/avif'?'.avif':'.jpg';
+        const imagePath=join(directory,`prompt-image-${index+1}${extension}`);
+        await writeFile(imagePath,image.data,{mode:0o600});imageFiles.push(imagePath);
+      }
       await new Promise<void>((resolve, reject) => {
         const executionPolicy = executionMode === 'planning' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox'];
         const command = sessionId
-          ? ['exec', '-C', workingDirectory, 'resume', sessionId, ...executionPolicy, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
+          ? ['exec', '-C', workingDirectory, ...executionPolicy, '--skip-git-repo-check', 'resume', sessionId, ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
           : ['exec', ...executionPolicy, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
         const child = spawn(executable, [
           ...command,
+          ...imageFiles.flatMap(image=>['--image',image]),
           ...(progress ? ['--json'] : []),
           '--output-last-message', output, '-',
         ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['pipe', progress?'pipe':'ignore', 'pipe'] });

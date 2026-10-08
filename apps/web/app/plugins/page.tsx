@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Boxes, Check, PlugZap, Power, RefreshCw, ShieldCheck, Zap } from "lucide-react";
+import { ArrowRight, Boxes, Check, PlugZap, Power, RefreshCw, Settings, ShieldCheck, Zap } from "lucide-react";
 import { api, Board, getToken, PluginCatalogItem, send, User } from "@/lib/api";
 import { AppHeader, WorkspaceSidebar } from "@/components/ui";
+import { PluginConfiguration } from "@/components/plugin-configuration";
 
 export default function PluginsPage() {
   const router = useRouter();
@@ -12,6 +13,8 @@ export default function PluginsPage() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [plugins, setPlugins] = useState<PluginCatalogItem[]>([]);
   const [selected, setSelected] = useState<PluginCatalogItem | null>(null);
+  const [configuring,setConfiguring]=useState<PluginCatalogItem|null>(null);
+  const [oauthResult,setOauthResult]=useState<{connected:boolean;error:string}|undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toggling, setToggling] = useState<string|null>(null);
@@ -28,6 +31,8 @@ export default function PluginsPage() {
         setUser(account);
         setBoards(allBoards);
         setPlugins(catalog.plugins);
+        const query=new URLSearchParams(window.location.search),configured=catalog.plugins.find(plugin=>plugin.id===query.get('configure'));
+        if(configured){setConfiguring(configured);setOauthResult({connected:query.get('connected')==='true',error:query.get('error')||''})}
       })
       .catch((value) => { if (active) setError((value as Error).message); })
       .finally(() => { if (active) setLoading(false); });
@@ -59,11 +64,12 @@ export default function PluginsPage() {
         <h2 className="mt-5 text-lg font-bold text-[#172b4d]">{plugin.name}</h2><p className="mt-1 font-mono text-xs text-[#626f86]">{plugin.id}</p>
         <div className="mt-5 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#f1f2f4] p-3"><strong className="block text-base text-[#172b4d]">{plugin.actions.length}</strong><span className="text-[#626f86]">ações</span></div><div className="rounded-lg bg-[#f1f2f4] p-3"><strong className="block text-base text-[#172b4d]">{plugin.capabilities.length}</strong><span className="text-[#626f86]">capacidades</span></div></div>
         <div className="mt-5 flex-1 space-y-2">{plugin.actions.slice(0, 3).map(action => <div key={action.id} className="flex items-center gap-2 text-sm text-[#44546f]"><Check size={15} className="shrink-0 text-[#22a06b]"/><span className="truncate">{action.name}</span></div>)}{plugin.actions.length > 3 && <p className="text-xs text-[#626f86]">+ {plugin.actions.length - 3} outras ações</p>}</div>
-        <div className="mt-6 flex gap-2"><button onClick={() => void togglePlugin(plugin)} disabled={toggling===plugin.id} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold disabled:opacity-50 ${plugin.enabled?'border border-[#dfe1e6] text-[#44546f] hover:bg-[#f1f2f4]':'bg-[#0c66e4] text-white hover:bg-[#0055cc]'}`}><Power size={15}/>{toggling===plugin.id?'Salvando…':plugin.enabled?'Desativar':'Ativar'}</button><button onClick={() => setSelected(plugin)} className="flex items-center justify-center gap-2 rounded-lg bg-[#0c66e4] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Ações <ArrowRight size={16}/></button></div>
+        <div className="mt-6 flex flex-wrap gap-2"><button onClick={() => void togglePlugin(plugin)} disabled={toggling===plugin.id} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold disabled:opacity-50 ${plugin.enabled?'border border-[#dfe1e6] text-[#44546f] hover:bg-[#f1f2f4]':'bg-[#0c66e4] text-white hover:bg-[#0055cc]'}`}><Power size={15}/>{toggling===plugin.id?'Salvando…':plugin.enabled?'Desativar':'Ativar'}</button><button onClick={() => setConfiguring(plugin)} className="flex items-center justify-center gap-2 rounded-lg border border-[#0c66e4] px-3 py-2.5 text-sm font-semibold text-[#0c66e4] hover:bg-[#e9f2ff]"><Settings size={15}/> Configurar</button><button onClick={() => setSelected(plugin)} className="flex items-center justify-center gap-2 rounded-lg bg-[#0c66e4] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Ações <ArrowRight size={16}/></button></div>
       </article>)}</div>}
       <p className="mt-8 flex items-center gap-2 text-xs text-[#626f86]"><Zap size={14} className="text-[#e2b203]"/> O estado é global nesta instalação; ações de execução ainda respeitam as permissões configuradas em cada projeto.</p>
       </main>
     </div>
     {selected && <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#091e42a6] p-4 pt-[10vh]" onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}><section role="dialog" aria-modal="true" className="w-full max-w-xl rounded-xl bg-white p-6 shadow-dialog"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[#0c66e4]">Plugin</p><h2 className="mt-1 text-xl font-bold text-[#172b4d]">{selected.name}</h2><p className="mt-1 font-mono text-xs text-[#626f86]">{selected.id} · v{selected.version}</p></div><button onClick={() => setSelected(null)} className="rounded px-2 py-1 text-xl text-[#626f86] hover:bg-[#f1f2f4]" aria-label="Fechar">×</button></div><div className="mt-6 space-y-2">{selected.actions.map(action => <div key={action.id} className="rounded-lg border border-[#dfe1e6] p-3"><div className="flex items-center gap-2"><Check size={15} className="text-[#22a06b]"/><strong className="text-sm text-[#172b4d]">{action.name}</strong></div><p className="mt-1 pl-6 font-mono text-xs text-[#626f86]">{selected.id}.{action.id}</p>{action.permissions?.length ? <p className="mt-2 pl-6 text-xs text-[#626f86]">Permissões: {action.permissions.join(", ")}</p> : null}</div>)}</div><button onClick={() => setSelected(null)} className="mt-6 w-full rounded-lg border border-[#c1c7d0] px-4 py-2 text-sm font-semibold text-[#172b4d] hover:bg-[#f1f2f4]">Fechar</button></section></div>}
+    {configuring&&<PluginConfiguration key={configuring.id} plugin={configuring} oauthResult={oauthResult} onClose={()=>{setConfiguring(null);setOauthResult(undefined);window.history.replaceState(null,'','/plugins')}}/>}
   </div>;
 }

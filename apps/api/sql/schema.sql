@@ -377,6 +377,9 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   summary text,
   file_changes jsonb NOT NULL DEFAULT '[]'::jsonb,
   activities jsonb NOT NULL DEFAULT '[]'::jsonb,
+  suggested_commit_type varchar(30),
+  suggested_commit_name varchar(100),
+  suggested_commit_summary varchar(360),
   status varchar(16) NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','success','error','cancelled')),
   error text,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -387,6 +390,9 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
 );
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS codex_session_id text;
+ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_type varchar(30);
+ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_name varchar(100);
+ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_summary varchar(360);
 ALTER TABLE card_ai_runs ALTER COLUMN status SET DEFAULT 'queued';
 ALTER TABLE card_ai_runs DROP CONSTRAINT IF EXISTS card_ai_runs_status_check;
 ALTER TABLE card_ai_runs ADD CONSTRAINT card_ai_runs_status_check CHECK(status IN ('queued','running','success','error','cancelled'));
@@ -461,6 +467,7 @@ CREATE TABLE IF NOT EXISTS git_repositories (
   CHECK (cardinality(branches) > 0)
 );
 CREATE INDEX IF NOT EXISTS git_repositories_project_idx ON git_repositories(project_id);
+ALTER TABLE ai_projects ADD COLUMN IF NOT EXISTS default_git_repository_id uuid REFERENCES git_repositories(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS git_pipeline_targets (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -500,10 +507,16 @@ CREATE TABLE IF NOT EXISTS git_card_commits (
   files jsonb NOT NULL DEFAULT '[]'::jsonb,
   merge boolean NOT NULL DEFAULT false,
   url text,
+  action varchar(12) NOT NULL DEFAULT 'commit' CHECK (action IN ('commit', 'undo', 'redo')),
+  target_sha varchar(40),
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(card_id,repository_id,sha)
 );
+ALTER TABLE git_card_commits
+  ADD COLUMN IF NOT EXISTS action varchar(12) NOT NULL DEFAULT 'commit',
+  ADD COLUMN IF NOT EXISTS target_sha varchar(40);
 CREATE INDEX IF NOT EXISTS git_card_commits_card_idx ON git_card_commits(card_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS git_card_commits_target_idx ON git_card_commits(card_id,repository_id,target_sha,created_at DESC);
 
 CREATE TABLE IF NOT EXISTS git_pipeline_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -707,3 +720,89 @@ ALTER TABLE delivery_runs ADD COLUMN IF NOT EXISTS trigger_key uuid;
 DROP INDEX IF EXISTS delivery_runs_card_trigger_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS delivery_runs_trigger_key_idx ON delivery_runs(pipeline_id,trigger_key) WHERE trigger_key IS NOT NULL;
 ALTER TABLE delivery_steps ADD COLUMN IF NOT EXISTS retry_delay_ms integer NOT NULL DEFAULT 0 CHECK (retry_delay_ms BETWEEN 0 AND 60000);
+
+CREATE TABLE IF NOT EXISTS backup_cloud_copies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  archive text NOT NULL,
+  owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider varchar(80) NOT NULL,
+  connection_id uuid NOT NULL REFERENCES integration_connections(id) ON DELETE RESTRICT,
+  status varchar(16) NOT NULL CHECK (status IN ('uploading','success','failed')),
+  folder_id text,
+  archive_file_id text,
+  manifest_file_id text,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(archive,owner_id,provider,connection_id)
+);
+CREATE INDEX IF NOT EXISTS backup_cloud_copies_owner_archive_idx ON backup_cloud_copies(owner_id,archive);
+
+CREATE TABLE IF NOT EXISTS backup_cloud_settings (
+  owner_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  connection_id uuid NOT NULL REFERENCES integration_connections(id) ON DELETE RESTRICT,
+  auto_upload boolean NOT NULL DEFAULT true,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS vault_backup_cloud_copies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  archive text NOT NULL,
+  owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  connection_id uuid NOT NULL REFERENCES integration_connections(id) ON DELETE RESTRICT,
+  status varchar(16) NOT NULL CHECK (status IN ('uploading','success','failed')),
+  folder_id text,
+  archive_file_id text,
+  manifest_file_id text,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(archive,owner_id,connection_id)
+);
+CREATE INDEX IF NOT EXISTS vault_backup_cloud_copies_owner_idx ON vault_backup_cloud_copies(owner_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS config_backup_cloud_copies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  archive text NOT NULL,
+  owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  connection_id uuid NOT NULL REFERENCES integration_connections(id) ON DELETE RESTRICT,
+  status varchar(16) NOT NULL CHECK (status IN ('uploading','success','failed')),
+  folder_id text,
+  archive_file_id text,
+  manifest_file_id text,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(archive,owner_id,connection_id)
+);
+CREATE INDEX IF NOT EXISTS config_backup_cloud_copies_owner_idx ON config_backup_cloud_copies(owner_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS attachment_backup_cloud_copies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  archive text NOT NULL,
+  owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  connection_id uuid NOT NULL REFERENCES integration_connections(id) ON DELETE RESTRICT,
+  source_kind varchar(8) NOT NULL CHECK (source_kind IN ('card','comment')),
+  source_id uuid NOT NULL,
+  card_id uuid NOT NULL,
+  status varchar(16) NOT NULL CHECK (status IN ('uploading','success','failed')),
+  folder_id text,
+  archive_file_id text,
+  manifest_file_id text,
+  error text,
+  folder_path text,
+  organized_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(archive,owner_id,connection_id)
+);
+CREATE INDEX IF NOT EXISTS attachment_backup_cloud_copies_owner_idx ON attachment_backup_cloud_copies(owner_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS attachment_backup_cloud_copies_source_idx ON attachment_backup_cloud_copies(owner_id,connection_id,source_kind,source_id,status);
+
+CREATE TABLE IF NOT EXISTS vault_backup_restores (
+  owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sha256 char(64) NOT NULL,
+  item_count integer NOT NULL,
+  restored_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(owner_id,sha256)
+);

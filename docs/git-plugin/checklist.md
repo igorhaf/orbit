@@ -13,6 +13,6 @@
 - [x] Credenciais e permissões: token cifrado, API sem retorno do segredo, escrita restrita ao dono do projeto e leitura do histórico para membro do quadro; teste de integração.
 - [x] Status, logs e falhas: tabela de execuções, atualização e painel; testes de sucesso e falha simulada. GitHub mostra jobs/etapas; GitLab trace e Bamboo logEntries.
 - [x] Testes de versionamento e deploy: suíte de regras, adaptadores e integração real com Git local e provedor simulado.
-- [x] Lista de commits em cada card: painel Git no diálogo do card; build web e teste de retorno do histórico. A interface no navegador não foi executada porque nenhuma instância Orbit deste checkout estava ativa.
+- [x] Lista de commits em cada card: dois resumos de cinco commits abaixo dos comentários em Atividade e modais paginados com diff. O cartão concluído mostra tipo e título sugeridos pela execução de IA acima das listas; o botão de revisão preserva a edição, sugere os arquivos registrados na execução e associa o novo commit automaticamente. Build, testes de regra e seleção de arquivos, leitura real do repositório e Selenium completo passaram na API DEV.
 
 Validações de serviços externos foram simuladas. Nenhum deploy remoto nem SSH real foi executado.

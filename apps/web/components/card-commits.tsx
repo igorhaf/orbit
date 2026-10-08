@@ -59,7 +59,7 @@ export function CardCommitsPanel({ cardId, resources }: { cardId: string; resour
       <button type="button" aria-label="Atualizar commits" disabled={loading || saving} onClick={() => setRevision(value => value + 1)} className="rounded p-1 hover:bg-[#f1f2f4] disabled:opacity-50"><RotateCcw size={15} /></button>
     </div>
     {linking && <form onSubmit={link} className="space-y-2 rounded-lg border border-[#dfe1e6] p-3">
-      {connections.length === 0 ? <p className="text-xs text-[#626f86]">Conecte sua conta GitHub nas integrações do perfil para vincular commits.</p> : <>
+      {connections.length === 0 ? <p className="text-xs text-[#626f86]">Conecte sua conta GitHub em Plugins → GitHub → Configurar para vincular commits.</p> : <>
         <label className="block text-xs">Conexão<select value={connectionId} onChange={event => setConnectionId(event.target.value)} className="mt-1 w-full rounded border border-[#dfe1e6] p-2">{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.display_name}</option>)}</select></label>
         <label className="block text-xs">Repositório<input required placeholder="organização/repositório" value={repository} onChange={event => setRepository(event.target.value)} className="mt-1 w-full rounded border border-[#dfe1e6] p-2" /></label>
         <label className="block text-xs">SHA do commit<input required pattern="[a-fA-F0-9]{7,40}" value={sha} onChange={event => setSha(event.target.value)} className="mt-1 w-full rounded border border-[#dfe1e6] p-2 font-mono" /></label>

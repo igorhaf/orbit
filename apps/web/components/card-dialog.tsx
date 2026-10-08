@@ -15,6 +15,7 @@ import {
   Tag,
   Trash2,
   MessageSquare,
+  Vault,
 } from "lucide-react";
 import {
   api,
@@ -30,18 +31,17 @@ import {
 } from "@/lib/api";
 import { remember } from "@/lib/history";
 import { Modal, useConfirmModal } from "./ui";
-import { MarkdownEditor, RichText } from "./rich-text";
+import { RichText } from "./rich-text";
+import { CardDescriptionEditor } from "./card-description-editor";
 import { CardDatesPanel, CardLabelsPanel } from "./card-extras";
 import { CardSections } from "./card-sections";
 import { CardOperations } from "./card-operations";
-import { CardCommitsPanel } from "./card-commits";
-import { GitCardPanel } from "./git-card-panel";
 import { CardComments } from "./card-comments";
 import { CardAi } from "./card-ai";
 import { CardExecutionPanel } from "./card-execution";
 import { PromptExecution } from "./prompt-execution";
 
-const imageData = (file: File) => new Promise<string>((resolve, reject) => {
+const fileData = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
   reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
   reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
@@ -152,15 +152,20 @@ export function CardDialog({
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description || "");
   const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionUploading, setDescriptionUploading] = useState(false);
   const [panel, setPanel] = useState<"labels" | "date" | "move" | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"card" | "prompt" | "output">("card");
+  const [vaultOpen, setVaultOpen] = useState(false);
+  const [vaultCategories, setVaultCategories] = useState<{id:string;label:string}[]>([]);
+  const [vaultCategory, setVaultCategory] = useState("custom");
   const [aiActionPending, setAiActionPending] = useState(false);
   const [previousCard, setPreviousCard] = useState(card);
   const markedActivityRead = useRef("");
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
   const descriptionRef = useRef(description);
+  const descriptionUploadingRef = useRef(false);
   const saveDescriptionRef = useRef<() => Promise<boolean>>(async () => false);
   const savingDescriptionRef = useRef<Promise<boolean> | null>(null);
   if (card !== previousCard) {
@@ -223,16 +228,16 @@ export function CardDialog({
       setBusy(false);
     }
   }
-  async function uploadDescriptionImages(files: File[]) {
-    if (files.length > 10) throw new Error("Envie no máximo 10 imagens por vez.");
+  async function uploadDescriptionFiles(files: File[]) {
+    if (files.length > 10) throw new Error("Envie no máximo 10 anexos por vez.");
     return Promise.all(files.map(async file => {
-      if (!file.type.startsWith("image/")) throw new Error("Envie somente imagens na descrição.");
+      if (file.size > 10_000_000) throw new Error(`O arquivo ${file.name} excede o limite de 10 MB.`);
       const attachment = await send<{ id: string }>(`/cards/${card.id}/attachments`, "POST", {
-        name: file.name || "imagem",
-        mime_type: file.type,
-        data: await imageData(file),
+        name: file.name || "anexo",
+        mime_type: file.type || "application/octet-stream",
+        data: await fileData(file),
       });
-      return `/api/card-attachments/${attachment.id}/content`;
+      return { url: `/api/card-attachments/${attachment.id}/content`, name: file.name || "anexo", mime_type: file.type || "application/octet-stream" };
     }));
   }
   async function updateCard(
@@ -264,9 +269,25 @@ export function CardDialog({
     }
     return success;
   }
+  async function openVaultMove() {
+    try {
+      const categories = await api<{id:string;label:string}[]>("/vault/categories");
+      setVaultCategories([
+        {id:"site",label:"Sites e apps"},{id:"api",label:"Tokens e APIs"},{id:"ssh",label:"Chaves públicas e privadas"},
+        {id:"bank_test",label:"Dados bancários de teste"},{id:"license",label:"Licenças e softwares"},{id:"custom",label:"Outros textos"},...categories,
+      ]);
+      setVaultCategory("custom");setVaultOpen(true);setError("");
+    } catch (err) { setError((err as Error).message); }
+  }
+  async function moveToVault() {
+    setBusy(true);setError("");
+    try { await send(`/cards/${card.id}/vault`,"POST",{category:vaultCategory});setVaultOpen(false);await onDeleted(); }
+    catch(err){setError((err as Error).message)} finally {setBusy(false)}
+  }
 
   const saveDescription = useCallback(async (): Promise<boolean> => {
     if (!editingDescription) return false;
+    if (descriptionUploadingRef.current) return false;
     if (savingDescriptionRef.current) return savingDescriptionRef.current;
     const save = (async () => {
       const nextDescription = descriptionRef.current;
@@ -301,6 +322,7 @@ export function CardDialog({
   useEffect(() => {
     if (!editingDescription) return;
     const handlePointerDown = (event: PointerEvent) => {
+      if (descriptionUploadingRef.current) return;
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (descriptionEditorRef.current?.contains(target)) return;
@@ -493,18 +515,18 @@ export function CardDialog({
                 {editingDescription ? (
                   <div ref={descriptionEditorRef}>
                     <div>
-                      <MarkdownEditor
+                      <CardDescriptionEditor
                         value={description}
-                        onChange={setDescription}
+                        onChange={next => { descriptionRef.current = next; setDescription(next); }}
                         maxLength={1_000_000}
-                        placeholder="Adicione contexto, links e imagens em Markdown..."
-                        onImageFiles={uploadDescriptionImages}
+                        onFiles={uploadDescriptionFiles}
+                        onUploadChange={uploading => { descriptionUploadingRef.current = uploading; setDescriptionUploading(uploading); }}
                       />
                     </div>
                     <div className="mt-2 flex gap-2">
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={busy || descriptionUploading}
                         onClick={() => void saveDescription()}
                         className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
                       >
@@ -512,7 +534,7 @@ export function CardDialog({
                       </button>
                       <button
                         type="button"
-                        disabled={busy || aiLocked}
+                        disabled={busy || aiLocked || descriptionUploading}
                         onClick={() => void (async () => {
                           if (await saveDescription()) {
                             window.dispatchEvent(new CustomEvent("orbit:card-description-saved", { detail: card.id }));
@@ -523,7 +545,7 @@ export function CardDialog({
                         Salvar e executar
                       </button>
                       <button
-                        onClick={() => { setDescription(card.description || ""); setEditingDescription(false); }}
+                        onClick={() => { if (!descriptionUploadingRef.current) { setDescription(card.description || ""); setEditingDescription(false); } }}
                         className="rounded px-3 py-1.5 text-sm hover:bg-[#e9eaed]"
                       >
                         Cancelar
@@ -587,8 +609,6 @@ export function CardDialog({
               aiLocked={aiLocked}
               mode="settings"
             />
-            <GitCardPanel key={`git:${card.id}`} cardId={card.id} />
-            <CardCommitsPanel key={`commits:${card.id}`} cardId={card.id} resources={details.externalResources} />
             {details.externalResources.length > 0 && (
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
@@ -709,6 +729,7 @@ export function CardDialog({
                 >
                   <MoveRight size={16} /> Mover, copiar ou espelhar
                 </button>
+                {card.kind === "normal" && <button onClick={() => void openVaultMove()} className="flex w-full items-center gap-2 rounded bg-[#eeedfd] px-3 py-2 text-left text-sm font-semibold text-[#403294] hover:bg-[#e4dfff]"><Vault size={16}/> Mover para o cofre</button>}
                 {["normal", "template"].includes(card.kind || "normal") && (
                   <>
                     <button
@@ -820,6 +841,7 @@ export function CardDialog({
           </div>
         </Modal>
       )}
+      {vaultOpen && <Modal onClose={() => {if(!busy)setVaultOpen(false)}}><div className="space-y-4 p-6"><h2 className="pr-10 text-xl font-bold">Mover para o cofre</h2><p className="text-sm text-[#626f86]">O cartão ficará oculto do quadro e sem recursos de IA enquanto estiver no cofre. As configurações e execuções serão preservadas.</p><label className="block text-sm font-semibold">Categoria<select value={vaultCategory} onChange={event=>setVaultCategory(event.target.value)} className="mt-2 w-full rounded border border-[#8590a2] bg-white p-2 text-sm">{vaultCategories.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label><div className="flex justify-end gap-2"><button onClick={()=>setVaultOpen(false)} disabled={busy} className="rounded px-3 py-2 text-sm">Cancelar</button><button onClick={()=>void moveToVault()} disabled={busy} className="rounded bg-[#403294] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy?"Movendo...":"Mover cartão"}</button></div></div></Modal>}
     {confirmationModal}
     </>
   );

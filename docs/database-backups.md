@@ -6,10 +6,10 @@ Orbit keeps board backgrounds, attachments, comment files, cards and application
 
 - `pg_dump` creates a PostgreSQL custom-format archive from one consistent snapshot.
 - Orbit encrypts the archive with AES-256-GCM before publishing it to the backup directory.
-- Orbit writes a manifest with the database name, timestamp, source revision, archive size and SHA-256 checksum, then uploads both encrypted archive and manifest to Google Drive.
+- Orbit writes a manifest with the database name, timestamp, source revision, archive size and SHA-256 checksum, then uploads both encrypted archive and manifest to Google Drive using the connected Google account. It also creates separate encrypted vault, configuration, and per-attachment archives with manifests.
 - A backup is considered complete only after Orbit decrypts it and `pg_restore --list` can read the archive.
 - After a new archive is verified, Orbit keeps the newest 30 complete local archives by default. Change `ORBIT_BACKUP_KEEP` to retain more; set it to at least 2.
-- On an initialized Orbit database, `npm run db:migrate` creates, verifies and uploads a `before-db-migrate` backup before it changes the schema. If local verification or the Drive upload fails, the migration stops before executing SQL. A brand new empty database can be initialized without a backup.
+- On an initialized Orbit database, `npm run db:migrate` creates and verifies a `before-db-migrate` backup. Once the cloud backup tables exist, it uploads the database and vault packages before changing the schema. During the first migration that creates those tables, it uploads after applying the schema. A brand new empty database can be initialized without a backup.
 - Restore requires a separate, empty database. Orbit refuses to overwrite the source database or a target that already contains tables.
 
 The backup key is independent of the database and the provider-secret encryption key. Generate one once and store it in a password manager or another recovery vault that is available if this server is lost:
@@ -22,9 +22,9 @@ Set the result as `ORBIT_BACKUP_KEY` in `apps/api/.env`. Do not commit the value
 
 ## Configure Google Drive
 
-Create a dedicated OAuth client in Google Cloud, enable the Google Drive API, and authorize it with offline access and the `https://www.googleapis.com/auth/drive` scope. Create a folder in the destination Google Drive and set its ID in `ORBIT_DRIVE_FOLDER_ID`. Put the OAuth client ID, client secret, and refresh token in `apps/api/.env` as `ORBIT_DRIVE_CLIENT_ID`, `ORBIT_DRIVE_CLIENT_SECRET`, and `ORBIT_DRIVE_REFRESH_TOKEN`. Keep these credentials private and separate from the backup encryption key. The OAuth account must retain access to the folder.
+Create a Google OAuth web client, enable the Google Drive API, configure the shared `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and connect the Drive account in Orbit. The plugin requests the `https://www.googleapis.com/auth/drive.file` scope and creates separate **Orbit Backups**, **Orbit Vault Backups**, **Orbit Config Backups**, and **Orbit Card Attachments** folders. Choose the automatic account in the Backups page; if exactly one Drive account is connected, it is selected automatically. Keep `ORBIT_BACKUP_KEY` private and separate from the OAuth credentials.
 
-Every successful backup uploads the encrypted archive and its JSON manifest using resumable transfers. A partial upload is not treated as success: the command fails, and an initialized database migration remains blocked. Keep a separate copy of `ORBIT_BACKUP_KEY` in a recovery vault; a Drive account alone cannot decrypt the data. Confirm access to both files in Drive after the first scheduled run.
+Every backup uploads the encrypted database, vault, and configuration archives plus their JSON manifests using resumable transfers. Changes to local `.env` files also trigger a new configuration archive. Card and comment files are stored in PostgreSQL and receive separate encrypted copies in Drive when automatic upload is enabled. A partial upload is recorded as a failure. Keep a separate copy of `ORBIT_BACKUP_KEY` in a recovery vault; a Drive account alone cannot decrypt the data. Confirm access to all backup folders after the first scheduled run.
 
 By default, archives go to `backups/` at the repository root. Set `ORBIT_BACKUP_DIR` to a directory on a separate mounted disk if available. Files are created with owner-only permissions. A directory on the same server protects against a failed migration, but it does not protect against loss of that server or its disk.
 
@@ -57,6 +57,17 @@ npm run db:backup -- restore /path/to/orbit-backup.backup.enc
 The command checks the encrypted file and manifest, rejects the source database as a target, confirms that the target is empty, restores transactionally, and checks that the critical Orbit tables exist. It prints counts for users, boards, cards and attachments. Start a separate Orbit instance against this restored database and inspect the application before changing the production connection string.
 
 Keep the previous database and backups until the restored instance has been checked. A successful `pg_restore` proves the archive can be read; a restore rehearsal proves the application can use the recovered data. Rehearse recovery regularly and record how long it takes.
+
+## Restore the vault independently
+
+The separate vault archive is encrypted with a key derived from `ORBIT_BACKUP_KEY`. It contains the vault categories and text contents, and can be imported into an existing Orbit account without replacing cards or restoring PostgreSQL as a whole. Keep both the `.vault.enc` file and its `.manifest.json` file together.
+
+```bash
+npm run db:backup -- verify-vault /path/to/orbit-vault-....vault.enc
+npm run db:backup -- restore-vault /path/to/orbit-vault-....vault.enc owner@example.com
+```
+
+The import preserves existing vault items, re-encrypts imported items with the destination's vault key, and rejects a second import of the same encrypted archive into the same account. The Backups page also offers download and import actions for vault archives stored in Drive.
 
 ## Recovery coverage
 

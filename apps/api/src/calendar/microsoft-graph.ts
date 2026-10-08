@@ -5,6 +5,7 @@ import {
 } from "node:crypto";
 import { Db } from "../db";
 import { SecretVault } from "../secrets";
+import {publicApiUrl} from '../public-api-url';
 
 export type MicrosoftCapability = "calendar" | "teams" | "mail";
 type MicrosoftTokenSet = {
@@ -115,7 +116,7 @@ export class MicrosoftGraphClient {
   redirectUri() {
     return (
       process.env.MICROSOFT_REDIRECT_URI ||
-      `${process.env.API_PUBLIC_URL || "http://localhost:4000"}/calendar/microsoft/oauth/callback`
+      `${publicApiUrl()}/calendar/microsoft/oauth/callback`
     );
   }
   scopes(capability: MicrosoftCapability) {

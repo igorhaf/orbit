@@ -16,6 +16,7 @@ import {
 import {
   api,
   Board,
+  Card,
   CalendarItem,
   CalendarSource,
   cardUrl,
@@ -24,6 +25,7 @@ import {
   User,
 } from "@/lib/api";
 import { AppHeader, Modal, useConfirmModal, WorkspaceSidebar } from "@/components/ui";
+import { CardDialog } from "@/components/card-dialog";
 
 type View = "month" | "week" | "day" | "agenda" | "timeline";
 const views: Record<View, string> = {
@@ -70,6 +72,8 @@ export default function CalendarPage() {
     [boards, setBoards] = useState<Board[]>([]),
     [sources, setSources] = useState<CalendarSource[]>([]),
     [items, setItems] = useState<CalendarItem[]>([]),
+    [selectedCard, setSelectedCard] = useState<Card | null>(null),
+    [selectedCardBoard, setSelectedCardBoard] = useState<Board | null>(null),
     [view, setView] = useState<View>("month"),
     [anchor, setAnchor] = useState(new Date()),
     [selected, setSelected] = useState<CalendarItem | null>(null),
@@ -162,6 +166,23 @@ export default function CalendarPage() {
       setError((e as Error).message);
     }
   }
+  async function openCalendarCard(item: CalendarItem) {
+    if (!item.cardId) return;
+    const boardId = String(item.metadata.boardId || item.metadata.board_id || "");
+    if (!boardId) {
+      setError("Não foi possível localizar o quadro deste cartão.");
+      return;
+    }
+    try {
+      const board = await api<Board>(`/boards/${boardId}`);
+      const card = board.lists?.flatMap((list) => list.cards).find((entry) => entry.id === item.cardId);
+      if (!card) throw new Error("Este cartão não está disponível neste quadro.");
+      setSelectedCardBoard(board);
+      setSelectedCard(card);
+    } catch (reason) {
+      setError((reason as Error).message);
+    }
+  }
   const title =
     view === "month"
       ? anchor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
@@ -233,8 +254,8 @@ export default function CalendarPage() {
             items={items}
             sources={sources}
             choose={(item) => {
-              if (item.cardId && item.metadata.boardId) {
-                router.push(cardUrl(String(item.metadata.boardId), item.cardId));
+              if (item.cardId) {
+                void openCalendarCard(item);
                 return;
               }
               setSelected(item);
@@ -258,6 +279,21 @@ export default function CalendarPage() {
           confirm={confirm}
         />
       )}{" "}
+      {selectedCard && selectedCardBoard && (
+        <CardDialog
+          card={selectedCard}
+          board={selectedCardBoard}
+          onClose={() => { setSelectedCard(null); setSelectedCardBoard(null); }}
+          onChanged={async () => {
+            const updated = await api<Board>(`/boards/${selectedCardBoard.id}`);
+            setSelectedCardBoard(updated);
+            const card = updated.lists?.flatMap((list) => list.cards).find((entry) => entry.id === selectedCard.id);
+            if (card) setSelectedCard(card);
+            await load();
+          }}
+          onDeleted={async () => { setSelectedCard(null); setSelectedCardBoard(null); await load(); }}
+        />
+      )}
       {creating && (
         <EventForm
           sources={sources.filter((s) => s.capabilities?.create)}
@@ -755,7 +791,7 @@ function EventDetail({
               <button
                 onClick={() =>
                   router.push(
-                    cardUrl(String(item.metadata.boardId || ""), item.cardId),
+                    cardUrl(String(item.metadata.boardId || ""), item.cardId, item.cardUrlToken),
                   )
                 }
                 className="rounded bg-[#e9eaed] px-3 py-2 text-sm"

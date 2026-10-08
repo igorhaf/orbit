@@ -64,6 +64,7 @@ export type PluginDefinition = {
   version: string;
   description?: string;
   scope?: PluginScope;
+  configuration?: Array<{ key: string; label: string; secret: boolean }>;
   capabilities?: CapabilityDefinition[];
   actions?: ActionDefinition[];
   connectionProvider?: ConnectionProviderDefinition;

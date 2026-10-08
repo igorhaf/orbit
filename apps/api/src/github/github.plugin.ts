@@ -6,6 +6,7 @@ import { FeaturesService } from "../features";
 import { PluginActionContext, PluginDefinition } from "../plugins/contract";
 import { SecretVault } from "../secrets";
 import { GitHubClient } from "./github.client";
+import {publicApiUrl} from '../public-api-url';
 
 type Repository = { id: number; full_name: string; name: string; owner: { login: string }; default_branch: string; html_url: string; private: boolean; permissions?: Record<string, boolean> };
 type Issue = { id: number; number: number; title: string; body?: string | null; state: string; html_url: string; updated_at: string; labels?: unknown[]; assignees?: unknown[]; pull_request?: unknown };
@@ -27,7 +28,7 @@ export class GitHubPlugin {
   connections(ownerId: string) { return this.db.query("SELECT id,display_name,label,status,metadata,created_at FROM integration_connections WHERE owner_id=$1 AND plugin_id='github' AND enabled ORDER BY created_at", [ownerId]); }
   async oauthUrl(ownerId: string) {
     if (!process.env.GITHUB_CLIENT_ID) throw new HttpException("GitHub App não configurado.", 503);
-    const state = randomBytes(32).toString("base64url"), redirect = `${process.env.API_PUBLIC_URL || "http://localhost:4000"}/github/oauth/callback`;
+    const state = randomBytes(32).toString("base64url"), redirect = `${publicApiUrl()}/github/oauth/callback`;
     await this.db.query("INSERT INTO oauth_states(state_hash,owner_id,plugin_id,redirect_uri,expires_at) VALUES($1,$2,'github',$3,now()+interval '10 minutes')", [createHash("sha256").update(state).digest("hex"), ownerId, redirect]);
     return { url: `https://github.com/login/oauth/authorize?${new URLSearchParams({ client_id: process.env.GITHUB_CLIENT_ID, redirect_uri: redirect, state })}` };
   }
@@ -125,7 +126,7 @@ const schema = (required: string[], properties: Record<string, unknown>) => ({ t
 const string = { type: "string", minLength: 1 }, integer = { type: "integer", minimum: 1 }, output = { type: "object", required: ["type", "value"], properties: { type: { type: "string" }, label: { type: "string" }, value: {} } };
 export const githubPluginDefinition = (github: GitHubPlugin): PluginDefinition => {
   const action = (id: string, name: string, capability: string, inputSchema: Record<string, unknown>, run: (owner: string, connection: string, input: Record<string, unknown>) => Promise<unknown>) => ({ id, name, permissions: [capability], requiredCapabilities: [capability], inputSchema, outputSchema: output, execute: async (input: Record<string, unknown>, context: PluginActionContext) => { if (!context.userId || !context.connectionId) throw new Error("Conexão GitHub obrigatória."); return { type: "github", label: name, value: await run(context.userId, context.connectionId, input) }; } });
-  return { id: "github", name: "GitHub", version: "1.0.0", scope: "account", capabilities: [
+  return { id: "github", name: "GitHub", version: "1.0.0", scope: "account", configuration:[{key:"GITHUB_APP_ID",label:"GitHub App ID",secret:false},{key:"GITHUB_APP_PRIVATE_KEY",label:"GitHub App Private Key",secret:true},{key:"GITHUB_CLIENT_ID",label:"GitHub OAuth Client ID",secret:false},{key:"GITHUB_CLIENT_SECRET",label:"GitHub OAuth Client Secret",secret:true},{key:"GITHUB_WEBHOOK_SECRET",label:"GitHub Webhook Secret",secret:true}], capabilities: [
     { id: "repository.read", name: "Ler repositórios", permissions: ["repository.read"] }, { id: "repository.write", name: "Alterar repositórios", permissions: ["repository.write"] }, { id: "issues.read", name: "Ler issues", permissions: ["issues.read"] }, { id: "issues.write", name: "Alterar issues", permissions: ["issues.write"] }, { id: "pull_requests.read", name: "Ler pull requests", permissions: ["pull_requests.read"] }, { id: "pull_requests.write", name: "Alterar pull requests", permissions: ["pull_requests.write"] }, { id: "branches.read", name: "Ler branches", permissions: ["branches.read"] }, { id: "branches.write", name: "Criar branches", permissions: ["branches.write"] },
   ], actions: [
     action("list_repositories", "Listar repositórios", "repository.read", schema([], {}), (u,c) => github.repositories(u,c)),
@@ -138,7 +139,7 @@ export const githubPluginDefinition = (github: GitHubPlugin): PluginDefinition =
     action("comment_pull_request", "Comentar pull request", "pull_requests.write", schema(["repository","number","body"], { repository:string,number:integer,body:string }), (u,c,i) => github.commentPullRequest(u,c,i)),
     action("list_pull_request_files", "Listar arquivos do pull request", "pull_requests.read", schema(["repository","number"], { repository:string,number:integer }), (u,c,i) => github.pullFiles(u,c,String(i.repository),Number(i.number))),
     action("get_pull_request_diff", "Obter diff do pull request", "pull_requests.read", schema(["repository","number"], { repository:string,number:integer }), (u,c,i) => github.pullDiff(u,c,String(i.repository),Number(i.number))),
-  ], connectionProvider: { id:"github-app", name:"GitHub App", supportsMultiple:true, capabilities:["repository.read","repository.write","issues.read","issues.write","pull_requests.read","pull_requests.write","branches.read","branches.write"] }, contributions: { cardActions:[{id:"github.create_issue",label:"Criar GitHub Issue"},{id:"github.create_pull_request",label:"Criar GitHub Pull Request"},{id:"github.link",label:"Vincular recurso GitHub"}], resourceRenderers:[{resourceTypes:["repository","issue","pull_request","branch","commit"],component:"github-resource"}], settings:[{id:"github",label:"GitHub",href:"/profile?integration=github"}] } };
+  ], connectionProvider: { id:"github-app", name:"GitHub App", supportsMultiple:true, capabilities:["repository.read","repository.write","issues.read","issues.write","pull_requests.read","pull_requests.write","branches.read","branches.write"] }, contributions: { cardActions:[{id:"github.create_issue",label:"Criar GitHub Issue"},{id:"github.create_pull_request",label:"Criar GitHub Pull Request"},{id:"github.link",label:"Vincular recurso GitHub"}], resourceRenderers:[{resourceTypes:["repository","issue","pull_request","branch","commit"],component:"github-resource"}], settings:[{id:"github",label:"GitHub",href:"/plugins?configure=github"}] } };
 };
 
 @Controller("github")
@@ -146,7 +147,7 @@ export class GitHubController {
   constructor(@Inject(GitHubPlugin) private github: GitHubPlugin, @Inject(FeaturesService) private features: FeaturesService) {}
   @Get("status") async status(@Req() req: Request) { return { configured:this.github.configured(), connections:await this.github.connections(this.features.user(req)) }; }
   @Get("oauth/start") start(@Req() req: Request) { return this.github.oauthUrl(this.features.user(req)); }
-  @Get("oauth/callback") async callback(@Query("code") code:string,@Query("state") state:string,@Res() response:Response) { try { await this.github.oauthCallback(code,state); response.redirect(`${process.env.WEB_ORIGIN||"http://localhost:3000"}/profile?integration=github&connected=true`); } catch(error) { response.redirect(`${process.env.WEB_ORIGIN||"http://localhost:3000"}/profile?integration=github&error=${encodeURIComponent((error as Error).message)}`); } }
+  @Get("oauth/callback") async callback(@Query("code") code:string,@Query("state") state:string,@Res() response:Response) { try { await this.github.oauthCallback(code,state); response.redirect(`${process.env.WEB_ORIGIN||"http://localhost:3000"}/plugins?configure=github&connected=true`); } catch(error) { response.redirect(`${process.env.WEB_ORIGIN||"http://localhost:3000"}/plugins?configure=github&error=${encodeURIComponent((error as Error).message)}`); } }
   @Get("repositories") repositories(@Req() req:Request,@Query("connectionId") connection:string) { return this.github.repositories(this.features.user(req),uid(connection,"Conexão")); }
   @Get("cards/:cardId/commits") commits(@Req() req:Request,@Param("cardId") card:string) { return this.github.cardCommits(this.features.user(req),uid(card,"Cartão")); }
   @Post("cards/:cardId/commits") linkCommit(@Req() req:Request,@Param("cardId") card:string,@Body() body:Record<string,unknown>) { return this.github.linkCommit(this.features.user(req),uid(body.connectionId,"Conexão"),uid(card,"Cartão"),repo(body.repository),body.sha); }

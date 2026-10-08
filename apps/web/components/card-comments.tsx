@@ -112,6 +112,10 @@ export function CardComments({
   }, [details.comments]);
   async function addPendingFiles(files: File[]) {
     try {
+      if (pending.length + files.length > 10) throw new Error("Envie no máximo 10 anexos por comentário.");
+      if (files.some(file => file.size > 10_000_000)) throw new Error("Cada anexo pode ter no máximo 10 MB.");
+      const pendingBytes = pending.reduce((sum, item) => sum + Math.floor((item.data?.length || 0) * 3 / 4), 0);
+      if (pendingBytes + files.reduce((sum, file) => sum + file.size, 0) > 10_000_000) throw new Error("O total dos anexos pode ter no máximo 10 MB.");
       const entries = await Promise.all(
         files.map(async (file) => ({
           kind: "file" as const,
@@ -120,7 +124,7 @@ export function CardComments({
           data: await asData(file),
         })),
       );
-      setPending(current => [...current, ...entries].slice(0, 10));
+      setPending(current => [...current, ...entries]);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -136,7 +140,7 @@ export function CardComments({
     try {
       const ok = await run(() =>
         send(`/cards/${card.id}/comments`, "POST", {
-          body: body.trim() || "Imagem anexada.",
+          body: body.trim() || "Anexo enviado.",
           attachments: pending,
           execute,
         }),
@@ -249,14 +253,14 @@ export function CardComments({
               value={body}
               onChange={(event) => setBody(event.target.value)}
               onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
-                const files = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/"));
+                const files = Array.from(event.clipboardData.files);
                 if (files.length) { event.preventDefault(); void addPendingFiles(files); }
               }}
               onDragOver={(event: DragEvent<HTMLTextAreaElement>) => {
-                if (Array.from(event.dataTransfer.files).some(file => file.type.startsWith("image/"))) event.preventDefault();
+                if (event.dataTransfer.files.length) event.preventDefault();
               }}
               onDrop={(event: DragEvent<HTMLTextAreaElement>) => {
-                const files = Array.from(event.dataTransfer.files).filter(file => file.type.startsWith("image/"));
+                const files = Array.from(event.dataTransfer.files);
                 if (files.length) { event.preventDefault(); void addPendingFiles(files); }
               }}
               rows={3}

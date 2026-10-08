@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Archive, ArrowRight, Clock3, DatabaseBackup, FileArchive, LayoutDashboard, LoaderCircle, Plus, Search, Star } from 'lucide-react';
+import { Archive, ArrowRight, Clock3, DatabaseBackup, FileArchive, LayoutDashboard, Plus, Search, Star } from 'lucide-react';
 import { api, send, Board, HomeData, SearchResults, User, clearSession, getToken, getUser, setUser, cardUrl } from '@/lib/api';
 import { AppHeader, BoardTile, CreateBoardModal, WorkspaceSidebar } from '@/components/ui';
 import { AuthScreen } from '@/components/auth-screen';
@@ -32,7 +32,6 @@ export default function Home() {
   const [searchLoading,setSearchLoading]=useState(false);
   const [boardSection,setBoardSection]=useState<BoardSection>('favorites');
   const [create,setCreate]=useState(false);
-  const [backupBusy,setBackupBusy]=useState(false);
   const [error,setError]=useState('');
   const load = useCallback(async () => {
     try {
@@ -78,7 +77,6 @@ export default function Home() {
     remember({label:'criar quadro',undo:[{path:`/boards/${board.id}/close`,method:'PATCH'}],redo:[{path:`/boards/${board.id}/reopen`,method:'PATCH'}]});
     router.push(`/board/${board.id}`);
   }
-  async function createBackup(){setBackupBusy(true);setError('');try{await send<BackupSummary>('/backups','POST');const rows=await api<BackupSummary[]>('/backups');setBackups(rows)}catch(err){setError((err as Error).message)}finally{setBackupBusy(false)}}
   if (!ready) return <div className="min-h-screen bg-[#f7f8fa]"/>;
   if (!user) return <AuthScreen onDone={account => {setCurrentUser(account);load();}}/>;
   const visibleBoards=boards.filter(board=>!board.is_inbox);
@@ -96,7 +94,7 @@ export default function Home() {
 
     <div className="grid gap-5 xl:grid-cols-2">
       <section aria-label="Backups recentes" className="overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm">
-        <div className="flex items-center gap-3 border-b border-[#f1f2f4] px-5 py-4"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#eeedfd] text-[#403294]"><DatabaseBackup size={18}/></span><div className="min-w-0 flex-1"><h2 className="font-bold">Backups</h2><p className="text-xs text-[#626f86]">{backups.length} cópias salvas</p></div><button disabled={backupBusy} onClick={()=>void createBackup()} className="inline-flex items-center gap-1 rounded bg-[#403294] px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{backupBusy?<LoaderCircle size={14} className="animate-spin"/>:<Plus size={14}/>} Criar</button></div>
+        <div className="flex items-center gap-3 border-b border-[#f1f2f4] px-5 py-4"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#eeedfd] text-[#403294]"><DatabaseBackup size={18}/></span><div className="min-w-0 flex-1"><h2 className="font-bold">Backups</h2><p className="text-xs text-[#626f86]">{backups.length} cópias salvas</p></div><button onClick={()=>router.push('/backups')} className="inline-flex items-center gap-1 rounded bg-[#403294] px-2.5 py-1.5 text-xs font-semibold text-white"><Plus size={14}/> Criar</button></div>
         <div className="divide-y divide-[#f1f2f4]">{backups.slice(0,5).map(backup=><div key={backup.archive} className="flex items-center gap-3 px-5 py-3"><DatabaseBackup size={15} className="shrink-0 text-[#626f86]"/><div className="min-w-0 flex-1"><strong className="block truncate text-sm">{backup.archive}</strong><span className="text-xs text-[#626f86]">{backup.created_at?new Date(backup.created_at).toLocaleString('pt-BR'):'Data indisponível'}{backup.archive_bytes?` · ${(backup.archive_bytes/1024/1024).toFixed(1)} MB`:''}</span></div></div>)}{backups.length===0&&<p className="px-5 py-6 text-sm text-[#626f86]">Ainda não há backups. Crie o primeiro por aqui.</p>}</div>
         <div className="border-t border-[#f1f2f4] px-5 py-3"><button onClick={()=>router.push('/backups')} className="text-xs font-semibold text-[#0c66e4] hover:underline">Gerenciar todos os backups <ArrowRight size={13} className="ml-1 inline"/></button></div>
       </section>

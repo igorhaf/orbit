@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+node_modules
+**/node_modules
+**/.next
+**/dist
+backups
+.orbit/sessions
+apps/api/.orbit/sessions
+.aws
+.codex
+**/*.log

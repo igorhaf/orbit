@@ -121,13 +121,14 @@ export class CardExtensionsService {
   async deleteItem(itemId:string,userId:string){await this.item(itemId,userId);await this.db.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);return {ok:true}}
   async convertItem(itemId:string,userId:string,body:Payload){
     const item=await this.item(itemId,userId);
-    const parent=await this.db.one('SELECT list_id FROM cards WHERE id=$1',[item.card_id]);
+    const parent=await this.db.one<{list_id:string;title:string;description:string;checklist_title:string}>('SELECT c.list_id,c.title,c.description,cl.title AS checklist_title FROM cards c JOIN checklists cl ON cl.id=$2 WHERE c.id=$1',[item.card_id,item.checklist_id]);
     const listId=body.list_id===undefined?parent!.list_id:id(String(body.list_id));
     const destination=await this.db.one('SELECT board_id,archived_at FROM lists WHERE id=$1',[listId]);
     if(!destination||destination.board_id!==item.board_id||destination.archived_at)bad('Lista de destino inválida.');
     const client=await this.db.pool.connect();
     try{await client.query('BEGIN');
-      const card=(await client.query(`INSERT INTO cards(list_id,title,due_date,position) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING *`,[listId,item.text,item.due_date])).rows[0];
+      const description=[`Convertido do checklist “${parent!.checklist_title}” do cartão “${parent!.title}”.`,parent!.description?.trim()?`\nContexto do cartão de origem:\n${parent!.description.trim()}`:''].join('\n');
+      const card=(await client.query(`INSERT INTO cards(list_id,title,description,due_date,position) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING *`,[listId,item.text,description,item.due_date])).rows[0];
       await client.query(`INSERT INTO card_labels(card_id,label_id) SELECT $1,label_id FROM card_labels WHERE card_id=$2 ON CONFLICT DO NOTHING`,[card.id,item.card_id]);
       await client.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);
       await client.query('COMMIT');await this.features.record(userId,item.board_id,card.id,'card_created',`converteu o item ${item.text} em cartão`);return card;

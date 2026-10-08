@@ -1,11 +1,12 @@
 import 'reflect-metadata';
 import 'dotenv/config';
-import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Res, HttpException, Inject } from '@nestjs/common';
+import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, Res, HttpException, Inject, Optional } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Request, Response, json } from 'express';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import {decryptVaultPayload,encryptVaultPayload,vaultItemHtml} from './vault-crypto';
 import { join, resolve } from 'node:path';
 import { PoolClient } from 'pg';
 import { Db } from './db';
@@ -44,7 +45,11 @@ import { MicrosoftTeamsPlugin, microsoftTeamsPluginDefinition } from './calendar
 import { notebookHtmlToMarkdown } from './notebook-markdown';
 import { PlannerController, PlannerPlugin, plannerPluginDefinition } from './planner/planner.plugin';
 import { EnvironmentSettingsController } from './env-settings';
-import { createDatabaseBackup, listDatabaseBackups, restoreDatabaseBackup } from './database-backup';
+import { restoreDatabaseBackup } from './database-backup';
+import {BackupDestinationRegistry} from './backup-destinations';
+import {BackupService} from './backup-service';
+import {GoogleCredentials} from './google/credentials';
+import {GoogleDriveBackupController,GoogleDriveBackupPlugin,googleDriveBackupPluginDefinition} from './google/drive-backup.plugin';
 import {CommandExecutorRegistry,DeliveryCredentialService,LocalCommandExecutor,SshCommandExecutor} from './delivery/executors';
 import {DeliveryGitService} from './delivery/git-service';
 import {DeliveryHandlers,DeploymentStrategyRegistry,PromotionStrategyRegistry} from './delivery/handlers';
@@ -54,7 +59,6 @@ import {DeliveryRunner} from './delivery/runner';
 import {DeliveryController,deliveryPluginDefinition,sshPluginDefinition} from './delivery/controller';
 
 type Payload = Record<string, unknown>;
-type CopyParts = {checklists:boolean;customFields:boolean};
 const fail = (message: string, code = 400): never => { throw new HttpException({ message }, code); };
 const value = (v: unknown, name: string, max = 300) => {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max) fail(`${name} inválido.`);
@@ -93,13 +97,13 @@ const listColors = new Set(['blue','green','yellow','orange','red','purple','pin
 
 @Injectable()
 class Service {
-  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Inject(CodexAiService) private codex: CodexAiService,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(DeliveryRunner) private delivery:DeliveryRunner) {}
+  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Inject(CodexAiService) private codex: CodexAiService,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(DeliveryRunner) private delivery:DeliveryRunner,@Optional() @Inject(BackupService) private backups?:BackupService) {}
   private async classifyTitle(title:string,userId:string){
     const result=cardKindFromTitle(title,process.env.WEB_ORIGIN||'http://localhost:3000');
     if(result.targetBoardId)await this.member(result.targetBoardId,userId);
     return result;
   }
-  private async copyCardContent(client:PoolClient,sourceCard:string,targetCard:string,sourceBoard:string,targetBoard:string,fieldMap=new Map<string,string>(),parts:CopyParts={checklists:true,customFields:true}) {
+  private async copyCardContent(client:PoolClient,sourceCard:string,targetCard:string,parts:{checklists:boolean}={checklists:true}) {
     if(parts.checklists){
       const groups=(await client.query('SELECT id,title,position FROM checklists WHERE card_id=$1 ORDER BY position',[sourceCard])).rows;
       const start=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM checklists WHERE card_id=$1',[targetCard])).rows[0].next);
@@ -110,29 +114,11 @@ class Service {
           SELECT $1,$2,text,completed,position,due_date FROM checklist_items WHERE checklist_id=$3`,[targetCard,copy.id,group.id]);
       }
     }
-    if(!parts.customFields)return;
-    const values=(await client.query('SELECT v.field_id,v.value,f.name,f.type,f.options,f.show_on_card FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1',[sourceCard])).rows;
-    for(const entry of values){
-      let fieldId=fieldMap.get(entry.field_id);
-      if(!fieldId&&sourceBoard===targetBoard)fieldId=entry.field_id;
-      if(!fieldId){
-        const existing=(await client.query('SELECT id FROM custom_fields WHERE board_id=$1 AND name=$2 AND type=$3 AND options=$4::jsonb LIMIT 1',[targetBoard,entry.name,entry.type,JSON.stringify(entry.options)])).rows[0];
-        if(existing)fieldId=existing.id;
-        else fieldId=(await client.query('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM custom_fields WHERE board_id=$1),0),$5) RETURNING id',[targetBoard,entry.name,entry.type,JSON.stringify(entry.options),entry.show_on_card])).rows[0].id;
-        fieldMap.set(entry.field_id,fieldId!);
-      }
-      await client.query('INSERT INTO card_custom_values(card_id,field_id,value) VALUES($1,$2,$3) ON CONFLICT(card_id,field_id) DO NOTHING',[targetCard,fieldId,JSON.stringify(entry.value)]);
-    }
   }
   user(req: Request) { return this.features.user(req); }
-  private vaultKey() { return createHash('sha256').update(process.env.VAULT_ENCRYPTION_KEY || process.env.JWT_SECRET || '').digest(); }
-  private encryptVault(payload:Payload) {
-    const iv=randomBytes(12); const cipher=createCipheriv('aes-256-gcm',this.vaultKey(),iv);
-    const encrypted=Buffer.concat([cipher.update(JSON.stringify(payload),'utf8'),cipher.final()]);
-    return `${iv.toString('base64')}.${cipher.getAuthTag().toString('base64')}.${encrypted.toString('base64')}`;
-  }
+  private encryptVault(payload:Payload) { return encryptVaultPayload(payload); }
   private decryptVault(value:string):Payload {
-    try { const [iv,tag,data]=value.split('.').map(part=>Buffer.from(part,'base64')); if(!iv||!tag||!data) throw new Error('invalid'); const decipher=createDecipheriv('aes-256-gcm',this.vaultKey(),iv); decipher.setAuthTag(tag); return JSON.parse(Buffer.concat([decipher.update(data),decipher.final()]).toString('utf8')) as Payload; }
+    try { return decryptVaultPayload(value); }
     catch { return fail('Não foi possível abrir este item do cofre.',409); }
   }
   async vaultCategories(userId:string) { return this.db.query('SELECT id,name AS label,icon,position FROM vault_categories WHERE owner_id=$1 ORDER BY position,id',[userId]); }
@@ -156,15 +142,12 @@ class Service {
     if(BUILT_IN_VAULT_CATEGORIES.has(category))return;
     if(!await this.db.one('SELECT id FROM vault_categories WHERE id=$1 AND owner_id=$2',[uuid(category),userId]))fail('Categoria do cofre inválida.',400);
   }
-  async vault(userId:string) { return this.db.query('SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,v.created_at,v.updated_at FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id WHERE v.owner_id=$1 ORDER BY v.updated_at DESC',[userId]); }
+  async vault(userId:string) { return this.db.query('SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,v.created_at,v.updated_at,v.card_id,c.url_token,l.board_id FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id LEFT JOIN lists l ON l.id=c.list_id WHERE v.owner_id=$1 ORDER BY v.updated_at DESC',[userId]); }
   async vaultItem(id:string,userId:string) {
-    uuid(id); const item=await this.db.one<{id:string;title:string;category:string;notes:string;secret_data:string;created_at:string;updated_at:string}>('SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,COALESCE(c.description,v.notes) AS notes,v.secret_data,v.created_at,v.updated_at FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id WHERE v.id=$1 AND v.owner_id=$2',[id,userId]);
+    uuid(id); const item=await this.db.one<{id:string;title:string;category:string;notes:string;secret_data:string;created_at:string;updated_at:string;card_id:string|null;url_token:string|null;board_id:string|null}>('SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,COALESCE(c.description,v.notes) AS notes,v.secret_data,v.created_at,v.updated_at,v.card_id,c.url_token,l.board_id FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id LEFT JOIN lists l ON l.id=c.list_id WHERE v.id=$1 AND v.owner_id=$2',[id,userId]);
     if(!item) return fail('Item do cofre não encontrado.',404);
     const stored=this.decryptVault(item.secret_data);
-    const escape=(text:string)=>text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const legacyNotes=item.notes?`<p>${escape(item.notes).replace(/\n/g,'<br>')}</p>`:'';
-    const legacyFields=Object.entries(stored).filter((entry):entry is [string,string]=>typeof entry[1]==='string').map(([label,content])=>`<h2>${escape(label)}</h2><p>${escape(content).replace(/\n/g,'<br>')}</p>`).join('');
-    const content_html=typeof stored.content_html==='string'?stored.content_html:legacyNotes+legacyFields;
+    const content_html=vaultItemHtml(stored,item.notes);
     const {notes,secret_data,...visible}=item;void notes;void secret_data;
     return {...visible,content_html};
   }
@@ -184,8 +167,8 @@ class Service {
       await client.query('BEGIN');
       const row=(await client.query('SELECT card_id FROM vault_items WHERE id=$1 AND owner_id=$2 FOR UPDATE',[id,userId])).rows[0];
       if(!row)fail('Item do cofre não encontrado.',404);
-      await client.query("UPDATE vault_items SET card_id=NULL,title=$3,category=COALESCE($4,category),notes='',secret_data=$5,updated_at=now() WHERE id=$1 AND owner_id=$2",[id,userId,title??existing.title,category,this.encryptVault({content_html})]);
-      if(row.card_id)await client.query('DELETE FROM cards WHERE id=$1',[row.card_id]);
+      await client.query("UPDATE vault_items SET title=$3,category=COALESCE($4,category),notes='',secret_data=$5,updated_at=now() WHERE id=$1 AND owner_id=$2",[id,userId,title??existing.title,category,this.encryptVault({content_html})]);
+      if(row.card_id)await client.query('UPDATE cards SET title=$2,description=$3,updated_at=now() WHERE id=$1',[row.card_id,title??existing.title,notebookHtmlToMarkdown(content_html)]);
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     return this.vaultItem(id,userId);
@@ -207,6 +190,21 @@ class Service {
     const card=await this.db.one<{id:string;url_token:string}>(`INSERT INTO cards(list_id,title,description,position,kind)
       VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0),'normal') RETURNING id,url_token`,[listId,item.title,description]);
     return {card_id:card!.id,board_id:boardId,url_token:card!.url_token};
+  }
+  async putCardInVault(cardId:string,userId:string,body:Payload) {
+    const boardId=await this.cardBoard(cardId,userId);
+    const card=await this.db.one<{id:string;title:string;description:string;kind:string}>('SELECT id,title,description,kind FROM cards WHERE id=$1',[cardId]);
+    if(!card)fail('Cartão não encontrado.',404);
+    if(card!.kind!=='normal')fail('Somente cartões simples podem ser movidos para o cofre.',409);
+    const category=value(body.category??'custom','Categoria',48);await this.validateVaultCategory(userId,category);
+    const row=await this.db.one<{id:string}>('INSERT INTO vault_items(owner_id,title,category,notes,secret_data,card_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(card_id) DO NOTHING RETURNING id',[userId,card!.title,category,card!.description,this.encryptVault({}),cardId]);
+    if(!row)fail('Este cartão já está no cofre.',409);
+    await this.features.record(userId,boardId,cardId,'card_updated','moveu o cartão para o cofre');
+    return this.vaultItem(row!.id,userId);
+  }
+  async restoreVaultCard(id:string,userId:string) {
+    uuid(id);const client=await this.db.pool.connect();
+    try{await client.query('BEGIN');const item=(await client.query<{card_id:string|null;url_token:string|null;list_id:string|null}>('SELECT v.card_id,c.url_token,c.list_id FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id WHERE v.id=$1 AND v.owner_id=$2 FOR UPDATE OF v',[id,userId])).rows[0];if(!item)fail('Item do cofre não encontrado.',404);if(!item.card_id||!item.list_id)fail('Este item não está associado a um cartão.',409);const board=(await client.query<{board_id:string}>('SELECT board_id FROM lists WHERE id=$1 AND archived_at IS NULL',[item.list_id])).rows[0];if(!board)fail('A lista original está arquivada ou não existe.',409);await client.query('DELETE FROM vault_items WHERE id=$1 AND owner_id=$2',[id,userId]);await client.query('COMMIT');return {card_id:item.card_id,url_token:item.url_token,board_id:board.board_id};}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
   }
   async notebooks(userId:string) {
     return this.db.query('SELECT id,title,content_html,created_at,updated_at FROM notebooks WHERE owner_id=$1 ORDER BY updated_at DESC',[userId]);
@@ -377,7 +375,15 @@ class Service {
     await this.features.visit(boardId,userId);
     const board = await this.db.one(`SELECT b.id,b.title,b.background,b.description,b.closed_at,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.is_inbox,b.is_collection,b.ai_default_project_id,b.ai_default_model,b.ai_default_effort,u.ai_default_model AS ai_global_model,u.ai_default_effort AS ai_global_effort,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image FROM boards b JOIN users u ON u.id=$2 WHERE b.id=$1`, [boardId,userId]);
-    const lists = await this.db.query('SELECT id,board_id,title,position,parent_list_id,color,collapsed,is_completion_list FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY parent_list_id NULLS FIRST,position,created_at', [boardId]);
+    const lists = await this.db.query(`SELECT l.id,l.board_id,l.title,l.position,l.parent_list_id,l.color,l.collapsed,l.is_completion_list,
+      COALESCE((SELECT json_agg(json_build_object(
+        'id',connection.id,'service','Trello','direction','bidirectional',
+        'source_name',connection.trello_board_name,'external_list_name',mapping.trello_list_name,
+        'enabled',connection.enabled AND COALESCE((SELECT enabled FROM plugin_settings WHERE plugin_id='trello'),true),
+        'last_error',connection.last_error) ORDER BY connection.trello_board_name,connection.id)
+        FROM trello_list_mappings mapping JOIN trello_connections connection ON connection.id=mapping.connection_id
+        WHERE mapping.orbit_list_id=l.id AND connection.board_id=l.board_id),'[]'::json) AS integrations
+      FROM lists l WHERE l.board_id=$1 AND l.archived_at IS NULL ORDER BY l.parent_list_id NULLS FIRST,l.position,l.created_at`, [boardId]);
     const cards = await this.db.query(`SELECT slot.id,slot.list_id,slot.position,slot.kind,slot.target_board_id,slot.link_url,
       slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
       source_board.id AS source_board_id,source_board.title AS source_board_title,
@@ -407,7 +413,6 @@ class Service {
       (SELECT count(*)::int FROM comments cm WHERE cm.card_id=c.id) AS comment_count,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id) AS checklist_total,
       (SELECT count(*)::int FROM checklist_items ci WHERE ci.card_id=c.id AND ci.completed) AS checklist_done,
-      COALESCE((SELECT json_agg(json_build_object('field_id',v.field_id,'name',f.name,'type',f.type,'value',v.value)) FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=c.id AND f.show_on_card),'[]'::json) AS custom_values,
       EXISTS(SELECT 1 FROM card_assignees ca WHERE ca.card_id=c.id AND ca.user_id=$2) AS assigned_to_me,
       COALESCE((SELECT json_agg(json_build_object('id',u.id,'name',u.name,'email',u.email,'avatar_url',u.avatar_url)) FROM card_assignees ca JOIN users u ON u.id=ca.user_id WHERE ca.card_id=c.id),'[]'::json) AS assignees
       FROM cards slot JOIN lists li ON li.id=slot.list_id
@@ -419,8 +424,7 @@ class Service {
       ORDER BY slot.position,slot.created_at`, [boardId,userId]);
     const labels = await this.db.query('SELECT id,board_id,name,color FROM labels WHERE board_id=$1 ORDER BY name', [boardId]);
     const members = await this.db.query('SELECT u.id,u.name,u.email,u.avatar_url,bm.role FROM board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
-    const customFields=await this.db.query('SELECT id,name,type,options,position,show_on_card FROM custom_fields WHERE board_id=$1 ORDER BY position,id',[boardId]);
-    return { ...board, lists: lists.map(list => ({...list, cards: cards.filter(card => card.list_id === list.id)})), labels, members, custom_fields:customFields };
+    return { ...board, lists: lists.map(list => ({...list, cards: cards.filter(card => card.list_id === list.id)})), labels, members };
   }
   async updateBoard(boardId: string,userId: string,body: Payload) {
     await this.member(boardId,userId);
@@ -524,13 +528,7 @@ class Service {
         const {rows:[newLabel]}=await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[copy.id,label.name,label.color]);
         labelMap.set(label.id,newLabel.id);
       }
-      const fieldMap=new Map<string,string>();
       const cardMap=new Map<string,string>();
-      const fields=await client.query('SELECT * FROM custom_fields WHERE board_id=$1 ORDER BY position',[boardId]);
-      for(const field of fields.rows){
-        const copyField=(await client.query('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[copy.id,field.name,field.type,JSON.stringify(field.options),field.position,field.show_on_card])).rows[0];
-        fieldMap.set(field.id,copyField.id);
-      }
       const lists=await client.query('SELECT id,title,position,color,collapsed FROM lists WHERE board_id=$1 AND archived_at IS NULL ORDER BY position,created_at',[boardId]);
       for (const list of lists.rows) {
         const {rows:[newList]}=await client.query('INSERT INTO lists(board_id,title,position,color,collapsed) VALUES($1,$2,$3,$4,$5) RETURNING id',[copy.id,list.title,list.position,list.color,list.collapsed]);
@@ -541,7 +539,7 @@ class Service {
           cardMap.set(card.id,newCard.id);
           const cardLabels=await client.query('SELECT label_id FROM card_labels WHERE card_id=$1',[card.id]);
           for (const item of cardLabels.rows) await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2)',[newCard.id,labelMap.get(item.label_id)]);
-          await this.copyCardContent(client,card.id,newCard.id,boardId,copy.id,fieldMap);
+          await this.copyCardContent(client,card.id,newCard.id);
           await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2',[newCard.id,card.id]);
         }
       }
@@ -647,7 +645,6 @@ class Service {
       if (!source) fail('Lista não encontrada.',404);
       const position=Number((await client.query('SELECT COALESCE(max(position)+1,0) AS next FROM lists WHERE board_id=$1 AND archived_at IS NULL',[targetBoard])).rows[0].next);
       const cards=(await client.query('SELECT id FROM cards WHERE list_id=$1',[id])).rows;
-      const movedFields=new Map<string,string>();
       for (const card of cards) {
         const labels=(await client.query('SELECT l.name,l.color FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=$1',[card.id])).rows;
         await client.query('DELETE FROM card_labels WHERE card_id=$1',[card.id]);
@@ -655,17 +652,6 @@ class Service {
           let target=(await client.query('SELECT id FROM labels WHERE board_id=$1 AND name=$2 AND color=$3 LIMIT 1',[targetBoard,label.name,label.color])).rows[0];
           if (!target) target=(await client.query('INSERT INTO labels(board_id,name,color) VALUES($1,$2,$3) RETURNING id',[targetBoard,label.name,label.color])).rows[0];
           await client.query('INSERT INTO card_labels(card_id,label_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[card.id,target.id]);
-        }
-        const values=(await client.query('SELECT v.field_id,v.value,f.name,f.type,f.options,f.show_on_card FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1',[card.id])).rows;
-        for(const entry of values){
-          let targetField=movedFields.get(entry.field_id);
-          if(!targetField){
-            const existing=(await client.query('SELECT id FROM custom_fields WHERE board_id=$1 AND name=$2 AND type=$3 AND options=$4::jsonb LIMIT 1',[targetBoard,entry.name,entry.type,JSON.stringify(entry.options)])).rows[0];
-            targetField=existing?.id||(await client.query('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM custom_fields WHERE board_id=$1),0),$5) RETURNING id',[targetBoard,entry.name,entry.type,JSON.stringify(entry.options),entry.show_on_card])).rows[0].id;
-            movedFields.set(entry.field_id,targetField!);
-          }
-          await client.query('DELETE FROM card_custom_values WHERE card_id=$1 AND field_id=$2',[card.id,entry.field_id]);
-          await client.query('INSERT INTO card_custom_values(card_id,field_id,value) VALUES($1,$2,$3) ON CONFLICT(card_id,field_id) DO NOTHING',[card.id,targetField,JSON.stringify(entry.value)]);
         }
       }
       await client.query('UPDATE lists SET board_id=$2,position=$3 WHERE id=$1',[id,targetBoard,position]);
@@ -695,7 +681,7 @@ class Service {
       for (const card of cards) {
         const newCard=(await client.query('INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,completed,kind,target_board_id,link_url,mirror_source_id,mirror_expanded) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id',[copy.id,card.title,card.description,card.position,card.start_date,card.due_date,card.reminder_minutes,card.recurrence,card.completed,card.kind,card.target_board_id,card.link_url,card.mirror_source_id,card.mirror_expanded])).rows[0];
         cardMap.set(card.id,newCard.id);
-        await this.copyCardContent(client,card.id,newCard.id,sourceBoard,targetBoard);
+        await this.copyCardContent(client,card.id,newCard.id);
         await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2',[newCard.id,card.id]);
         const labels=(await client.query('SELECT l.name,l.color FROM card_labels cl JOIN labels l ON l.id=cl.label_id WHERE cl.card_id=$1',[card.id])).rows;
         for (const label of labels) {
@@ -831,7 +817,7 @@ class Service {
         const next=(await client.query(`INSERT INTO cards(list_id,title,description,position,start_date,due_date,reminder_minutes,recurrence,completed,kind,target_board_id,link_url)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,[target.id,card.title,enabled('description')?card.description:'',current.length+copied.length,enabled('dates')?card.start_date:null,enabled('dates')?card.due_date:null,enabled('dates')?card.reminder_minutes:null,enabled('dates')?card.recurrence:null,card.completed,kind,card.target_board_id,card.link_url])).rows[0];
         copied.push(next.id);
-        await this.copyCardContent(client,card.id,next.id,card.board_id,target.board_id,new Map(),{checklists:enabled('checklists'),customFields:enabled('customFields')});
+        await this.copyCardContent(client,card.id,next.id,{checklists:enabled('checklists')});
         if(enabled('labels'))await this.copyLabels(client,card.id,next.id,target.board_id);
         if(enabled('members'))await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,ca.user_id FROM card_assignees ca JOIN board_members bm ON bm.user_id=ca.user_id AND bm.board_id=$3 WHERE ca.card_id=$2',[next.id,card.id,target.board_id]);
         if(include.comments===true)await client.query('INSERT INTO comments(card_id,author_id,author_label,body,created_at) SELECT $1,author_id,author_label,body,created_at FROM comments WHERE card_id=$2',[next.id,card.id]);
@@ -857,13 +843,6 @@ class Service {
         if(row.board_id!==target.board_id&&row.kind!=='mirror'){
           await this.copyLabels(client,id,id,target.board_id);
           await client.query('DELETE FROM card_labels cl USING labels l WHERE cl.card_id=$1 AND cl.label_id=l.id AND l.board_id<>$2',[id,target.board_id]);
-          const fields=(await client.query('SELECT v.field_id,v.value,f.name,f.type,f.options,f.show_on_card FROM card_custom_values v JOIN custom_fields f ON f.id=v.field_id WHERE v.card_id=$1',[id])).rows;
-          for(const field of fields){
-            let found=(await client.query('SELECT id FROM custom_fields WHERE board_id=$1 AND name=$2 AND type=$3 AND options=$4::jsonb LIMIT 1',[target.board_id,field.name,field.type,JSON.stringify(field.options)])).rows[0];
-            if(!found)found=(await client.query('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM custom_fields WHERE board_id=$1),0),$5) RETURNING id',[target.board_id,field.name,field.type,JSON.stringify(field.options),field.show_on_card])).rows[0];
-            await client.query('DELETE FROM card_custom_values WHERE card_id=$1 AND field_id=$2',[id,field.field_id]);
-            await client.query('INSERT INTO card_custom_values(card_id,field_id,value) VALUES($1,$2,$3) ON CONFLICT(card_id,field_id) DO UPDATE SET value=EXCLUDED.value',[id,found.id,JSON.stringify(field.value)]);
-          }
           await client.query('DELETE FROM card_assignees ca WHERE ca.card_id=$1 AND NOT EXISTS(SELECT 1 FROM board_members bm WHERE bm.board_id=$2 AND bm.user_id=ca.user_id)',[id,target.board_id]);
           await client.query('UPDATE notifications SET board_id=$2 WHERE card_id=$1',[id,target.board_id]);
         }
@@ -885,7 +864,7 @@ class Service {
     try{
       await client.query('BEGIN');
       const merged=(await client.query(`INSERT INTO cards(list_id,title,description,position) VALUES($1,$2,$3,(SELECT COALESCE(max(position)+1,0) FROM cards WHERE list_id=$1 AND archived_at IS NULL)) RETURNING id`,[target.id,title,sources.map(row=>`## ${row.title}\n${row.description||''}`).join('\n\n')])).rows[0];
-      for(const source of sources){await this.copyCardContent(client,String(source.id),merged.id,target.board_id,target.board_id);await this.copyLabels(client,String(source.id),merged.id,target.board_id);await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2 ON CONFLICT DO NOTHING',[merged.id,source.id]);await client.query('UPDATE cards SET archived_at=now() WHERE id=$1',[source.id])}
+      for(const source of sources){await this.copyCardContent(client,String(source.id),merged.id);await this.copyLabels(client,String(source.id),merged.id,target.board_id);await client.query('INSERT INTO card_assignees(card_id,user_id) SELECT $1,user_id FROM card_assignees WHERE card_id=$2 ON CONFLICT DO NOTHING',[merged.id,source.id]);await client.query('UPDATE cards SET archived_at=now() WHERE id=$1',[source.id])}
       const merge=(await client.query('INSERT INTO card_merges(user_id,merged_card_id,source_ids) VALUES($1,$2,$3) RETURNING id',[userId,merged.id,ids])).rows[0];
       await client.query('COMMIT');
       return {id:merge.id,card_id:merged.id};
@@ -974,7 +953,7 @@ class Service {
       const content=await this.db.one(`SELECT (c.description<>'' OR c.due_date IS NOT NULL OR c.start_date IS NOT NULL OR c.completed OR
         EXISTS(SELECT 1 FROM checklists WHERE card_id=c.id) OR
         EXISTS(SELECT 1 FROM card_labels WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM card_assignees WHERE card_id=c.id) OR
-        EXISTS(SELECT 1 FROM comments WHERE card_id=c.id) OR EXISTS(SELECT 1 FROM card_custom_values WHERE card_id=c.id)) AS has_content FROM cards c WHERE c.id=$1`,[id]);
+        EXISTS(SELECT 1 FROM comments WHERE card_id=c.id)) AS has_content FROM cards c WHERE c.id=$1`,[id]);
       if(content?.has_content)fail('Crie um novo cartão para usar este tipo especial.',409);
     }
     const description=descriptionAfterTitleEdit(original.title as string,original.description as string,title,
@@ -1085,23 +1064,23 @@ class Service {
     await this.features.notifyAssignees(userId,boardId,id,'comment','Novo comentário',text);
     return comment;
   }
-  async addCardImageAttachment(id:string,userId:string,body:Payload){
+  async addCardAttachment(id:string,userId:string,body:Payload){
     const boardId=await this.contentCard(id,userId);
     const name=value(body.name,'Nome',255);
-    const mime=value(body.mime_type,'Formato',120).toLowerCase();
-    if(!/^image\/(?:avif|gif|jpe?g|png|webp)$/.test(mime))fail('Envie uma imagem PNG, JPEG, GIF, WebP ou AVIF.');
+    const mime=(typeof body.mime_type==='string'&&body.mime_type.trim()?value(body.mime_type,'Formato',120):'application/octet-stream').toLowerCase();
     const raw=body.data;
-    if(typeof raw!=='string'||raw.length>14_000_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))fail('Imagem inválida ou maior que 10 MB.');
+    if(typeof raw!=='string'||raw.length>14_000_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))fail('Arquivo inválido ou maior que 10 MB.');
     const data=Buffer.from(raw as string,'base64');
-    if(!data.length||data.length>10_000_000||data.toString('base64')!==raw)fail('Imagem inválida ou maior que 10 MB.');
+    if(!data.length||data.length>10_000_000||data.toString('base64')!==raw)fail('Arquivo inválido ou maior que 10 MB.');
     const attachment=await this.db.one<{id:string}>('INSERT INTO attachments(card_id,kind,name,mime_type,size_bytes,data,position) VALUES($1,$2,$3,$4,$5,$6,COALESCE((SELECT max(position)+1 FROM attachments WHERE card_id=$1),0)) RETURNING id',[id,'file',name,mime,data.length,data]);
-    await this.features.record(userId,boardId,id,'attachment',`anexou a imagem ${name}`);
+    if(attachment)void this.backups?.syncAttachment(userId,'card',attachment.id).catch(error=>console.warn(`Attachment backup: ${(error as Error).message}`));
+    await this.features.record(userId,boardId,id,'attachment',`anexou o arquivo ${name}`);
     return {id:attachment!.id,name,mime_type:mime,size_bytes:data.length};
   }
   async cardAttachmentContent(id:string,userId:string,response:Response){
     uuid(id);const row=await this.db.one('SELECT * FROM attachments WHERE id=$1',[id]);
     if(!row)fail('Anexo não encontrado.',404);const attachment=row!;await this.contentCard(attachment.card_id,userId);if(attachment.kind!=='file'||!attachment.data)fail('Arquivo indisponível.',404);
-    response.setHeader('Content-Type',attachment.mime_type||'application/octet-stream');response.setHeader('Content-Length',attachment.data.length);response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Content-Disposition',`inline; filename*=UTF-8''${encodeURIComponent(attachment.name)}`);response.send(attachment.data);
+    const inlineImage=/^image\/(?:avif|gif|jpe?g|png|webp)$/.test(attachment.mime_type||'');response.setHeader('Content-Type',attachment.mime_type||'application/octet-stream');response.setHeader('Content-Length',attachment.data.length);response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Content-Disposition',`${inlineImage?'inline':'attachment'}; filename*=UTF-8''${encodeURIComponent(attachment.name)}`);response.send(attachment.data);
   }
   private async addCommentAttachment(commentId:string,cardId:string,userId:string,input:unknown){
     if(!input||typeof input!=='object')fail('Anexo inválido.');const body=input as Payload;
@@ -1112,7 +1091,8 @@ class Service {
       if(typeof raw!=='string'||raw.length>14_000_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))fail('Arquivo inválido ou maior que 10 MB.');
       buffer=Buffer.from(raw as string,'base64');if(!buffer.length||buffer.length>10_000_000||buffer.toString('base64')!==raw)fail('Arquivo inválido ou maior que 10 MB.');
     }else {target=uuid(value(body.target_id,'Referência',36));if(kind==='board'){await this.member(target,userId);url=`/board/${target}`;}else{const targetBoard=await this.cardBoard(target,userId);url=`/board/${targetBoard}?card=${target}`;}}
-    await this.db.query('INSERT INTO comment_attachments(comment_id,kind,name,url,target_id,mime_type,size_bytes,data) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[commentId,kind,name,url,target,mime,buffer?.length??null,buffer]);
+    const attachment=await this.db.one<{id:string}>('INSERT INTO comment_attachments(comment_id,kind,name,url,target_id,mime_type,size_bytes,data) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',[commentId,kind,name,url,target,mime,buffer?.length??null,buffer]);
+    if(kind==='file'&&attachment)void this.backups?.syncAttachment(userId,'comment',attachment.id).catch(error=>console.warn(`Attachment backup: ${(error as Error).message}`));
   }
   async updateComment(id:string,userId:string,body:Payload){
     uuid(id);const old=await this.db.one('SELECT c.author_id,c.author_label,c.card_id,l.board_id,jobs.status AS ai_status FROM comments c JOIN cards card ON card.id=c.card_id JOIN lists l ON l.id=card.list_id LEFT JOIN card_ai_comment_jobs jobs ON jobs.comment_id=c.id WHERE c.id=$1',[id]);
@@ -1223,12 +1203,29 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Service) private service: Service,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(Db) private db:Db) {}
+  constructor(@Inject(Service) private service: Service,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(Db) private db:Db,@Inject(BackupService) private backupService:BackupService) {}
   @Get('health') health() { return { status: 'ok' }; }
   @Get('plugins') pluginsCatalog(){return {plugins:this.plugins.catalog()}}
   @Patch('plugins/:id') async setPluginEnabled(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){this.service.user(req);if(typeof body.enabled!=='boolean')fail('Estado do plugin inválido.');const enabled=body.enabled as boolean;try{this.plugins.getById(id)}catch(error){return fail((error as Error).message,404)}await this.db.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);this.plugins.setEnabled(id,enabled);return {id,enabled}}
-  @Get('backups') async backups(@Req() req:Request){this.service.user(req);try{return await listDatabaseBackups()}catch(error){return fail((error as Error).message,409)}}
-  @Post('backups') async createBackup(@Req() req:Request){this.service.user(req);try{return await createDatabaseBackup('manual')}catch(error){return fail((error as Error).message,409)}}
+  @Get('backups') async backups(@Req() req:Request){try{return await this.backupService.list(this.service.user(req))}catch(error){return fail((error as Error).message,409)}}
+  @Get('backups/options') async backupOptions(@Req() req:Request){return this.backupService.options(this.service.user(req))}
+  @Patch('backups/automatic') async configureAutomaticBackups(@Req() req:Request,@Body() body:Payload){const owner=this.service.user(req);if(typeof body.connectionId!=='string'||typeof body.enabled!=='boolean')fail('Configuração automática inválida.',400);return this.backupService.configureAutomatic(owner,body.connectionId as string,body.enabled as boolean)}
+  @Post('backups') async createBackup(@Req() req:Request,@Body() body:Payload){try{return await this.backupService.create(this.service.user(req),body||{})}catch(error){return fail((error as Error).message,409)}}
+  @Get('backups/vault') async vaultBackups(@Req() req:Request){return this.backupService.listVault(this.service.user(req))}
+  @Get('backups/config') async configBackups(@Req() req:Request){return this.backupService.listConfig(this.service.user(req))}
+  @Get('backups/attachments') async attachmentBackups(@Req() req:Request){return this.backupService.listAttachments(this.service.user(req))}
+  @Post('backups/attachments/sync') async syncAttachmentBackups(@Req() req:Request){try{return await this.backupService.syncAttachments(this.service.user(req),100)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/attachments/cloud/:copyId/download') async downloadAttachmentBackup(@Req() req:Request,@Param('copyId') copyId:string){try{return await this.backupService.downloadAttachment(this.service.user(req),copyId)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/attachments/:archive/upload') async uploadAttachmentBackup(@Req() req:Request,@Param('archive') archive:string,@Body() body:Payload){try{return await this.backupService.uploadExistingAttachment(this.service.user(req),archive,body?.connectionId)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/config') async createConfigBackup(@Req() req:Request){this.service.user(req);try{return await this.backupService.syncConfigs()}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/config/cloud/:copyId/download') async downloadConfigBackup(@Req() req:Request,@Param('copyId') copyId:string){try{return await this.backupService.downloadConfig(this.service.user(req),copyId)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/config/:archive/upload') async uploadConfigBackup(@Req() req:Request,@Param('archive') archive:string,@Body() body:Payload){try{return await this.backupService.uploadExistingConfig(this.service.user(req),archive,body?.connectionId)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/vault') async createVaultBackup(@Req() req:Request){try{return await this.backupService.createVault(this.service.user(req))}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/vault/cloud/:copyId/download') async downloadVaultBackup(@Req() req:Request,@Param('copyId') copyId:string){try{return await this.backupService.downloadVault(this.service.user(req),copyId)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/vault/:archive/upload') async uploadVaultBackup(@Req() req:Request,@Param('archive') archive:string,@Body() body:Payload){try{return await this.backupService.uploadExistingVault(this.service.user(req),archive,body?.connectionId)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/vault/:archive/restore') async restoreVaultBackup(@Req() req:Request,@Param('archive') archive:string){try{return await this.backupService.restoreVault(this.service.user(req),archive)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/cloud/:copyId/download') async downloadBackup(@Req() req:Request,@Param('copyId') copyId:string){try{return await this.backupService.download(this.service.user(req),copyId)}catch(error){return fail((error as Error).message,409)}}
+  @Post('backups/:archive/upload') async uploadBackup(@Req() req:Request,@Param('archive') archive:string,@Body() body:Payload){try{return await this.backupService.uploadExisting(this.service.user(req),archive,body?.connectionId)}catch(error){return fail((error as Error).message,409)}}
   @Post('backups/:archive/restore') async restoreBackup(@Req() req:Request,@Param('archive') archive:string){this.service.user(req);if(!/^orbit-\d{4}-\d{2}-\d{2}T[^/]+\.backup\.enc$/.test(archive))fail('Arquivo de backup inválido.');const target=process.env.ORBIT_RESTORE_DATABASE_URL||fail('Configure ORBIT_RESTORE_DATABASE_URL para restaurar em um banco novo e vazio.',409);const root=resolve(process.env.ORBIT_BACKUP_DIR||join(__dirname,'../../../backups'));const path=resolve(root,archive);if(!path.startsWith(`${root}/`))fail('Arquivo de backup inválido.');try{return await restoreDatabaseBackup(path,target)}catch(error){return fail((error as Error).message,409)}}
   @Post('auth/register') register() { return this.service.register(); }
   @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
@@ -1243,6 +1240,7 @@ class ApiController {
   @Patch('vault/:id') updateVaultItem(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateVaultItem(id,this.service.user(req),body);}
   @Post('vault/:id/copy-to-card') copyVaultToCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.copyVaultToCard(id,this.service.user(req),body);}
   @Delete('vault/:id') deleteVaultItem(@Req() req:Request,@Param('id') id:string){return this.service.deleteVaultItem(id,this.service.user(req));}
+  @Post('vault/:id/restore-card') restoreVaultCard(@Req() req:Request,@Param('id') id:string){return this.service.restoreVaultCard(id,this.service.user(req));}
   @Get('notebooks') notebooks(@Req() req:Request){return this.service.notebooks(this.service.user(req));}
   @Post('notebooks') createNotebook(@Req() req:Request,@Body() body:Payload){return this.service.createNotebook(this.service.user(req),body);}
   @Patch('notebooks/:id') updateNotebook(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateNotebook(id,this.service.user(req),body);}
@@ -1253,6 +1251,7 @@ class ApiController {
   @Post('email/cards') createEmailCard(@Req() req:Request,@Body() body:Payload){return this.service.createEmailCard(this.service.user(req),body);}
   @Post('email/inbox') inboundEmailCard(@Req() req:Request,@Body() body:Payload){return this.service.inboundEmailCard(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined)}
   @Post('cards/:id/ai') aiCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiCard(id,this.service.user(req),body);}
+  @Post('cards/:id/vault') putCardInVault(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.putCardInVault(id,this.service.user(req),body);}
   @Post('cards/:id/comments/ai') aiComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiComment(id,this.service.user(req),body);}
   @Get('ai/models') aiModels(){return this.prompts.models();}
   @Patch('ai/settings') updateGlobalAiSettings(@Req() req:Request,@Body() body:Payload){return this.prompts.updateGlobal(this.service.user(req),body);}
@@ -1265,11 +1264,11 @@ class ApiController {
   @Delete('ai/projects/:id') deleteAiProject(@Req() req:Request,@Param('id') id:string){return this.prompts.deleteProject(this.service.user(req),id);}
   @Patch('boards/:id/prompt-settings') updateBoardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateBoard(id,this.service.user(req),body);}
   @Patch('cards/:id/prompt-settings') updateCardPrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateCard(id,this.service.user(req),body);}
-  @Get('prompt-contexts') promptContexts(@Req() req:Request,@Query('card_id') cardId?:string){return this.prompts.contexts(this.service.user(req),cardId);}
-  @Post('prompt-contexts') createPromptContext(@Req() req:Request,@Body() body:Payload){return this.prompts.saveContext(this.service.user(req),body);}
-  @Patch('prompt-contexts/:id') updatePromptContext(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.updateContext(this.service.user(req),id,body);}
-  @Delete('prompt-contexts/:id') deletePromptContext(@Req() req:Request,@Param('id') id:string){return this.prompts.deleteContext(this.service.user(req),id);}
-  @Patch('cards/:id/prompt-contexts') setCardPromptContexts(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.setCardContexts(this.service.user(req),id,body);}
+
+
+
+
+
   @Get('cards/:id/prompt-runs') promptRuns(@Req() req:Request,@Param('id') id:string){return this.prompts.runs(id,this.service.user(req));}
   @Post('cards/:id/prompt-runs') executePrompt(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.prompts.execute(id,this.service.user(req),body);}
   @Post('cards/:id/prompt-runs/:runId/cancel') cancelPrompt(@Req() req:Request,@Param('id') id:string,@Param('runId') runId:string){return this.prompts.cancelRun(id,runId,this.service.user(req));}
@@ -1319,7 +1318,7 @@ class ApiController {
   @Patch('comments/:id') updateComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateComment(id,this.service.user(req),body)}
   @Delete('comments/:id') deleteComment(@Req() req: Request,@Param('id') id: string) { return this.service.deleteComment(id,this.service.user(req)); }
   @Get('comment-attachments/:id/content') commentAttachmentContent(@Req() req:Request,@Param('id') id:string,@Res() response:Response){return this.service.commentAttachmentContent(id,this.service.user(req),response)}
-  @Post('cards/:id/attachments') addCardImageAttachment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.addCardImageAttachment(id,this.service.user(req),body)}
+  @Post('cards/:id/attachments') addCardAttachment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.addCardAttachment(id,this.service.user(req),body)}
   @Get('card-attachments/:id/content') cardAttachmentContent(@Req() req:Request,@Param('id') id:string,@Res() response:Response){return this.service.cardAttachmentContent(id,this.service.user(req),response)}
   @Post('cards/:id/checklist') createChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createChecklist(id,this.service.user(req),body); }
   @Patch('checklist/:id') updateChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateChecklist(id,this.service.user(req),body); }
@@ -1327,14 +1326,15 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
+@Module({ providers: [Db, FeaturesService, Service, CardExtensionsService, CodexAiService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, GoogleCredentials,GoogleDriveBackupPlugin,BackupService,PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
+  {provide:BackupDestinationRegistry,useFactory:(drive:GoogleDriveBackupPlugin)=>{const registry=new BackupDestinationRegistry();registry.register(drive);return registry},inject:[GoogleDriveBackupPlugin]},
   {provide:CommandExecutorRegistry,useFactory:(local:LocalCommandExecutor,ssh:SshCommandExecutor)=>{const registry=new CommandExecutorRegistry();registry.register(local);registry.register(ssh);return registry},inject:[LocalCommandExecutor,SshCommandExecutor]},
   {provide:DeploymentStrategyRegistry,useFactory:()=>new DeploymentStrategyRegistry()},
   {provide:PromotionStrategyRegistry,useFactory:()=>new PromotionStrategyRegistry()},
   {provide:StepHandlerRegistry,useFactory:(handlers:DeliveryHandlers,deployments:DeploymentStrategyRegistry,promotions:PromotionStrategyRegistry)=>{const registry=new StepHandlerRegistry();handlers.register(registry,deployments,promotions);return registry},inject:[DeliveryHandlers,DeploymentStrategyRegistry,PromotionStrategyRegistry]},
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:async(db:Db,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService)=>{const registry=new PluginRegistry();registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}return registry;},inject:[Db,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController, GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
+  {provide:PluginRegistry,useFactory:async(db:Db,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService,backups:BackupService)=>{const registry=new PluginRegistry();registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(googleDriveBackupPluginDefinition(backups));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}return registry;},inject:[Db,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService,BackupService]}, CardExecutionService], controllers: [ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController,GoogleDriveBackupController,GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1350,6 +1350,7 @@ async function bootstrap() {
     else if(path==='/github'||path.startsWith('/github/'))pluginId='github';
     else if(path==='/git'||path.startsWith('/git/'))pluginId='git';
     else if(path==='/delivery'||path.startsWith('/delivery/'))pluginId='delivery';
+    else if(path==='/google/drive'||path.startsWith('/google/drive/'))pluginId='google_drive';
     else if(path==='/dropbox'||path.startsWith('/dropbox/'))pluginId='dropbox';
     else if(path==='/calendar/google'||path.startsWith('/calendar/google/'))pluginId='google_calendar';
     else if(path==='/calendar/microsoft'||path.startsWith('/calendar/microsoft/'))pluginId='outlook_calendar';
@@ -1372,9 +1373,11 @@ async function bootstrap() {
   events.attach(sockets);
   await app.listen(Number(process.env.API_PORT || 4000), process.env.API_HOST || '0.0.0.0');
   const deliveryRunner=app.get(DeliveryRunner);
-  if(plugins.isEnabled('delivery'))void deliveryRunner.recoverQueued();
-  const deliveryTimer=setInterval(()=>{if(plugins.isEnabled('delivery'))void deliveryRunner.recoverQueued()},5000);
-  deliveryTimer.unref();
+  if(process.env.ORBIT_ENV!=='development'||process.env.ORBIT_ALLOW_EXTERNAL_AUTOMATION==='true'){
+    if(plugins.isEnabled('delivery'))void deliveryRunner.recoverQueued();
+    const deliveryTimer=setInterval(()=>{if(plugins.isEnabled('delivery'))void deliveryRunner.recoverQueued()},5000);
+    deliveryTimer.unref();
+  }
   const planner=app.get(PlannerPlugin);
   if(plugins.isEnabled('planner'))void planner.prepareDailySchedules();
   const plannerTimer=setInterval(()=>{if(plugins.isEnabled('planner'))void planner.prepareDailySchedules()},60*60*1000);

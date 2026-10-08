@@ -1,11 +1,13 @@
-import { Body, Controller, Get, HttpException, Inject, Injectable, Param, Post, Query, Req } from "@nestjs/common";
-import { Request } from "express";
+import { Body, Controller, Get, HttpException, Inject, Injectable, Param, Post, Query, Req, Res } from "@nestjs/common";
+import { Request,Response } from "express";
 import { Db } from "../db";
 import { FeaturesService } from "../features";
 import { PluginDefinition } from "../plugins/contract";
 import { MailProviderRegistry } from "./provider-registry";
 import { validateCompose } from "./security";
 import { MailMessage, MailThread } from "./types";
+import {GoogleCredentials,GOOGLE_MAIL_SCOPES} from '../google/credentials';
+import {googleRedirectUri} from '../google/redirect-uri';
 
 const id = (value: unknown, label = "ID") => {
   if (typeof value !== "string" || !/^[0-9a-f-]{36}$/i.test(value)) throw new HttpException(`${label} inválido.`, 400);
@@ -22,18 +24,22 @@ export class MailService {
     @Inject(Db) private db: Db,
     @Inject(FeaturesService) private features: FeaturesService,
     @Inject(MailProviderRegistry) private providers: MailProviderRegistry,
+    @Inject(GoogleCredentials) private google:GoogleCredentials,
   ) {}
 
   catalog() {
     return this.providers.list();
   }
-  connections(ownerId: string, providerId?: string) {
+  async connections(ownerId: string, providerId?: string) {
     const aliases = providerId === "gmail" ? ["google", "google_calendar", "gmail"] : providerId === "outlook_mail" ? ["microsoft", "outlook_calendar", "outlook_mail", "teams"] : [];
     if (!aliases.length) return [];
-    return this.db.query(
+    const rows=await this.db.query<{id:string}>(
       "SELECT id,plugin_id,display_name,label,status,metadata,created_at FROM integration_connections WHERE owner_id=$1 AND enabled AND plugin_id=ANY($2::text[]) ORDER BY created_at",
       [ownerId, aliases],
     );
+    if(providerId!=='gmail')return rows;
+    const allowed=new Set((await this.google.available(ownerId,GOOGLE_MAIL_SCOPES)).map(row=>row.id));
+    return rows.filter(row=>allowed.has(row.id));
   }
   list(ownerId: string, providerId: string, connectionId: string, query?: string, cursor?: string) {
     const provider = this.providers.get(providerId);
@@ -159,6 +165,7 @@ export const mailPluginDefinition = (providerId: "gmail" | "outlook_mail", name:
     name,
     version: "1.0.0",
     scope: "account",
+    configuration:providerId==='gmail'?[{key:'GOOGLE_GMAIL_REDIRECT_URI',label:'URL de retorno OAuth do Gmail',secret:false}]:[],
     capabilities: [
       { id: "mail.read", name: "Ler e pesquisar mensagens", permissions: ["mail.read"] },
       { id: "mail.draft", name: "Criar rascunhos", permissions: ["mail.draft"] },
@@ -181,16 +188,18 @@ export const mailPluginDefinition = (providerId: "gmail" | "outlook_mail", name:
       ],
                   notifications: [{ id: "new_email", label: "Novo e-mail" }],
       resourceRenderers: [{ resourceTypes: ["mail_thread", "mail_message"], component: "mail-preview" }],
-      settings: [{ id: providerId, label: name, href: `/profile?integration=${providerId}` }],
+      settings: [{ id: providerId, label: name, href: `/plugins?configure=${providerId}` }],
     },
   };
 };
 
 @Controller("mail")
 export class MailController {
-  constructor(@Inject(MailService) private service: MailService, @Inject(FeaturesService) private features: FeaturesService) {}
+  constructor(@Inject(MailService) private service: MailService, @Inject(FeaturesService) private features: FeaturesService,@Inject(GoogleCredentials) private google:GoogleCredentials) {}
   @Get("providers") catalog() { return this.service.catalog(); }
   @Get("connections") connections(@Req() req: Request, @Query("provider") provider?: string) { return this.service.connections(this.features.user(req), provider); }
+  @Get('gmail/oauth/start') gmailStart(@Req() req:Request){return this.google.start(this.features.user(req),'gmail',GOOGLE_MAIL_SCOPES,googleRedirectUri('gmail'))}
+  @Get('gmail/oauth/callback') async gmailCallback(@Query('code') code:string,@Query('state') state:string,@Res() response:Response){try{await this.google.complete(code,state,'gmail');response.redirect(`${process.env.WEB_ORIGIN||'http://localhost:3000'}/plugins?configure=gmail&connected=true`)}catch(error){response.redirect(`${process.env.WEB_ORIGIN||'http://localhost:3000'}/plugins?configure=gmail&error=${encodeURIComponent((error as Error).message)}`)}}
   @Get(":provider/threads") list(@Req() req: Request, @Param("provider") provider: string, @Query("connectionId") connection: string, @Query("q") query?: string, @Query("cursor") cursor?: string) { return this.service.list(this.features.user(req), provider, connection, query, cursor); }
   @Get(":provider/threads/:id") thread(@Req() req: Request, @Param("provider") provider: string, @Param("id") thread: string, @Query("connectionId") connection: string) { return this.service.thread(this.features.user(req), provider, connection, thread); }
   @Get(":provider/messages/:id") message(@Req() req: Request, @Param("provider") provider: string, @Param("id") message: string, @Query("connectionId") connection: string) { return this.service.message(this.features.user(req), provider, connection, message); }

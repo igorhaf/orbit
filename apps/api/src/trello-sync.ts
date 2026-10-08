@@ -9,6 +9,14 @@ import { defineCapability, defineCardAction, defineConnectionProvider, defineCon
 
 export const trelloPluginDefinition=definePlugin({
   id:'trello',name:'Trello',version:'1.0.0',scope:'board',
+  configuration:[
+    {key:'TRELLO_KEY',label:'Trello API Key',secret:true},
+    {key:'TRELLO_TOKEN',label:'Trello Token',secret:true},
+    {key:'TRELLO_CONFIG_PATH',label:'Arquivo externo de configuração',secret:false},
+    {key:'TRELLO_DEFAULT_BOARD_ID',label:'ID do quadro de origem',secret:false},
+    {key:'TRELLO_DEFAULT_ORBIT_BOARD_ID',label:'ID do quadro Orbit',secret:false},
+    {key:'TRELLO_SYNC_INTERVAL_MS',label:'Intervalo de sincronização (ms)',secret:false},
+  ],
   capabilities:[
     defineCapability({id:'cards.external.read',name:'Ler Cards externos'}),
     defineCapability({id:'cards.external.write',name:'Gravar Cards externos'}),
@@ -38,6 +46,7 @@ export class TrelloSyncService implements OnModuleInit, OnModuleDestroy {
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(OrbitEvents) private events:OrbitEvents,@Optional() @Inject(PluginRegistry) private plugins:PluginRegistry=new PluginRegistry()){}
 
   onModuleInit(){
+    if(process.env.ORBIT_ENV==='development'&&process.env.ORBIT_ALLOW_EXTERNAL_AUTOMATION!=='true')return;
     if(this.plugins.isEnabled('trello'))void this.connectDefault().catch(error=>console.error('Could not connect the default Trello board.',error));
     this.timer=setInterval(()=>void this.tick(),Number(process.env.TRELLO_SYNC_INTERVAL_MS||5000));
     this.timer.unref();
