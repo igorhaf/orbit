@@ -14,6 +14,7 @@ export async function seedDatabase(pool: Pool) {
      WHERE NOT EXISTS (SELECT 1 FROM workspaces WHERE owner_id=$1)`,
     [user.id],
   );
+  if (process.env.ORBIT_SEED_DEFAULT_BOARDS === 'false') return;
   await pool.query(
     `UPDATE boards SET workspace_id=(SELECT id FROM workspaces WHERE owner_id=$1 ORDER BY created_at LIMIT 1)
      WHERE owner_id=$1 AND workspace_id IS NULL`,

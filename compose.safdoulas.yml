@@ -1,0 +1,97 @@
+name: orbit-safdoulas
+services:
+  db-safdoulas:
+    build:
+      context: ../../control
+      dockerfile: postgres.Dockerfile
+    container_name: orbit-safdoulas-db
+    env_file: ../data/db.env
+    environment:
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=pt_BR.UTF-8
+      LANG: pt_BR.UTF-8
+    volumes:
+      - orbit_db_safdoulas_data:/var/lib/postgresql/data
+    networks: [safdoulas_net]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api-safdoulas:
+    build:
+      context: .
+      dockerfile: Dockerfile.safdoulas
+      target: api
+      args:
+        ORBIT_API_PROXY_URL: http://api-safdoulas:4000
+    image: orbit-api-safdoulas:local
+    container_name: orbit-safdoulas-api
+    env_file: ../data/config/api.env
+    environment:
+      ORBIT_ENV: production
+      ORBIT_SEED_DEFAULT_BOARDS: 'false'
+      ORBIT_NATIVE_ROOT: /home/meada/projetos/orbit
+      HOME: /tmp
+      CODEX_HOME: /home/meada/.codex
+      PORT: '4000'
+    volumes:
+      - ../data/config:/data/config:rw
+      - ../data/backups:/data/backups:rw
+      - ../data/sessions:/home/meada/projetos/orbit/.orbit/sessions:rw
+      - /home/meada/.codex/auth.json:/home/meada/.codex/auth.json:ro
+    ports: ['127.0.0.1:4002:4000']
+    networks: [safdoulas_net]
+    depends_on:
+      db-safdoulas: {condition: service_healthy}
+    restart: unless-stopped
+    user: '1000:1000'
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, "(async()=>{const r=await fetch('http://127.0.0.1:4000/');process.exit(r.status<500?0:1)})().catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 90s
+
+  web-safdoulas:
+    build:
+      context: .
+      dockerfile: Dockerfile.safdoulas
+      target: web
+      args:
+        ORBIT_API_PROXY_URL: http://api-safdoulas:4000
+    image: orbit-web-safdoulas:local
+    container_name: orbit-safdoulas-web
+    environment:
+      ORBIT_API_PROXY_URL: http://api-safdoulas:4000
+      WEB_HOSTNAME: 0.0.0.0
+      PORT: '3000'
+    ports: ['0.0.0.0:3002:3000']
+    networks: [safdoulas_net]
+    depends_on:
+      api-safdoulas: {condition: service_healthy}
+    restart: unless-stopped
+    user: '1000:1000'
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+
+volumes:
+  orbit_db_safdoulas_data:
+    name: orbit_db_safdoulas_data
+networks:
+  safdoulas_net:
+    name: orbit_safdoulas_net
