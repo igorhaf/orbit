@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -23,7 +23,6 @@ import {
   Trash2,
 } from "lucide-react";
 import {
-  api,
   Board,
   Card,
   ChecklistGroup,
@@ -38,7 +37,6 @@ type Props = {
   groups: ChecklistGroup[];
   mutate: (action: () => Promise<unknown>) => Promise<void>;
 };
-type CatalogEntry = { id: string; title: string; card_title: string };
 
 function Item({
   item,
@@ -140,19 +138,11 @@ function Item({
 
 function Group({
   group,
-  index,
-  groups,
   mutate,
 }: {
   group: ChecklistGroup;
-  index: number;
-  groups: ChecklistGroup[];
   mutate: Props["mutate"];
 }) {
-  const { confirm, confirmationModal } = useConfirmModal();
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: "group:" + group.id });
-  const [title, setTitle] = useState(group.title);
   const [bulk, setBulk] = useState("");
   const progress = group.items.length
     ? Math.round(
@@ -162,78 +152,15 @@ function Group({
       )
     : 0;
   return (
-    <>
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-3"
-    >
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          title="Arrastar checklist"
-          className="cursor-grab text-[#626f86]"
-        >
-          <GripVertical size={16} />
-        </button>
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          onBlur={() => {
-            if (title.trim() && title !== group.title)
-              void mutate(() =>
-                send("/checklists/" + group.id, "PATCH", { title }),
-              );
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-          maxLength={160}
-          aria-label="Nome do checklist"
-          className="min-w-0 flex-1 bg-transparent text-sm font-bold outline-none"
-        />
-        <span className="text-xs text-[#626f86]">{progress}%</span>
-        <button
-          type="button"
-          title="Subir checklist"
-          disabled={index === 0}
-          onClick={() =>
-            void mutate(() =>
-              send("/checklists/" + group.id, "PATCH", { position: index - 1 }),
-            )
-          }
-          className="disabled:opacity-30"
-        >
-          <ArrowUp size={14} />
-        </button>
-        <button
-          type="button"
-          title="Descer checklist"
-          disabled={index === groups.length - 1}
-          onClick={() =>
-            void mutate(() =>
-              send("/checklists/" + group.id, "PATCH", { position: index + 1 }),
-            )
-          }
-          className="disabled:opacity-30"
-        >
-          <ArrowDown size={14} />
-        </button>
-        <button
-          type="button"
-          title="Excluir checklist"
-          onClick={() => confirm(
-            { title: "Excluir checklist", description: "Excluir este checklist e todos os seus itens?", confirmLabel: "Excluir" },
-            async () => { await mutate(() => send("/checklists/" + group.id, "DELETE")); },
-          )}
-          className="text-[#ae2a19]"
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
-      <div className="mt-2 h-2 overflow-hidden rounded bg-[#dfe1e6]">
+    <div className="space-y-3">
+      <div
+        role="progressbar"
+        aria-label="Progresso do checklist"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress}
+        className="h-2 overflow-hidden rounded bg-[#dfe1e6]"
+      >
         <div
           className="h-full bg-[#4bce97]"
           style={{ width: progress + "%" }}
@@ -259,10 +186,7 @@ function Group({
         onSubmit={async (event) => {
           event.preventDefault();
           if (!bulk.trim()) return;
-          const items = bulk.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
-          for (const item of items) {
-            await mutate(() => send("/checklists/" + group.id + "/items", "POST", { text: item }));
-          }
+          await mutate(() => send("/checklists/" + group.id + "/items", "POST", { text: bulk }));
           setBulk("");
         }}
         className="mt-3"
@@ -272,6 +196,7 @@ function Group({
           onChange={(event) => setBulk(event.target.value)}
           rows={2}
           placeholder="Adicionar item ou colar várias linhas"
+          aria-label="Itens do checklist"
           className="w-full resize-y rounded border border-[#dfe1e6] bg-white p-2 text-sm"
         />
         <button
@@ -282,35 +207,22 @@ function Group({
         </button>
       </form>
     </div>
-    {confirmationModal}
-    </>
   );
 }
 
-export function CardChecklists({ card, board, groups, mutate }: Props) {
-  const [title, setTitle] = useState("Checklist");
-  const [source, setSource] = useState("");
-  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+export function CardChecklists({ card, groups, mutate }: Props) {
+  const [items, setItems] = useState("");
+  const checklistItems = groups[0]?.items ?? [];
+  const progress = checklistItems.length
+    ? Math.round(checklistItems.filter((item) => item.completed).length / checklistItems.length * 100)
+    : 0;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
-  useEffect(() => {
-    api<CatalogEntry[]>("/boards/" + board.id + "/checklists/catalog")
-      .then(setCatalog)
-      .catch(() => {});
-  }, [board.id, groups]);
   async function onDragEnd(event: DragEndEvent) {
     const active = String(event.active.id),
       over = String(event.over?.id || "");
     if (!over || active === over) return;
-    if (active.startsWith("group:")) {
-      const target = groups.findIndex((group) => "group:" + group.id === over);
-      if (target >= 0)
-        await mutate(() =>
-          send("/checklists/" + active.slice(6), "PATCH", { position: target }),
-        );
-      return;
-    }
     if (!active.startsWith("item:")) return;
     const id = active.slice(5),
       sourceGroup = groups.find((group) =>
@@ -333,74 +245,60 @@ export function CardChecklists({ card, board, groups, mutate }: Props) {
     );
   }
   return (
-    <section id="card-checklists">
-      <h3 className="mb-3 flex items-center gap-2 font-semibold">
-        <CheckSquare size={21} /> Checklists
-      </h3>
+    <section id="card-checklists" aria-labelledby="card-checklist-heading">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 id="card-checklist-heading" className="flex items-center gap-2 font-semibold">
+          <CheckSquare size={21} /> Checklist
+        </h3>
+        <span className="text-xs text-[#626f86]">{progress}%</span>
+      </div>
       <div className="space-y-3 sm:pl-8">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={(event) => void onDragEnd(event)}
         >
-          <SortableContext
-            items={groups.map((group) => "group:" + group.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            {groups.map((group, index) => (
+          {groups.slice(0, 1).map((group) => (
               <Group
                 key={group.id + group.title}
                 group={group}
-                index={index}
-                groups={groups}
                 mutate={mutate}
               />
             ))}
-          </SortableContext>
         </DndContext>
-        <form
+        {!groups.length && <form
           onSubmit={async (event) => {
             event.preventDefault();
-            await mutate(() =>
-              send("/cards/" + card.id + "/checklists", "POST", {
-                title,
-                source_id: source || undefined,
-              }),
-            );
-            setTitle("Checklist");
-            setSource("");
+            if (!items.trim()) return;
+            await mutate(async () => {
+              const checklist = await send<{ id: string }>(
+                "/cards/" + card.id + "/checklists",
+                "POST",
+                { title: "Checklist" },
+              );
+              return send("/checklists/" + checklist.id + "/items", "POST", {
+                text: items,
+              });
+            });
+            setItems("");
           }}
-          className="rounded-lg border border-dashed border-[#8590a2] p-3"
+          className="space-y-2"
         >
-          <label className="block text-xs font-semibold">
-            Novo checklist
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={160}
-              className="mt-1 w-full rounded border border-[#dfe1e6] px-2 py-1.5 text-sm"
-            />
-          </label>
-          <select
-            value={source}
-            onChange={(event) => setSource(event.target.value)}
-            aria-label="Copiar checklist existente"
-            className="mt-2 w-full rounded border border-[#dfe1e6] bg-white p-1.5 text-xs"
-          >
-            <option value="">Começar vazio</option>
-            {catalog.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                Copiar {entry.title} — {entry.card_title}
-              </option>
-            ))}
-          </select>
+          <textarea
+            value={items}
+            onChange={(event) => setItems(event.target.value)}
+            rows={2}
+            placeholder="Adicionar item ao checklist (uma linha por item)"
+            aria-label="Itens do checklist"
+            className="w-full resize-y rounded border border-[#dfe1e6] bg-white p-2 text-sm"
+          />
           <button
-            disabled={!title.trim()}
-            className="mt-2 rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            disabled={!items.trim()}
+            className="flex items-center gap-1 rounded bg-[#e9eaed] px-2 py-1.5 text-xs font-semibold disabled:opacity-50"
           >
-            Criar checklist
+            <Plus size={13} /> Adicionar {items.includes("\n") ? "itens" : "item"}
           </button>
-        </form>
+        </form>}
       </div>
     </section>
   );

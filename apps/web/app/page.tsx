@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Archive, ArrowRight, Clock3, DatabaseBackup, FileArchive, LayoutDashboard, LoaderCircle, Plus, Search, Star } from 'lucide-react';
+import { Archive, ArrowRight, Clock3, DatabaseBackup, FileArchive, LayoutDashboard, Plus, Search, Star } from 'lucide-react';
 import { api, send, Board, HomeData, SearchResults, User, clearSession, getToken, getUser, setUser, cardUrl } from '@/lib/api';
 import { AppHeader, BoardTile, CreateBoardModal, WorkspaceSidebar } from '@/components/ui';
 import { AuthScreen } from '@/components/auth-screen';
@@ -32,7 +32,6 @@ export default function Home() {
   const [searchLoading,setSearchLoading]=useState(false);
   const [boardSection,setBoardSection]=useState<BoardSection>('favorites');
   const [create,setCreate]=useState(false);
-  const [backupBusy,setBackupBusy]=useState(false);
   const [error,setError]=useState('');
   const load = useCallback(async () => {
     try {
@@ -78,15 +77,12 @@ export default function Home() {
     remember({label:'criar quadro',undo:[{path:`/boards/${board.id}/close`,method:'PATCH'}],redo:[{path:`/boards/${board.id}/reopen`,method:'PATCH'}]});
     router.push(`/board/${board.id}`);
   }
-  async function createBackup(){setBackupBusy(true);setError('');try{await send<BackupSummary>('/backups','POST');const rows=await api<BackupSummary[]>('/backups');setBackups(rows)}catch(err){setError((err as Error).message)}finally{setBackupBusy(false)}}
   if (!ready) return <div className="min-h-screen bg-[#f7f8fa]"/>;
   if (!user) return <AuthScreen onDone={account => {setCurrentUser(account);load();}}/>;
   const visibleBoards=boards.filter(board=>!board.is_inbox);
   const activeBoards=boardSection==='favorites'?data.favorites:data.recentBoards;
   const boardTiles=activeBoards.length?activeBoards:visibleBoards.slice(0,8);
   const totalCards=visibleBoards.reduce((sum,board)=>sum+(board.card_count||0),0);
-  const completedCards=visibleBoards.reduce((sum,board)=>sum+(board.completed_card_count||0),0);
-  const openCards=Math.max(0,totalCards-completedCards);
   const boardStats=(board:Board)=>({...board,...visibleBoards.find(item=>item.id===board.id)});
   return <div className="flex min-h-screen flex-col bg-[#f7f8fa]"><AppHeader user={user} boards={boards} onCreate={()=>setCreate(true)}/><div className="flex min-h-0 flex-1"><WorkspaceSidebar boards={boards} onCreate={()=>setCreate(true)} onChoose={id=>router.push(id?`/board/${id}`:'/boards')}/><main className="mx-auto w-full max-w-[1400px] px-4 py-7 sm:px-7 lg:px-9">
     <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p className="mb-1 text-xs font-bold uppercase tracking-[.12em] text-[#626f86]">PAINEL DE CONTROLE</p><h1 className="text-[27px] font-bold tracking-tight sm:text-[31px]">Visão geral</h1><p className="mt-1 text-sm text-[#626f86]">Acompanhe seus quadros e recursos em um só lugar.</p></div><button onClick={()=>setCreate(true)} className="flex items-center gap-2 rounded bg-[#0c66e4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]"><Plus size={16}/> Criar quadro</button></div>
@@ -96,7 +92,7 @@ export default function Home() {
 
     <div className="grid gap-5 xl:grid-cols-2">
       <section aria-label="Backups recentes" className="overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm">
-        <div className="flex items-center gap-3 border-b border-[#f1f2f4] px-5 py-4"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#eeedfd] text-[#403294]"><DatabaseBackup size={18}/></span><div className="min-w-0 flex-1"><h2 className="font-bold">Backups</h2><p className="text-xs text-[#626f86]">{backups.length} cópias salvas</p></div><button disabled={backupBusy} onClick={()=>void createBackup()} className="inline-flex items-center gap-1 rounded bg-[#403294] px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{backupBusy?<LoaderCircle size={14} className="animate-spin"/>:<Plus size={14}/>} Criar</button></div>
+        <div className="flex items-center gap-3 border-b border-[#f1f2f4] px-5 py-4"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#eeedfd] text-[#403294]"><DatabaseBackup size={18}/></span><div className="min-w-0 flex-1"><h2 className="font-bold">Backups</h2><p className="text-xs text-[#626f86]">{backups.length} cópias salvas</p></div><button onClick={()=>router.push('/backups')} className="inline-flex items-center gap-1 rounded bg-[#403294] px-2.5 py-1.5 text-xs font-semibold text-white"><Plus size={14}/> Criar</button></div>
         <div className="divide-y divide-[#f1f2f4]">{backups.slice(0,5).map(backup=><div key={backup.archive} className="flex items-center gap-3 px-5 py-3"><DatabaseBackup size={15} className="shrink-0 text-[#626f86]"/><div className="min-w-0 flex-1"><strong className="block truncate text-sm">{backup.archive}</strong><span className="text-xs text-[#626f86]">{backup.created_at?new Date(backup.created_at).toLocaleString('pt-BR'):'Data indisponível'}{backup.archive_bytes?` · ${(backup.archive_bytes/1024/1024).toFixed(1)} MB`:''}</span></div></div>)}{backups.length===0&&<p className="px-5 py-6 text-sm text-[#626f86]">Ainda não há backups. Crie o primeiro por aqui.</p>}</div>
         <div className="border-t border-[#f1f2f4] px-5 py-3"><button onClick={()=>router.push('/backups')} className="text-xs font-semibold text-[#0c66e4] hover:underline">Gerenciar todos os backups <ArrowRight size={13} className="ml-1 inline"/></button></div>
       </section>
@@ -122,6 +118,6 @@ export default function Home() {
       </section>
     </div>
 
-    <section aria-label="Painel de quadros" className="mt-7 rounded-xl border border-[#dfe1e6] bg-white p-5 shadow-sm"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-bold"><LayoutDashboard size={19} className="text-[#0c66e4]"/> Seus quadros</h2><p className="mt-1 text-xs text-[#626f86]">{visibleBoards.length} quadros · {openCards} cartões abertos · {completedCards} concluídos</p></div><div className="flex rounded-lg bg-[#f1f2f4] p-1"><button onClick={()=>setBoardSection('favorites')} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${boardSection==='favorites'?'bg-white text-[#0c66e4] shadow-sm':'text-[#626f86]'}`}><Star size={13} className="mr-1 inline"/>Favoritos</button><button onClick={()=>setBoardSection('recent')} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${boardSection==='recent'?'bg-white text-[#0c66e4] shadow-sm':'text-[#626f86]'}`}><Clock3 size={13} className="mr-1 inline"/>Recentes</button></div></div>{boardTiles.length?<div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{boardTiles.slice(0,8).map(board=><BoardTile key={board.id} board={boardStats(board)} onClick={()=>router.push(`/board/${board.id}`)}/>)}</div>:<div className="rounded-lg border border-dashed border-[#c1c7d0] p-7 text-center text-sm text-[#626f86]">{boardSection==='favorites'?'Marque quadros como favoritos para acompanhá-los aqui.':'Os quadros que você abrir aparecerão aqui.'}</div>}<button onClick={()=>router.push('/boards')} className="mt-4 text-xs font-semibold text-[#0c66e4] hover:underline">Ver todos os quadros <ArrowRight size={13} className="ml-1 inline"/></button></section>
+    <section aria-label="Painel de quadros" className="mt-7 rounded-xl border border-[#dfe1e6] bg-white p-5 shadow-sm"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-bold"><LayoutDashboard size={19} className="text-[#0c66e4]"/> Seus quadros</h2><p className="mt-1 text-xs text-[#626f86]">{visibleBoards.length} quadros · {totalCards} cartões</p></div><div className="flex rounded-lg bg-[#f1f2f4] p-1"><button onClick={()=>setBoardSection('favorites')} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${boardSection==='favorites'?'bg-white text-[#0c66e4] shadow-sm':'text-[#626f86]'}`}><Star size={13} className="mr-1 inline"/>Favoritos</button><button onClick={()=>setBoardSection('recent')} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${boardSection==='recent'?'bg-white text-[#0c66e4] shadow-sm':'text-[#626f86]'}`}><Clock3 size={13} className="mr-1 inline"/>Recentes</button></div></div>{boardTiles.length?<div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">{boardTiles.slice(0,8).map(board=><BoardTile key={board.id} board={boardStats(board)} onClick={()=>router.push(`/board/${board.id}`)}/>)}</div>:<div className="rounded-lg border border-dashed border-[#c1c7d0] p-7 text-center text-sm text-[#626f86]">{boardSection==='favorites'?'Marque quadros como favoritos para acompanhá-los aqui.':'Os quadros que você abrir aparecerão aqui.'}</div>}<button onClick={()=>router.push('/boards')} className="mt-4 text-xs font-semibold text-[#0c66e4] hover:underline">Ver todos os quadros <ArrowRight size={13} className="ml-1 inline"/></button></section>
   </main></div>{create&&<CreateBoardModal onClose={()=>setCreate(false)} onCreate={createBoard}/>}</div>;
 }

@@ -21,6 +21,7 @@ test("Planner plugin owns focus blocks, preserves legacy blocks and isolates boa
   db.pool = new Pool({connectionString:process.env.DATABASE_URL,options:`-c search_path=${schema},public`});
   try {
     await db.query(readFileSync(resolve(__dirname,"../../sql/schema.sql"),"utf8"));
+    await db.query(readFileSync(resolve(__dirname,"../../sql/pre-022-compat.sql"),"utf8"));
     const user = (await db.one<{id:string}>("INSERT INTO users(name,email,password_hash) VALUES('Planner owner',$1,'x') RETURNING id",[`planner-${randomUUID()}@example.invalid`]))!.id;
     const outsider = (await db.one<{id:string}>("INSERT INTO users(name,email,password_hash) VALUES('Planner outsider',$1,'x') RETURNING id",[`outsider-${randomUUID()}@example.invalid`]))!.id;
     const board = (await db.one<{id:string}>("INSERT INTO boards(title,owner_id) VALUES('Planner board',$1) RETURNING id",[user]))!.id;
@@ -36,13 +37,12 @@ test("Planner plugin owns focus blocks, preserves legacy blocks and isolates boa
     const planner = new PlannerPlugin(db,new FeaturesService(db),new CodexAiService());
     const registry = new PluginRegistry();
     registry.register(plannerPluginDefinition(planner));
-    assert.deepEqual(registry.catalog()[0].contributions.navigation,[{id:"planner",label:"Planner",href:"/planner",icon:"calendar-clock"}]);
+    assert.deepEqual(registry.catalog()[0].contributions.notifications,[{id:"due",label:"Alertas de prazo e agenda"}]);
     assert.equal(registry.getAction("planner","create_block").requiredCapabilities?.[0],"plan.write");
 
     const initial = await planner.workspace(user);
-    assert.equal(initial.events.length,1);
-    assert.equal(initial.events[0].id,old);
-    assert.equal(initial.events[0].cards[0].id,card);
+    assert.equal(initial.events.length,0);
+    assert.equal((await db.one<{id:string}>("SELECT id FROM focus_events WHERE id=$1",[old]))?.id,old);
     assert.deepEqual(initial.cards.map(item=>item.id),[card]);
     assert.equal((await planner.workspace(user,board)).cards.length,1);
     await assert.rejects(()=>planner.workspace(user,privateBoard),/Quadro não encontrado/);
@@ -51,17 +51,18 @@ test("Planner plugin owns focus blocks, preserves legacy blocks and isolates boa
     assert.equal((await db.one<{count:number}>("SELECT count(*)::int AS count FROM focus_events WHERE user_id=$1",[user]))!.count,before);
     const created = await planner.createFocus(user,{title:"New focus",starts_at:"2026-10-01T11:00:00Z",ends_at:"2026-10-01T12:00:00Z",card_id:card});
     const updated = await planner.workspace(user,board);
-    assert.equal(updated.events.length,2);
-    assert.equal(updated.events.find(item=>item.id===created.id)?.cards[0].id,card);
+    assert.equal(updated.events.length,1);
+    assert.equal(updated.events[0].id,created.id);
+    assert.equal(updated.events[0].cards[0].id,card);
     const aiCompatible = await planner.createFocusBlock(user,{title:"Suggested focus",starts_at:"2026-10-01T12:00:00Z",ends_at:"2026-10-01T13:00:00Z",card_ids:[card]});
     assert.equal((await planner.workspace(user)).events.find(item=>item.id===aiCompatible.id)?.cards[0].id,card);
     const action = registry.getAction("planner","list_blocks");
     const actionOutput = await action.execute?.({}, {userId:user});
     assert.equal(actionOutput?.type,"planner");
-    await planner.unlinkFocus(user,created.id,card);
-    assert.deepEqual((await planner.workspace(user)).events.find(item=>item.id===created.id)?.cards,[]);
-    await planner.linkFocus(user,created.id,card);
-    assert.equal((await planner.workspace(user)).events.find(item=>item.id===created.id)?.cards[0].id,card);
+    await planner.unlinkFocus(user,old,card);
+    assert.equal((await db.one<{count:number}>("SELECT count(*)::int AS count FROM focus_event_cards WHERE event_id=$1",[old]))?.count,0);
+    await planner.linkFocus(user,old,card);
+    assert.equal((await db.one<{count:number}>("SELECT count(*)::int AS count FROM focus_event_cards WHERE event_id=$1",[old]))?.count,1);
   } finally {
     await db.onModuleDestroy();
     const cleanup = new Db();

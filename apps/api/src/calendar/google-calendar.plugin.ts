@@ -7,6 +7,7 @@ import {
   Injectable,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
   Param,
   Post,
   Query,
@@ -15,7 +16,6 @@ import {
 } from "@nestjs/common";
 import { Request, Response } from "express";
 import {
-  createHash,
   randomBytes,
   randomUUID,
   timingSafeEqual,
@@ -24,6 +24,8 @@ import { Db } from "../db";
 import { FeaturesService } from "../features";
 import { PluginActionContext, PluginDefinition } from "../plugins/contract";
 import { SecretVault } from "../secrets";
+import {GoogleCredentials,GOOGLE_CALENDAR_SCOPES} from '../google/credentials';
+import {googleRedirectUri} from '../google/redirect-uri';
 import {
   Availability,
   AvailabilityRequest,
@@ -43,6 +45,7 @@ type Tokens = {
 type Connection = {
   id: string;
   owner_id: string;
+  plugin_id?:string;
   display_name: string;
   credentials_encrypted: string;
   metadata: Record<string, unknown>;
@@ -228,11 +231,10 @@ export class GoogleCalendarPlugin
   constructor(
     @Inject(Db) private db: Db,
     @Inject(SecretVault) private vault: SecretVault,
+    @Optional() @Inject(GoogleCredentials) private google?:GoogleCredentials,
   ) {}
   onModuleInit() {
-
-
-
+    if (process.env.ORBIT_ENV === 'development' && process.env.ORBIT_ALLOW_EXTERNAL_AUTOMATION !== 'true') return;
     this.timer = setInterval(() => void this.maintenance(), 30 * 60_000);
     this.timer.unref();
     setTimeout(() => void this.maintenance(), 5000).unref();
@@ -256,132 +258,38 @@ export class GoogleCalendarPlugin
     return { clientId, clientSecret };
   }
   private redirectUri() {
-    return (
-      process.env.GOOGLE_CALENDAR_REDIRECT_URI ||
-      `${process.env.API_PUBLIC_URL || "http://localhost:4000"}/calendar/google/oauth/callback`
-    );
+    return googleRedirectUri('calendar');
   }
   async oauthUrl(ownerId: string) {
-    const { clientId } = this.config(),
-      state = randomBytes(32).toString("base64url"),
-      hash = createHash("sha256").update(state).digest("hex");
-    await this.db.query(
-      "DELETE FROM oauth_states WHERE expires_at<now() OR used_at IS NOT NULL",
-    );
-    await this.db.query(
-      "INSERT INTO oauth_states(state_hash,owner_id,plugin_id,redirect_uri,expires_at) VALUES($1,$2,$3,$4,now()+interval '10 minutes')",
-      [hash, ownerId, this.id, this.redirectUri()],
-    );
-    const query = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: this.redirectUri(),
-      response_type: "code",
-      access_type: "offline",
-      prompt: "consent",
-      include_granted_scopes: "true",
-      scope: [
-        "openid",
-        "email",
-        "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
-        "https://www.googleapis.com/auth/calendar.freebusy",
-      ].join(" "),
-      state,
-    });
-    return { url: `https://accounts.google.com/o/oauth2/v2/auth?${query}` };
+    return (this.google??new GoogleCredentials(this.db,this.vault)).start(ownerId,'calendar',GOOGLE_CALENDAR_SCOPES,this.redirectUri());
   }
   getConnectUrl(ownerId:string){return this.oauthUrl(ownerId)}
   async oauthCallback(code: string, state: string) {
-    if (!code || !state) fail("Retorno OAuth inválido.");
-    const hash = createHash("sha256").update(state).digest("hex");
-    const row = await this.db.one<{ owner_id: string; redirect_uri: string }>(
-      "UPDATE oauth_states SET used_at=now() WHERE state_hash=$1 AND plugin_id=$2 AND used_at IS NULL AND expires_at>now() RETURNING owner_id,redirect_uri",
-      [hash, this.id],
-    );
-    if (!row) return fail("Estado OAuth inválido ou expirado.", 401);
-    const { clientId, clientSecret } = this.config();
-    const response = await fetch(`${oauthBase}/token`, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: row.redirect_uri,
-        grant_type: "authorization_code",
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!response.ok)
-      fail("Não foi possível concluir a autorização Google.", 502);
-    const raw = (await response.json()) as Record<string, unknown>;
-    const tokens: Tokens = {
-      access_token: String(raw.access_token),
-      refresh_token: raw.refresh_token ? String(raw.refresh_token) : undefined,
-      expires_at: Date.now() + Number(raw.expires_in || 3600) * 1000,
-      scope: String(raw.scope || ""),
-      token_type: String(raw.token_type || "Bearer"),
-    };
-    const profileResponse = await fetch(
-      "https://www.googleapis.com/oauth2/v2/userinfo",
-      {
-        headers: { authorization: `Bearer ${tokens.access_token}` },
-        signal: AbortSignal.timeout(15_000),
-      },
-    );
-    if (!profileResponse.ok)
-      fail("Não foi possível identificar a conta Google.", 502);
-    const profile = (await profileResponse.json()) as {
-      id?: string;
-      email?: string;
-      name?: string;
-    };
-    const existing = await this.db.one<Connection>(
-      "SELECT * FROM integration_connections WHERE owner_id=$1 AND plugin_id=$2 AND external_account_id=$3",
-      [row.owner_id, this.id, profile.id || profile.email],
-    );
-    if (existing && !tokens.refresh_token) {
-      const previous = this.vault.open<Tokens>(existing.credentials_encrypted);
-      tokens.refresh_token = previous.refresh_token;
-    }
-    if (!tokens.refresh_token)
-      fail(
-        "O Google não forneceu um refresh token. Revogue o acesso antigo e tente novamente.",
-        409,
-      );
-    const connection = await this.db.one<Connection>(
-      `INSERT INTO integration_connections(owner_id,plugin_id,external_account_id,display_name,label,credentials_encrypted,metadata) VALUES($1,$2,$3,$4,$4,$5,$6)
-      ON CONFLICT(owner_id,plugin_id,external_account_id) DO UPDATE SET display_name=excluded.display_name,credentials_encrypted=excluded.credentials_encrypted,enabled=true,updated_at=now() RETURNING *`,
-      [
-        row.owner_id,
-        this.id,
-        profile.id || profile.email,
-        profile.email || profile.name || "Conta Google",
-        this.vault.seal(tokens),
-        JSON.stringify({ email: profile.email }),
-      ],
-    );
-    const discovered = await this.discover(row.owner_id, connection!.id);
+    const connection=await (this.google??new GoogleCredentials(this.db,this.vault)).complete(code,state,'calendar');
+    const discovered = await this.discover(connection.ownerId, connection.id);
     for (const source of discovered.filter((item) => item.selected))
       await this.syncSource(source.id);
-    return connection!.id;
+    return connection.id;
   }
   async connections(ownerId: string) {
-    return this.db.query(
+    const legacy=await this.db.query(
       "SELECT id,display_name,enabled,metadata,created_at,updated_at FROM integration_connections WHERE owner_id=$1 AND plugin_id=$2 ORDER BY created_at",
       [ownerId, this.id],
     );
+    const shared=await (this.google??new GoogleCredentials(this.db,this.vault)).available(ownerId,GOOGLE_CALENDAR_SCOPES);
+    return [...legacy,...shared.filter(row=>row.pluginId==='google').map(row=>({id:row.id,display_name:row.name,enabled:true,metadata:{},created_at:null,updated_at:null}))];
   }
   private async connection(id: string, ownerId?: string): Promise<Connection> {
     const row = await this.db.one<Connection>(
-      "SELECT * FROM integration_connections WHERE id=$1 AND plugin_id=$2 AND enabled" +
+      "SELECT * FROM integration_connections WHERE id=$1 AND plugin_id=ANY($2::text[]) AND enabled" +
         (ownerId ? " AND owner_id=$3" : ""),
-      ownerId ? [id, this.id, ownerId] : [id, this.id],
+      ownerId ? [id, [this.id,'google'], ownerId] : [id, [this.id,'google']],
     );
     if (!row) return fail("Conexão Google não encontrada.", 404);
     return row;
   }
   private async token(connection: Connection) {
+    if(connection.plugin_id==='google')return (this.google??new GoogleCredentials(this.db,this.vault)).token(connection.owner_id,connection.id,GOOGLE_CALENDAR_SCOPES);
     let tokens = this.vault.open<Tokens>(connection.credentials_encrypted);
     if (tokens.expires_at > Date.now() + 60_000) return tokens.access_token;
     const { clientId, clientSecret } = this.config();
@@ -715,6 +623,7 @@ export class GoogleCalendarPlugin
       location: row.location as string | null,
       externalResourceId: row.external_resource_id as string | null,
       cardId: row.card_id as string | null,
+      cardUrlToken: row.card_url_token as string | null,
       externalUrl: row.external_url as string | null,
       status: String(row.status || "confirmed"),
       recurrence: row.recurrence as unknown[],
@@ -803,7 +712,7 @@ export class GoogleCalendarPlugin
     end: Date,
   ) {
     const rows = await this.db.query<Record<string, unknown>>(
-      `SELECT i.*,l.board_id FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id LEFT JOIN cards c ON c.id=i.card_id LEFT JOIN lists l ON l.id=c.list_id WHERE i.owner_id=$1 AND i.source_id=ANY($2::uuid[]) AND i.start_at<$4 AND COALESCE(i.end_at,i.start_at)>=$3 ORDER BY i.start_at`,
+      `SELECT i.*,l.board_id,c.url_token AS card_url_token FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id LEFT JOIN cards c ON c.id=i.card_id LEFT JOIN lists l ON l.id=c.list_id WHERE i.owner_id=$1 AND i.source_id=ANY($2::uuid[]) AND i.start_at<$4 AND COALESCE(i.end_at,i.start_at)>=$3 ORDER BY i.start_at`,
       [ownerId, sourceIds, start, end],
     );
     return rows.map((row) => {
@@ -1130,13 +1039,19 @@ export class GoogleCalendarPlugin
     for (const source of sources)
       await this.ensureWatch(source).catch(() => undefined);
     const connections = await this.db.query<Connection>(
-      "SELECT * FROM integration_connections WHERE plugin_id=$1 AND enabled AND COALESCE((metadata->>'lastDiscoveryAt')::timestamptz,'epoch')<now()-interval '6 hours'",
-      [this.id],
+      "SELECT * FROM integration_connections WHERE plugin_id=ANY($1::text[]) AND enabled AND COALESCE((metadata->>'lastDiscoveryAt')::timestamptz,'epoch')<now()-interval '6 hours'",
+      [[this.id,'google']],
     );
-    for (const connection of connections)
+    const sharedByOwner=new Map<string,Set<string>>();
+    for (const connection of connections) {
+      if(connection.plugin_id==='google'){
+        if(!sharedByOwner.has(connection.owner_id))sharedByOwner.set(connection.owner_id,new Set((await (this.google??new GoogleCredentials(this.db,this.vault)).available(connection.owner_id,GOOGLE_CALENDAR_SCOPES)).map(row=>row.id)));
+        if(!sharedByOwner.get(connection.owner_id)?.has(connection.id))continue;
+      }
       await this.discover(connection.owner_id, connection.id).catch(
         () => undefined,
       );
+    }
 
   }
 }
@@ -1148,6 +1063,10 @@ export const googleCalendarPluginDefinition = (
   name: plugin.name,
   version: "1.0.0",
   scope: "account",
+  configuration:[
+    {key:'GOOGLE_CALENDAR_REDIRECT_URI',label:'URL de retorno OAuth do Calendar',secret:false},
+    {key:'GOOGLE_CALENDAR_WEBHOOK_URL',label:'URL pública do webhook',secret:false},
+  ],
   capabilities: [
     { id: "calendar.events.read", name: "Ler eventos" },
     { id: "calendar.events.write", name: "Alterar eventos" },

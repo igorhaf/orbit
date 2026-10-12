@@ -48,7 +48,6 @@ export function BoardTools({
   onClosed: () => void;
   onDeleted: () => void;
   filters?: {
-    status: string; setStatus: (value: "all" | "open" | "completed") => void;
     field: string; setField: (value: string) => void;
     label: string; setLabel: (value: string) => void;
     due: string; setDue: (value: string) => void;
@@ -234,7 +233,6 @@ export function BoardTools({
                   <SlidersHorizontal size={16} /> Filtro avançado
                 </button>
                 {advancedFilters && <div className="space-y-2 px-2 pb-2 pt-1">
-                  <select aria-label="Filtrar por status" value={filters.status} onChange={event => filters.setStatus(event.target.value as "all" | "open" | "completed")} className="h-9 w-full rounded border border-[#c1c7d0] bg-white px-2 text-sm text-[#172b4d]"><option value="all">Todos os status</option><option value="open">Pendentes</option><option value="completed">Concluídos</option></select>
                   <select aria-label="Filtrar por checkbox" value={filters.field} onChange={event => filters.setField(event.target.value)} className="h-9 w-full rounded border border-[#c1c7d0] bg-white px-2 text-sm text-[#172b4d]"><option value="">Campos: todos</option>{board.custom_fields?.filter(field => field.type === "checkbox").flatMap(field => [<option key={`${field.id}:true`} value={`${field.id}:true`}>{field.name}: marcado</option>, <option key={`${field.id}:false`} value={`${field.id}:false`}>{field.name}: desmarcado</option>])}</select>
                   <select aria-label="Filtrar por etiqueta" value={filters.label} onChange={event => filters.setLabel(event.target.value)} className="h-9 w-full rounded border border-[#c1c7d0] bg-white px-2 text-sm text-[#172b4d]"><option value="">Todas as etiquetas</option>{board.labels?.map(label => <option key={label.id} value={label.id}>{label.name || "Sem nome"}</option>)}</select>
                   <select aria-label="Filtrar por prazo" value={filters.due} onChange={event => filters.setDue(event.target.value)} className="h-9 w-full rounded border border-[#c1c7d0] bg-white px-2 text-sm text-[#172b4d]"><option value="">Todos os prazos</option><option value="overdue">Vencidos</option><option value="week">7 dias</option><option value="none">Sem prazo</option></select>

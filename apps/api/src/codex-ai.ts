@@ -1,10 +1,14 @@
+import { extractPromptQuestion } from './prompt-question';
 import { HttpException, Injectable } from '@nestjs/common';
-import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { execFile } from 'node:child_process';
 import { prepareOrbitCodexHome } from './codex-home';
+import { orbitArchitecturePrompt } from './orbit-architecture';
+import { captureFileScope } from './execution/file-scope';
+import {runProjectChecks} from './execution/project-checks';
 
 const MAX_OUTPUT = 20_000;
 const stripAnsi=(value:string)=>value.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`,'g'),'');
@@ -13,24 +17,48 @@ export type PromptActivity = {id:string;kind:'command';command:string;output:str
 type ProgressDetails = {fileChanges?:Array<Pick<PromptFileChange,'path'|'kind'>>;activity?:PromptActivity};
 type Progress = (message:string,output?:boolean,replace?:boolean,details?:ProgressDetails)=>void;
 export type CodexExecution = { output:string; sessionId:string|null;fileChanges:PromptFileChange[];activities:PromptActivity[] };
+export type CodexPromptImage = { name:string; mimeType:string; data:Buffer };
 export const codexErrorMessage=(detail:string) => {
   if (/ENOENT/.test(detail)) return 'O executável local do Codex não foi encontrado. Configure CODEX_BIN no servidor.';
   if (/mountinfo path is not absolute/i.test(detail)) return 'O Codex CLI instalado tem uma falha no sandbox Linux (mountinfo path is not absolute). Atualize o CODEX_BIN para uma versão estável posterior à correção e reinicie a API.';
   if (/tempo limite/i.test(detail)) return detail;
   if (/(?:usage limit|rate limit|quota|insufficient_quota|too many requests|credits? exhausted)/i.test(detail)) return 'O limite de uso ou de tokens da conta do Codex foi excedido. Verifique sua cota e tente novamente mais tarde.';
   if (/(?:context length|context window|maximum.*tokens|too many tokens|token limit)/i.test(detail)) return 'A solicitação excedeu o limite de tokens do modelo. Reduza o conteúdo ou divida a tarefa em partes menores.';
+  if (/(?:not logged in|not authenticated|authentication required|unauthorized|invalid api key|login required|http\s*401|status\s*401)/i.test(detail)) return 'O Codex local não está autenticado. Execute `codex login` no servidor e tente novamente.';
+  if (/(?:model_not_found|unknown model|model .* (?:not found|unavailable|not supported)|unsupported model|model does not exist)/i.test(detail)) return 'O modelo selecionado não está disponível nesta conta do Codex. Escolha outro modelo nas configurações de IA.';
+  if (/(?:invalid|unsupported|unknown) (?:model )?(?:reasoning )?effort|reasoning_effort.*(?:invalid|unsupported)|effort.*not supported/i.test(detail)) return 'O esforço selecionado não é compatível com este modelo ou versão do Codex. Atualize o Codex ou escolha outro esforço.';
+  if (/(?:unknown|unexpected|unrecognized) (?:argument|option|flag)|usage: codex/i.test(detail)) return 'A versão instalada do Codex CLI não aceita as opções usadas pelo Orbit. Atualize o Codex CLI no servidor.';
+  if (/(?:enotfound|econnreset|econnrefused|network error|failed to connect|connection error|service unavailable|http\s*5\d\d|status\s*5\d\d)/i.test(detail)) return 'Não foi possível conectar ao serviço do Codex. Verifique a conexão do servidor e tente novamente.';
   return 'Não foi possível gerar a sugestão com o Codex local.';
 };
 
 @Injectable()
 export class CodexAiService {
   async complete(instruction: string, model?: string, effort?: string): Promise<string> {
-    const result=await this.run(instruction, process.cwd(), model, effort);
+    // Text generation is not authorization to edit the application's source.
+    const result=await this.run(instruction, process.cwd(), model, effort, undefined, undefined, undefined, undefined, 'planning');
     return typeof result==='string'?result:result.output;
   }
-  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void): Promise<CodexExecution> {
-    const result=await this.run(instruction, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat);
-    return typeof result==='string'?{output:result,sessionId:sessionId||null,fileChanges:[],activities:[]}:result;
+  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], writeScope?:string[], projectChecks:string[][]=[], allowQuestions=false): Promise<CodexExecution> {
+    const verify=writeScope===undefined?null:await captureFileScope(projectPath,writeScope);
+    try{
+      const scoped=writeScope===undefined?instruction:`ESCRITA LIMITADA A ESTES ARQUIVOS (qualquer alteração fora desta lista será revertida e falhará a execução):\n${writeScope.join('\n')}\n\n${instruction}`;
+      const result=await this.run(scoped, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode, images);
+      if(verify)await verify();
+      if(projectChecks.length&&!(allowQuestions&&extractPromptQuestion(typeof result==='string'?result:result.output))){
+        progress?.('Validando as verificações obrigatórias do projeto…');
+        const heartbeat=setInterval(()=>void Promise.resolve(onHeartbeat?.()).catch(()=>undefined),5000);
+        try{await runProjectChecks(projectPath,projectChecks)}finally{clearInterval(heartbeat)}
+      }
+      if(verify)await verify();
+      return typeof result==='string'?{output:result,sessionId:sessionId||null,fileChanges:[],activities:[]}:result;
+    }catch(error){
+      if(verify){
+        if(projectChecks.length){const restored=await verify.rollback();if(restored.length)progress?.('As alterações da execução reprovada foram restauradas.');}
+        else await verify();
+      }
+      throw error;
+    }
   }
   private progressMessage(line:string):{message:string;output?:boolean;delta?:boolean;replace?:boolean;cumulative?:boolean;itemId?:string;fileChanges?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:PromptActivity}|null {
     try {
@@ -55,10 +83,11 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
-  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void): Promise<string|CodexExecution> {
+  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[]): Promise<string|CodexExecution> {
     const codexHome = await prepareOrbitCodexHome();
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
+    const imageFiles:string[]=[];
     const executable = process.env.CODEX_BIN || 'codex';
     const timeout = Number(process.env.CODEX_AI_TIMEOUT_MS || 300_000);
     let detectedSessionId: string|null = sessionId || null;
@@ -69,17 +98,25 @@ export class CodexAiService {
     let sessionPersistenceError:unknown;
 
     try {
+      for(let index=0;index<images.length;index++){
+        const image=images[index];
+        const extension=image.mimeType==='image/png'?'.png':image.mimeType==='image/webp'?'.webp':image.mimeType==='image/gif'?'.gif':image.mimeType==='image/avif'?'.avif':'.jpg';
+        const imagePath=join(directory,`prompt-image-${index+1}${extension}`);
+        await writeFile(imagePath,image.data,{mode:0o600});imageFiles.push(imagePath);
+      }
       await new Promise<void>((resolve, reject) => {
+        const executionPolicy = executionMode === 'planning' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox'];
         const command = sessionId
-          ? ['exec', '-C', workingDirectory, 'resume', sessionId, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
-          : ['exec', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
+          ? ['exec', '-C', workingDirectory, ...executionPolicy, '--skip-git-repo-check', 'resume', sessionId, ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
+          : ['exec', ...executionPolicy, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
         const child = spawn(executable, [
           ...command,
+          ...imageFiles.flatMap(image=>['--image',image]),
           ...(progress ? ['--json'] : []),
           '--output-last-message', output, '-',
         ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['pipe', progress?'pipe':'ignore', 'pipe'] });
         child.stdin?.on('error', () => { /* The Codex process may exit before consuming the prompt. */ });
-        child.stdin?.end(instruction);
+        child.stdin?.end(`${orbitArchitecturePrompt}\n\n${instruction}`);
         let stderr = '';
         let stdout = '';
         let receivedOutputDelta=false;
@@ -177,9 +214,9 @@ export class CodexAiService {
       return progress ? result : result.output;
     } catch (error) {
       const detail = error instanceof Error ? error.message : '';
-      if (sessionId && /(?:no (?:saved )?(?:session|conversation|thread)|(?:session|conversation|thread).*(?:not found|does not exist|could not be found)|could not find (?:the )?(?:session|conversation|thread))/i.test(detail)) {
+      if (sessionId && /(?:no (?:saved )?(?:session|conversation|thread|rollout)|(?:session|conversation|thread|rollout).*(?:not found|does not exist|could not be found)|could not find (?:the )?(?:session|conversation|thread|rollout))/i.test(detail)) {
         progress?.('A sessão anterior não está disponível neste armazenamento; iniciando uma nova sessão.');
-        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat);
+        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat, executionMode);
       }
       console.error('[CodexAi] Execução falhou.',error);
       await sessionPersistence;

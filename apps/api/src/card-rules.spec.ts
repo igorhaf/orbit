@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cardKindFromTitle, dueDateFromTitle, labelColorOptions, nextOccurrence, reminderOptions } from './card-rules';
+import { cardKindFromTitle, descriptionAfterTitleEdit, dueDateFromTitle, labelColorOptions, nextOccurrence, reminderOptions } from './card-rules';
+
+test('description follows successive title edits only while both remain exactly equal',()=>{
+  const description=descriptionAfterTitleEdit('Original','Original','Segundo');
+  assert.equal(description,'Segundo');
+  assert.equal(descriptionAfterTitleEdit('Segundo',description,'Terceiro'),'Terceiro');
+  assert.equal(descriptionAfterTitleEdit('Segundo','Descrição personalizada','Terceiro'),'Descrição personalizada');
+  assert.equal(descriptionAfterTitleEdit('Original','','Novo'),'');
+  assert.equal(descriptionAfterTitleEdit('Original','Original ','Novo'),'Original ');
+  assert.equal(descriptionAfterTitleEdit('Original','original','Novo'),'original');
+});
+
+test('explicit description changes take precedence over title synchronization',()=>{
+  assert.equal(descriptionAfterTitleEdit('Original','Original','Novo','Personalizada'),'Personalizada');
+  assert.equal(descriptionAfterTitleEdit('Original','Original','Novo',''),'');
+  assert.equal(descriptionAfterTitleEdit('Original','Original','Original','Personalizada'),'Personalizada');
+});
 
 test('recognizes valid dates in titles without accepting impossible dates', () => {
   assert.equal(dueDateFromTitle('Entrega 25/12/2026')?.toISOString(),'2026-12-26T02:59:00.000Z');

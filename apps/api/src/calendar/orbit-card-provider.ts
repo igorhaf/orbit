@@ -53,7 +53,7 @@ export class OrbitCardCalendarSource implements CalendarSourceProvider {
     const sourceId = await this.ensure(ownerId);
     if (sourceIds.length && !sourceIds.includes(sourceId)) return [];
     const rows = await this.db.query<Record<string, unknown>>(
-      `SELECT c.id,c.title,c.description,c.schedule_start_at,c.schedule_end_at,c.schedule_all_day,c.schedule_time_zone,l.board_id,l.title AS list_title,b.title AS board_title
+      `SELECT c.id,c.url_token,c.title,c.description,c.schedule_start_at,c.schedule_end_at,c.schedule_all_day,c.schedule_time_zone,l.board_id,l.title AS list_title,b.title AS board_title
       FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
       WHERE c.schedule_start_at IS NOT NULL AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL
       AND c.schedule_start_at<$3 AND COALESCE(c.schedule_end_at,c.schedule_start_at)>=$2 ORDER BY c.schedule_start_at`,
@@ -64,6 +64,7 @@ export class OrbitCardCalendarSource implements CalendarSourceProvider {
       sourceId,
       resourceType: "card",
       cardId: String(row.id),
+      cardUrlToken: String(row.url_token),
       title: String(row.title),
       description: String(row.description || ""),
       start: new Date(row.schedule_start_at as string).toISOString(),

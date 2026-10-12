@@ -11,6 +11,25 @@ Este guia cobre uma instalação local do Orbit e a configuração do Codex CLI 
 
 O Orbit roda diretamente na máquina; Docker não é necessário.
 
+### Projetos em diretórios do host quando a API roda em Docker
+
+A API só consegue abrir pastas que também estejam montadas dentro do contêiner. No `docker-compose.yml` que inicia o Orbit, adicione ao serviço da API o volume e as variáveis abaixo. Este exemplo expõe a pasta `meadadigital`:
+
+```dotenv
+ORBIT_HOST_PROJECTS_ROOT=/home/meada/projetos
+ORBIT_CONTAINER_PROJECTS_ROOT=/host-projects
+```
+
+```yaml
+volumes:
+  - /home/meada/projetos/meadadigital:/host-projects/meadadigital
+environment:
+  ORBIT_HOST_PROJECTS_ROOT: /home/meada/projetos
+  ORBIT_CONTAINER_PROJECTS_ROOT: /host-projects
+```
+
+Depois da alteração, recrie o contêiner da API com `docker compose up -d --build --force-recreate <serviço-da-api>`. Rebuild da aplicação sozinho não atualiza os volumes. O seletor lista caminhos do host dentro da raiz configurada, e o Orbit converte o caminho ao validar e usar o projeto. Sem o bind mount, o caminho do host não fica acessível.
+
 ## Obter o código e instalar dependências
 
 Na pasta onde o projeto será mantido:

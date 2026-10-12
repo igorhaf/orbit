@@ -13,6 +13,7 @@ export type CalendarItem = {
   location?: string | null;
   externalResourceId?: string | null;
   cardId?: string | null;
+  cardUrlToken?: string | null;
   externalUrl?: string | null;
   status?: string;
   recurrence?: unknown[];

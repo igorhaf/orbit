@@ -1,5 +1,6 @@
 node_modules
 .next
+apps/web/.next-dev/
 dist
 .env
 .env.local
@@ -14,3 +15,6 @@ dist
 /.orbit-dev-restart-ack
 /.orbit/sessions/
 /apps/api/.orbit/
+
+# Isolated validation builds
+.next-validation/

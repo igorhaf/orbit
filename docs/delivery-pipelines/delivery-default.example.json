@@ -1,0 +1,20 @@
+{
+  "name": "Delivery Default",
+  "triggerType": "card.completed",
+  "enabled": false,
+  "steps": [
+    {"type":"git.add","name":"Git Add","config":{"repositoryId":"<repo-id>","paths":["src"]},"bypassPolicy":"deny"},
+    {"type":"git.commit","name":"Git Commit","config":{"repositoryId":"<repo-id>","message":"feat: deliver change"},"bypassPolicy":"deny"},
+    {"type":"git.push","name":"Git Push","config":{"repositoryId":"<repo-id>","remoteId":"<remote-id>","branch":"<development-branch>"},"bypassPolicy":"deny"},
+    {"type":"deploy.execute","name":"Deploy Development","config":{"strategy":"git","environmentId":"<development-environment-id>","deployTargetId":"<development-target-id>"},"bypassPolicy":"deny"},
+    {"type":"test.run","name":"Test Development","config":{"executor":"local","workingDirectory":".","command":"./scripts/test.sh"},"bypassPolicy":"allow"},
+    {"type":"approval.wait","name":"Approve Staging","config":{"message":"Promote to Staging?"},"bypassPolicy":"allow"},
+    {"type":"promotion.execute","name":"Promote Staging","config":{"strategy":"git.merge","repositoryId":"<repo-id>","remoteId":"<remote-id>","source":"<development-branch>","target":"<staging-branch>"},"bypassPolicy":"deny"},
+    {"type":"deploy.execute","name":"Deploy Staging","config":{"strategy":"git","environmentId":"<staging-environment-id>","deployTargetId":"<staging-target-id>"},"bypassPolicy":"deny"},
+    {"type":"test.run","name":"Test Staging","config":{"executor":"local","workingDirectory":".","command":"./scripts/test.sh"},"bypassPolicy":"allow"},
+    {"type":"approval.wait","name":"Approve Production","config":{"message":"Promote to Production?"},"bypassPolicy":"allow"},
+    {"type":"promotion.execute","name":"Promote Production","config":{"strategy":"git.merge","repositoryId":"<repo-id>","remoteId":"<remote-id>","source":"<staging-branch>","target":"<production-branch>"},"bypassPolicy":"deny"},
+    {"type":"deploy.execute","name":"Deploy Production","config":{"strategy":"git","environmentId":"<production-environment-id>","deployTargetId":"<production-target-id>"},"bypassPolicy":"deny"},
+    {"type":"test.run","name":"Smoke Test","config":{"executor":"local","workingDirectory":".","command":"./scripts/smoke-test.sh"},"bypassPolicy":"allow"}
+  ]
+}

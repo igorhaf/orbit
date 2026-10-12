@@ -6,7 +6,7 @@ import { CalendarClock, ChevronLeft, ChevronRight, Clock3, CreditCard, Plus } fr
 import { api, Board, cardUrl, getToken, send, User } from "@/lib/api";
 import { AppHeader, Modal, WorkspaceSidebar } from "@/components/ui";
 
-type PlannerCard = { id: string; url_token?: string; title: string; due_date: string | null; schedule_start_at: string | null; schedule_end_at: string | null; completed: boolean; board_id: string; board_title: string; list_title: string };
+type PlannerCard = { id: string; url_token?: string; title: string; due_date: string | null; schedule_start_at: string | null; schedule_end_at: string | null; board_id: string; board_title: string; list_title: string };
 
 const weekdays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
 function startOfWeek(date: Date) {
@@ -144,7 +144,7 @@ export default function Planner() {
                 <div className="space-y-2 p-2">
                   {dayCards.map((card) => <button key={card.id} onClick={() => router.push(cardUrl(card.board_id, card.id, card.url_token))} className="w-full rounded border border-[#dfe1e6] bg-[#f7f8fa] p-2 text-left text-xs hover:border-[#0c66e4]" title={`Abrir cartão ${card.title}`}>
                     <p className="mb-1 flex flex-wrap items-center gap-1 text-[11px] text-[#626f86]"><CreditCard size={12} />{card.schedule_start_at && sameDay(new Date(card.schedule_start_at), day) && <><Clock3 size={12} />{time(card.schedule_start_at)}{card.schedule_end_at ? `–${time(card.schedule_end_at)}` : ""}</>}{card.due_date && sameDay(new Date(card.due_date), day) && <span>{card.schedule_start_at ? "· " : ""}Prazo {time(card.due_date)}</span>}</p>
-                    <p className={`break-words font-semibold ${card.completed ? "line-through opacity-60" : ""}`}>{card.title}</p>
+                    <p className="break-words font-semibold">{card.title}</p>
                   </button>)}
                   {dayCards.length === 0 && <button onClick={() => openCreate(day)} className="mt-2 w-full rounded border border-dashed border-[#dfe1e6] px-1 py-3 text-[11px] text-[#626f86] hover:border-[#0c66e4] hover:text-[#0c66e4]">+ Planejar cartão</button>}
                 </div>
@@ -166,7 +166,7 @@ export default function Planner() {
             {cards.length === 0 ? <p className="rounded bg-[#f7f8fa] p-3 text-xs text-[#626f86]">Nenhum cartão planejado ou com prazo encontrado.</p> : <div className="max-h-[390px] space-y-1 overflow-y-auto">
               {cards.slice(0, 12).map((card) => <div key={card.id} className="flex items-center gap-1 rounded px-2 py-2 hover:bg-[#f1f2f4]">
                 <button onClick={() => router.push(cardUrl(card.board_id, card.id, card.url_token))} className="min-w-0 flex-1 text-left">
-                  <p className={`truncate text-sm font-semibold ${card.completed ? "line-through opacity-60" : ""}`}>{card.title}</p>
+                  <p className={`truncate text-sm font-semibold `}>{card.title}</p>
                   <p className="mt-0.5 truncate text-xs text-[#626f86]">{card.board_title} · {new Date(card.schedule_start_at || card.due_date!).toLocaleDateString("pt-BR", { day: "numeric", month: "short" })}</p>
                 </button>
                 <button onClick={() => openCreate(new Date(), card)} title={`Planejar ${card.title}`} aria-label={`Planejar ${card.title}`} className="rounded p-1.5 text-[#0c66e4] hover:bg-[#e9f2ff]"><CalendarClock size={16} /></button>

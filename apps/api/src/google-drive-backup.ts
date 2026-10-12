@@ -3,7 +3,8 @@ import { createReadStream } from 'node:fs';
 import { open, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 
-const DRIVE_API = 'https://www.googleapis.com/drive/v3';
+const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
+export const legacyDriveConfigured=()=>[process.env.ORBIT_DRIVE_CLIENT_ID,process.env.ORBIT_DRIVE_CLIENT_SECRET,process.env.ORBIT_DRIVE_REFRESH_TOKEN,process.env.ORBIT_DRIVE_FOLDER_ID].every(Boolean);
 
 function configuration() {
   const { ORBIT_DRIVE_CLIENT_ID, ORBIT_DRIVE_CLIENT_SECRET, ORBIT_DRIVE_REFRESH_TOKEN, ORBIT_DRIVE_FOLDER_ID } = process.env;
@@ -24,37 +25,47 @@ async function accessToken() {
   return result.access_token;
 }
 
-async function uploadFile(token: string, folderId: string, path: string, mimeType: string) {
+export async function uploadFile(token: string, folderId: string, path: string, mimeType: string) {
   const name = basename(path);
   const size = (await stat(path)).size;
-  const start = await fetch(`${DRIVE_API}/files?uploadType=resumable&fields=id,name,size,md5Checksum`, {
+  const start = await fetch(`${DRIVE_UPLOAD_API}/files?uploadType=resumable&fields=id,name,size,md5Checksum`, {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-upload-content-type': mimeType, 'x-upload-content-length': String(size) },
     body: JSON.stringify({ name, parents: [folderId], mimeType }),
   });
   if (!start.ok) throw new Error(`Google Drive upload session failed (${start.status}): ${(await start.text()).slice(0, 1000)}`);
   const session = start.headers.get('location');
   if (!session) throw new Error('Google Drive did not return a resumable upload URL.');
+  const sessionUrl = new URL(session);
+  if (sessionUrl.protocol !== 'https:' || !/^([a-z0-9-]+\.)*googleapis\.com$/i.test(sessionUrl.hostname)) throw new Error('Google Drive returned an invalid upload URL.');
   const file = await open(path, 'r');
   const chunkSize = 8 * 1024 * 1024;
-  let uploaded: { size?: string; md5Checksum?: string } | undefined;
+  let uploaded: { id?:string; size?: string; md5Checksum?: string } | undefined;
   try {
-    for (let offset = 0; offset < size; offset += chunkSize) {
+    for (let offset = 0; offset < size;) {
       const length = Math.min(chunkSize, size - offset);
       const chunk = Buffer.alloc(length);
       await file.read(chunk, 0, length, offset);
       const response = await fetch(session, {
         method: 'PUT', headers: { 'content-length': String(length), 'content-range': `bytes ${offset}-${offset + length - 1}/${size}` }, body: chunk,
       });
-      if (response.status === 308 && offset + length < size) continue;
+      if (response.status === 308) {
+        const accepted=response.headers.get('range')?.match(/^bytes=0-(\d+)$/);
+        const next=accepted?Number(accepted[1])+1:0;
+        if(next<=offset||next>offset+length)throw new Error('Google Drive did not confirm the uploaded chunk.');
+        offset=next;
+        continue;
+      }
       if (!response.ok) throw new Error(`Google Drive rejected backup data (${response.status}): ${(await response.text()).slice(0, 1000)}`);
-      uploaded = await response.json() as { size?: string; md5Checksum?: string };
+      uploaded = await response.json() as { id?:string;size?: string; md5Checksum?: string };
+      offset+=length;
     }
   } finally { await file.close(); }
   const md5 = createHash('md5');
   for await (const chunk of createReadStream(path)) md5.update(chunk as Buffer);
-  if (!uploaded || uploaded.size !== String(size) || uploaded.md5Checksum !== md5.digest('hex')) {
+  if (!uploaded || !uploaded.id || uploaded.size !== String(size) || uploaded.md5Checksum !== md5.digest('hex')) {
     throw new Error(`Google Drive did not confirm the complete contents of ${name}.`);
   }
+  return uploaded.id;
 }
 
 export async function uploadBackupToGoogleDrive(archivePath: string) {

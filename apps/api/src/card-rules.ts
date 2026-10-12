@@ -7,6 +7,11 @@ export const labelColorOptions = new Set([
 ]);
 
 export type TitleKind = {kind:'normal'|'separator'|'board'|'link';targetBoardId:string|null;linkUrl:string|null};
+export function descriptionAfterTitleEdit(originalTitle:string,originalDescription:string,title:string,description?:string):string {
+  if(description!==undefined)return description;
+  return originalDescription===originalTitle?title:originalDescription;
+}
+
 export function cardKindFromTitle(title:string,appOrigin:string):TitleKind {
   if(title.trim()==='---')return {kind:'separator',targetBoardId:null,linkUrl:null};
   const candidate=title.trim();

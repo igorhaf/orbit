@@ -3,9 +3,7 @@ import { ChangeEvent, ClipboardEvent, DragEvent, useEffect, useState } from "rea
 import { io } from "socket.io-client";
 import {
   Copy,
-  Eye,
   LoaderCircle,
-  Mail,
   Paperclip,
   Pencil,
   Play,
@@ -22,12 +20,14 @@ import {
   cardUrl,
   getToken,
   send,
-  WatchState,
   withExpansion,
 } from "@/lib/api";
 import { Avatar } from "./ui";
 import { RichText } from "./rich-text";
 import Image from "next/image";
+import { createPortal } from "react-dom";
+import { clipboardFiles } from "@/lib/clipboard-files";
+import { hasPendingCommentReply } from "@/lib/comment-replies";
 
 type PendingAttachment = {
   kind: "file";
@@ -54,6 +54,7 @@ const asData = (file: File) =>
 
 function ImageAttachment({ id, name }: { id: string; name: string }) {
   const [url, setUrl] = useState("");
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     let active = true;
     let objectUrl = "";
@@ -63,7 +64,22 @@ function ImageAttachment({ id, name }: { id: string; name: string }) {
     }).catch(() => undefined);
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [id]);
-  return url ? <Image unoptimized src={url} alt={name} width={640} height={320} className="mt-1 h-auto max-h-64 max-w-full rounded border border-[#dfe1e6] object-contain" /> : null;
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+  return url ? <>
+    <button type="button" onClick={() => setOpen(true)} aria-label={`Ampliar imagem: ${name}`} className="mt-1 block cursor-zoom-in">
+      <Image unoptimized src={url} alt={name} width={640} height={320} className="h-auto max-h-64 max-w-full rounded border border-[#dfe1e6] object-contain" />
+    </button>
+    {open && typeof document !== "undefined" ? createPortal(
+      <div role="dialog" aria-modal="true" aria-label={name} onClick={() => setOpen(false)} className="fixed inset-0 z-[10000] flex cursor-zoom-out items-center justify-center bg-black/85 p-4">
+        <Image unoptimized src={url} alt={name} width={1600} height={1200} onClick={event => event.stopPropagation()} className="h-auto max-h-full w-auto max-w-full rounded object-contain" />
+        <button type="button" onClick={() => setOpen(false)} aria-label="Fechar imagem" className="absolute right-4 top-4 rounded bg-black/60 px-3 py-2 text-sm text-white">Fechar</button>
+      </div>, document.body) : null}
+  </> : null;
 }
 
 export function CardComments({
@@ -93,8 +109,7 @@ export function CardComments({
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [editing, setEditing] = useState<Comment | null>(null);
   const [editBody, setEditBody] = useState("");
-  const [watches, setWatches] = useState<WatchState | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
+  const [editPreview, setEditPreview] = useState(false);
   const [error, setError] = useState("");
   const [aiResult, setAiResult] = useState("");
   const [aiTarget, setAiTarget] = useState<Comment | null>(null);
@@ -108,6 +123,14 @@ export function CardComments({
     });
     return()=>{socket.emit("board:leave",board.id);socket.disconnect();};
   },[board.id,card.id,refreshDetails]);
+  const hasPendingReply = hasPendingCommentReply(details.comments);
+  useEffect(() => {
+    if (!hasPendingReply) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshDetails();
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [hasPendingReply, refreshDetails]);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("comment");
     if (id)
@@ -117,6 +140,10 @@ export function CardComments({
   }, [details.comments]);
   async function addPendingFiles(files: File[]) {
     try {
+      if (pending.length + files.length > 10) throw new Error("Envie no máximo 10 anexos por comentário.");
+      if (files.some(file => file.size > 10_000_000)) throw new Error("Cada anexo pode ter no máximo 10 MB.");
+      const pendingBytes = pending.reduce((sum, item) => sum + Math.floor((item.data?.length || 0) * 3 / 4), 0);
+      if (pendingBytes + files.reduce((sum, file) => sum + file.size, 0) > 10_000_000) throw new Error("O total dos anexos pode ter no máximo 10 MB.");
       const entries = await Promise.all(
         files.map(async (file) => ({
           kind: "file" as const,
@@ -125,7 +152,7 @@ export function CardComments({
           data: await asData(file),
         })),
       );
-      setPending(current => [...current, ...entries].slice(0, 10));
+      setPending(current => [...current, ...entries]);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -141,7 +168,7 @@ export function CardComments({
     try {
       const ok = await run(() =>
         send(`/cards/${card.id}/comments`, "POST", {
-          body: body.trim() || "Imagem anexada.",
+          body: body.trim() || "Anexo enviado.",
           attachments: pending,
           execute,
         }),
@@ -221,104 +248,18 @@ export function CardComments({
       setError((err as Error).message);
     }
   }
-  async function toggle(scope: "card" | "list" | "board") {
-    const target =
-      scope === "card" ? card.id : scope === "list" ? card.list_id : board.id;
-    await run(async () => {
-      await send(
-        `/${scope === "card" ? "cards" : scope === "list" ? "lists" : "boards"}/${target}/watch/toggle`,
-        "POST",
-      );
-      setWatches(
-        (await (
-          await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/cards/${card.id}/watches`,
-            { headers: { Authorization: `Bearer ${getToken() || ""}` } },
-          )
-        ).json()) as WatchState,
-      );
-    });
-  }
-  async function loadWatches() {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/cards/${card.id}/watches`,
-        { headers: { Authorization: `Bearer ${getToken() || ""}` } },
-      );
-      setWatches((await response.json()) as WatchState);
-    } catch {
-      setError("Não foi possível carregar acompanhamentos.");
-    }
-  }
-  async function loadEmail() {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/cards/${card.id}/comment-email`,
-        { headers: { Authorization: `Bearer ${getToken() || ""}` } },
-      );
-      const data = (await response.json()) as { address: string };
-      setEmail(data.address);
-    } catch {
-      setError("Não foi possível gerar o endereço de e-mail.");
-    }
-  }
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-3 font-semibold">
           <Send size={21} /> Atividade
         </h3>
-        <div className="flex gap-1">
-          <button
-            onClick={() => void loadWatches()}
-            className="rounded bg-[#e9eaed] px-2 py-1 text-xs"
-          >
-            <Eye size={13} className="mr-1 inline" />
-            Acompanhar
-          </button>
-          <button
-            onClick={() => void loadEmail()}
-            className="rounded bg-[#e9eaed] px-2 py-1 text-xs"
-          >
-            <Mail size={13} className="mr-1 inline" />
-            E-mail
-          </button>
-        </div>
       </div>
       <div className="pl-0 sm:pl-8">
         {error && (
           <p role="alert" className="mb-2 text-xs text-[#ae2a19]">
             {error}
           </p>
-        )}
-        {watches && (
-          <div className="mb-3 flex flex-wrap gap-2 rounded bg-[#e9f2ff] p-2 text-xs">
-            <span>Receber atualizações:</span>
-            {(["card", "list", "board"] as const).map((scope) => (
-              <button
-                key={scope}
-                onClick={() => void toggle(scope)}
-                className={`rounded px-2 py-1 ${watches[scope] ? "bg-[#0c66e4] text-white" : "bg-white text-[#172b4d]"}`}
-              >
-                {scope === "card"
-                  ? "Cartão"
-                  : scope === "list"
-                    ? "Lista"
-                    : "Quadro"}{" "}
-                {watches[scope] ? "✓" : ""}
-              </button>
-            ))}
-          </div>
-        )}
-        {email && (
-          <div className="mb-3 rounded bg-[#f1f2f4] p-2 text-xs">
-            <strong>Endereço para comentar:</strong>{" "}
-            <code className="select-all">{email}</code>
-            <p className="mt-1 text-[#626f86]">
-              Configure o encaminhamento do provedor para o endpoint de entrada
-              do Orbit.
-            </p>
-          </div>
         )}
         <form
           onSubmit={(event) => {
@@ -340,14 +281,14 @@ export function CardComments({
               value={body}
               onChange={(event) => setBody(event.target.value)}
               onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
-                const files = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/"));
+                const files = clipboardFiles(event.clipboardData);
                 if (files.length) { event.preventDefault(); void addPendingFiles(files); }
               }}
               onDragOver={(event: DragEvent<HTMLTextAreaElement>) => {
-                if (Array.from(event.dataTransfer.files).some(file => file.type.startsWith("image/"))) event.preventDefault();
+                if (event.dataTransfer.files.length) event.preventDefault();
               }}
               onDrop={(event: DragEvent<HTMLTextAreaElement>) => {
-                const files = Array.from(event.dataTransfer.files).filter(file => file.type.startsWith("image/"));
+                const files = Array.from(event.dataTransfer.files);
                 if (files.length) { event.preventDefault(); void addPendingFiles(files); }
               }}
               rows={3}
@@ -449,8 +390,9 @@ export function CardComments({
             </div>
           )}
         </form>
-        <div className="mt-5 space-y-4">
-          {details.comments.map((comment) => (
+        {details.comments.length > 0 && (
+          <div className="scrollbar-thin mt-5 max-h-[400px] space-y-4 overflow-y-auto rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-3">
+            {details.comments.map((comment) => (
             <div
               key={comment.id}
               id={`comment-${comment.id}`}
@@ -489,15 +431,21 @@ export function CardComments({
                         )
                       ) {
                         setEditing(null);
+                        setEditPreview(false);
                         await onChanged();
                       }
                     }}
                   >
-                    <textarea
-                      value={editBody}
-                      onChange={(event) => setEditBody(event.target.value)}
-                      className="mt-1 w-full rounded border p-2 text-sm"
-                    />
+                    <div className="mt-1">
+                      <div className="mb-1 flex justify-end">
+                        <button type="button" onClick={() => setEditPreview(value => !value)} className="text-xs text-[#0c66e4] hover:underline">{editPreview ? "Editar texto" : "Prévia"}</button>
+                      </div>
+                      {editPreview ? <div className="min-h-16 rounded border bg-white p-2"><RichText text={editBody} /></div> : <textarea
+                        value={editBody}
+                        onChange={(event) => setEditBody(event.target.value)}
+                        className="w-full rounded border p-2 text-sm"
+                      />}
+                    </div>
                     <button className="mt-1 text-xs text-[#0c66e4]">
                       Salvar
                     </button>
@@ -558,6 +506,7 @@ export function CardComments({
                         onClick={() => {
                           setEditing(comment);
                           setEditBody(comment.body);
+                          setEditPreview(false);
                         }}
                       >
                         <Pencil size={12} className="mr-1 inline" />
@@ -578,8 +527,9 @@ export function CardComments({
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

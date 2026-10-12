@@ -27,7 +27,7 @@ export type Card = {
   url_token?: string;
   execution?: {enabled:boolean;project_id:string|null;agent:string|null;executor:string|null}|null;
   result?: {status:string;unread?:boolean}|null;
-  prompt?: {status:'queued'|'running'|'success'|'error';finished_at?:string|null;unread?:boolean}|null;
+  prompt?: {status:'queued'|'running'|'waiting_answer'|'success'|'error';finished_at?:string|null;unread?:boolean}|null;
   kind?: 'normal'|'template'|'board'|'separator'|'link'|'mirror';
   target_board_id?: string|null;
   target_board_title?: string|null;
@@ -51,10 +51,10 @@ export type Card = {
   schedule_all_day?: boolean;
   schedule_time_zone?: string | null;
   overdue?: boolean;
-  completed: boolean;
   ai_project_id?: string | null;
   ai_model?: string | null;
   ai_effort?: AiEffort | null;
+  ai_execution_mode?: 'planning' | 'bypass' | 'question';
   ai_project_default_model?: string | null;
   ai_project_default_effort?: AiEffort | null;
   ai_global_model?: string | null;
@@ -63,11 +63,21 @@ export type Card = {
   assignees?: User[];
   labels: Label[];
   comment_count: number;
+  context_count?: number;
   checklist_total: number;
   checklist_done: number;
   custom_values?: CustomValue[];
 };
-export type List = { id: string; board_id: string; title: string; position: number; parent_list_id?: string | null; color: string | null; collapsed: boolean; is_completion_list?: boolean; archived_at?: string | null; card_count?: number; cards: Card[] };
+export type ListIntegration = {
+  id: string;
+  service: string;
+  direction: 'inbound' | 'outbound' | 'bidirectional';
+  source_name: string;
+  external_list_name: string | null;
+  enabled: boolean;
+  last_error: string | null;
+};
+export type List = { id: string; board_id: string; title: string; position: number; parent_list_id?: string | null; color: string | null; collapsed: boolean; archived_at?: string | null; card_count?: number; integrations?: ListIntegration[]; cards: Card[] };
 export type Board = {
   id: string;
   is_inbox?: boolean;
@@ -75,12 +85,12 @@ export type Board = {
   title: string;
   background: string;
   background_image?: string | null;
+  created_at?: string;
   description?: string;
   closed_at?: string | null;
   starred: boolean;
   owner_id: string;
   card_count?: number;
-  completed_card_count?: number;
   workspace_id?: string;
   workspace_name?: string;
   favorite_position?: number | null;
@@ -101,15 +111,18 @@ export type AiEffort = 'low'|'medium'|'high'|'xhigh';
 export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_native?:boolean};
 export type PromptFileChange={path:string;kind:'add'|'delete'|'update';additions?:number;deletions?:number;diff?:string};
 export type PromptActivity={id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
-export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
+export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
+export type ToolDiagnostic={run_id:string;card_id:string;board_id:string;card_title:string;board_title:string;created_at:string;kind:'missing'|'permission'|'command'|'authentication'|'version';tool:string;title:string;details:string;installCommands:string[];failedCommand:string|null};
+export type ToolDiagnostics={status:'error'|'success'|'running';issues:ToolDiagnostic[]};
 export type TrelloConnection = { id:string; trello_board_id:string; trello_board_name:string; enabled:boolean; last_synced_at:string|null; last_error:string|null; created_at:string };
 export type TrelloBoardOption = { id:string; name:string; url:string|null };
 export type TrelloListOption = {connection_id:string;trello_board_name:string;mapped_list_id:string|null;lists:{id:string;name:string}[]};
 export type Workspace = { id: string; name: string; board_count: number };
 export type Notebook = {id:string;title:string;content_html:string;created_at:string;updated_at:string};
-export type VaultItem = {id:string;card_id?:string|null;url_token?:string|null;board_id?:string|null;title:string;category:string;notes:string;created_at:string;updated_at:string};
-export type VaultItemDetail = VaultItem & {fields:Record<string,string>};
+export type VaultItem = {id:string;title:string;category:string;created_at:string;updated_at:string;card_id?:string|null;board_id?:string|null;url_token?:string|null};
+export type VaultItemDetail = VaultItem & {content_html:string;card_id?:string|null;board_id?:string|null;url_token?:string|null};
 export type CommentAttachment = {id:string;kind:'file'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null};
+export type CardAttachment = {id:string;name:string;mime_type:string|null;size_bytes:number|null;created_at:string};
 export type Comment = { id: string; body: string; created_at: string; edited_at?:string|null; author_id: string; author_name: string; is_ai?:boolean; ai_status?:'queued'|'running'|'success'|'error'|null; ai_error?:string|null; attachments?:CommentAttachment[] };
 export const withExpansion = (original: string, expansion: string, originalHeading?: string) => {
   const source = original.trim();
@@ -119,21 +132,21 @@ export const withExpansion = (original: string, expansion: string, originalHeadi
 };
 export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string; text: string; completed: boolean; position: number; due_date: string | null };
 export type ExternalResource = {id:string;plugin_id:string;connection_id:string|null;resource_type:string;external_id:string;external_parent_id:string|null;url:string|null;etag:string|null;metadata:Record<string,unknown>;created_at:string;updated_at:string};
-export type CardDetails = { comments: Comment[]; checklist: ChecklistItem[]; externalResources:ExternalResource[] };
+export type CardDetails = { comments: Comment[]; checklist: ChecklistItem[]; externalResources:ExternalResource[]; attachments:CardAttachment[] };
 export type WatchState = {card:boolean;list:boolean;board:boolean};
 export type Activity = { id: string; kind: string; body: string; created_at: string; card_id: string | null; card_url_token?: string | null; card_title: string | null; board_id: string | null; board_title: string | null; actor_name: string };
-export type HomeCard = { id: string; url_token?: string; title: string; description: string; due_date: string | null; overdue?: boolean; completed: boolean; board_id: string; board_title: string; list_title: string; assigned_to_me: boolean; background: string };
+export type HomeCard = { id: string; url_token?: string; title: string; description: string; due_date: string | null; overdue?: boolean; board_id: string; board_title: string; list_title: string; assigned_to_me: boolean; background: string };
 export type HomeItem = { id: string; text: string; completed: boolean; due_date: string | null; overdue?: boolean; card_id: string; card_url_token?: string; card_title: string; board_id: string; board_title: string };
 export type RecentConversation = { id: string; body: string; created_at: string; card_id: string; card_url_token?: string; card_title: string; board_id: string; board_title: string; author_name: string };
 export type HomeData = { upNext: HomeCard[]; highlights: Activity[]; yourItems: HomeItem[]; recentBoards: Board[]; favorites: Board[]; recentConversations: RecentConversation[] };
-export type SearchResults = { boards: Board[]; cards: (HomeCard & { description: string })[] };
+export type SearchResults = { boards: Board[]; lists?: {id:string;title:string;board_id:string;board_title:string;background:string}[]; cards: (HomeCard & { description: string; list_id?:string })[] };
 export type AdvancedSearchCard = HomeCard & {list_id:string;updated_at:string;labels:Label[]};
 export type SavedSearch = {id:string;name:string;query:Record<string,string>;created_at:string;updated_at:string};
 export type AppNotification = { id: string; plugin_id: string; target_url?: string | null; kind: string; title: string; body: string; created_at: string; read_at: string | null; board_id: string | null; board_title: string | null; card_id: string | null; card_url_token?: string | null };
 export type CalendarSource = {id:string;provider_id:string;connection_id:string|null;connection_name?:string|null;external_id:string;name:string;time_zone:string|null;color:string|null;access_role:string|null;is_primary:boolean;selected:boolean;visible:boolean;is_default:boolean;capabilities:Record<string,boolean>;metadata:Record<string,unknown>;settings:Record<string,unknown>};
-export type CalendarItem = {id:string;sourceId:string;resourceType:'event'|'card';title:string;description?:string|null;start:string;end?:string|null;allDay:boolean;timeZone?:string|null;location?:string|null;externalResourceId?:string|null;cardId?:string|null;externalUrl?:string|null;status?:string;recurrence?:unknown[];attendees?:unknown[];conference?:unknown;metadata:Record<string,unknown>};
+export type CalendarItem = {id:string;sourceId:string;resourceType:'event'|'card';title:string;description?:string|null;start:string;end?:string|null;allDay:boolean;timeZone?:string|null;location?:string|null;externalResourceId?:string|null;cardId?:string|null;cardUrlToken?:string|null;externalUrl?:string|null;status?:string;recurrence?:unknown[];attendees?:unknown[];conference?:unknown;metadata:Record<string,unknown>};
 export type PluginCatalogAction = {id:string;name:string;permissions?:string[];requiredCapabilities?:string[];inputSchema?:Record<string,unknown>;outputSchema?:Record<string,unknown>};
-export type PluginCatalogItem = {id:string;name:string;version:string;enabled:boolean;capabilities:{id:string;name:string;permissions?:string[]}[];actions:PluginCatalogAction[];triggers?:unknown[];connectionProvider?:unknown;contributions?:Record<string,unknown>};
+export type PluginCatalogItem = {id:string;name:string;version:string;enabled:boolean;configurable?:boolean;capabilities:{id:string;name:string;permissions?:string[]}[];actions:PluginCatalogAction[];triggers?:unknown[];connectionProvider?:unknown;contributions?:Record<string,unknown>};
 
 // Keep API calls on the same origin by default. Next.js proxies /api to Nest,
 // which also makes the app work from another device on the local network.
@@ -201,7 +214,7 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
   }
   return data as T;
 }
-export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown) =>
+export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body?: unknown) =>
   api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 export async function commentAttachmentBlob(id:string):Promise<Blob>{
   const response=await fetch(`${BASE}/comment-attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`}});

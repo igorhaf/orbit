@@ -7,6 +7,8 @@ export async function migrateVersions(pool:Pool) {
   const client=await pool.connect();
   try {
     await client.query('BEGIN');
+    // Migrations must never resolve unqualified objects in a fallback schema.
+    await client.query("SELECT set_config('search_path', quote_ident(current_schema()), true)");
     await client.query('SELECT pg_advisory_xact_lock(72641025)');
     await client.query('CREATE TABLE IF NOT EXISTS schema_migrations(version text PRIMARY KEY,checksum text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now())');
     const directory=resolve(__dirname,'../sql/migrations');

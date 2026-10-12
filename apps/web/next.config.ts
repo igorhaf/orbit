@@ -1,11 +1,15 @@
 import type { NextConfig } from 'next';
+import { networkInterfaces } from 'node:os';
 
 const apiProxy = process.env.ORBIT_API_PROXY_URL || 'http://127.0.0.1:4000';
 const forcedTheme = process.env.THEME === 'dark' ? 'dark' : '';
 const orbitEnvironment = process.env.THEME === 'dark' ? 'development' : '';
+const localAddresses = Object.values(networkInterfaces()).flatMap(devices => devices?.filter(device => device.family === 'IPv4').map(device => device.address) || []);
+const privateNetworkOrigins = ['10.*.*.*', '192.168.*.*', ...Array.from({length: 16}, (_, index) => `172.${index + 16}.*.*`)];
 
 const nextConfig: NextConfig = {
   distDir: process.env.ORBIT_NEXT_DIST_DIR || '.next',
+  allowedDevOrigins: ['localhost', '127.0.0.1', ...localAddresses, ...privateNetworkOrigins],
   env: { NEXT_PUBLIC_ORBIT_THEME: forcedTheme, NEXT_PUBLIC_ORBIT_ENV: orbitEnvironment },
   skipTrailingSlashRedirect: true,
   experimental: { useTypeScriptCli: false },
@@ -20,6 +24,10 @@ const nextConfig: NextConfig = {
       {
         source: '/api/:path*',
         destination: `${apiProxy}/:path*`,
+      },
+      {
+        source: '/integrations/alexa/orbit',
+        destination: `${apiProxy}/integrations/alexa/orbit`,
       },
       {
         source: '/socket.io',

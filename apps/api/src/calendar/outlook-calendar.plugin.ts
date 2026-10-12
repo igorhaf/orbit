@@ -144,6 +144,7 @@ export class OutlookCalendarPlugin
   ) {}
 
   onModuleInit() {
+    if (process.env.ORBIT_ENV === 'development' && process.env.ORBIT_ALLOW_EXTERNAL_AUTOMATION !== 'true') return;
     this.timer = setInterval(() => void this.maintenance(), 15 * 60_000);
     this.timer.unref();
   }
@@ -454,6 +455,7 @@ export class OutlookCalendarPlugin
       location: row.location as string | null,
       externalResourceId: row.external_resource_id as string | null,
       cardId: row.card_id as string | null,
+      cardUrlToken: row.card_url_token as string | null,
       externalUrl: row.external_url as string | null,
       status: String(row.status || "confirmed"),
       recurrence: row.recurrence as unknown[],
@@ -555,7 +557,7 @@ export class OutlookCalendarPlugin
     end: Date,
   ) {
     const rows = await this.db.query<Record<string, unknown>>(
-      `SELECT i.*,l.board_id FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id LEFT JOIN cards c ON c.id=i.card_id LEFT JOIN lists l ON l.id=c.list_id
+      `SELECT i.*,l.board_id,c.url_token AS card_url_token FROM calendar_items i JOIN calendar_sources s ON s.id=i.source_id LEFT JOIN cards c ON c.id=i.card_id LEFT JOIN lists l ON l.id=c.list_id
        WHERE i.owner_id=$1 AND s.provider_id=$2 AND i.source_id=ANY($3::uuid[]) AND i.start_at<$5 AND COALESCE(i.end_at,i.start_at)>=$4 ORDER BY i.start_at`,
       [ownerId, this.id, sourceIds, start, end],
     );
@@ -972,6 +974,7 @@ export const outlookCalendarPluginDefinition = (
     name: plugin.name,
     version: "1.0.0",
     scope: "account",
+    configuration:[{key:'MICROSOFT_GRAPH_WEBHOOK_URL',label:'URL pública do webhook Microsoft Graph',secret:false}],
     capabilities: [
       { id: "calendar.events.read", name: "Ler eventos Outlook" },
       { id: "calendar.events.write", name: "Alterar eventos Outlook" },

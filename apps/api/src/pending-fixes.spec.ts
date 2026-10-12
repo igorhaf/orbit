@@ -6,11 +6,18 @@ import { join } from 'node:path';
 import { CodexAiService, codexErrorMessage } from './codex-ai';
 import { PromptSessionsService } from './prompt-sessions';
 import { TrelloSyncService } from './trello-sync';
+import { orbitArchitecturePrompt } from './orbit-architecture';
 
 test('Codex errors distinguish account quota, context tokens and timeouts',()=>{
   assert.match(codexErrorMessage('You have exceeded your current quota: insufficient_quota'),/limite de uso ou de tokens/);
   assert.match(codexErrorMessage('maximum context length and too many tokens'),/limite de tokens do modelo/);
   assert.equal(codexErrorMessage('A resposta do Codex excedeu o tempo limite.'),'A resposta do Codex excedeu o tempo limite.');
+});
+
+test('Codex errors explain authentication, unavailable models and CLI incompatibility',()=>{
+  assert.match(codexErrorMessage('Error: not logged in; run codex login'),/codex login/);
+  assert.match(codexErrorMessage('model_not_found: gpt-6-luna'),/Escolha outro modelo/);
+  assert.match(codexErrorMessage('unknown argument --new-option'),/Atualize o Codex CLI/);
 });
 
 test('Codex receives long prompts through stdin instead of process arguments',async()=>{
@@ -19,10 +26,10 @@ test('Codex receives long prompts through stdin instead of process arguments',as
   const previousBin=process.env.CODEX_BIN;const previousHome=process.env.CODEX_HOME;
   const prompt='context '.repeat(20_000);
   try{
-    await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst args=process.argv.slice(2);\nconst output=args[args.indexOf('--output-last-message')+1];\nif(args.at(-1)!=='-')process.exit(2);\nlet prompt='';for await(const chunk of process.stdin)prompt+=chunk;\nawait writeFile(output,String(prompt.length));\n`);
+    await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst args=process.argv.slice(2);\nconst output=args[args.indexOf('--output-last-message')+1];\nif(args.at(-1)!=='-'||args.includes('--dangerously-bypass-approvals-and-sandbox')||args[args.indexOf('--sandbox')+1]!=='read-only')process.exit(2);\nlet prompt='';for await(const chunk of process.stdin)prompt+=chunk;\nawait writeFile(output,String(prompt.length));\n`);
     await chmod(executable,0o755);
     process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;
-    assert.equal(await new CodexAiService().complete(prompt,'gpt-6-luna','high'),String(prompt.length));
+    assert.equal(await new CodexAiService().complete(prompt,'gpt-6-luna','high'),String(`${orbitArchitecturePrompt}\n\n${prompt}`.length));
   }finally{
     if(previousBin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previousBin;
     if(previousHome===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previousHome;
@@ -42,6 +49,32 @@ test('card prompt settings inherit the board default project',async()=>{
   const db={one:async(sql:string)=>sql.includes('SELECT c.id')?{id:'card-1',title:'Card',description:'',ai_project_id:null,ai_model:null,ai_effort:null,ai_default_project_id:'project-1',ai_default_model:'gpt-6-luna',ai_default_effort:'high'}:null};
   const service=new PromptSessionsService(db as never,{cardBoard:async()=> 'board-1'} as never,{} as never,{} as never);
   assert.deepEqual(await service.settingsForCard('card-1','user-1'),{projectId:'project-1',model:'gpt-6-luna',effort:'high'});
+});
+
+test('mounted project paths remain executable without mapping the container prefix twice',async()=>{
+  const previousHostRoot=process.env.ORBIT_HOST_PROJECTS_ROOT;
+  const previousContainerRoot=process.env.ORBIT_CONTAINER_PROJECTS_ROOT;
+  const directory=await mkdtemp(join(process.cwd(),'.orbit-project-path-'));
+  const service=new PromptSessionsService({} as never,{} as never,{} as never,{} as never);
+  const paths=service as unknown as {projectPathToContainer:(value:string)=>string;localPath:(value:string)=>Promise<string>};
+  try{
+    process.env.ORBIT_HOST_PROJECTS_ROOT='/';
+    process.env.ORBIT_CONTAINER_PROJECTS_ROOT='/host-filesystem';
+    assert.equal(paths.projectPathToContainer('/home/projects/site'),'/host-filesystem/home/projects/site');
+    assert.equal(paths.projectPathToContainer('/host-filesystem/home/projects/site'),'/host-filesystem/home/projects/site');
+    assert.equal(paths.projectPathToContainer('/host-filesystem-other/site'),'/host-filesystem/host-filesystem-other/site');
+    process.env.ORBIT_CONTAINER_PROJECTS_ROOT=process.cwd();
+    assert.equal(await paths.localPath(directory),directory);
+    process.env.ORBIT_HOST_PROJECTS_ROOT='/home/projects';
+    process.env.ORBIT_CONTAINER_PROJECTS_ROOT='/mounted/projects';
+    assert.equal(paths.projectPathToContainer('/home/projects/site'),'/mounted/projects/site');
+    assert.equal(paths.projectPathToContainer('/mounted/projects/site'),'/mounted/projects/site');
+    assert.equal(paths.projectPathToContainer('/other/site'),'/other/site');
+  }finally{
+    if(previousHostRoot===undefined)delete process.env.ORBIT_HOST_PROJECTS_ROOT;else process.env.ORBIT_HOST_PROJECTS_ROOT=previousHostRoot;
+    if(previousContainerRoot===undefined)delete process.env.ORBIT_CONTAINER_PROJECTS_ROOT;else process.env.ORBIT_CONTAINER_PROJECTS_ROOT=previousContainerRoot;
+    await rm(directory,{recursive:true,force:true});
+  }
 });
 
 test('connecting Trello only registers the board and does not import cards',async()=>{

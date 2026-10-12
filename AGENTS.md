@@ -1,5 +1,7 @@
 # Orbit agent instructions
 
+Use [`.agents/skills/orbit-development/SKILL.md`](.agents/skills/orbit-development/SKILL.md) for Orbit feature development and interface changes.
+
 ## Ciclo de vida das aplicações
 
 Não reinicie, levante ou derrube as instâncias Orbit automaticamente. Só faça qualquer ação de ciclo de vida (parar, iniciar ou reiniciar develop ou produção) quando o usuário pedir explicitamente.

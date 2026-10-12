@@ -1,19 +1,16 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Check,
-  CheckCircle2,
   CheckSquare,
   Clock3,
   CreditCard,
   ExternalLink,
   LoaderCircle,
   Mail,
-  MoveRight,
   Plus,
   RotateCcw,
-  Tag,
   Trash2,
+  Tag,
   MessageSquare,
 } from "lucide-react";
 import {
@@ -22,6 +19,7 @@ import {
   Board,
   Card,
   CardDetails,
+  CardAttachment,
   PromptRun,
   getUser,
   labelColors,
@@ -29,17 +27,19 @@ import {
   withExpansion,
 } from "@/lib/api";
 import { remember } from "@/lib/history";
+import { cardDescriptionText } from "@/lib/card-description";
 import { Modal, useConfirmModal } from "./ui";
-import { MarkdownEditor, RichText } from "./rich-text";
+import { RichText } from "./rich-text";
+import { CardDescriptionEditor } from "./card-description-editor";
+import { CardAttachments } from "./card-attachments";
 import { CardDatesPanel, CardLabelsPanel } from "./card-extras";
-import { CardSections } from "./card-sections";
-import { CardOperations } from "./card-operations";
+import { CardChecklistSection, CardSections } from "./card-sections";
 import { CardComments } from "./card-comments";
 import { CardAi } from "./card-ai";
-import { CardExecutionPanel } from "./card-execution";
+import { CardOperations } from "./card-operations";
 import { PromptExecution } from "./prompt-execution";
 
-const imageData = (file: File) => new Promise<string>((resolve, reject) => {
+const fileData = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
   reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
   reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
@@ -48,6 +48,7 @@ const imageData = (file: File) => new Promise<string>((resolve, reject) => {
 
 function PromptPreview({ card, board }: { card: Card; board: Board }) {
   const [run, setRun] = useState<PromptRun | null>(null);
+  const [contextsPrompt, setContextsPrompt] = useState("");
   const [models, setModels] = useState<{ id: string; name: string; version: string }[]>([]);
   useEffect(() => {
     let live = true;
@@ -56,6 +57,13 @@ function PromptPreview({ card, board }: { card: Card; board: Board }) {
     }).catch(() => undefined);
     return () => { live = false; };
   }, [card.id]);
+  useEffect(() => {
+    let live = true;
+    void api<{ prompt: string }>(`/cards/${card.id}/contexts`).then(value => {
+      if (live) setContextsPrompt(value.prompt);
+    }).catch(() => undefined);
+    return () => { live = false; };
+  }, [card]);
   useEffect(() => {
     let live = true;
     void api<{ id: string; name: string; version: string }[]>("/ai/models").then((available) => {
@@ -67,7 +75,7 @@ function PromptPreview({ card, board }: { card: Card; board: Board }) {
   const effort = card.ai_effort || board.ai_default_effort || card.ai_project_default_effort || board.ai_global_effort || card.ai_global_effort || "Não configurado";
   const selectedModel = models.find((item) => item.id === (run?.model || model));
   const modelLabel = selectedModel ? `${selectedModel.name} · ${selectedModel.version}` : run?.model || model;
-  const prompt = run?.prompt || `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description || card.title}`;
+  const prompt = run?.prompt || `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description || card.title}${contextsPrompt}`;
   return <section className="mt-6 space-y-4" aria-label="Próximo prompt">
     <div className="flex min-w-max flex-nowrap gap-3 overflow-x-auto text-xs"><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{modelLabel}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
     <p className="text-sm text-[#626f86]">Prévia da instrução usada na sessão. Após executar, esta aba mostra o prompt completo enviado.</p>
@@ -122,6 +130,7 @@ function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecu
       </div>
       {error && <p role="alert" className="mt-2 text-xs text-[#ae2a19]">{error}</p>}
     </>
+      : run.status === "waiting_answer" ? <p className="mt-2 text-sm text-[#626f86]">A execução aguarda sua resposta. <button type="button" onClick={onOpenExecution} className="underline">Responder na aba Execução.</button></p>
       : run.status === "queued" || run.status === "running" ? <p className="mt-2 text-sm text-[#626f86] dark:text-[#c4bce0]">A execução está em andamento. O resumo aparecerá ao finalizar.</p>
       : run.status === "error" ? <p className="mt-2 text-sm text-[#ae2a19] dark:text-[#ff9f8f]">A última execução falhou. <button type="button" onClick={onOpenExecution} className="underline hover:text-[#7f1d1d] dark:hover:text-[#ffd0c7]">Veja os detalhes na aba Execução.</button></p>
       : <p className="mt-2 text-sm text-[#626f86] dark:text-[#c4bce0]">Esta execução não retornou o resumo estruturado.</p>}
@@ -146,10 +155,12 @@ export function CardDialog({
     comments: [],
     checklist: [],
     externalResources: [],
+    attachments: [],
   });
   const [title, setTitle] = useState(card.title);
-  const [description, setDescription] = useState(card.description || "");
+  const [description, setDescription] = useState(cardDescriptionText(card.description || ""));
   const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionUploading, setDescriptionUploading] = useState(false);
   const [panel, setPanel] = useState<"labels" | "date" | "move" | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -159,6 +170,7 @@ export function CardDialog({
   const markedActivityRead = useRef("");
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
   const descriptionRef = useRef(description);
+  const descriptionUploadingRef = useRef(false);
   const saveDescriptionRef = useRef<() => Promise<boolean>>(async () => false);
   const savingDescriptionRef = useRef<Promise<boolean> | null>(null);
   if (card !== previousCard) {
@@ -166,15 +178,16 @@ export function CardDialog({
     setTitle(card.title);
     // A troca do projeto de IA atualiza o cartão no servidor. Não substitua
     // um rascunho que ainda está sendo editado por essa versão recarregada.
-    if (!editingDescription) setDescription(card.description || "");
+    if (!editingDescription) setDescription(cardDescriptionText(card.description || ""));
   }
   const user = getUser();
   const list = board.lists?.find((current) => current.id === card.list_id);
+  const promptWaiting = card.prompt?.status === "waiting_answer";
   const promptRunning = card.prompt?.status === "queued" || card.prompt?.status === "running";
   const executionRunning = card.result?.status === "queued" || card.result?.status === "running";
-  const mainTabExecution = promptRunning || executionRunning;
+  const mainTabExecution = promptWaiting || promptRunning || executionRunning;
   const aiLocked = aiActionPending || mainTabExecution;
-  const mainTabStatus = promptRunning
+  const mainTabStatus = promptWaiting ? "Aguardando resposta" : promptRunning
     ? card.prompt?.status === "queued" ? "Na fila" : "Executando"
     : executionRunning
       ? card.result?.status === "queued" ? "Na fila" : "Executando"
@@ -189,7 +202,7 @@ export function CardDialog({
   }, [card.id, card.prompt?.finished_at, card.prompt?.status, card.prompt?.unread, card.result?.status, card.result?.unread, onChanged]);
 
   function openDescriptionEditor() {
-    setDescription(card.description || "");
+    setDescription(cardDescriptionText(card.description || ""));
     setEditingDescription(true);
   }
 
@@ -221,54 +234,44 @@ export function CardDialog({
       setBusy(false);
     }
   }
-  async function uploadDescriptionImages(files: File[]) {
-    if (files.length > 10) throw new Error("Envie no máximo 10 imagens por vez.");
-    return Promise.all(files.map(async file => {
-      if (!file.type.startsWith("image/")) throw new Error("Envie somente imagens na descrição.");
+  async function uploadDescriptionFiles(files: File[]): Promise<CardAttachment[]> {
+    if (files.length > 10) throw new Error("Envie no máximo 10 anexos por vez.");
+    const attachments = await Promise.all(files.map(async file => {
+      if (file.size > 10_000_000) throw new Error(`O arquivo ${file.name} excede o limite de 10 MB.`);
       const attachment = await send<{ id: string }>(`/cards/${card.id}/attachments`, "POST", {
-        name: file.name || "imagem",
-        mime_type: file.type,
-        data: await imageData(file),
+        name: file.name || "anexo",
+        mime_type: file.type || "application/octet-stream",
+        data: await fileData(file),
       });
-      return `/api/card-attachments/${attachment.id}/content`;
+      return { id: attachment.id, name: file.name || "anexo", mime_type: file.type || "application/octet-stream", size_bytes: file.size, created_at: new Date().toISOString() };
     }));
+    await loadDetails();
+    return attachments;
   }
   async function updateCard(
     body: Record<string, unknown>,
     undoBody: Record<string, unknown>,
     label: string,
   ) {
-    let updated: Card | undefined;
     const success = await run(async () => {
-      updated = await send<Card>(`/cards/${card.id}`, "PATCH", body);
+      await send<Card>(`/cards/${card.id}`, "PATCH", body);
     });
     if (success) {
-      const recurring = body.completed === true && Boolean(card.recurrence);
-      const undo = recurring
-        ? { ...undoBody, start_date: card.start_date, due_date: card.due_date }
-        : undoBody;
-      const redo = recurring
-        ? {
-            completed: false,
-            start_date: updated?.start_date,
-            due_date: updated?.due_date,
-          }
-        : body;
       remember({
         label,
-        undo: [{ path: `/cards/${card.id}`, method: "PATCH", body: undo }],
-        redo: [{ path: `/cards/${card.id}`, method: "PATCH", body: redo }],
+        undo: [{ path: `/cards/${card.id}`, method: "PATCH", body: undoBody }],
+        redo: [{ path: `/cards/${card.id}`, method: "PATCH", body }],
       });
     }
     return success;
   }
-
   const saveDescription = useCallback(async (): Promise<boolean> => {
     if (!editingDescription) return false;
+    if (descriptionUploadingRef.current) return false;
     if (savingDescriptionRef.current) return savingDescriptionRef.current;
     const save = (async () => {
-      const nextDescription = descriptionRef.current;
-      if (nextDescription !== card.description) {
+      const nextDescription = cardDescriptionText(descriptionRef.current);
+      if (nextDescription !== cardDescriptionText(card.description)) {
         const success = await updateCard(
           { description: nextDescription },
           { description: card.description },
@@ -299,6 +302,7 @@ export function CardDialog({
   useEffect(() => {
     if (!editingDescription) return;
     const handlePointerDown = (event: PointerEvent) => {
+      if (descriptionUploadingRef.current) return;
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (descriptionEditorRef.current?.contains(target)) return;
@@ -319,7 +323,11 @@ export function CardDialog({
               <input
                 value={title}
                 maxLength={300}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  const nextTitle = e.target.value;
+                  if (description === title) setDescription(nextTitle);
+                  setTitle(nextTitle);
+                }}
                 onBlur={() => {
                   if (title.trim() && title !== card.title)
                     updateCard(
@@ -360,7 +368,7 @@ export function CardDialog({
           </div>
         )}
         <nav className="mt-6 flex gap-1 border-b border-[#dfe1e6]" aria-label="Abas do cartão">
-          {[ ["card", "Cartão"], ["prompt", "Próximo prompt"], ["output", "Execução"] ].map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as typeof tab)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === id ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86] hover:text-[#172b4d]"}`}>{id === "card" && mainTabExecution && <LoaderCircle size={14} className="mr-1 inline animate-spin" aria-label="Execução em andamento" />}<span>{label}</span>{id === "card" && mainTabStatus && <span className={`ml-1 text-[11px] font-medium ${mainTabExecution ? "text-[#579dff]" : mainTabStatus === "Falhou" ? "text-[#ae2a19]" : "text-[#216e4e]"}`}>({mainTabStatus})</span>}</button>)}
+          {[ ["card", "Cartão"], ["prompt", "Próximo prompt"], ["output", "Execução"] ].map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as typeof tab)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === id ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86] hover:text-[#172b4d]"}`}>{id === "card" && (promptRunning || executionRunning) && <LoaderCircle size={14} className="mr-1 inline animate-spin" aria-label="Execução em andamento" />}<span>{label}</span>{id === "card" && mainTabStatus && <span className={`ml-1 text-[11px] font-medium ${mainTabExecution ? "text-[#579dff]" : mainTabStatus === "Falhou" ? "text-[#ae2a19]" : "text-[#216e4e]"}`}>({mainTabStatus})</span>}</button>)}
         </nav>
         {tab === "card" && <div className="mt-6 grid gap-7 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]">
           <div className="min-w-0 space-y-7">
@@ -448,22 +456,6 @@ export function CardDialog({
                 Etiquetas
               </button>
               <button
-                type="button"
-                aria-pressed={card.completed}
-                aria-label={`Status: ${card.completed ? "concluído" : "em andamento"}. Alternar status`}
-                onClick={() =>
-                  void updateCard(
-                    { completed: !card.completed },
-                    { completed: card.completed },
-                    card.completed ? "reabrir cartão" : "concluir cartão",
-                  )
-                }
-                className={`order-first flex shrink-0 items-center gap-1 rounded border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c66e4] ${card.completed ? "border-[#7ee2b8] bg-[#e3fcef] text-[#216e4e] hover:bg-[#dffcf0]" : "border-[#dfe1e6] bg-white text-[#626f86] hover:bg-[#f1f2f4]"}`}
-              >
-                <CheckCircle2 size={16} aria-hidden="true" />
-                {card.completed ? "Concluído" : "Em andamento"}
-              </button>
-              <button
                 onClick={() => setPanel("date")}
                 className="rounded border border-[#dfe1e6] bg-white px-3 py-2 text-sm font-medium hover:bg-[#f1f2f4]"
               >
@@ -471,11 +463,7 @@ export function CardDialog({
                 Datas
               </button>
               <button
-                onClick={() =>
-                  document
-                    .getElementById("card-checklists")
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
+                onClick={() => document.getElementById("card-checklists")?.scrollIntoView({ behavior: "smooth" })}
                 className="rounded border border-[#dfe1e6] bg-white px-3 py-2 text-sm font-medium hover:bg-[#f1f2f4]"
               >
                 <CheckSquare size={16} className="mr-1 inline" />
@@ -483,21 +471,48 @@ export function CardDialog({
               </button>
             </div>
             <div className="pl-0 sm:pl-8">
-              <section>
+              <div className="grid gap-4">
+              <CardAi
+                key={card.id}
+                card={card}
+                board={board}
+                onChanged={onChanged}
+                onExecutionStart={() => setAiActionPending(true)}
+                onAiActionStart={() => setAiActionPending(true)}
+                onExecutionEnd={() => setAiActionPending(false)}
+                aiLocked={aiLocked}
+                onApply={async (text, action) => {
+                  const nextDescription = cardDescriptionText(action === "elaborate"
+                    ? withExpansion(cardDescriptionText(card.description), text)
+                    : text);
+                  const changed = await updateCard(
+                    { description: nextDescription },
+                    { description: card.description },
+                    action === "elaborate" ? "detalhar descrição" : "aplicar sugestão de IA",
+                  );
+                  if (changed) {
+                    setDescription(nextDescription);
+                    await onChanged();
+                  }
+                }}
+              />
+              </div>
+              <section className="mt-6">
                 {editingDescription ? (
                   <div ref={descriptionEditorRef}>
                     <div>
-                      <MarkdownEditor
+                      <CardDescriptionEditor
                         value={description}
-                        onChange={setDescription}
-                        placeholder="Adicione contexto, links e imagens em Markdown..."
-                        onImageFiles={uploadDescriptionImages}
+                        onChange={next => { descriptionRef.current = next; setDescription(next); }}
+                        maxLength={1_000_000}
+                        onFiles={uploadDescriptionFiles}
+                        onUploadChange={uploading => { descriptionUploadingRef.current = uploading; setDescriptionUploading(uploading); }}
                       />
                     </div>
                     <div className="mt-2 flex gap-2">
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={busy || descriptionUploading}
                         onClick={() => void saveDescription()}
                         className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
                       >
@@ -505,7 +520,7 @@ export function CardDialog({
                       </button>
                       <button
                         type="button"
-                        disabled={busy || aiLocked}
+                        disabled={busy || aiLocked || descriptionUploading}
                         onClick={() => void (async () => {
                           if (await saveDescription()) {
                             window.dispatchEvent(new CustomEvent("orbit:card-description-saved", { detail: card.id }));
@@ -516,7 +531,7 @@ export function CardDialog({
                         Salvar e executar
                       </button>
                       <button
-                        onClick={() => { setDescription(card.description || ""); setEditingDescription(false); }}
+                        onClick={() => { if (!descriptionUploadingRef.current) { setDescription(cardDescriptionText(card.description || "")); setEditingDescription(false); } }}
                         className="rounded px-3 py-1.5 text-sm hover:bg-[#e9eaed]"
                       >
                         Cancelar
@@ -535,25 +550,26 @@ export function CardDialog({
                       Editar descrição
                     </button>
                     {description ? (
-                      <RichText text={description} />
+                      <RichText text={cardDescriptionText(description)} />
                     ) : (
                       <p>Adicione uma descrição mais detalhada...</p>
                     )}
                   </div>
                 )}
               </section>
+              <CardAttachments attachments={details.attachments} />
               <CardAi
                 key={`text-assistant:${card.id}`}
                 card={card}
                 board={board}
                 variant="text"
                 onChanged={onChanged}
-                onExecutionStart={() => { setAiActionPending(true); setTab("output"); }}
+                onExecutionStart={() => setAiActionPending(true)}
                 onAiActionStart={() => setAiActionPending(true)}
                 onExecutionEnd={() => setAiActionPending(false)}
                 aiLocked={aiLocked}
                 onApply={async (text, action) => {
-                  const nextDescription = action === "elaborate" ? withExpansion(card.description, text) : text;
+                  const nextDescription = cardDescriptionText(action === "elaborate" ? withExpansion(cardDescriptionText(card.description), text) : text);
                   const changed = await updateCard(
                     { description: nextDescription },
                     { description: card.description },
@@ -563,23 +579,6 @@ export function CardDialog({
                 }}
               />
             </div>
-            <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} onOpenExecution={() => setTab("output")} onChanged={onChanged} aiLocked={aiLocked} onExecutionStart={() => setAiActionPending(true)} onExecutionEnd={() => setAiActionPending(false)} />
-            <CardSections
-              key={card.id}
-              card={card}
-              board={board}
-              onChanged={onChanged}
-            />
-              <CardExecutionPanel
-              key={"execution:" + card.id}
-              card={card}
-              board={board}
-              onChanged={onChanged}
-              onExecutionStart={() => setAiActionPending(true)}
-              onExecutionEnd={() => setAiActionPending(false)}
-              aiLocked={aiLocked}
-              mode="settings"
-            />
             {details.externalResources.length > 0 && (
               <section>
                 <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
@@ -640,32 +639,10 @@ export function CardDialog({
                 </div>
               </section>
             )}
+            <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} onOpenExecution={() => setTab("output")} onChanged={onChanged} aiLocked={aiLocked} onExecutionStart={() => setAiActionPending(true)} onExecutionEnd={() => setAiActionPending(false)} />
+            <CardChecklistSection card={card} board={board} onChanged={onChanged} />
           </div>
           <aside className="min-w-0 space-y-6 border-l border-[#dfe1e6] pl-0 xl:pl-7">
-            <CardAi
-              key={card.id}
-              card={card}
-              board={board}
-              onChanged={onChanged}
-              onExecutionStart={() => { setAiActionPending(true); setTab("output"); }}
-              onAiActionStart={() => setAiActionPending(true)}
-              onExecutionEnd={() => setAiActionPending(false)}
-              aiLocked={aiLocked}
-              onApply={async (text, action) => {
-                const nextDescription = action === "elaborate"
-                  ? withExpansion(card.description, text)
-                  : text;
-                const changed = await updateCard(
-                  { description: nextDescription },
-                  { description: card.description },
-                  action === "elaborate" ? "detalhar descrição" : "aplicar sugestão de IA",
-                );
-                if (changed) {
-                  setDescription(nextDescription);
-                  await onChanged();
-                }
-              }}
-            />
             <CardComments
               card={card}
               board={board}
@@ -678,44 +655,17 @@ export function CardDialog({
               onAiActionStart={() => setAiActionPending(true)}
               onAiActionEnd={() => setAiActionPending(false)}
             />
+            <CardSections
+              key={`sections:${card.id}`}
+              card={card}
+              board={board}
+              onChanged={onChanged}
+            />
             <div>
               <h4 className="mb-2 text-xs font-bold text-[#626f86]">Ações</h4>
               <div className="space-y-2">
-                <button
-                  onClick={() =>
-                    updateCard(
-                      { completed: !card.completed },
-                      { completed: card.completed },
-                      card.completed ? "reabrir cartão" : "concluir cartão",
-                    )
-                  }
-                  className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"
-                >
-                  <Check size={16} />
-                  {card.completed ? "Reabrir cartão" : "Concluir cartão"}
-                </button>
-                <button
-                  onClick={() => setPanel(panel === "move" ? null : "move")}
-                  className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"
-                >
-                  <MoveRight size={16} /> Mover, copiar ou espelhar
-                </button>
                 {["normal", "template"].includes(card.kind || "normal") && (
                   <>
-                    <button
-                      onClick={() =>
-                        run(() =>
-                          send(`/cards/${card.id}/template`, "PATCH", {
-                            template: card.kind !== "template",
-                          }),
-                        )
-                      }
-                      className="w-full rounded bg-[#e9eaed] px-3 py-2 text-left text-sm hover:bg-[#dfe1e6]"
-                    >
-                      {card.kind === "template"
-                        ? "Remover modelo"
-                        : "Marcar como modelo"}
-                    </button>
                     {card.kind === "template" && (
                       <button
                         onClick={() =>
@@ -756,7 +706,6 @@ export function CardDialog({
           </aside>
         </div>}
         {tab === "prompt" && <PromptPreview card={card} board={board} />}
-          {tab === "output" && <div className="mt-6"><CardExecutionPanel key={`execution-output:${card.id}`} card={card} board={board} onChanged={onChanged} mode="outputs" aiLocked={aiLocked}/></div>}
         <div className={tab === "output" ? "mt-6" : "hidden"}>
           <PromptExecution card={card} board={board} active={tab === "output"} />
         </div>

@@ -27,6 +27,7 @@ test("calendar migration persists multiple accounts, sources, mirror items and s
     await db.query(
       readFileSync(resolve(__dirname, "../../sql/schema.sql"), "utf8"),
     );
+    await db.query(readFileSync(resolve(__dirname, "../../sql/pre-022-compat.sql"), "utf8"));
     await migrateVersions(db.pool);
     const user = (await db.one<{ id: string }>(
       "INSERT INTO users(name,email,password_hash) VALUES('Calendar test',$1,'x') RETURNING id",

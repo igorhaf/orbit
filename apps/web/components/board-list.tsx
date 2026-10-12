@@ -44,7 +44,6 @@ export function BoardList({
   onAction,
   renderCard,
   query,
-  statusFilter,
   fieldFilter,
   labelFilter = '',
   dueFilter = '',
@@ -58,7 +57,6 @@ export function BoardList({
   onAction: Action;
   renderCard: (card: Card, listColor?: string | null) => React.ReactNode;
   query: string;
-  statusFilter: "all" | "open" | "completed";
   fieldFilter: string;
   labelFilter?: string;
   dueFilter?: string;
@@ -91,6 +89,8 @@ export function BoardList({
     { id: string; title: string }[]
   >([]);
   const [busy, setBusy] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [pendingScroll, setPendingScroll] = useState<{ cardId: string } | null>(
     null,
   );
@@ -109,11 +109,9 @@ export function BoardList({
     // eslint-disable-next-line react-hooks/purity
     const now=Date.now();const due=card.due_date?new Date(card.due_date).getTime():null;
     const label=!labelFilter||card.labels.some(item=>item.id===labelFilter);
-    const dueMatch=dueFilter===''||dueFilter==='all'||(dueFilter==='overdue'?Boolean(due&&due<now&&!card.completed):dueFilter==='week'?Boolean(due&&due>=now&&due<=now+7*86400000):due===null);
+    const dueMatch=dueFilter===''||dueFilter==='all'||(dueFilter==='overdue'?Boolean(due&&due<now):dueFilter==='week'?Boolean(due&&due>=now&&due<=now+7*86400000):due===null);
     return (
       checkbox && label && dueMatch &&
-      (statusFilter === "all" ||
-        card.completed === (statusFilter === "completed")) &&
       (card.title.toLowerCase().includes(query.toLowerCase()) ||
         card.description?.toLowerCase().includes(query.toLowerCase()))
     );
@@ -138,6 +136,33 @@ export function BoardList({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [adding]);
+  useEffect(() => {
+    if (!menu) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !menuRef.current?.contains(target) &&
+        !menuButtonRef.current?.contains(target)
+      ) {
+        setMenu(false);
+        setSection("main");
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [menu]);
+  const closeWhenFocusLeavesMenu = (relatedTarget: EventTarget | null) => {
+    if (
+      relatedTarget instanceof Node &&
+      (menuRef.current?.contains(relatedTarget) ||
+        menuButtonRef.current?.contains(relatedTarget))
+    ) {
+      return;
+    }
+    setMenu(false);
+    setSection("main");
+  };
   const close = () => {
     setMenu(false);
     setSection("main");
@@ -222,6 +247,7 @@ export function BoardList({
     <div
       ref={setNodeRef}
       data-orbit-list={list.id}
+      tabIndex={-1}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -292,7 +318,9 @@ export function BoardList({
         </button>
         <button
           type="button"
-          onClick={() => setMenu(!menu)}
+          ref={menuButtonRef}
+          onBlur={(event) => closeWhenFocusLeavesMenu(event.relatedTarget)}
+          onClick={() => setMenu((open) => !open)}
           aria-label={`Menu da lista ${list.title}`}
           className="rounded p-1 text-[#44546f] hover:bg-[#dfe1e6]"
         >
@@ -345,6 +373,21 @@ export function BoardList({
           <div className="shrink-0 px-2 pb-2">
             {adding ? (
               <form
+                onBlur={(event) => {
+                  const nextFocus = event.relatedTarget;
+                  if (
+                    nextFocus instanceof Node &&
+                    event.currentTarget.contains(nextFocus)
+                  ) {
+                    return;
+                  }
+                  if (!title.trim() && !busy) {
+                    setAdding(false);
+                    setTitle("");
+                    setInsertPosition(null);
+                    setActionError("");
+                  }
+                }}
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!title.trim()) return;
@@ -388,14 +431,14 @@ export function BoardList({
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     disabled={busy || !title.trim()}
-                    className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
+                    className="min-h-11 rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
                   >
                     Adicionar cartão
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdding(false)}
-                    className="rounded p-1 hover:bg-[#dfe1e6]"
+                    className="min-h-11 min-w-11 rounded p-1 hover:bg-[#dfe1e6]"
                   >
                     <X size={20} />
                   </button>
@@ -404,7 +447,7 @@ export function BoardList({
             ) : (
               <button
                 onClick={() => openComposer(list.cards.length)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[#44546f] hover:bg-[#dfe1e6]"
+                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[#44546f] hover:bg-[#dfe1e6]"
               >
                 <Plus size={18} /> Adicionar um cartão
               </button>
@@ -413,7 +456,11 @@ export function BoardList({
         </>
       )}
       {menu && (
-        <div className="absolute left-0 top-10 z-30 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-[#dfe1e6] bg-white p-2 text-[#172b4d] shadow-dialog">
+        <div
+          ref={menuRef}
+          onBlur={(event) => closeWhenFocusLeavesMenu(event.relatedTarget)}
+          className="absolute left-0 top-10 z-30 max-h-[70vh] w-64 overflow-y-auto rounded-lg border border-[#dfe1e6] bg-white p-2 text-[#172b4d] shadow-dialog"
+        >
           <div className="mb-2 flex items-center justify-between border-b border-[#dfe1e6] pb-1">
             <strong className="truncate text-sm">{list.title}</strong>
             <button onClick={close} aria-label="Fechar menu">

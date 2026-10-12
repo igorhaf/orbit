@@ -7,7 +7,6 @@ import { basename, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Client } from 'pg';
-import { uploadBackupToGoogleDrive } from './google-drive-backup';
 
 const MAGIC = Buffer.from('ORBITBK1');
 const HEADER_LENGTH = MAGIC.length + 12 + 16;
@@ -128,6 +127,8 @@ async function revision() {
 }
 
 function directory() { return resolve(process.env.ORBIT_BACKUP_DIR || join(__dirname, '../../../backups')); }
+export const backupDirectory=directory;
+export function backupPath(archive:string){if(!BACKUP_PATTERN.test(archive))throw new Error('Arquivo de backup inválido.');return join(directory(),archive)}
 
 export async function createDatabaseBackup(reason = 'manual'): Promise<BackupManifest> {
   const key = backupKey();
@@ -168,9 +169,6 @@ export async function createDatabaseBackup(reason = 'manual'): Promise<BackupMan
     const manifestTemp = `${manifestPath}.tmp`;
     await writeFile(manifestTemp, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
     await rename(manifestTemp, manifestPath);
-    const driveConfigured = [process.env.ORBIT_DRIVE_CLIENT_ID, process.env.ORBIT_DRIVE_CLIENT_SECRET, process.env.ORBIT_DRIVE_REFRESH_TOKEN, process.env.ORBIT_DRIVE_FOLDER_ID].every(Boolean);
-    if (driveConfigured) await uploadBackupToGoogleDrive(archive);
-    else console.warn('Backup salvo localmente. Configure o Google Drive para enviar uma cópia remota.');
     try { await pruneDatabaseBackups(); }
     catch (error) { console.warn(`Backup is safe, but retention cleanup failed: ${(error as Error).message}`); }
     return manifest;
