@@ -1,6 +1,7 @@
 import {HttpException,Inject,Injectable} from '@nestjs/common';
 import {createHash,randomBytes} from 'node:crypto';
 import {Db} from '../db';
+import {openVaultIntegrationCredentials,sealVaultIntegrationCredentials} from '../vault-integration-credentials';
 import {SecretVault} from '../secrets';
 
 export const GOOGLE_DRIVE_FILE_SCOPE='https://www.googleapis.com/auth/drive.file';
@@ -45,16 +46,16 @@ export class GoogleCredentials {
     const profile=await profileResponse.json() as {id?:string;email?:string;name?:string};
     const account=profile.id||profile.email;if(!account)throw new HttpException('Conta Google sem identificador.',502);
     const previous=await this.db.one<Connection>("SELECT * FROM integration_connections WHERE owner_id=$1 AND plugin_id='google' AND external_account_id=$2",[pending.owner_id,account]);
-    const old=previous?this.vault.open<Tokens>(previous.credentials_encrypted):null;
+    const old=previous?await openVaultIntegrationCredentials<Tokens>(this.db,this.vault,previous.credentials_encrypted,pending.owner_id):null;
     const refreshToken=raw.refresh_token||old?.refresh_token;
     if(!refreshToken)throw new HttpException('O Google não forneceu acesso offline. Reconecte a conta.',409);
     const tokens:Tokens={access_token:raw.access_token,refresh_token:refreshToken,expires_at:Date.now()+(raw.expires_in||3600)*1000,scope:raw.scope||'',token_type:raw.token_type||'Bearer'};
-    const row=await this.db.one<{id:string}>("INSERT INTO integration_connections(owner_id,plugin_id,external_account_id,display_name,label,credentials_encrypted,metadata) VALUES($1,'google',$2,$3,$3,$4,$5::jsonb) ON CONFLICT(owner_id,plugin_id,external_account_id) DO UPDATE SET display_name=excluded.display_name,label=excluded.label,credentials_encrypted=excluded.credentials_encrypted,metadata=excluded.metadata,enabled=true,status='active',updated_at=now() RETURNING id",[pending.owner_id,account,profile.email||profile.name||'Conta Google',this.vault.seal(tokens),JSON.stringify({email:profile.email||null})]);
+    const row=await this.db.one<{id:string}>("INSERT INTO integration_connections(owner_id,plugin_id,external_account_id,display_name,label,credentials_encrypted,metadata) VALUES($1,'google',$2,$3,$3,$4,$5::jsonb) ON CONFLICT(owner_id,plugin_id,external_account_id) DO UPDATE SET display_name=excluded.display_name,label=excluded.label,credentials_encrypted=excluded.credentials_encrypted,metadata=excluded.metadata,enabled=true,status='active',updated_at=now() RETURNING id",[pending.owner_id,account,profile.email||profile.name||'Conta Google',await sealVaultIntegrationCredentials(this.db,this.vault,previous?.credentials_encrypted,tokens,pending.owner_id),JSON.stringify({email:profile.email||null})]);
     return {id:row!.id,ownerId:pending.owner_id};
   }
   private async connection(ownerId:string,connectionId:string){const row=await this.db.one<Connection>("SELECT id,owner_id,plugin_id,external_account_id,display_name,credentials_encrypted,enabled FROM integration_connections WHERE id=$1 AND owner_id=$2 AND plugin_id=ANY($3::text[]) AND enabled",[id(connectionId),ownerId,['google','google_calendar','gmail']]);if(!row)throw new HttpException('Conexão Google não encontrada.',404);return row}
   async token(ownerId:string,connectionId:string,requiredScopes:string[]){
-    const row=await this.connection(ownerId,connectionId);const tokens=this.vault.open<Tokens>(row.credentials_encrypted);
+    const row=await this.connection(ownerId,connectionId);const tokens=await openVaultIntegrationCredentials<Tokens>(this.db,this.vault,row.credentials_encrypted,ownerId);
     if(!requiredScopes.every(scope=>scopes(tokens.scope||'').has(scope)))throw new HttpException('A conexão Google não possui a permissão necessária. Reconecte-a.',403);
     if(tokens.expires_at>Date.now()+60000)return tokens.access_token;
     if(!tokens.refresh_token)throw new HttpException('Reconecte a conta Google para renovar o acesso.',401);
@@ -65,7 +66,7 @@ export class GoogleCredentials {
     if(!refreshed.access_token)throw new HttpException('O Google não retornou um token válido.',502);
     const next={...tokens,access_token:refreshed.access_token,expires_at:Date.now()+(refreshed.expires_in||3600)*1000,scope:refreshed.scope||tokens.scope};
     if(!requiredScopes.every(scope=>scopes(next.scope).has(scope)))throw new HttpException('A conexão Google perdeu a permissão necessária. Reconecte-a.',403);
-    await this.db.query('UPDATE integration_connections SET credentials_encrypted=$3,updated_at=now() WHERE id=$1 AND owner_id=$2',[row.id,ownerId,this.vault.seal(next)]);
+    await this.db.query('UPDATE integration_connections SET credentials_encrypted=$3,updated_at=now() WHERE id=$1 AND owner_id=$2',[row.id,ownerId,await sealVaultIntegrationCredentials(this.db,this.vault,row.credentials_encrypted,next,ownerId)]);
     return next.access_token;
   }
   async available(ownerId:string,requiredScopes:string[]){const rows=await this.db.query<Connection>("SELECT id,owner_id,plugin_id,external_account_id,display_name,credentials_encrypted,enabled FROM integration_connections WHERE owner_id=$1 AND plugin_id=ANY($2::text[]) AND enabled ORDER BY created_at DESC",[ownerId,['google','google_calendar','gmail']]);return rows.filter(row=>requiredScopes.every(scope=>scopes(this.vault.open<Tokens>(row.credentials_encrypted).scope||'').has(scope))).map(row=>({id:row.id,name:row.display_name,pluginId:row.plugin_id}))}

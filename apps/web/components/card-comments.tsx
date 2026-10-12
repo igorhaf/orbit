@@ -25,6 +25,9 @@ import {
 import { Avatar } from "./ui";
 import { RichText } from "./rich-text";
 import Image from "next/image";
+import { createPortal } from "react-dom";
+import { clipboardFiles } from "@/lib/clipboard-files";
+import { hasPendingCommentReply } from "@/lib/comment-replies";
 
 type PendingAttachment = {
   kind: "file";
@@ -51,6 +54,7 @@ const asData = (file: File) =>
 
 function ImageAttachment({ id, name }: { id: string; name: string }) {
   const [url, setUrl] = useState("");
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     let active = true;
     let objectUrl = "";
@@ -60,7 +64,22 @@ function ImageAttachment({ id, name }: { id: string; name: string }) {
     }).catch(() => undefined);
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [id]);
-  return url ? <Image unoptimized src={url} alt={name} width={640} height={320} className="mt-1 h-auto max-h-64 max-w-full rounded border border-[#dfe1e6] object-contain" /> : null;
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+  return url ? <>
+    <button type="button" onClick={() => setOpen(true)} aria-label={`Ampliar imagem: ${name}`} className="mt-1 block cursor-zoom-in">
+      <Image unoptimized src={url} alt={name} width={640} height={320} className="h-auto max-h-64 max-w-full rounded border border-[#dfe1e6] object-contain" />
+    </button>
+    {open && typeof document !== "undefined" ? createPortal(
+      <div role="dialog" aria-modal="true" aria-label={name} onClick={() => setOpen(false)} className="fixed inset-0 z-[10000] flex cursor-zoom-out items-center justify-center bg-black/85 p-4">
+        <Image unoptimized src={url} alt={name} width={1600} height={1200} onClick={event => event.stopPropagation()} className="h-auto max-h-full w-auto max-w-full rounded object-contain" />
+        <button type="button" onClick={() => setOpen(false)} aria-label="Fechar imagem" className="absolute right-4 top-4 rounded bg-black/60 px-3 py-2 text-sm text-white">Fechar</button>
+      </div>, document.body) : null}
+  </> : null;
 }
 
 export function CardComments({
@@ -90,6 +109,7 @@ export function CardComments({
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [editing, setEditing] = useState<Comment | null>(null);
   const [editBody, setEditBody] = useState("");
+  const [editPreview, setEditPreview] = useState(false);
   const [error, setError] = useState("");
   const [aiResult, setAiResult] = useState("");
   const [aiTarget, setAiTarget] = useState<Comment | null>(null);
@@ -103,6 +123,14 @@ export function CardComments({
     });
     return()=>{socket.emit("board:leave",board.id);socket.disconnect();};
   },[board.id,card.id,refreshDetails]);
+  const hasPendingReply = hasPendingCommentReply(details.comments);
+  useEffect(() => {
+    if (!hasPendingReply) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshDetails();
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [hasPendingReply, refreshDetails]);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("comment");
     if (id)
@@ -253,7 +281,7 @@ export function CardComments({
               value={body}
               onChange={(event) => setBody(event.target.value)}
               onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
-                const files = Array.from(event.clipboardData.files);
+                const files = clipboardFiles(event.clipboardData);
                 if (files.length) { event.preventDefault(); void addPendingFiles(files); }
               }}
               onDragOver={(event: DragEvent<HTMLTextAreaElement>) => {
@@ -362,8 +390,9 @@ export function CardComments({
             </div>
           )}
         </form>
-        <div className="mt-5 space-y-4">
-          {details.comments.map((comment) => (
+        {details.comments.length > 0 && (
+          <div className="scrollbar-thin mt-5 max-h-[400px] space-y-4 overflow-y-auto rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-3">
+            {details.comments.map((comment) => (
             <div
               key={comment.id}
               id={`comment-${comment.id}`}
@@ -402,15 +431,21 @@ export function CardComments({
                         )
                       ) {
                         setEditing(null);
+                        setEditPreview(false);
                         await onChanged();
                       }
                     }}
                   >
-                    <textarea
-                      value={editBody}
-                      onChange={(event) => setEditBody(event.target.value)}
-                      className="mt-1 w-full rounded border p-2 text-sm"
-                    />
+                    <div className="mt-1">
+                      <div className="mb-1 flex justify-end">
+                        <button type="button" onClick={() => setEditPreview(value => !value)} className="text-xs text-[#0c66e4] hover:underline">{editPreview ? "Editar texto" : "Prévia"}</button>
+                      </div>
+                      {editPreview ? <div className="min-h-16 rounded border bg-white p-2"><RichText text={editBody} /></div> : <textarea
+                        value={editBody}
+                        onChange={(event) => setEditBody(event.target.value)}
+                        className="w-full rounded border p-2 text-sm"
+                      />}
+                    </div>
                     <button className="mt-1 text-xs text-[#0c66e4]">
                       Salvar
                     </button>
@@ -471,6 +506,7 @@ export function CardComments({
                         onClick={() => {
                           setEditing(comment);
                           setEditBody(comment.body);
+                          setEditPreview(false);
                         }}
                       >
                         <Pencil size={12} className="mr-1 inline" />
@@ -491,8 +527,9 @@ export function CardComments({
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

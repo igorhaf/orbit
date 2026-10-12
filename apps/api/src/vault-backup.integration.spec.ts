@@ -29,10 +29,11 @@ test('a separate encrypted vault archive can be verified and restored without re
       users.push(user!.id);
     }
     const category=await db.one<{id:string}>('INSERT INTO vault_categories(owner_id,name,icon) VALUES($1,$2,$3) RETURNING id',[users[0],'Privado','LockKeyhole']);
-    await db.query('INSERT INTO vault_items(owner_id,title,category,secret_data) VALUES($1,$2,$3,$4)',[users[0],'Credencial',category!.id,encryptVaultPayload({content_html:'<p>segredo de recuperação</p>'})]);
+    await db.query('INSERT INTO vault_items(owner_id,title,category,secret_data) VALUES($1,$2,$3,$4)',[users[0],'Credencial',category!.id,encryptVaultPayload({content_html:'<p>segredo de recuperação</p>',credentials:[{id:randomUUID(),name:'Token',constant:'BACKUP_TOKEN',value:'private-backup-value'}]})]);
     const manifest=await createVaultBackup(db,users[0]),path=vaultBackupPath(manifest.archive);
     const encrypted=await readFile(path);
     assert.equal(encrypted.includes(Buffer.from('segredo de recuperação')),false);
+    assert.equal(encrypted.includes(Buffer.from('private-backup-value')),false);
     assert.equal((await readFile(`${path}.manifest.json`,'utf8')).includes('Credencial'),false);
     const verified=await readVaultBackup(path);
     assert.equal(verified.snapshot.items[0].content_html,'<p>segredo de recuperação</p>');
@@ -41,6 +42,7 @@ test('a separate encrypted vault archive can be verified and restored without re
     const rows=await db.query<{title:string;secret_data:string}>('SELECT title,secret_data FROM vault_items WHERE owner_id=$1',[users[1]]);
     assert.equal(rows[0].title,'Credencial');
     assert.equal(decryptVaultPayload(rows[0].secret_data).content_html,'<p>segredo de recuperação</p>');
+    assert.deepEqual(decryptVaultPayload(rows[0].secret_data).credentials,verified.snapshot.items[0].credentials);
     await assert.rejects(()=>restoreVaultBackup(db,users[1],path),/já foi restaurado/);
     const modified=Buffer.from(encrypted);modified[modified.length-1]^=1;await writeFile(path,modified);
     await assert.rejects(()=>readVaultBackup(path),/Integridade/);

@@ -8,6 +8,8 @@ import { FeaturesService } from './features';
 import { PluginRegistry } from './execution/registries';
 import { googleRedirectUri } from './google/redirect-uri';
 import { BackupService } from './backup-service';
+import {Db} from './db';
+import {parseVaultReference,resolveVaultReference} from './vault-credentials';
 
 const groups = [
   { id: 'runtime', label: 'Aplicação', fields: [
@@ -60,7 +62,7 @@ async function saveEnvironment(path: string, changes: Record<string,string>, cle
 
 @Controller('settings/environment')
 export class EnvironmentSettingsController {
-  constructor(@Inject(FeaturesService) private features: FeaturesService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Optional() @Inject(BackupService) private backups?:BackupService) {}
+  constructor(@Inject(FeaturesService) private features: FeaturesService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Optional() @Inject(BackupService) private backups?:BackupService,@Optional() @Inject(Db) private db?:Db) {}
   private async backupNotice(){
     if(!this.backups)return '';
     try{
@@ -76,7 +78,7 @@ export class EnvironmentSettingsController {
     try { stored.NEXT_PUBLIC_API_URL=readStoredEnv(await readFile(webEnvFile,'utf8')).NEXT_PUBLIC_API_URL||stored.NEXT_PUBLIC_API_URL; } catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error}
     return stored;
   }
-  private values(fields:Array<{key:string;label:string;secret:boolean}>,stored:Record<string,string>,hideSecrets=false){return fields.map(field=>{const value=stored[field.key]??process.env[field.key]??'';return {...field,value:hideSecrets&&field.secret?'':value,configured:Boolean(value)}})}
+  private values(fields:Array<{key:string;label:string;secret:boolean}>,stored:Record<string,string>,hideSecrets=false){return fields.map(field=>{const value=stored[field.key]??process.env[field.key]??'';return {...field,value:value.startsWith('orbit-vault://')||hideSecrets&&field.secret?'':value,vaultReference:parseVaultReference(value)?value:undefined,configured:Boolean(value)}})}
   private plugin(id:string){
     try{return this.plugins.getById(id)}catch{throw new HttpException('Plugin não encontrado.',404)}
   }
@@ -91,6 +93,16 @@ export class EnvironmentSettingsController {
     if(clear.some(key=>typeof key!=='string'||!allowed.has(key)))throw new HttpException('Configuração inválida.',400);
     if(Object.keys(changes).length+clear.length>100)throw new HttpException('Muitas configurações.',400);
     return {changes,clear:clear as string[]};
+  }
+
+  private async validateReferences(changes:Record<string,string>,owner:string,allowed:Set<string>){
+    for(const [key,value] of Object.entries(changes))if(value.startsWith('orbit-vault://')){
+      if(!allowed.has(key)||!this.db)throw new HttpException('Esta configuração não aceita constantes do cofre.',400);
+      await resolveVaultReference(this.db,value,owner);
+    }
+  }
+  private async applyReferences(changes:Record<string,string>){
+    for(const [key,value] of Object.entries(changes))if(value.startsWith('orbit-vault://')&&this.db)process.env[key]=await resolveVaultReference(this.db,value);
   }
 
   @Get()
@@ -109,23 +121,27 @@ export class EnvironmentSettingsController {
 
   @Patch()
   async update(@Req() req: Request, @Body() body: Record<string,unknown>) {
-    this.features.user(req);
+    const owner=this.features.user(req);
     const {changes,clear:clearKeys}=this.validate(body,new Set(byKey.keys()));
+    await this.validateReferences(changes,owner,new Set(groups.filter(group=>['google','microsoft','email'].includes(group.id)).flatMap(group=>group.fields.map(field=>field.key))));
     const webChanges: Record<string,string> = {};
     const apiChanges = { ...changes };
     const webClear = clearKeys.includes('NEXT_PUBLIC_API_URL') ? ['NEXT_PUBLIC_API_URL'] : [];
     if (Object.hasOwn(apiChanges,'NEXT_PUBLIC_API_URL')) { webChanges.NEXT_PUBLIC_API_URL = apiChanges.NEXT_PUBLIC_API_URL; delete apiChanges.NEXT_PUBLIC_API_URL; }
     await saveEnvironment(envFile, apiChanges, clearKeys.filter(key => key !== 'NEXT_PUBLIC_API_URL'));
     if (Object.keys(webChanges).length || webClear.length) await saveEnvironment(webEnvFile, webChanges, webClear);
+    await this.applyReferences(changes);
     const backup=await this.backupNotice();
     return { ok:true, restartRequired:true, message:`Configurações salvas. Reinicie a API para aplicar as alterações; NEXT_PUBLIC_API_URL também exige rebuild da aplicação web.${backup}` };
   }
 
   @Patch('plugins/:id')
   async updatePlugin(@Req() req:Request,@Param('id') id:string,@Body() body:Record<string,unknown>){
-    this.features.user(req);const plugin=this.plugin(id);
+    const owner=this.features.user(req);const plugin=this.plugin(id);
     const {changes,clear}=this.validate(body,new Set((plugin.configuration||[]).map(field=>field.key)));
+    await this.validateReferences(changes,owner,new Set((plugin.configuration||[]).map(field=>field.key)));
     await saveEnvironment(envFile,changes,clear);
+    await this.applyReferences(changes);
     const backup=await this.backupNotice();
     return {ok:true,restartRequired:true,message:`Configuração de ${plugin.name} salva. Reinicie a API para aplicar as alterações.${backup}`};
   }

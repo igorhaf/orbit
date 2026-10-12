@@ -4,18 +4,19 @@ import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
-  Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut,
+  Eye, EyeClosed, Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut, Wrench, Menu, DatabaseBackup, Archive,
   Moon, Search, Settings, Star, Sun, Undo2, Redo2, UserRound,
-  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, Circle, CheckCircle2, FolderOpen, GripVertical, MoreHorizontal, Paintbrush,
+  X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, FolderOpen, GripVertical, MoreHorizontal, Paintbrush,
 } from 'lucide-react';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  api, send, AppNotification, Board, Card, List, SearchResults, User,
+  api, send, AppNotification, Board, Card, List, SearchResults, ToolDiagnostics, User,
   boardColors, cardUrl, clearSession, getUser, initials, setUser,
 } from '@/lib/api';
 import { historyState, redo, remember, undo } from '@/lib/history';
+import { CodexLimitsBar } from './codex-limits';
 import { CardDialog } from './card-dialog';
 import { CardActivityIndicator } from './card-execution';
 import { io } from 'socket.io-client';
@@ -61,8 +62,8 @@ export function Modal({ children, onClose, wide = false, extraWide = false }: { 
     };
   }, []);
   if (!mounted) return null;
-  return createPortal(<div className="fixed inset-0 z-50 flex min-h-full items-center justify-center overflow-y-auto bg-[#091e42b8] p-4 backdrop-blur-[3px] sm:p-6" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div onMouseDown={e => e.stopPropagation()} className={`fade-in relative max-h-[calc(100dvh-2rem)] w-full overflow-y-auto ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[820px]' : 'max-w-[560px]'} rounded-2xl border border-[#dfe1e6] bg-white shadow-dialog`} role="dialog" aria-modal="true">
+  return createPortal(<div className="fixed inset-0 z-50 flex min-h-full items-center justify-center overflow-y-auto bg-[#091e42b8] p-2 backdrop-blur-[3px] sm:p-6" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div onMouseDown={e => e.stopPropagation()} className={`fade-in relative max-h-[calc(100dvh-1rem)] w-full overflow-y-auto ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[820px]' : 'max-w-[560px]'} rounded-xl border border-[#dfe1e6] bg-white shadow-dialog sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl`} role="dialog" aria-modal="true">
       {children}
       <button aria-label="Fechar" onClick={onClose} className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-lg text-[#626f86] transition-colors hover:bg-[#f1f2f4] hover:text-[#172b4d]"><X size={20}/></button>
     </div>
@@ -81,12 +82,8 @@ export function useConfirmModal() {
 
 export function BoardTile({ board, onClick }: { board: Board; onClick: () => void }) {
   const total = board.card_count || 0;
-  const completed = board.completed_card_count || 0;
-  const open = Math.max(0, total - completed);
-  const completedPercent = total ? Math.round((completed / total) * 100) : 0;
-  const openPercent = total ? 100 - completedPercent : 0;
   return <button onClick={onClick} className="group relative flex h-[112px] w-full flex-col overflow-hidden rounded-[5px] p-3 text-left text-white shadow-sm transition hover:brightness-90" style={{background:board.background_image ? `linear-gradient(#0005,#0005),url("${board.background_image}") center/cover` : boardColors[board.background] || boardColors.blue}}>
-    <span className="relative z-10 flex max-w-full gap-1 pr-2 text-[10px] font-semibold"><span className="inline-flex items-center gap-1 rounded bg-black/35 px-1.5 py-1"><Circle size={11}/> {open} abertos · {openPercent}%</span><span className="inline-flex items-center gap-1 rounded bg-black/35 px-1.5 py-1"><CheckCircle2 size={11}/> {completed} concluídos · {completedPercent}%</span></span>
+    <span className="relative z-10 rounded bg-black/35 px-1.5 py-1 text-[10px] font-semibold">{total} cartões</span>
     <strong className="relative z-10 mt-auto max-w-[90%] truncate text-[16px] leading-5">{board.title}</strong>
     <span className="absolute -bottom-6 -right-6 h-28 w-28 rounded-full bg-white/10"/>
     <span className="absolute -top-10 right-8 h-28 w-28 rounded-full bg-white/5"/>
@@ -94,14 +91,15 @@ export function BoardTile({ board, onClick }: { board: Board; onClick: () => voi
   </button>;
 }
 
-function NotificationPanel({ items, onRead, onReadAll, onChoose }: {
+function NotificationPanel({ items, onRead, onReadAll, onClearAll, onChoose }: {
   items: AppNotification[];
   onRead: (id: string) => void;
   onReadAll: () => void;
+  onClearAll: () => void;
   onChoose: (item: AppNotification) => void;
 }) {
   return <div className="absolute right-0 top-full z-40 w-[min(390px,calc(100vw-16px))] overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog">
-    <div className="flex items-center justify-between border-b border-[#dfe1e6] px-4 py-3"><h3 className="font-bold">Notificações</h3><button onClick={onReadAll} className="text-xs font-semibold text-[#0c66e4] hover:underline">Marcar todas como lidas</button></div>
+    <div className="flex items-center justify-between gap-2 border-b border-[#dfe1e6] px-4 py-3"><h3 className="font-bold">Notificações</h3><div className="flex items-center gap-3"><button onClick={onReadAll} disabled={!items.some(item => !item.read_at)} className="text-xs font-semibold text-[#0c66e4] hover:underline disabled:cursor-default disabled:opacity-50">Marcar todas como lidas</button><button onClick={onClearAll} disabled={items.length === 0} className="text-xs font-semibold text-[#c9372c] hover:underline disabled:cursor-default disabled:opacity-50">Limpar todas</button></div></div>
     <div className="scrollbar-thin max-h-[440px] overflow-y-auto">
       {items.length === 0 ? <div className="p-8 text-center text-sm text-[#626f86]"><Bell className="mx-auto mb-3" size={26}/> Nenhuma notificação por enquanto.</div> : items.map(item =>
         <button key={item.id} onClick={() => onChoose(item)} className={`flex w-full gap-3 border-b border-[#f1f2f4] px-4 py-3 text-left hover:bg-[#f1f2f4] ${!item.read_at ? 'bg-[#e9f2ff]' : ''}`}>
@@ -114,6 +112,8 @@ function NotificationPanel({ items, onRead, onReadAll, onChoose }: {
 }
 
 export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: User | null; boards?: Board[]; onCreate?: () => void; onSearch?: (s:string)=>void }) {
+  const [limitsVisible,setLimitsVisible]=useState(false);
+  const [quotaPaused,setQuotaPaused]=useState(false);
   const router = useRouter();
   const [user, updateUser] = useState<User | null>(initialUser);
   const [previousUser, setPreviousUser] = useState(initialUser);
@@ -121,23 +121,49 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     setPreviousUser(initialUser);
     updateUser(initialUser);
   }
-  const [panel, setPanel] = useState<'search'|'boards'|'create'|'notifications'|'account'|null>(null);
+  const [panel, setPanel] = useState<'search'|'boards'|'create'|'notifications'|'account'|'mobile'|null>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const boardsMenuRef = useRef<HTMLDivElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
-  const [searchResponse, setSearchResponse] = useState<{query:string; data:SearchResults}>({query:'',data:{boards:[],cards:[]}});
+  const [searchResponse, setSearchResponse] = useState<{query:string; data:SearchResults}>({query:'',data:{boards:[],lists:[],cards:[]}});
   const results = panel === 'search' && query.trim().length >= 2 && searchResponse.query === query
-    ? {...searchResponse.data,boards:searchResponse.data.boards.filter(board=>!board.is_inbox&&!board.is_collection)} : {boards:[],cards:[]};
+    ? {...searchResponse.data,boards:searchResponse.data.boards.filter(board=>!board.is_inbox&&!board.is_collection)} : {boards:[],lists:[],cards:[]};
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationToast, setNotificationToast] = useState<{title:string;body:string}|null>(null);
+  const [toastFading, setToastFading] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pinned, setPinned] = useState(true);
   const [history, setHistory] = useState(historyState());
   const [message, setMessage] = useState('');
   const [pluginNavigation, setPluginNavigation] = useState<Array<{id:string;label:string;href:string}>>([]);
+  const [toolStatus,setToolStatus]=useState<{userId:string;status:ToolDiagnostics['status']}|null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const initializedNotifications = useRef(false);
   const knownNotifications = useRef(new Set<string>());
+  const syncNotifications = useCallback((items: AppNotification[]) => {
+    if (initializedNotifications.current) {
+      const fresh = items.filter(item => !item.read_at && !knownNotifications.current.has(item.id));
+      if (fresh.length) {
+        const item = fresh[0];
+        setNotificationToast({title:item.title,body:item.body || item.board_title || ''});
+        setToastFading(false);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        if (toastDismissTimer.current) clearTimeout(toastDismissTimer.current);
+        toastTimer.current = setTimeout(() => setToastFading(true), 2200);
+        toastDismissTimer.current = setTimeout(() => setNotificationToast(null), 3000);
+      }
+    }
+    items.forEach(item => knownNotifications.current.add(item.id));
+    initializedNotifications.current = true;
+    setNotifications(items);
+  }, []);
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    if (toastDismissTimer.current) clearTimeout(toastDismissTimer.current);
+  }, []);
 
   useEffect(() => {
     const accountChanged = () => updateUser(getUser());
@@ -176,23 +202,32 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     window.addEventListener('plugins:changed', loadPluginNavigation);
     return () => { active = false; window.removeEventListener('plugins:changed', loadPluginNavigation); };
   }, [user]);
+  useEffect(()=>{
+    if(!user)return;
+    let active=true;
+    const refresh=()=>void api<ToolDiagnostics>('/tools/diagnostics').then(result=>{if(active)setToolStatus({userId:user.id,status:result.status})}).catch(()=>undefined);
+    refresh();
+    const timer=window.setInterval(refresh,15_000);
+    return()=>{active=false;window.clearInterval(timer)};
+  },[user]);
+  const currentToolStatus=toolStatus&&toolStatus.userId===user?.id?toolStatus.status:null;
   useEffect(() => {
     if (!user) return;
     let active = true;
     const refresh = () => {
       void api<AppNotification[]>('/notifications').then(items => {
-        if (active) setNotifications(items);
+        if (active) syncNotifications(items);
       }).catch(() => undefined);
     };
     const socket = io({ path: '/socket.io', auth: { token: localStorage.getItem('orbit_token') || '' } });
     socket.on('notification:changed', refresh);
     return () => { active = false; socket.disconnect(); };
-  }, [user]);
+  }, [user, syncNotifications]);
   useEffect(() => {
     if (panel !== 'search' || query.trim().length < 2) return;
     const timer = window.setTimeout(() => api<SearchResults>(`/search?q=${encodeURIComponent(query)}`)
       .then(data => setSearchResponse({query,data}))
-      .catch(() => setSearchResponse({query,data:{boards:[],cards:[]}})), 220);
+      .catch(() => setSearchResponse({query,data:{boards:[],lists:[],cards:[]}})), 220);
     return () => window.clearTimeout(timer);
   }, [query, panel]);
   useEffect(() => { if (panel === 'search') searchRef.current?.focus(); }, [panel]);
@@ -203,17 +238,16 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       try {
         const items = await api<AppNotification[]>('/notifications');
         if (!active) return;
-        setNotifications(items);
+        const newItems = initializedNotifications.current ? items.filter(item => !item.read_at && !knownNotifications.current.has(item.id)) : [];
+        syncNotifications(items);
         const canNotify = initializedNotifications.current && user.preferences?.browserNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted';
-        if (canNotify) items.filter(item => !item.read_at && !knownNotifications.current.has(item.id)).forEach(item => new Notification(item.title, { body: item.body || item.board_title || '' }));
-        items.forEach(item => knownNotifications.current.add(item.id));
-        initializedNotifications.current = true;
+        if (canNotify) newItems.forEach(item => new Notification(item.title, { body: item.body || item.board_title || '' }));
       } catch { /* The page stays usable if notifications cannot load. */ }
     };
     poll();
     const timer = window.setInterval(poll, 30000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [user]);
+  }, [user, syncNotifications]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (user?.preferences?.shortcuts === false) return;
@@ -240,6 +274,10 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     await send('/notifications/read-all', 'PATCH');
     setNotifications(old => old.map(item => ({...item,read_at:item.read_at || new Date().toISOString()})));
   }
+  async function clearAllNotifications() {
+    await send('/notifications', 'DELETE');
+    setNotifications([]);
+  }
   function chooseNotification(item: AppNotification) {
     if (!item.read_at) markRead(item.id).catch(() => {});
     setPanel(null);
@@ -258,8 +296,25 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     localStorage.setItem('orbit_sidebar_pinned', String(!pinned));
     window.dispatchEvent(new Event('sidebar:changed'));
   }
-  function openBoard(id: string) { setPanel(null); router.push(`/board/${id}`); }
+  function openBoard(id: string) { setPanel(null); if(window.location.pathname!==`/board/${id}`)router.push(`/board/${id}`); }
+  function openList(boardId:string,listId:string) { setPanel(null); router.push(`/board/${boardId}?list=${encodeURIComponent(listId)}`); }
   const unread = notifications.filter(item => !item.read_at).length;
+  const mobileLinks = [
+    {label:'Home',href:'/',icon:Home},
+    {label:'Quadros',href:'/boards',icon:LayoutDashboard},
+    {label:'Calendário',href:'/calendar',icon:CalendarDays},
+    {label:'Planner',href:'/planner',icon:CalendarDays},
+    {label:'Inbox',href:'/inbox',icon:Inbox},
+    {label:'Coleções',href:'/collections',icon:FolderOpen},
+    {label:'Cadernos',href:'/notebooks',icon:NotebookPen},
+    {label:'Cofre',href:'/vault',icon:Vault},
+    {label:'Backups',href:'/backups',icon:DatabaseBackup},
+    {label:'Ferramentas',href:'/tools',icon:Wrench},
+    {label:'Plugins',href:'/plugins',icon:FolderKanban},
+    {label:'Perfil e configurações',href:'/profile',icon:Settings},
+    {label:'Lixeira',href:'/trash',icon:Archive},
+    ...pluginNavigation.map(item=>({label:item.label,href:item.href,icon:FolderKanban})),
+  ];
   const boardMatches = boards.filter(board => !board.is_inbox && !board.is_collection && board.title.toLowerCase().includes(query.toLowerCase())).slice(0,8);
   useEffect(() => {
     if (panel !== 'account') return;
@@ -298,12 +353,12 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     return () => document.removeEventListener('mousedown', closeOutside);
   }, [panel]);
 
-  return <><header className="relative z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 py-1 sm:gap-2 sm:px-4">
+  return <>{notificationToast && <div role="status" aria-live="polite" className={`fixed right-4 top-4 z-[60] w-[min(360px,calc(100vw-32px))] rounded-lg border border-[#dfe1e6] bg-white p-3 shadow-dialog transition-all duration-500 ${toastFading ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100'}`}><div className="flex items-start gap-2"><Bell size={17} className="mt-0.5 shrink-0 text-[#0c66e4]"/><span className="min-w-0"><strong className="block truncate text-sm">{notificationToast.title}</strong>{notificationToast.body && <span className="mt-0.5 block truncate text-xs text-[#626f86]">{notificationToast.body}</span>}</span></div></div>}<header className="relative z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 py-1 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
       <span className="flex h-7 w-7 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={19} strokeWidth={2.8}/></span>
       <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">Orbit</span>
     </button>
-    <nav className="ml-1 hidden items-center gap-1 md:flex">
+    <nav className="ml-1 hidden items-center gap-1 lg:flex">
       <button onClick={() => router.push('/')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
       <div ref={boardsMenuRef} className="relative" onMouseLeave={() => { if (panel === 'boards') setPanel(null); }}>
         <button onClick={() => setPanel(panel === 'boards' ? null : 'boards')} aria-expanded={panel === 'boards'} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
@@ -315,6 +370,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         </div>}
       </div>
       <button onClick={() => router.push('/calendar')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Calendário</button>
+      <button onClick={() => router.push('/tools')} title={currentToolStatus==='error'?'O último prompt falhou por causa de uma ferramenta.':currentToolStatus==='running'?'Aguardando o fim do prompt para verificar as ferramentas.':'Ferramentas sem falha detectada no último prompt.'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Wrench size={15}/>Ferramentas<span aria-hidden="true" className={`h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>
       {pluginNavigation.map(item => <button key={item.id} onClick={() => router.push(item.href)} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{item.label}</button>)}
       <button onClick={() => router.push('/notebooks')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={15} className="mr-1 inline"/>Cadernos</button>
       <button onClick={() => router.push('/vault')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={15} className="mr-1 inline"/>Cofre</button>
@@ -322,12 +378,14 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     </nav>
 <button
   onClick={() => router.push('/boards')}
-  className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden"
+  className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden"
   title="Quadros"
 >
   <LayoutDashboard size={19}/>
 </button>
-    <button onClick={() => router.push('/')} className="rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] md:hidden" title="Home"><Home size={19}/></button>
+<button onClick={() => router.push('/')} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Home"><Home size={19}/></button>
+<button onClick={() => router.push('/tools')} className="relative min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Ferramentas" aria-label="Ferramentas"><Wrench size={19}/><span aria-hidden="true" className={`absolute right-1 top-1 h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>
+<div className="relative lg:hidden"><button onClick={() => setPanel(panel==='mobile'?null:'mobile')} aria-label="Abrir navegação" aria-expanded={panel==='mobile'} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4]"><Menu size={19}/></button>{panel==='mobile'&&<nav aria-label="Navegação principal" className="fixed left-2 right-2 top-[calc(3.5rem+env(safe-area-inset-top))] z-[60] grid max-h-[min(70dvh,560px)] w-auto translate-x-0 grid-cols-2 gap-1 overflow-y-auto rounded-xl border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:grid-cols-3">{mobileLinks.map(item=><button key={`${item.href}:${item.label}`} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-12 min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-[#f1f2f4]"><item.icon size={17} className="shrink-0 text-[#6554c0]"/><span className="min-w-0 break-words">{item.label}</span></button>)}</nav>}</div>
     <div ref={createMenuRef} className="relative ml-1">
       <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
       {panel === 'create' && <div className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
@@ -335,13 +393,14 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         <button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>
       </div>}
     </div>
+    <button onClick={()=>setLimitsVisible(value=>!value)} aria-expanded={limitsVisible||quotaPaused} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible||quotaPaused?<Eye size={17}/>:<EyeClosed size={17}/>}Limites</button>
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
     <button onClick={() => setPanel('search')} className="flex items-center gap-2 rounded border border-transparent p-2 text-[#44546f] hover:bg-[#f1f2f4] sm:w-44 sm:border-[#8590a2] sm:px-3 sm:py-1.5" aria-label="Pesquisar em todos os quadros"><Search size={17}/><span className="hidden text-sm text-[#626f86] sm:inline">Pesquisar</span></button>
     <div ref={notificationsMenuRef} className="relative" onMouseLeave={() => { if (panel === 'notifications') setPanel(null); }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPanel(null); }}>
     <button onClick={() => setPanel(panel === 'notifications' ? null : 'notifications')} aria-expanded={panel === 'notifications'} className="relative rounded-full p-2 text-[#44546f] hover:bg-[#f1f2f4]" title="Notificações"><Bell size={19}/>{unread > 0 && <span className="absolute right-0 top-0 min-w-4 rounded-full bg-[#e5484d] px-0.5 text-[10px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}</button>
-    {panel === 'notifications' && <NotificationPanel items={notifications} onRead={id => markRead(id).catch(() => {})} onReadAll={() => markAll().catch(() => {})} onChoose={chooseNotification}/>}
+    {panel === 'notifications' && <NotificationPanel items={notifications} onRead={id => markRead(id).catch(() => {})} onReadAll={() => markAll().catch(() => {})} onClearAll={() => clearAllNotifications().catch(() => {})} onChoose={chooseNotification}/>}
     </div>
     <div ref={accountMenuRef} className="relative" onMouseLeave={() => { if (panel === 'account') setPanel(null); }}>
     <button onClick={() => setPanel(panel === 'account' ? null : 'account')} title="Conta" aria-expanded={panel === 'account'} className="rounded-full"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/></button>
@@ -350,10 +409,12 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <div className="flex items-center gap-2 border-b border-[#dfe1e6] px-3 py-2"><Search size={17} className="text-[#626f86]"/><input ref={searchRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Pesquisar cartões e quadros..." className="min-w-0 flex-1 border-0 bg-transparent py-1 text-sm outline-none"/><button onClick={() => setPanel(null)}><X size={17}/></button></div>
       <div className="scrollbar-thin max-h-[380px] overflow-y-auto p-2">{query.trim().length < 2 ? <p className="p-4 text-center text-xs text-[#626f86]">Digite pelo menos 2 caracteres para buscar em todos os quadros.</p> : <>
         {results.boards.length > 0 && <p className="px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Quadros</p>}
-        {results.boards.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-6 w-8 rounded" style={{background:boardColors[board.background]}}/><span className="flex-1 truncate">{board.title}</span></button>)}
+        {results.boards.map(board => <button key={board.id} aria-label={`Abrir quadro ${board.title}`} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-6 w-8 rounded" style={{background:boardColors[board.background]}}/><span className="flex-1 truncate">{board.title}</span></button>)}
+        {(results.lists||[]).length > 0 && <p className="mt-2 px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Listas</p>}
+        {(results.lists||[]).map(list => <button key={list.id} aria-label={`Abrir lista ${list.title} no quadro ${list.board_title}`} onClick={() => openList(list.board_id,list.id)} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-6 w-8 rounded" style={{background:boardColors[list.background]}}/><span className="min-w-0 flex-1 truncate">{list.title}</span><span className="max-w-24 truncate text-xs text-[#626f86]">{list.board_title}</span></button>)}
         {results.cards.length > 0 && <p className="mt-2 px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Cartões</p>}
-        {results.cards.map(card => <button key={card.id} onClick={() => { setPanel(null); router.push(cardUrl(card.board_id,card.id,card.url_token)); }} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><CreditCard size={16}/><span className="min-w-0 flex-1 truncate">{card.title}</span>{card.completed&&<span className="rounded bg-[#baf3db] px-1.5 py-0.5 text-[10px] text-[#216e4e]">Concluído</span>}<span className="max-w-24 truncate text-xs text-[#626f86]">{card.board_title}</span></button>)}
-        {!results.boards.length && !results.cards.length && <p className="p-4 text-center text-xs text-[#626f86]">Nenhum resultado encontrado.</p>}
+        {results.cards.map(card => <button key={card.id} aria-label={`Abrir cartão ${card.title} no quadro ${card.board_title}`} onClick={() => { setPanel(null); const params=new URLSearchParams({card:card.id}); if(card.url_token)params.set('token',card.url_token); if(card.list_id)params.set('list',card.list_id); router.push(`/board/${card.board_id}?${params}`); }} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><CreditCard size={16}/><span className="min-w-0 flex-1 truncate">{card.title}</span><span className="max-w-24 truncate text-xs text-[#626f86]">{card.board_title}</span></button>)}
+        {!results.boards.length && !(results.lists||[]).length && !results.cards.length && <p className="p-4 text-center text-xs text-[#626f86]">Nenhum resultado encontrado.</p>}
         <button onClick={() => { setPanel(null); router.push(`/search?q=${encodeURIComponent(query)}`); }} className="mt-2 w-full border-t border-[#dfe1e6] px-3 py-2 text-left text-xs font-semibold text-[#0c66e4]">Abrir busca avançada</button>
       </>}</div>
     </div>}
@@ -366,7 +427,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
     </div>
-  </header>{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
+  </header>{<CodexLimitsBar visible={limitsVisible} onAutoPaused={setQuotaPaused}/>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
 }
 
 function InboxPanel({boards}:{boards:Board[]}) {
@@ -517,7 +578,7 @@ export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: strin
     try { await Promise.all(next.map((board,index)=>send(`/boards/${board.id}`,'PATCH',{favorite_position:index}))); }
     catch { setFavoriteOrderError('Não foi possível salvar a ordem dos favoritos.'); }
   }
-  return <aside aria-label="Menu lateral" className={`scrollbar-thin shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] ${pinned?'w-[64px] px-2 lg:w-[300px] lg:px-3':'w-[56px] px-2'}`}>
+  return <aside aria-label="Menu lateral" className={`scrollbar-thin hidden shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] lg:block ${pinned?'w-[64px] px-2 lg:w-[300px] lg:px-3':'w-[56px] px-2'}`}>
     <div className="mb-3 flex gap-1"><button ref={setInboxTabDropRef} data-orbit-inbox-tab-drop onClick={()=>setTab('inbox')} aria-pressed={tab === 'inbox'} aria-label="Aba Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${isInboxTabOver?'ring-2 ring-[#0c66e4]':''} ${tab === 'inbox' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button><button onClick={()=>setTab('collections')} aria-pressed={tab === 'collections'} aria-label="Aba Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${tab === 'collections' ? 'bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button></div>
     {pinned && <div className="hidden lg:block">{tab === 'collections' ? <CollectionPanel boards={boards}/> : <InboxPanel boards={boards}/>}</div>}
     <section className={`${tab === 'collections' ? 'hidden' : 'mt-4 border-t border-[#dfe1e6] pt-3'}`}>

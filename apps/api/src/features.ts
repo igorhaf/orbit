@@ -214,13 +214,13 @@ export class FeaturesService {
 
   async home(userId: string) {
     const [upNext, highlights, yourItems, recentBoards, favorites, recentConversations] = await Promise.all([
-      this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,c.completed,c.list_id,l.title AS list_title,
+      this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,c.list_id,l.title AS list_title,
         (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
         b.id AS board_id,b.title AS board_title,b.background,ca.user_id IS NOT NULL AS assigned_to_me
         FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1
-        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND NOT c.completed AND ((c.due_date IS NOT NULL AND c.due_date<=now()+interval '7 days') OR ca.user_id IS NOT NULL)
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND ((c.due_date IS NOT NULL AND c.due_date<=now()+interval '7 days') OR ca.user_id IS NOT NULL)
         ORDER BY c.due_date ASC NULLS LAST,c.updated_at DESC LIMIT 40`,[userId]),
       this.activities(userId,18),
       this.db.query(`SELECT ci.id,ci.text,ci.completed,ci.due_date,c.id AS card_id,c.url_token AS card_url_token,c.title AS card_title,
@@ -274,27 +274,30 @@ export class FeaturesService {
   }
 
   async assignedCards(userId: string) {
-    return this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,c.completed,b.id AS board_id,
+    return this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,b.id AS board_id,
       b.title AS board_title,b.background,l.title AS list_title
       FROM card_assignees ca JOIN cards c ON c.id=ca.card_id JOIN lists l ON l.id=c.list_id
       JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-      WHERE ca.user_id=$1 AND b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.completed,c.due_date ASC NULLS LAST,c.updated_at DESC`,[userId]);
+      WHERE ca.user_id=$1 AND b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.due_date ASC NULLS LAST,c.updated_at DESC`,[userId]);
   }
 
   async search(userId: string, term: string) {
     const q=term.trim().slice(0,100);
-    if (q.length<2) return { boards: [], cards: [] };
+    if (q.length<2) return { boards: [], lists: [], cards: [] };
     const pattern=`%${q}%`;
-    const [boards,cards]=await Promise.all([
+    const [boards,lists,cards]=await Promise.all([
       this.db.query(`SELECT b.id,b.title,b.background,b.starred,w.name AS workspace_name
         FROM boards b JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         LEFT JOIN workspaces w ON w.id=b.workspace_id WHERE b.closed_at IS NULL AND b.title ILIKE $2 ORDER BY b.starred DESC,b.title LIMIT 12`,[userId,pattern]),
-      this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,c.completed,b.id AS board_id,b.title AS board_title,
-        l.title AS list_title FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+      this.db.query(`SELECT l.id,l.title,l.board_id,b.title AS board_title,b.background
+        FROM lists l JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE b.closed_at IS NULL AND b.is_inbox=false AND b.is_collection=false AND l.archived_at IS NULL AND l.title ILIKE $2 ORDER BY b.title,l.position LIMIT 12`,[userId,pattern]),
+      this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,b.id AS board_id,b.title AS board_title,
+        l.id AS list_id,l.title AS list_title FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
         WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND (c.title ILIKE $2 OR c.description ILIKE $2) ORDER BY c.updated_at DESC LIMIT 20`,[userId,pattern]),
     ]);
-    return { boards,cards };
+    return { boards,lists,cards };
   }
 
   async advancedSearch(userId:string, filters:Record<string,string>) {
@@ -303,12 +306,11 @@ export class FeaturesService {
     if(term){values.push(`%${term}%`);const p=`$${values.length}`;where.push(`(c.title ILIKE ${p} OR c.description ILIKE ${p} OR EXISTS(SELECT 1 FROM comments cm WHERE cm.card_id=c.id AND cm.body ILIKE ${p}) OR EXISTS(SELECT 1 FROM checklist_items ci WHERE ci.card_id=c.id AND ci.text ILIKE ${p}))`);}
     if(filters.board_id)add('b.id=?',validId(filters.board_id));if(filters.list_id)add('l.id=?',validId(filters.list_id));
     if(filters.label_id){values.push(validId(filters.label_id));where.push(`EXISTS(SELECT 1 FROM card_labels cl WHERE cl.card_id=c.id AND cl.label_id=$${values.length})`);}
-    if(filters.status==='completed')where.push('c.completed');if(filters.status==='open')where.push('NOT c.completed');
     if(filters.archived==='only')where.push('c.archived_at IS NOT NULL');else if(filters.archived!=='all')where.push('c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL');
-    if(filters.due==='overdue')where.push('c.due_date<now() AND NOT c.completed');if(filters.due==='week')where.push("c.due_date BETWEEN now() AND now()+interval '7 days'");if(filters.due==='none')where.push('c.due_date IS NULL');
+    if(filters.due==='overdue')where.push('c.due_date<now()');if(filters.due==='week')where.push("c.due_date BETWEEN now() AND now()+interval '7 days'");if(filters.due==='none')where.push('c.due_date IS NULL');
     if(filters.comments==='yes')where.push('EXISTS(SELECT 1 FROM comments cm WHERE cm.card_id=c.id)');if(filters.checklist==='yes')where.push('EXISTS(SELECT 1 FROM checklist_items ci WHERE ci.card_id=c.id)');
     const sort=filters.sort==='created'?'c.created_at DESC':filters.sort==='due'?'c.due_date ASC NULLS LAST':'c.updated_at DESC';
-    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,c.completed,c.updated_at,b.id AS board_id,b.title AS board_title,l.id AS list_id,l.title AS list_title,COALESCE((SELECT json_agg(json_build_object('id',la.id,'name',la.name,'color',la.color)) FROM labels la JOIN card_labels cl ON cl.label_id=la.id WHERE cl.card_id=c.id),'[]') AS labels FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id WHERE ${where.join(' AND ')} ORDER BY ${sort} LIMIT 100`,values);
+    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,c.updated_at,b.id AS board_id,b.title AS board_title,l.id AS list_id,l.title AS list_title,COALESCE((SELECT json_agg(json_build_object('id',la.id,'name',la.name,'color',la.color)) FROM labels la JOIN card_labels cl ON cl.label_id=la.id WHERE cl.card_id=c.id),'[]') AS labels FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id WHERE ${where.join(' AND ')} ORDER BY ${sort} LIMIT 100`,values);
     return {cards};
   }
   async savedSearches(userId:string){return this.db.query('SELECT id,name,query,created_at,updated_at FROM saved_searches WHERE user_id=$1 ORDER BY updated_at DESC',[userId]);}
@@ -317,7 +319,7 @@ export class FeaturesService {
 
   async planner(userId:string, boardId?:string) {
     const boardFilter=boardId?` AND b.id=$2`:''; const params=boardId?[userId,validId(boardId)]:[userId];
-    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.due_date,c.schedule_start_at,c.schedule_end_at,c.completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
+    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.due_date,c.schedule_start_at,c.schedule_end_at,false AS completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
       FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN board_members bm ON bm.board_id=b.id
       LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1 WHERE bm.user_id=$1 AND (ca.user_id=$1 OR b.is_inbox) AND (c.due_date IS NOT NULL OR c.schedule_start_at IS NOT NULL) AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL${boardFilter} ORDER BY COALESCE(c.schedule_start_at,c.due_date)`,params);
     return {cards};
@@ -333,7 +335,7 @@ export class FeaturesService {
   async notifications(userId: string) {
     const account=await this.account(userId);
     await this.db.query(`DELETE FROM notifications n WHERE n.user_id=$1 AND n.kind='due'
-      AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id=n.card_id AND NOT c.completed AND c.archived_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id=n.card_id AND c.archived_at IS NULL
         AND c.due_date=n.due_at AND c.reminder_minutes IS NOT NULL
         AND EXISTS (SELECT 1 FROM lists l JOIN boards b ON b.id=l.board_id WHERE l.id=c.list_id AND l.archived_at IS NULL AND b.closed_at IS NULL))`,[userId]);
     if (account.preferences.notifications) {
@@ -341,7 +343,7 @@ export class FeaturesService {
         SELECT 'planner',$1,b.id,c.id,'due',CASE WHEN c.due_date<now() THEN 'Cartão vencido' ELSE 'Prazo próximo' END,
           c.title,c.due_date FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
         JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND NOT c.completed AND c.due_date IS NOT NULL
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND c.due_date IS NOT NULL
           AND c.reminder_minutes IS NOT NULL AND c.due_date<=now()+c.reminder_minutes*interval '1 minute'
         ON CONFLICT DO NOTHING`,[userId]);
     }
@@ -369,6 +371,12 @@ export class FeaturesService {
 
   async markAllNotifications(userId: string) {
     await this.db.query('UPDATE notifications SET read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND read_at IS NULL',[userId]);
+    this.events?.notificationChanged(userId);
+    return {ok:true};
+  }
+
+  async clearAllNotifications(userId: string) {
+    await this.db.query('DELETE FROM notifications WHERE user_id=$1',[userId]);
     this.events?.notificationChanged(userId);
     return {ok:true};
   }
@@ -403,5 +411,6 @@ export class FeaturesController {
   @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
   @Patch('cards/:id/prompt-notifications/read') readCardPromptNotifications(@Req() req:Request,@Param('id') id:string){return this.features.markCardPromptNotificationsRead(this.features.user(req),id);}
   @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }
+  @Delete('notifications') clearAll(@Req() req: Request) { return this.features.clearAllNotifications(this.features.user(req)); }
   @Patch('notifications/:id/read') read(@Req() req: Request,@Param('id') id: string) { return this.features.markNotification(this.features.user(req),id); }
 }

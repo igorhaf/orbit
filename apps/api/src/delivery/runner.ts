@@ -1,5 +1,4 @@
 import {Inject,Injectable} from '@nestjs/common';
-import {randomUUID} from 'node:crypto';
 import {PoolClient} from 'pg';
 import {Db} from '../db';
 import {branchName} from '../git/rules';
@@ -55,9 +54,8 @@ export class DeliveryRunner {
     for(const step of steps)for(const requirement of step.requires)if(requirement.startsWith('steps.')){const producer=requirement.split('.')[1];if(!positions.has(producer)||positions.get(producer)!>=step.position)throw new Error(`Dependência inválida em ${step.name}: ${requirement}`)}
     requiredOutputs(steps,context,bypassed);
     const cardId=input.cardId?uid(input.cardId):null;if(cardId){const card=await this.db.one<{project_id:string}>('SELECT COALESCE(c.ai_project_id,b.ai_default_project_id) AS project_id FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id WHERE c.id=$1 AND b.owner_id=$2',[cardId,userId]);if(!card||card.project_id!==pipeline.project_id)throw new Error('Card não pertence ao projeto.');}
-    if(input.triggerType!==undefined&&!['manual','card.completed'].includes(String(input.triggerType)))throw new Error('Trigger inválido.');
-    const trigger=input.triggerType==='card.completed'?'card.completed':'manual';if(trigger==='card.completed'&&pipeline.trigger_type!=='card.completed')throw new Error('Trigger não configurado.');
-    const triggerKey=trigger==='card.completed'?input.triggerKey?uid(input.triggerKey):randomUUID():null;
+    if(input.triggerType!==undefined&&String(input.triggerType)!=='manual')throw new Error('Trigger inválido.');
+    const trigger='manual';const triggerKey=null;
     const client=await this.db.pool.connect();let run:DeliveryRun|null=null;
     try{
       await client.query('BEGIN');

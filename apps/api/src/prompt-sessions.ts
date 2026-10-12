@@ -1,20 +1,28 @@
-import { HttpException, Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { assertOrbitFields, orbitArchitecture } from './orbit-architecture';
+import { extractPromptQuestion, questionGuidance } from './prompt-question';
+import {validateProjectChecks} from './execution/project-checks';
+import { enforceCodexQuota } from './codex-limits';
+import { HttpException, Inject, Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { access, mkdir, realpath, stat, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { constants } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { basename, dirname, isAbsolute, parse, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { PoolClient } from 'pg';
 import { CodexAiService, CodexPromptImage } from './codex-ai';
 import { Db } from './db';
+import { cardContextsPrompt, linkedCardContexts } from './card-contexts';
 import { FeaturesService } from './features';
 import { OrbitEvents } from './orbit-events';
 import { extractPromptSummary } from './prompt-result';
+import { diagnoseToolFailures, ToolCommandActivity } from './tool-diagnostics';
+import { ProjectRegistry } from './execution/project-registry';
 
 type Payload = Record<string, unknown>;
 type Effort = 'low'|'medium'|'high'|'xhigh';
-type CardContext = { id:string; title:string; description:string; ai_project_id:string|null; ai_model:string|null; ai_effort:Effort|null; ai_execution_mode:'planning'|'bypass'; ai_default_project_id:string|null; ai_default_model:string|null; ai_default_effort:Effort|null; project_ai_default_model:string|null; project_ai_default_effort:Effort|null; user_ai_default_model:string|null; user_ai_default_effort:Effort|null };
+type CardContext = { id:string; title:string; description:string; ai_project_id:string|null; ai_model:string|null; ai_effort:Effort|null; ai_execution_mode:'planning'|'bypass'|'question'; ai_default_project_id:string|null; ai_default_model:string|null; ai_default_effort:Effort|null; project_ai_default_model:string|null; project_ai_default_effort:Effort|null; user_ai_default_model:string|null; user_ai_default_effort:Effort|null };
 type CommentSettings = {projectId:string;model:string;effort:Effort};
 type CommentJob = {comment_id:string;card_id:string;user_id:string;project_id:string;model:string;effort:Effort};
 type CommentReply = CommentJob & {authorLabel:string};
@@ -32,6 +40,7 @@ const uuid=(value:unknown,label:string):string=>{if(typeof value!=='string'||!/^
 const selectedModel=(value:unknown):string=>{if(typeof value!=='string'||!catalog.some(item=>item.id===value))fail('Modelo inválido.');return value as string;};
 const selectedEffort=(value:unknown):Effort=>{if(value!=='low'&&value!=='medium'&&value!=='high'&&value!=='xhigh')fail('Esforço inválido.');return value as Effort;};
 const has=(body:Payload,key:string)=>Object.prototype.hasOwnProperty.call(body,key);
+const pathIsWithin=(root:string,path:string)=>{const rel=relative(root,path);return rel===''||(rel!=='..'&&!rel.startsWith(`..${sep}`)&&!isAbsolute(rel));};
 const npm=process.platform==='win32'?'npm.cmd':'npm';
 const summaryStart='[[ORBIT_SUMMARY]]';
 const summaryEnd='[[/ORBIT_SUMMARY]]';
@@ -41,11 +50,12 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   private commentQueueWorkers=new Map<string,Promise<void>>();
   private staleRunTimer:ReturnType<typeof setInterval>|null=null;
   private readonly workerId=`${process.env.ORBIT_ENV||'main'}:${process.pid}:${randomUUID()}`;
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents){}
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents,@Optional() @Inject(ProjectRegistry) private projectRegistry?:ProjectRegistry){}
   private async member(boardId:string,userId:string){if(!await this.db.one('SELECT board_id FROM board_members WHERE board_id=$1 AND user_id=$2',[boardId,userId]))fail('Quadro não encontrado.',404);}
   async onModuleInit(){
+    await enforceCodexQuota(this.db);
     await this.recoverStaleRuns();
-    this.staleRunTimer=setInterval(()=>void this.recoverStaleRuns().catch(error=>console.error('Não foi possível limpar execuções de prompt abandonadas.',error)),5_000);
+    this.staleRunTimer=setInterval(()=>void enforceCodexQuota(this.db).then(()=>this.recoverStaleRuns()).catch(error=>console.error('Não foi possível limpar execuções de prompt abandonadas.',error)),5_000);
     this.staleRunTimer.unref();
     await this.db.query("UPDATE card_ai_comment_jobs SET status='queued',started_at=NULL,error=NULL WHERE status='running' AND answer_comment_id IS NULL");
     const queued=await this.db.query<{card_id:string}>('SELECT DISTINCT card_id FROM card_ai_comment_jobs WHERE status=$1',['queued']);
@@ -92,9 +102,28 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     }
     const model=!has(body,'ai_default_model')?existing.ai_default_model:body.ai_default_model===null||body.ai_default_model===''?null:selectedModel(body.ai_default_model);
     const effort=!has(body,'ai_default_effort')?existing.ai_default_effort:body.ai_default_effort===null||body.ai_default_effort===''?null:selectedEffort(body.ai_default_effort);
-    return this.db.one('UPDATE ai_projects SET name=$3,local_path=$4,ai_default_model=$5,ai_default_effort=$6,updated_at=now() WHERE id=$1 AND owner_id=$2 RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native',[projectId,userId,name,localPath,model,effort]);
+    const updated=await this.db.one<{local_path:string}>('UPDATE ai_projects SET name=$3,local_path=$4,ai_default_model=$5,ai_default_effort=$6,updated_at=now() WHERE id=$1 AND owner_id=$2 RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native',[projectId,userId,name,localPath,model,effort]);
+    return updated?this.exposeProjectPath(updated):updated;
   }
   private nativeProjectPath(){return resolve(process.env.ORBIT_NATIVE_ROOT||(process.env.ORBIT_ENV==='development'?'/home/meada/projetos/orbit':'/home/meada/projetos/orbit-dev'));}
+  private runningInContainer(){return existsSync('/.dockerenv')||Boolean(process.env.KUBERNETES_SERVICE_HOST);}
+  private projectPathRoots(){
+    const host=process.env.ORBIT_HOST_PROJECTS_ROOT,container=process.env.ORBIT_CONTAINER_PROJECTS_ROOT;
+    if(Boolean(host)!==Boolean(container))fail('Configure ORBIT_HOST_PROJECTS_ROOT e ORBIT_CONTAINER_PROJECTS_ROOT juntos.',500);
+    return host&&container?{host:resolve(host),container:resolve(container)}:null;
+  }
+  private exposeProjectPath<T extends {local_path:string}>(project:T):T{return {...project,local_path:this.projectPathToHost(project.local_path)};}
+  private projectPathToContainer(value:string){
+    const roots=this.projectPathRoots();if(!roots)return value;
+    const supplied=resolve(value);
+    if(pathIsWithin(roots.container,supplied))return supplied;
+    return pathIsWithin(roots.host,supplied)?resolve(roots.container,relative(roots.host,supplied)):supplied;
+  }
+  private projectPathToHost(value:string){
+    const roots=this.projectPathRoots();if(!roots)return value;
+    const supplied=resolve(value);
+    return pathIsWithin(roots.container,supplied)?resolve(roots.host,relative(roots.container,supplied)):supplied;
+  }
   private async command(directory:string,args:string[]){
     await new Promise<void>((resolveCommand,reject)=>{
       const child=spawn(npm,args,{cwd:directory,stdio:['ignore','pipe','pipe']});let output='';
@@ -117,38 +146,44 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   private async nativeProject(userId:string){
     const current=await this.db.one('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native FROM ai_projects WHERE owner_id=$1 AND is_native=true LIMIT 1',[userId]);
     if(current)return current;
-    const localPath=await this.localPath(this.nativeProjectPath());
+    const localPath=await this.localPath(this.nativeProjectPath(),false,false);
     return this.db.one('INSERT INTO ai_projects(owner_id,name,local_path,is_native) VALUES($1,$2,$3,true) RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native',[userId,'Orbit (nativo)',localPath]);
   }
   async projects(userId:string){
     await this.nativeProject(userId);
-    return this.db.query('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native FROM ai_projects WHERE owner_id=$1 ORDER BY is_native DESC,name',[userId]);
+    const projects=await this.db.query<{local_path:string}>('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native FROM ai_projects WHERE owner_id=$1 ORDER BY is_native DESC,name',[userId]);
+    return projects.map(project=>this.exposeProjectPath(project));
   }
   async executionProjects(userId:string){return this.projects(userId);}
-  private async descriptionImages(cardId:string,description:string):Promise<CodexPromptImage[]>{
-    const ids=[...new Set([...description.matchAll(/\/api\/card-attachments\/([0-9a-f-]{36})\/content/gi)].map(match=>match[1]))].slice(0,10);
-    if(!ids.length)return [];
-    const rows=await this.db.query<{id:string;name:string;mime_type:string;data:Buffer}>("SELECT id,name,mime_type,data FROM attachments WHERE card_id=$1 AND id=ANY($2::uuid[]) AND kind='file' AND mime_type IN ('image/png','image/jpeg','image/webp','image/gif','image/avif') AND data IS NOT NULL ORDER BY position,id",[cardId,ids]);
+  private async descriptionImages(cardId:string):Promise<CodexPromptImage[]>{
+    const rows=await this.db.query<{name:string;mime_type:string;data:Buffer}>("SELECT name,mime_type,data FROM attachments WHERE card_id=$1 AND kind='file' AND mime_type IN ('image/png','image/jpeg','image/webp','image/gif','image/avif') AND data IS NOT NULL ORDER BY position,id LIMIT 10",[cardId]);
     return rows.map(row=>({name:row.name,mimeType:row.mime_type,data:row.data}));
   }
   async projectDirectories(input?:string){
-    const directory=resolve(typeof input==='string'&&input.trim()?input:homedir());
-    const entries=await readdir(directory,{withFileTypes:true}).catch(error=>{const code=(error as NodeJS.ErrnoException).code;if(code==='EACCES'||code==='EPERM')fail('O Orbit não tem permissão para listar esta pasta.',403);if(code==='ENOTDIR')fail('O caminho informado não é uma pasta.');if(code==='ENOENT')fail('Esta pasta não existe.',404);return fail('Não foi possível listar esta pasta.',400);});
+    const roots=this.projectPathRoots();
+    if(this.runningInContainer()&&!roots)fail('O seletor está vendo apenas os arquivos do contêiner. Monte a pasta do host no serviço da API e configure ORBIT_HOST_PROJECTS_ROOT e ORBIT_CONTAINER_PROJECTS_ROOT.',409);
+    const requested=typeof input==='string'&&input.trim()?input:roots?.host||homedir();
+    if(roots&&!pathIsWithin(roots.host,resolve(requested)))fail(`Navegue dentro da raiz de projetos do host: “${roots.host}”.`,403);
+    const directory=this.projectPathToContainer(requested);
+    const entries=await readdir(directory,{withFileTypes:true}).catch(error=>{const code=(error as NodeJS.ErrnoException).code;if(code==='EACCES'||code==='EPERM')fail('O Orbit não tem permissão para listar esta pasta.',403);if(code==='ENOTDIR')fail('O caminho informado não é uma pasta.');if(code==='ENOENT'&&roots&&(directory===roots.container||directory.startsWith(`${roots.container}/`)))fail(`A pasta do host não está montada no contêiner em “${roots.container}”. Confira o volume no serviço da API e recrie o contêiner.` ,409);if(code==='ENOENT')fail('Esta pasta não existe.',404);return fail('Não foi possível listar esta pasta.',400);});
     const folders=entries.filter(entry=>entry.isDirectory()).map(entry=>({name:entry.name,path:resolve(directory,entry.name)})).sort((a,b)=>a.name.localeCompare(b.name));
-    return {path:directory,parent:dirname(directory)===directory?null:dirname(directory),name:basename(directory)||directory,folders};
+    const parentDirectory=roots&&directory===roots.container?null:dirname(directory)===directory?null:dirname(directory);
+    return {path:this.projectPathToHost(directory),parent:parentDirectory?this.projectPathToHost(parentDirectory):null,name:basename(directory)||directory,folders:folders.map(folder=>({...folder,path:this.projectPathToHost(folder.path)}))};
   }
   async createProjectDirectory(input:Payload){
-    const parent=resolve(typeof input.path==='string'&&input.path.trim()?input.path:homedir());
+    const parent=this.projectPathToContainer(typeof input.path==='string'&&input.path.trim()?input.path:this.projectPathRoots()?.host||homedir());
     const name=typeof input.name==='string'?input.name.trim():'';
     if(!name||name==='.'||name==='..'||name.includes('/')||name.includes('\\')||name.length>120)fail('Informe um nome de pasta válido.');
     try { await stat(parent); } catch(error) { if((error as NodeJS.ErrnoException).code==='ENOENT')fail('A pasta atual não existe.',404); throw error; }
     const target=resolve(parent,name);
     try { await mkdir(target); } catch(error){const code=(error as NodeJS.ErrnoException).code;if(code==='EEXIST')fail('Já existe uma pasta com esse nome.',409);if(code==='EACCES'||code==='EPERM')fail('O Orbit não tem permissão para criar essa pasta.');fail('Não foi possível criar a pasta.');}
-    return {path:target};
+    return {path:this.projectPathToHost(target)};
   }
-  private async localPath(value:unknown,createIfMissing=false):Promise<string>{
+  private async localPath(value:unknown,createIfMissing=false,mapHostPath=true):Promise<string>{
     if(typeof value!=='string'||!value.trim()||value.length>2000||!isAbsolute(value))fail('Informe uma pasta local absoluta.');
-    const supplied=resolve(value as string);
+    const requested=resolve(value as string);
+    if(requested===parse(requested).root)fail('Não é permitido usar a raiz do sistema como projeto.');
+    const supplied=mapHostPath?this.projectPathToContainer(requested):requested;
     if(supplied===parse(supplied).root)fail('Não é permitido usar a raiz do sistema como projeto.');
     if(createIfMissing){
       try { await mkdir(supplied,{recursive:true}); }
@@ -163,7 +198,12 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     } catch(error){
       if(error instanceof HttpException)throw error;
       const code=(error as NodeJS.ErrnoException).code;
-      if(code==='ENOENT'&&!createIfMissing)throw new HttpException({code:'PROJECT_DIRECTORY_MISSING',message:`A pasta “${supplied}” não existe. Deseja criá-la?`},409);
+      if(code==='ENOENT'&&!createIfMissing){
+        const roots=this.projectPathRoots();
+        const mapsToContainerMount=roots&&pathIsWithin(roots.container,supplied);
+        if(this.runningInContainer()&&(!roots&&supplied.startsWith('/home/')||mapsToContainerMount))throw new HttpException({code:'PROJECT_HOST_MOUNT_REQUIRED',message:`A pasta “${value}” não está montada no contêiner do Orbit. Configure um volume Docker de leitura e escrita para essa pasta e os caminhos ORBIT_HOST_PROJECTS_ROOT e ORBIT_CONTAINER_PROJECTS_ROOT.`},409);
+        throw new HttpException({code:'PROJECT_DIRECTORY_MISSING',message:`A pasta “${supplied}” não existe. Deseja criá-la?`},409);
+      }
       if(code==='EACCES'||code==='EPERM')fail('O Orbit não tem permissão para acessar ou gravar nessa pasta.');
       if(code==='ENOTDIR')fail('O caminho informado contém um item que não é pasta.');
       fail('A pasta local não existe ou não está acessível.');
@@ -175,8 +215,9 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const rawName=body.name;if(typeof rawName!=='string'||!rawName.trim()||rawName.trim().length>120)fail('Nome inválido.');const name=rawName as string;
     const localPath=await this.localPath(body.local_path,body.create_directory===true);
     if(localPath===this.nativeProjectPath())fail('O Orbit é um projeto nativo e não pode ser adicionado à lista de projetos.');
-    const project=await this.db.one('INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,$2,$3) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at',[userId,name.trim(),localPath]);
-    if(!project)fail('Esta pasta já está cadastrada como projeto.',409);return project;
+    const project=await this.db.one<{local_path:string}>('INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,$2,$3) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at',[userId,name.trim(),localPath]);
+    if(!project)throw new HttpException({message:'Esta pasta já está cadastrada como projeto.'},409);
+    return this.exposeProjectPath(project);
   }
   async deleteProject(userId:string,id:string){const project=await this.db.one('DELETE FROM ai_projects WHERE id=$1 AND owner_id=$2 AND NOT is_native RETURNING id',[uuid(id,'Projeto'),userId]);if(!project)fail('Projeto não encontrado.',404);return {ok:true};}
   async updateBoard(boardId:string,userId:string,body:Payload){
@@ -211,6 +252,16 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     if(!card)fail('Cartão não encontrado.',404);return {boardId,card:card as CardContext};
   }
   async settingsForCard(cardId:string,userId:string){const {card}=await this.card(cardId,userId);return {projectId:card.ai_project_id||card.ai_default_project_id||null,model:card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model||null,effort:card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort||null};}
+  async skillInstructions(projectId:string,userId:string,cardId?:string){
+    if(!this.projectRegistry||!projectId)return '';
+    const configured=cardId?await this.db.one<{skills:string[];agent:string|null}>('SELECT skills,agent FROM card_execution_configs WHERE card_id=$1',[cardId]):null;
+    const resolved=await this.projectRegistry.skillPrompt(projectId,userId,Array.isArray(configured?.skills)?configured.skills:[],configured?.agent);
+    return resolved.text?`\n\nINSTRUÇÕES DE SKILLS DO PROJETO (aplique as instruções pertinentes a esta solicitação):\n${resolved.text}`:'';
+  }
+  async skillInstructionsForCard(cardId:string,userId:string){
+    const settings=await this.settingsForCard(cardId,userId);
+    return settings.projectId?this.skillInstructions(settings.projectId,userId,cardId):'';
+  }
   async commentSettings(cardId:string,userId:string):Promise<CommentSettings>{
     const settings=await this.settingsForCard(cardId,userId);
     if(!settings.projectId)fail('Selecione o projeto do cartão ou configure o projeto padrão do quadro antes de comentar.',409);
@@ -247,6 +298,11 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     this.commentQueueWorkers.set(cardId,worker);
     return worker;
   }
+  private async queuePaused(userId:string){
+    await enforceCodexQuota(this.db);
+    const row=await this.db.one<{paused:boolean}>("SELECT COALESCE(preferences->>'codexQueuePaused','false')='true' AS paused FROM users WHERE id=$1",[userId]);
+    return row?.paused||false;
+  }
   private async runCommentQueue(cardId:string){
     const lock=this.db.pool.connect();
     const client=await lock;const lockName=`orbit-comment-queue:${cardId}`;let locked=false;
@@ -255,12 +311,17 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       while(true){
         const active=await this.db.one<{active:boolean}>('SELECT EXISTS(SELECT 1 FROM card_runs WHERE card_id=$1 AND status IN (\'queued\',\'running\')) OR EXISTS(SELECT 1 FROM card_ai_runs WHERE card_id=$1 AND status=\'running\') AS active',[cardId]);
         if(active?.active){await new Promise(resolveDelay=>setTimeout(resolveDelay,750));continue;}
+        await enforceCodexQuota(this.db);
         const job=await this.db.one<CommentJob>(`WITH next_job AS (
-          SELECT comment_id FROM card_ai_comment_jobs WHERE card_id=$1 AND status='queued'
+          SELECT comment_id FROM card_ai_comment_jobs WHERE card_id=$1 AND status='queued' AND NOT EXISTS (SELECT 1 FROM users WHERE id=card_ai_comment_jobs.user_id AND preferences->>'codexQueuePaused'='true')
           ORDER BY created_at,comment_id FOR UPDATE SKIP LOCKED LIMIT 1
         ) UPDATE card_ai_comment_jobs jobs SET status='running',started_at=now(),error=NULL
           FROM next_job WHERE jobs.comment_id=next_job.comment_id RETURNING jobs.comment_id,jobs.card_id,jobs.user_id,jobs.project_id,jobs.model,jobs.effort`,[cardId]);
-        if(!job)break;
+        if(!job){
+          const pending=await this.db.one("SELECT 1 FROM card_ai_comment_jobs WHERE card_id=$1 AND status='queued' LIMIT 1",[cardId]);
+          if(!pending)break;
+          await new Promise(resolveDelay=>setTimeout(resolveDelay,750));continue;
+        }
         try{
           this.events.commentChanged((await this.card(cardId,job.user_id)).boardId,cardId);
           const comment=await this.db.one<{body:string}>('SELECT body FROM comments WHERE id=$1',[job.comment_id]);
@@ -303,7 +364,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     if(projectId&&!await this.db.one('SELECT id FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]))fail('Projeto não encontrado.',404);
     const rawModel=body.ai_model;const model=rawModel===undefined?card.ai_model:rawModel===null||rawModel===''?null:selectedModel(rawModel);
     const rawEffort=body.ai_effort;const effort=rawEffort===undefined?card.ai_effort:rawEffort===null||rawEffort===''?null:selectedEffort(rawEffort);
-    const rawExecutionMode=body.ai_execution_mode;const executionMode=rawExecutionMode===undefined?card.ai_execution_mode:rawExecutionMode==='planning'||rawExecutionMode==='bypass'?rawExecutionMode:fail('Modo de execução da IA inválido.');
+    const rawExecutionMode=body.ai_execution_mode;const executionMode=rawExecutionMode===undefined?card.ai_execution_mode:rawExecutionMode==='planning'||rawExecutionMode==='bypass'||rawExecutionMode==='question'?rawExecutionMode:fail('Modo de execução da IA inválido.');
     const client=await this.db.pool.connect();let updated;
     try{
       await client.query('BEGIN');
@@ -323,18 +384,47 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     await this.features.record(userId,context.boardId,cardId,'prompt_session','configurou a sessão de prompt');return updated;
   }
   async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,project_id,model,effort,source,summary,file_changes,activities,status,prompt,output,error,codex_session_id,COALESCE(started_at,created_at) AS started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);}
+  async toolDiagnostics(userId:string){
+    const [latest,failures]=await Promise.all([
+      this.db.one<{status:string;error:string|null;activities:ToolCommandActivity[]|null}>('SELECT status,error,activities FROM card_ai_runs WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[userId]),
+      this.db.query<{id:string;card_id:string;board_id:string;card_title:string;board_title:string;status:string;error:string|null;activities:ToolCommandActivity[]|null;created_at:string}>(`SELECT r.id,r.card_id,l.board_id,c.title AS card_title,b.title AS board_title,r.status,r.error,r.activities,r.created_at
+        FROM card_ai_runs r JOIN cards c ON c.id=r.card_id JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+        WHERE r.user_id=$1 AND r.status='error' ORDER BY r.created_at DESC,r.id DESC`,[userId]),
+    ]);
+    const issues=failures.flatMap(run=>diagnoseToolFailures(run).map(problem=>({run_id:run.id,card_id:run.card_id,board_id:run.board_id,card_title:run.card_title,board_title:run.board_title,created_at:run.created_at,...problem})));
+    const status=latest&&['queued','running'].includes(latest.status)?'running':latest&&diagnoseToolFailures(latest).length?'error':'success';
+    return {status,issues};
+  }
   async cancelRun(cardId:string,runId:string,userId:string){
     const context=await this.card(cardId,userId);const id=uuid(runId,'Execução');
-    const cancelled=await this.db.one<{id:string}>("UPDATE card_ai_runs SET status='cancelled',error='Cancelado pelo usuário.',finished_at=now() WHERE id=$1 AND card_id=$2 AND status='queued' RETURNING id",[id,cardId]);
+    const cancelled=await this.db.one<{id:string}>("UPDATE card_ai_runs SET status='cancelled',error='Cancelado pelo usuário.',finished_at=now() WHERE id=$1 AND card_id=$2 AND status IN ('queued','waiting_answer') RETURNING id",[id,cardId]);
     if(!cancelled){const run=await this.db.one('SELECT status FROM card_ai_runs WHERE id=$1 AND card_id=$2',[id,cardId]);if(!run)fail('Execução não encontrada.',404);fail('Somente execuções ainda na fila podem ser canceladas.',409);}
     this.events.promptProgress(context.boardId,cardId,{runId:id,status:'cancelled',message:'Execução cancelada.'});
     return {ok:true,status:'cancelled' as const};
   }
-  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply){
-    const context=await this.card(cardId,userId);const card=context.card;const model=commentReply?.model||card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model;const effort=commentReply?.effort||card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort;const projectId=commentReply?.project_id||card.ai_project_id||card.ai_default_project_id;
+  async answerRun(cardId:string,runId:string,userId:string,body:Payload){
+    await this.card(cardId,userId);
+    assertOrbitFields(body,orbitArchitecture.promptRunAnswer);
+    const id=uuid(runId,'Execução');
+    if(typeof body.answer!=='string'||!body.answer.trim()||body.answer.trim().length>4000)return fail('Informe uma resposta de até 4000 caracteres.');
+    const run=await this.db.one<{id:string;user_id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string}>("SELECT id,user_id,project_id,model,effort,codex_session_id,output FROM card_ai_runs WHERE id=$1 AND card_id=$2 AND status='waiting_answer'",[id,cardId]);
+    if(!run)return fail('A execução não está aguardando resposta.',409);
+    if(run.user_id!==userId)fail('Somente o autor da execução pode responder.',403);
+    return this.execute(cardId,userId,{instruction:body.answer.trim()},undefined,run);
+  }
+  async waitingAnswers(userId:string){
+    return this.db.query(`SELECT r.id,r.card_id,l.board_id,c.title AS card_title,r.output,r.created_at
+      FROM card_ai_runs r JOIN cards c ON c.id=r.card_id JOIN lists l ON l.id=c.list_id
+      JOIN board_members bm ON bm.board_id=l.board_id AND bm.user_id=$1
+      WHERE r.user_id=$1 AND r.status='waiting_answer' ORDER BY r.created_at,r.id`,[userId]);
+  }
+  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string}){
+    const context=await this.card(cardId,userId);const card=context.card;const model=resume?.model||commentReply?.model||card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model;const effort=resume?.effort||commentReply?.effort||card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort;const projectId=resume?.project_id||commentReply?.project_id||card.ai_project_id||card.ai_default_project_id;
     if(!model)fail('Escolha um modelo no cartão, quadro, projeto ou configuração global.',409);if(!effort)fail('Escolha um esforço no cartão, quadro, projeto ou configuração global.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
     const project=await this.db.one<{id:string;name:string;local_path:string;is_native:boolean}>('SELECT id,name,local_path,is_native FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
-    if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string;is_native:boolean};const localPath=await this.localPath(currentProject.local_path);
+    if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string;is_native:boolean};
+    if(currentProject.is_native&&process.env.ORBIT_ENV==='production')fail('O código PROD é somente leitura. Para desenvolver o Orbit, use o ambiente DEV em http://localhost:3001.',409);
+    const localPath=await this.localPath(currentProject.local_path);
     const instructionLimit=commentReply?5000:4000;
     const additional=body.instruction===undefined?'':typeof body.instruction==='string'&&body.instruction.trim().length<=instructionLimit?body.instruction.trim():fail('A instrução adicional é inválida.');
     const checklistRows=await this.db.query<{checklist_title:string;item_text:string|null;completed:boolean|null}>(
@@ -359,18 +449,41 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       : '';
     const initialCommentIsAlreadyInHistory=commentReply&&conversationRows.some(row=>row.body===additional);
     let previousSessionId:string|null=null;let continuing=false;
-    const executionGuidance='Tudo o que foi feito nos prompts anteriores já está concluído. O histórico anterior está disponível neste prompt apenas como contexto; não repita nem reexecute o trabalho já realizado. Implemente somente o último comentário, a partir de todo o histórico anterior. Implemente a solicitação nesta execução. Você pode editar arquivos, executar builds e verificações adequadas e respeitar as regras de ciclo de vida do projeto: só reinicie serviços quando o usuário solicitar explicitamente. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio. Não encerre com a execução pendente nem publique alterações sem pedido explícito do usuário. ECONOMIA DE DADOS: use o histórico e a descrição como contexto sem repeti-los na resposta; envie mensagens de progresso curtas; não copie arquivos completos, diffs ou saídas de terminal para a resposta. Em comandos de validação longos, grave a saída em arquivo temporário, mostre apenas sucesso/falha e, se falhar, apresente somente as linhas relevantes do erro. Seja breve, salvo quando o usuário pedir detalhes.';
-    const promptImages=await this.descriptionImages(cardId,card.description);
-    const imagePrompt=promptImages.length?`\n\nIMAGENS DA DESCRIÇÃO: ${promptImages.length} arquivo(s) de imagem foram anexados visualmente a esta solicitação. Analise o conteúdo delas junto com a descrição.`:'';
+    const executionGuidance='Use o histórico anterior como referência e confira o estado atual dos arquivos e das verificações; não presuma que uma execução anterior concluiu ou validou o trabalho. Implemente somente a solicitação atual e os itens pendentes da checklist deste cartão. Não execute checklists dos cartões de contexto nem repita trabalho já comprovado. Implemente a solicitação nesta execução. Você pode editar arquivos, executar builds e verificações adequadas e respeitar as regras de ciclo de vida do projeto: só reinicie serviços quando o usuário solicitar explicitamente. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio. Não encerre com a execução pendente nem publique alterações sem pedido explícito do usuário. ECONOMIA DE DADOS: use o histórico e a descrição como contexto sem repeti-los na resposta; envie mensagens de progresso curtas; não copie arquivos completos, diffs ou saídas de terminal para a resposta. Em comandos de validação longos, grave a saída em arquivo temporário, mostre apenas sucesso/falha e, se falhar, apresente somente as linhas relevantes do erro. Seja breve, salvo quando o usuário pedir detalhes.';
+    const contextsPrompt=cardContextsPrompt(await linkedCardContexts(this.db,cardId,userId));
+    const skillsPrompt=await this.skillInstructions(projectId as string,userId,cardId);
+    const configuredScope=await this.db.one<{context:{write_scope?:string[]};permissions:string[]}>('SELECT context,permissions FROM card_execution_configs WHERE card_id=$1',[cardId]);
+    const writeScope=configuredScope?.context.write_scope;
+    let projectChecks:string[][]=[];if(this.projectRegistry){const registered=await this.projectRegistry.get(projectId as string,userId);if(registered.config.require_write_scope===true&&writeScope===undefined)fail('Este projeto exige um escopo de arquivos configurado para cada demanda.',409);projectChecks=validateProjectChecks(registered.config.post_execution_checks);if(projectChecks.length&&!configuredScope?.permissions.includes('process.execute'))fail('As verificações obrigatórias do projeto exigem permissão para executar processos.',409);}
+    const promptImages=await this.descriptionImages(cardId);
+    if(commentReply){
+      const commentImages=await this.db.query<{name:string;mime_type:string;data:Buffer}>(
+        "SELECT name,mime_type,data FROM comment_attachments WHERE comment_id=$1 AND kind='file' AND mime_type IN ('image/png','image/jpeg','image/webp','image/gif','image/avif') AND data IS NOT NULL ORDER BY created_at,id LIMIT 10",
+        [commentReply.comment_id]);
+      promptImages.push(...commentImages.map(row=>({name:row.name,mimeType:row.mime_type,data:row.data})));
+    }
+    const imagePrompt=promptImages.length?`\n\nIMAGENS ANEXADAS AO CARTÃO: ${promptImages.length} arquivo(s) de imagem foram anexados ao cartão e estão disponíveis visualmente nesta solicitação. Analise seu conteúdo junto com o texto e identifique os elementos visuais solicitados.`:'';
     const summaryLineLimit=card.ai_execution_mode==='planning'?null:10;
     const summaryInstruction=`\n\nFORMATO FINAL OBRIGATÓRIO:\nDepois da implementação, responda em português com no máximo 5 tópicos curtos, sem repetir o prompt, o histórico, arquivos inteiros ou logs. Em seguida, encerre com um resumo objetivo e didático${summaryLineLimit===null?'':' em até 10 linhas físicas (use menos quando bastar)'}, exatamente neste bloco:\n${summaryStart}\n${summaryLineLimit===null?'[resumo objetivo e didático, sem limite de linhas]':'[resumo em até 10 linhas]'}\n[[ORBIT_COMMIT_TYPE]]\n[um tipo Conventional Commit em minúsculas, como feat, fix, chore, docs, refactor, test ou outro tipo apropriado]\n[[ORBIT_COMMIT_SUMMARY]]\n[descrição simples e objetiva do que foi feito, em uma única linha, sem prefixo de tipo]\n${summaryEnd}\nNão escreva nada depois do marcador final. Relate o que foi feito e o resultado das verificações; não invente resultados.`;
-    const makePrompt=()=>continuing
-      ? `${executionGuidance}\n\nContinue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir. ${commentReply?'A conversa completa já está nesta sessão; use-a como contexto e processe somente o comentário novo abaixo. ':''}Esta orientação substitui instruções anteriores da sessão que impeçam a implementação ou a validação local.\n\nCARTÃO: ${card.title}\n\nDESCRIÇÃO ATUAL:\n${card.description||card.title}${imagePrompt}${checklistPrompt}${commentReply?'':conversationPrompt}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}${summaryInstruction}`
-      : `${executionGuidance}\n\nVocê está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${imagePrompt}${checklistPrompt}${conversationPrompt}${additional&&!initialCommentIsAlreadyInHistory?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}${summaryInstruction}`;
+    const questionMode=Boolean(resume)||card.ai_execution_mode==='question';
+    const initialQuestion=questionMode&&!resume;
+    const modeGuidance=questionMode?`\n\n${questionGuidance(Boolean(resume))}${resume?`\n\nPERGUNTA ANTERIOR:\n${resume.output}`:''}`:'';
+    const makePrompt=()=>(continuing
+      ? `${executionGuidance}\n\nContinue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir. ${commentReply?'A conversa completa já está nesta sessão; use-a como contexto e processe somente o comentário novo abaixo. ':''}Esta orientação substitui instruções anteriores da sessão que impeçam a implementação ou a validação local.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nDESCRIÇÃO ATUAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${commentReply?'':conversationPrompt}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}${summaryInstruction}`
+      : `${executionGuidance}\n\nVocê está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${conversationPrompt}${additional&&!initialCommentIsAlreadyInHistory?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}${summaryInstruction}`)+modeGuidance;
     let prompt=makePrompt();
     const client=await this.db.pool.connect();let run:{id:string};
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[cardId]);
-      run=(await client.query<{id:string}>("INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source,worker_id,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued') RETURNING id",[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description',this.workerId])).rows[0];await client.query('COMMIT');
+      if(resume){
+        const resumed=(await client.query<{id:string}>("UPDATE card_ai_runs SET status='queued',prompt=$4,worker_id=$3,heartbeat_at=now(),output=NULL,error=NULL,finished_at=NULL WHERE id=$1 AND card_id=$2 AND user_id=$5 AND status='waiting_answer' RETURNING id",[resume.id,cardId,this.workerId,prompt,userId])).rows[0];
+        if(!resumed)fail('A execução já foi respondida ou cancelada.',409);
+        run=resumed;
+      }else{
+        const waiting=(await client.query("SELECT id FROM card_ai_runs WHERE card_id=$1 AND status='waiting_answer' LIMIT 1",[cardId])).rows[0];
+        if(waiting)fail('Responda ou cancele a pergunta pendente na aba Execução.',409);
+        run=(await client.query<{id:string}>("INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source,worker_id,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued') RETURNING id",[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description',this.workerId])).rows[0];
+      }
+      await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     const queuedHeartbeat=setInterval(()=>void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='queued'",[run!.id,this.workerId]).catch(()=>undefined),5_000);
     queuedHeartbeat.unref();
@@ -379,12 +492,13 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       let cardClient:PoolClient|null=null;let cardLocked=false;let projectClient:PoolClient|null=null;let projectLocked=false;const cardLockName=`orbit-ai-card:${cardId}`;const projectLockName=`orbit-ai-project:${localPath}`;
       try {
         while(true){
+          if(await this.queuePaused(userId)){await new Promise(resolveDelay=>setTimeout(resolveDelay,750));continue;}
           const candidate=await this.db.pool.connect();
           const state=(await candidate.query<{status:string}>("SELECT status FROM card_ai_runs WHERE id=$1 AND worker_id=$2",[run!.id,this.workerId])).rows[0];
           if(state?.status!=='queued'){candidate.release();return;}
           const acquired=(await candidate.query<{locked:boolean}>('SELECT pg_try_advisory_lock(hashtext($1)::bigint) AS locked',[cardLockName])).rows[0]?.locked;
           if(!acquired){candidate.release();await new Promise(resolveDelay=>setTimeout(resolveDelay,250));continue;}
-          const first=(await candidate.query<{id:string}>("SELECT id FROM card_ai_runs WHERE card_id=$1 AND status='queued' ORDER BY created_at,id LIMIT 1",[cardId])).rows[0];
+          const first=(await candidate.query<{id:string}>("SELECT id FROM card_ai_runs WHERE card_id=$1 AND status IN ('queued','waiting_answer') ORDER BY created_at,id LIMIT 1",[cardId])).rows[0];
           if(first?.id===run!.id){cardClient=candidate;cardLocked=true;break;}
           await candidate.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[cardLockName]);candidate.release();
           await new Promise(resolveDelay=>setTimeout(resolveDelay,250));
@@ -392,7 +506,12 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         projectClient=await this.db.pool.connect();
         await projectClient.query('SELECT pg_advisory_lock(hashtext($1)::bigint)',[projectLockName]);projectLocked=true;
         const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND id<>$3 AND codex_session_id IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1',[cardId,currentProject.id,run!.id]);
-        previousSessionId=previous?.codex_session_id||null;continuing=Boolean(previousSessionId);prompt=makePrompt();
+        previousSessionId=resume?.codex_session_id||previous?.codex_session_id||null;continuing=Boolean(previousSessionId);prompt=makePrompt();
+        while(await this.queuePaused(userId)){
+          const pending=await this.db.one<{status:string}>('SELECT status FROM card_ai_runs WHERE id=$1',[run!.id]);
+          if(pending?.status!=='queued')return;
+          await new Promise(resolveDelay=>setTimeout(resolveDelay,750));
+        }
         const claimed=await this.db.one("UPDATE card_ai_runs SET status='running',prompt=$2,started_at=now(),heartbeat_at=now() WHERE id=$1 AND worker_id=$3 AND status='queued' RETURNING id",[run!.id,prompt,this.workerId]);
         if(!claimed){
           const state=await this.db.one<{status:string}>('SELECT status FROM card_ai_runs WHERE id=$1 AND worker_id=$2',[run!.id,this.workerId]);
@@ -408,10 +527,22 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
           this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message,output,replace,files:details?.fileChanges?[...fileChanges.values()]:undefined,activity:details?.activity});
         };
         progress(`Iniciando ${model} com esforço ${effort}.`);
-        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined),()=>this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).then(()=>undefined),card.ai_execution_mode||'bypass',promptImages);
+        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined),()=>this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).then(()=>undefined),initialQuestion?'planning':questionMode?'bypass':card.ai_execution_mode==='planning'?'planning':'bypass',promptImages,initialQuestion?[]:writeScope,initialQuestion?[]:projectChecks,questionMode);
+        await enforceCodexQuota(this.db,true);
         for(const change of result.fileChanges)fileChanges.set(change.path,change);
         for(const activity of result.activities)activities.set(activity.id,activity);
         await outputWrite;
+        const question=questionMode?extractPromptQuestion(result.output):null;
+        if(initialQuestion&&!question)throw new Error('O modo Questionar não retornou uma pergunta válida. Tente novamente.');
+        if(question){
+          const waiting=await this.db.one("UPDATE card_ai_runs SET status='waiting_answer',output=$2,summary=NULL,codex_session_id=$3,file_changes=$4,activities=$5 WHERE id=$1 AND worker_id=$6 AND status='running' RETURNING id",[run!.id,question,result.sessionId,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),this.workerId]);
+          if(waiting){
+            if(commentReply)await this.db.query("UPDATE card_ai_comment_jobs SET status='success',finished_at=now() WHERE comment_id=$1",[commentReply.comment_id]);
+            await this.features.notify(userId,context.boardId,cardId,'prompt_execution','Resposta necessária',question);
+            this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'waiting_answer',message:'Aguardando resposta na fila de perguntas.'});
+          }
+          return;
+        }
         let validationError:string|null=null;
         if(currentProject.is_native){
           const validationHeartbeat=setInterval(()=>void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).catch(()=>undefined),5_000);

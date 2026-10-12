@@ -1,13 +1,14 @@
 'use client';
 
 import { Children, ClipboardEvent, DragEvent, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Image from 'next/image';
 import { ExternalLink, Github, Link2, Youtube } from 'lucide-react';
 import { getToken } from '@/lib/api';
 
-function ProtectedImage({src,alt}:{src:string;alt:string}) {
+function ProtectedImage({src,alt,onClick}:{src:string;alt:string;onClick?:()=>void}) {
   const [url,setUrl]=useState('');
   useEffect(()=>{
     let active=true;let objectUrl='';
@@ -18,7 +19,7 @@ function ProtectedImage({src,alt}:{src:string;alt:string}) {
     }).catch(()=>{if(active)setUrl('');});
     return ()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
   },[src]);
-  return url?<Image unoptimized src={url} alt={alt} width={640} height={320} className="my-2 h-auto max-h-80 max-w-full rounded object-contain"/>:null;
+  return url?<button type="button" onClick={onClick} className="my-2 block cursor-zoom-in"><Image unoptimized src={url} alt={alt} width={640} height={320} className="h-auto max-h-80 max-w-full rounded object-contain"/></button>:null;
 }
 
 function linkInfo(href:string){
@@ -34,11 +35,13 @@ function linkInfo(href:string){
 }
 
 export function RichText({text}:{text:string}) {
+  const [imageUrl,setImageUrl]=useState('');
+  useEffect(()=>{if(!imageUrl)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setImageUrl('');};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[imageUrl]);
   return <div className="rich-text break-words text-sm">
     <Markdown remarkPlugins={[remarkGfm]} components={{
       p:({children})=><p>{Children.map(children,child=>typeof child==='string'?child.split(/(@[\w.-]+)/g).map((part,index)=>part.startsWith('@')?<strong key={index} className="rounded bg-[#dfe1f8] px-0.5 text-[#403294]">{part}</strong>:part):child)}</p>,
       a:({children,href})=>{const info=href?linkInfo(href):null;return <a href={href} target="_blank" rel="noopener noreferrer" className={info?'my-0.5 inline-flex max-w-full items-center gap-1 rounded border border-[#dfe1e6] bg-white px-1.5 py-0.5 text-xs font-semibold text-[#0c66e4] no-underline shadow-sm':'text-[#0c66e4] underline'} title={info?.detail} onClick={event=>event.stopPropagation()}>{info?info.icon:null}<span className="truncate">{info?`${info.label}: ${info.detail}`:children}</span>{info&&<ExternalLink size={11}/>}</a>},
-      img:({src,alt})=>typeof src==='string'&&src?(src.startsWith('/api/card-attachments/')?<ProtectedImage src={src} alt={alt||''}/>:<Image unoptimized src={src} alt={alt||''} width={640} height={320} className="my-2 h-auto max-h-80 max-w-full rounded object-contain"/>):null,
+      img:({src,alt})=>typeof src==='string'&&src?(src.startsWith('/api/card-attachments/')?<ProtectedImage src={src} alt={alt||''} onClick={()=>setImageUrl(src)}/>:<button type="button" onClick={()=>setImageUrl(src)} className="my-2 block cursor-zoom-in"><Image unoptimized src={src} alt={alt||''} width={640} height={320} className="h-auto max-h-80 max-w-full rounded object-contain"/></button>):null,
       code:({children})=><code className="rounded bg-[#e9eaed] px-1 font-mono text-xs">{children}</code>,
       pre:({children})=><pre className="my-2 overflow-x-auto rounded bg-[#e9eaed] p-3 text-xs">{children}</pre>,
       blockquote:({children})=><blockquote className="my-2 border-l-4 border-[#8590a2] pl-3 text-[#626f86]">{children}</blockquote>,
@@ -46,6 +49,7 @@ export function RichText({text}:{text:string}) {
       th:({children})=><th className="border border-[#dfe1e6] p-1 text-left">{children}</th>,
       td:({children})=><td className="border border-[#dfe1e6] p-1">{children}</td>,
     }}>{text}</Markdown>
+    {imageUrl&&typeof document!=='undefined'&&createPortal(<div role="dialog" aria-modal="true" aria-label="Imagem ampliada" onClick={()=>setImageUrl('')} className="fixed inset-0 z-[10000] flex cursor-zoom-out items-center justify-center bg-black/85 p-4"><Image unoptimized src={imageUrl} alt="Imagem ampliada" width={1600} height={1200} onClick={event=>event.stopPropagation()} className="h-auto max-h-full w-auto max-w-full rounded object-contain"/><button type="button" onClick={()=>setImageUrl('')} aria-label="Fechar imagem" className="absolute right-4 top-4 rounded bg-black/60 px-3 py-2 text-sm text-white">Fechar</button></div>,document.body)}
   </div>;
 }
 

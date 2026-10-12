@@ -45,7 +45,9 @@ import { useHydrated } from "@/lib/use-hydrated";
 import { CalendarIntegrations } from "@/components/calendar-integrations";
 import { AiEffortField, AiModelFields } from "@/components/ai-model-fields";
 
-type EnvironmentSettings = { groups: Array<{ id:string; label:string; fields:Array<{key:string;label:string;secret:boolean;value:string;configured:boolean}> }> };
+import {VaultConstantSelect} from '@/components/vault-constant-select';
+
+type EnvironmentSettings = { groups: Array<{ id:string; label:string; fields:Array<{key:string;label:string;secret:boolean;value:string;configured:boolean;vaultReference?:string}> }> };
 type Tab = "profile" | "activity" | "cards" | "projects" | "integrations" | "settings";
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "profile", label: "Perfil", icon: UserRound },
@@ -130,7 +132,7 @@ export default function ProfilePage() {
     if (tab !== "integrations") return;
     api<EnvironmentSettings>("/settings/environment").then((settings) => {
       setEnvironment(settings);
-      setEnvironmentDraft(Object.fromEntries(settings.groups.flatMap((group) => group.fields.map((field) => [field.key, field.value]))));
+      setEnvironmentDraft(Object.fromEntries(settings.groups.flatMap((group) => group.fields.map((field) => [field.key, field.vaultReference||field.value]))));
     }).catch((err) => setError((err as Error).message));
   }, [tab]);
   function changeTab(value: Tab) {
@@ -242,6 +244,10 @@ export default function ProfilePage() {
       try {
         project = await send<AiProject>("/ai/projects", "POST", payload);
       } catch (err) {
+        if ((err as Error & { code?:string }).code === "PROJECT_HOST_MOUNT_REQUIRED") {
+          setError((err as Error).message);
+          return;
+        }
         if ((err as Error & { code?:string }).code !== "PROJECT_DIRECTORY_MISSING") throw err;
         confirm({ title: "Criar pasta do projeto", description: `${(err as Error).message}\n\nDeseja criar essa pasta no servidor do Orbit e cadastrar o projeto?`, confirmLabel: "Criar pasta", destructive: false }, async () => {
           const createdProject = await send<AiProject>("/ai/projects", "POST", { ...payload, create_directory:true });
@@ -293,11 +299,11 @@ export default function ProfilePage() {
     event.preventDefault();
     setSavingEnvironment(true);
     try {
-      const values = Object.fromEntries(Object.entries(environmentDraft).filter(([, value]) => value.length > 0));
+      const values = Object.fromEntries(Object.entries(environmentDraft).filter(([key, value]) => value.length > 0&&!clearEnvironment.includes(key)));
       await send("/settings/environment", "PATCH", { values, clear: clearEnvironment });
       const settings = await api<EnvironmentSettings>("/settings/environment");
       setEnvironment(settings);
-      setEnvironmentDraft(Object.fromEntries(settings.groups.flatMap((group) => group.fields.map((field) => [field.key, field.value]))));
+      setEnvironmentDraft(Object.fromEntries(settings.groups.flatMap((group) => group.fields.map((field) => [field.key, field.vaultReference||field.value]))));
       setClearEnvironment([]);
       setNotice("Configurações salvas. Reinicie a API para aplicar as alterações.");
       setError("");
@@ -543,7 +549,7 @@ export default function ProfilePage() {
                       <span className="h-9 w-1 rounded bg-[#0c66e4]" />
                       <span className="min-w-0 flex-1">
                         <strong
-                          className={`block truncate text-sm ${card.completed ? "text-[#626f86] line-through" : ""}`}
+                          className="block truncate text-sm"
                         >
                           {card.title}
                         </strong>
@@ -659,7 +665,7 @@ export default function ProfilePage() {
                   />
                 </label>
                 <button type="button" onClick={() => { setDirectoryPickerOpen(true); void browseProjectDirectory(); }} className="mt-2 rounded border border-[#c1c7d0] px-3 py-2 text-xs font-semibold text-[#344563] hover:bg-[#f7f8fa]">Navegar pelas pastas</button>
-                    <p className="mt-2 text-xs text-[#626f86]">Informe ou selecione um caminho absoluto acessível pelo servidor do Orbit. Se a pasta não existir, perguntaremos antes de criá-la.</p>
+                    <p className="mt-2 text-xs text-[#626f86]">Informe ou selecione um caminho absoluto acessível pela API do Orbit. Em instalações Docker, pastas do host precisam estar montadas no contêiner.</p>
                 <button disabled={savingProject || !projectName.trim() || !projectPath.trim()} className="mt-4 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   {savingProject ? "Salvando..." : "Adicionar"}
                 </button>
@@ -698,7 +704,7 @@ export default function ProfilePage() {
                               autoComplete="off"
                               spellCheck={false}
                               rows={Math.min(5, Math.max(2, (environmentDraft[field.key] || "").split("\n").length))}
-                              value={environmentDraft[field.key] || ""}
+                              disabled={environmentDraft[field.key]?.startsWith("orbit-vault://")} value={environmentDraft[field.key]?.startsWith("orbit-vault://")?"":environmentDraft[field.key] || ""}
                               onChange={(event) => { setEnvironmentDraft((current) => ({ ...current, [field.key]:event.target.value })); if (event.target.value) setClearEnvironment((current) => current.filter((key) => key !== field.key)); }}
                               placeholder={field.configured ? "Configurado; deixe vazio para manter" : "Não configurado"}
                               className="mt-1 w-full resize-y rounded border border-[#c1c7d0] px-3 py-2 text-sm font-normal text-[#172b4d]"
@@ -708,12 +714,13 @@ export default function ProfilePage() {
                               type="text"
                               autoComplete="off"
                               spellCheck={false}
-                              value={environmentDraft[field.key] || ""}
+                              disabled={environmentDraft[field.key]?.startsWith("orbit-vault://")} value={environmentDraft[field.key]?.startsWith("orbit-vault://")?"":environmentDraft[field.key] || ""}
                               onChange={(event) => { setEnvironmentDraft((current) => ({ ...current, [field.key]:event.target.value })); if (event.target.value) setClearEnvironment((current) => current.filter((key) => key !== field.key)); }}
                               placeholder="Não configurado"
                               className="mt-1 w-full rounded border border-[#c1c7d0] px-3 py-2 text-sm font-normal text-[#172b4d]"
                             />
                           )}
+                          {["google","microsoft","email"].includes(group.id)&&<VaultConstantSelect label={`Constante para ${field.label}`} value={environmentDraft[field.key]||""} onChange={value=>{setEnvironmentDraft(current=>({...current,[field.key]:value}));setClearEnvironment(current=>!value&&environmentDraft[field.key]?.startsWith("orbit-vault://")?[...new Set([...current,field.key])]:current.filter(key=>key!==field.key))}}/>}
                           <span className="mt-1 flex items-center justify-between gap-2 font-normal text-[#626f86]"><code>{field.key}</code>{field.configured && <button type="button" className="text-[#ae2a19] hover:underline" onClick={() => { setClearEnvironment((current) => current.includes(field.key) ? current.filter((key) => key !== field.key) : [...current, field.key]); setEnvironmentDraft((current) => ({ ...current, [field.key]:"" })); }}>{clearEnvironment.includes(field.key) ? "Cancelar remoção" : "Remover"}</button>}</span>
                         </label>
                       ))}

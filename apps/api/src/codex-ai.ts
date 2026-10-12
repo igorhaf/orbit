@@ -1,3 +1,4 @@
+import { extractPromptQuestion } from './prompt-question';
 import { HttpException, Injectable } from '@nestjs/common';
 import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -5,6 +6,9 @@ import { isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:pa
 import { spawn } from 'node:child_process';
 import { execFile } from 'node:child_process';
 import { prepareOrbitCodexHome } from './codex-home';
+import { orbitArchitecturePrompt } from './orbit-architecture';
+import { captureFileScope } from './execution/file-scope';
+import {runProjectChecks} from './execution/project-checks';
 
 const MAX_OUTPUT = 20_000;
 const stripAnsi=(value:string)=>value.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`,'g'),'');
@@ -31,12 +35,30 @@ export const codexErrorMessage=(detail:string) => {
 @Injectable()
 export class CodexAiService {
   async complete(instruction: string, model?: string, effort?: string): Promise<string> {
-    const result=await this.run(instruction, process.cwd(), model, effort);
+    // Text generation is not authorization to edit the application's source.
+    const result=await this.run(instruction, process.cwd(), model, effort, undefined, undefined, undefined, undefined, 'planning');
     return typeof result==='string'?result:result.output;
   }
-  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[]): Promise<CodexExecution> {
-    const result=await this.run(instruction, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode, images);
-    return typeof result==='string'?{output:result,sessionId:sessionId||null,fileChanges:[],activities:[]}:result;
+  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], writeScope?:string[], projectChecks:string[][]=[], allowQuestions=false): Promise<CodexExecution> {
+    const verify=writeScope===undefined?null:await captureFileScope(projectPath,writeScope);
+    try{
+      const scoped=writeScope===undefined?instruction:`ESCRITA LIMITADA A ESTES ARQUIVOS (qualquer alteração fora desta lista será revertida e falhará a execução):\n${writeScope.join('\n')}\n\n${instruction}`;
+      const result=await this.run(scoped, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode, images);
+      if(verify)await verify();
+      if(projectChecks.length&&!(allowQuestions&&extractPromptQuestion(typeof result==='string'?result:result.output))){
+        progress?.('Validando as verificações obrigatórias do projeto…');
+        const heartbeat=setInterval(()=>void Promise.resolve(onHeartbeat?.()).catch(()=>undefined),5000);
+        try{await runProjectChecks(projectPath,projectChecks)}finally{clearInterval(heartbeat)}
+      }
+      if(verify)await verify();
+      return typeof result==='string'?{output:result,sessionId:sessionId||null,fileChanges:[],activities:[]}:result;
+    }catch(error){
+      if(verify){
+        if(projectChecks.length){const restored=await verify.rollback();if(restored.length)progress?.('As alterações da execução reprovada foram restauradas.');}
+        else await verify();
+      }
+      throw error;
+    }
   }
   private progressMessage(line:string):{message:string;output?:boolean;delta?:boolean;replace?:boolean;cumulative?:boolean;itemId?:string;fileChanges?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:PromptActivity}|null {
     try {
@@ -94,7 +116,7 @@ export class CodexAiService {
           '--output-last-message', output, '-',
         ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['pipe', progress?'pipe':'ignore', 'pipe'] });
         child.stdin?.on('error', () => { /* The Codex process may exit before consuming the prompt. */ });
-        child.stdin?.end(instruction);
+        child.stdin?.end(`${orbitArchitecturePrompt}\n\n${instruction}`);
         let stderr = '';
         let stdout = '';
         let receivedOutputDelta=false;

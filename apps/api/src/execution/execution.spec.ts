@@ -23,6 +23,8 @@ test('configuration is optional, constrained and rejects secrets',()=>{
   assert.equal(validateConfig({}).enabled,false);
   assert.throws(()=>validateConfig({...emptyConfig(),permissions:['root']}));
   assert.throws(()=>validateConfig({...emptyConfig(),executor:'codex; rm -rf /'}));
+  assert.throws(()=>validateConfig({...emptyConfig(),invented_workflow:'automatic'}),/Campos fora da arquitetura/);
+  assert.throws(()=>validateConfig({...emptyConfig(),context:{legacy_prompt:'invented'}}),/Campos fora da arquitetura/);
   assert.throws(()=>noSecrets({nested:{apiKey:'secret'}}));
   assert.deepEqual(scrub({token:'123',value:'Bearer abc.def.ghi'}),{token:'[REDACTED]',value:'Bearer [REDACTED]'});
   assert.ok(!redact('CLI error: {"access_token":"do-not-expose"}').includes('do-not-expose'));
@@ -43,12 +45,23 @@ test('resource registries build selected context and reject traversal and symlin
     assert.equal((await new AgentRegistry(registry).resolve(project,'developer')).body,'Agent instructions');
     assert.equal((await new SkillRegistry(registry).resolve(project,'review')).id,'review');
     const config={...emptyConfig(),agent:'developer',permissions:['filesystem.read'],context:{knowledge:['selected'],files:['context.txt']}};
-    const built=await new ContextBuilder({} as Db,registry).build(project,config,{id:'id',title:'Task',description:'Description'},'user');
+    const built=await new ContextBuilder({query:async()=>[]} as unknown as Db,registry).build(project,config,{id:'id',title:'Task',description:'Description'},'user');
     assert.ok(built.prompt.includes('Selected knowledge'));assert.ok(built.prompt.includes('Mandatory rules'));assert.ok(!built.prompt.includes('MUST NOT LOAD'));assert.equal(built.resources.length,5);
+    const defaults=await new ContextBuilder({query:async()=>[]} as unknown as Db,registry).build({...project,config:{...project.config,skills:['review']}},{...config,agent:null,skills:[]},{id:'id',title:'Task',description:'Description'},'user');
+    assert.deepEqual(defaults.skills,['review']);
+    assert.match(defaults.prompt,/CONTRATO OBRIGATÓRIO DE ARQUITETURA ORBIT/);
+    assert.ok(defaults.prompt.includes('Review instructions'));
+    const references=[{id:'parent',title:'Parent purpose',description:'Current acceptance criteria'},{id:'second',title:'Second context',description:'Supporting details'}];
+    const linked=await new ContextBuilder({query:async()=>references,one:async()=>{throw new Error('Duplicate reference was loaded twice')}} as unknown as Db,registry).build(project,{...config,context:{...config.context,cards:['parent']}},{id:'id',title:'Task',description:'Description'},'user');
+    assert.ok(linked.prompt.includes('Current acceptance criteria'));
+    assert.ok(linked.prompt.includes('Supporting details'));
+    assert.equal(linked.prompt.split('[[ORBIT_CONTEXTS]]').length,2);
+    assert.match(linked.prompt,/apenas como base de referência/);
+    assert.equal(linked.resources.filter(resource=>resource.kind==='card').length,2);
     await assert.rejects(()=>safePath(root,'../'));
     await assert.rejects(()=>safePath(root,'escape/passwd'));
     await assert.rejects(()=>safePath(root,'.env'));
-    await assert.rejects(()=>new ContextBuilder({} as Db,registry).build(project,{...config,permissions:['filesystem.write']},{id:'id',title:'Task',description:''},'user'));
+    await assert.rejects(()=>new ContextBuilder({query:async()=>[]} as unknown as Db,registry).build(project,{...config,permissions:['filesystem.write']},{id:'id',title:'Task',description:''},'user'));
   }finally{await rm(root,{recursive:true,force:true})}
 });
 test('project resources support optional directories, yml files and actionable diagnostics',async()=>{
@@ -65,6 +78,20 @@ test('project resources support optional directories, yml files and actionable d
     assert.ok(!project.warnings.some(warning=>warning.includes('rules')));
     await writeFile(join(root,'.orbit','agents','broken.md'),'---\nid: broken');
     const refreshed=await registry.get('project','user');assert.ok(refreshed.warnings.some(warning=>warning.includes('agents/broken')));
+  }finally{await rm(root,{recursive:true,force:true})}
+});
+test('project skill prompts combine defaults, agent skills and card-specific skills',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'orbit-project-skills-'));
+  try{
+    await mkdir(join(root,'.orbit','agents'),{recursive:true});await mkdir(join(root,'.orbit','skills'));
+    await writeFile(join(root,'.orbit','orbit.yaml'),'skills: [shared]\nexecution:\n  agent: developer\n  skills: [execution]\n');
+    await writeFile(join(root,'.orbit','agents','developer.md'),'---\nid: developer\nskills: [agent-skill, shared]\n---\nAgent');
+    await writeFile(join(root,'.orbit','agents','qa.md'),'---\nid: qa\nskills: [card-agent]\n---\nQA agent');
+    for(const id of ['shared','execution','agent-skill','card-specific','card-agent'])await writeFile(join(root,'.orbit','skills',`${id}.md`),`---\nid: ${id}\n---\nInstructions for ${id}`);
+    const registry=new ProjectRegistry({one:async()=>({id:'project',name:'Project',local_path:root})} as unknown as Db);
+    const result=await registry.skillPrompt('project','user',['card-specific','execution'],'qa');
+    assert.deepEqual(result.skills,['shared','execution','card-specific','agent-skill','card-agent']);
+    for(const skill of result.skills)assert.ok(result.text.includes(`Instructions for ${skill}`));
   }finally{await rm(root,{recursive:true,force:true})}
 });
 test('plugin and executor registries enforce schemas, capabilities and permissions',async()=>{

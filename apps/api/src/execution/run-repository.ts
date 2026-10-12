@@ -1,3 +1,4 @@
+import { enforceCodexQuota } from '../codex-limits';
 import {PoolClient} from 'pg';
 import {Db} from '../db';
 import {ExecutionConfig,ExecutionResult,Output} from './types';
@@ -14,9 +15,10 @@ export class RunRepository {
     await this.log(client,run.id,'queued','Execução criada.');return run;
   }
   async log(client:PoolClient,id:string,stage:string,message:string){await client.query('INSERT INTO card_run_logs(run_id,stage,message) VALUES($1,$2,$3)',[id,stage,redact(message)])}
-  async claim(){const client=await this.db.pool.connect();try{await client.query('BEGIN');const run=(await client.query<Run>("UPDATE card_runs SET status='running',stage='context',started_at=now(),heartbeat_at=now() WHERE id=(SELECT id FROM card_runs WHERE status='queued' AND NOT EXISTS (SELECT 1 FROM card_ai_runs WHERE status IN ('queued','running')) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *")).rows[0];if(run)await this.log(client,run.id,'started','Execução iniciada.');await client.query('COMMIT');return run}catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}}
+  async claim(){await enforceCodexQuota(this.db);const client=await this.db.pool.connect();try{await client.query('BEGIN');const run=(await client.query<Run>("UPDATE card_runs SET status='running',stage='context',started_at=now(),heartbeat_at=now() WHERE id=(SELECT id FROM card_runs WHERE status='queued' AND NOT EXISTS (SELECT 1 FROM users WHERE users.id=card_runs.user_id AND preferences->>'codexQueuePaused'='true') AND NOT EXISTS (SELECT 1 FROM card_ai_runs WHERE status IN ('queued','running')) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *")).rows[0];if(run)await this.log(client,run.id,'started','Execução iniciada.');await client.query('COMMIT');return run}catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}}
   async stage(id:string,stage:string,message:string){const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query("UPDATE card_runs SET stage=$2,heartbeat_at=now() WHERE id=$1 AND status='running'",[id,stage]);await this.log(client,id,stage,message);await client.query('COMMIT')}catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}}
   async finish(run:Run,status:'success'|'failed'|'cancelled',output?:ExecutionResult,error?:string,after?:(client:PoolClient)=>Promise<void>){
+    await enforceCodexQuota(this.db,true);
     const client=await this.db.pool.connect();try{
       await client.query('BEGIN');const locked=(await client.query('SELECT status,cancel_requested FROM card_runs WHERE id=$1 FOR UPDATE',[run.id])).rows[0];
       if(!locked||!['queued','running'].includes(locked.status)){await client.query('COMMIT');return}

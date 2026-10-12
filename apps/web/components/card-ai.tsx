@@ -237,8 +237,9 @@ export function CardAi({
         <label className="min-w-0 text-xs font-semibold text-[#5e5a87]">
           Modo
           <select aria-label="Modo de execução da IA" value={card.ai_execution_mode || "bypass"} disabled={busy} onChange={(event) => void configure({ ai_execution_mode: event.target.value })} className="mt-1 block w-full min-w-0 rounded border border-[#c3b6f7] bg-white p-2 text-sm font-normal text-[#172b4d]">
-            <option value="planning">Plan</option>
-            <option value="bypass">Bypass</option>
+            <option value="planning">Planejamento</option>
+            <option value="bypass">Permissivo</option>
+            <option value="question">Questionar</option>
           </select>
         </label>
         <div className="min-w-0 text-sm font-normal text-[#5e5a87]"><AiEffortField value={card.ai_effort || inheritedEffort} disabled={busy} onChange={(value) => configure({ ai_effort: value })} /></div>

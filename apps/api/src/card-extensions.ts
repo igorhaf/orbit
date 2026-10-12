@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param
 import { Request } from 'express';
 import { Db } from './db';
 import { FeaturesService } from './features';
+import { cardContextsPrompt, linkedCardContexts } from './card-contexts';
+import { assertOrbitFields, orbitArchitecture } from './orbit-architecture';
 
 type Payload = Record<string, unknown>;
 type ChecklistRow = { [key:string]:unknown; id:string; card_id:string; title:string; position:number };
@@ -46,6 +48,7 @@ export class CardExtensionsService {
   }
   async catalog(boardId:string,userId:string){await this.board(boardId,userId);return this.db.query(`SELECT cl.id,cl.title,c.title AS card_title FROM checklists cl JOIN cards c ON c.id=cl.card_id JOIN lists l ON l.id=c.list_id WHERE l.board_id=$1 AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.title,cl.position`,[boardId])}
   async createChecklist(cardId:string,userId:string,body:Payload){
+    assertOrbitFields(body,orbitArchitecture.checklistCreate);
     const boardId=await this.card(cardId,userId);
     const title=text(body.title,'Título',160);
     let source:string|null=null;
@@ -53,6 +56,9 @@ export class CardExtensionsService {
     const client=await this.db.pool.connect();
     try{
       await client.query('BEGIN');
+      await client.query('SELECT id FROM cards WHERE id=$1 FOR UPDATE',[cardId]);
+      const existing=(await client.query('SELECT * FROM checklists WHERE card_id=$1 ORDER BY position,id LIMIT 1',[cardId])).rows[0] as ChecklistRow|undefined;
+      if(existing){await client.query('COMMIT');return existing;}
       const group=(await client.query('INSERT INTO checklists(card_id,title,position) VALUES($1,$2,COALESCE((SELECT max(position)+1 FROM checklists WHERE card_id=$1),0)) RETURNING *',[cardId,title])).rows[0];
       if(source)await client.query(`INSERT INTO checklist_items(card_id,checklist_id,text,completed,position,due_date)
         SELECT $1,$2,text,completed,position,due_date FROM checklist_items WHERE checklist_id=$3 ORDER BY position`,[cardId,group.id,source]);
@@ -76,8 +82,9 @@ export class CardExtensionsService {
     }
     return this.db.one('UPDATE checklists SET title=$2 WHERE id=$1 RETURNING *',[checklistId,title]);
   }
-  async deleteChecklist(checklistId:string,userId:string){await this.checklist(checklistId,userId);await this.db.query('DELETE FROM checklists WHERE id=$1',[checklistId]);return {ok:true}}
+  async deleteChecklist(checklistId:string,userId:string){await this.checklist(checklistId,userId);return bad('O checklist faz parte do cartão. Exclua apenas seus itens.',409)}
   async addItems(checklistId:string,userId:string,body:Payload){
+    assertOrbitFields(body,orbitArchitecture.checklistItemCreate);
     const group=await this.checklist(checklistId,userId);
     const raw=typeof body.text==='string'?body.text:'';
     if(raw.length>30000)bad('Texto muito longo.');
@@ -118,24 +125,68 @@ export class CardExtensionsService {
     if(body.completed!==undefined)await this.features.record(userId,item.board_id,item.card_id,'checklist_updated',completed?'concluiu um item de checklist':'reabriu um item de checklist');
     return updated;
   }
-  async deleteItem(itemId:string,userId:string){await this.item(itemId,userId);await this.db.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);return {ok:true}}
+  async deleteItem(itemId:string,userId:string){const item=await this.item(itemId,userId);const normalized=item.text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();await this.db.query('UPDATE ai_checklist_history SET excluded=true WHERE card_id=$1 AND normalized_text=$2',[item.card_id,normalized]);await this.db.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);return {ok:true}}
+  async contexts(cardId:string,userId:string){
+    const boardId=await this.card(cardId,userId);
+    const [selected,candidates]=await Promise.all([
+      linkedCardContexts(this.db,cardId,userId),
+      this.db.query(`SELECT c.id,c.title,c.url_token FROM cards c JOIN lists l ON l.id=c.list_id
+        WHERE l.board_id=$1 AND c.id<>$2 AND c.archived_at IS NULL AND l.archived_at IS NULL
+          AND c.kind IN ('normal','template') ORDER BY c.title,c.id`,[boardId,cardId]),
+    ]);
+    return {selected,candidates,prompt:cardContextsPrompt(selected)};
+  }
+  async updateContexts(cardId:string,userId:string,body:Payload){
+    assertOrbitFields(body,orbitArchitecture.contexts);
+    const boardId=await this.card(cardId,userId);
+    if(!Array.isArray(body.ids)||body.ids.length>50||body.ids.some(value=>typeof value!=='string'))bad('Informe até 50 cartões de contexto.');
+    const ids=[...new Set((body.ids as string[]).map(id))];
+    if(ids.includes(cardId))bad('Um cartão não pode ser seu próprio contexto.');
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM cards WHERE id=$1 FOR UPDATE',[cardId]);
+      const available=(await client.query(`SELECT c.id FROM cards c JOIN lists l ON l.id=c.list_id
+        WHERE c.id=ANY($1::uuid[]) AND l.board_id=$2 AND c.archived_at IS NULL AND l.archived_at IS NULL
+          AND c.kind IN ('normal','template')`,[ids,boardId])).rows;
+      if(available.length!==ids.length)bad('Os contextos devem ser cartões disponíveis neste quadro.');
+      await client.query('DELETE FROM card_contexts WHERE card_id=$1',[cardId]);
+      for(let position=0;position<ids.length;position++)await client.query('INSERT INTO card_contexts(card_id,context_card_id,position) VALUES($1,$2,$3)',[cardId,ids[position],position]);
+      await client.query('UPDATE cards SET updated_at=now() WHERE id=$1',[cardId]);
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+    await this.features.record(userId,boardId,cardId,'card_updated','atualizou os contextos do cartão');
+    return this.contexts(cardId,userId);
+  }
   async convertItem(itemId:string,userId:string,body:Payload){
+    assertOrbitFields(body,orbitArchitecture.checklistConvert);
     const item=await this.item(itemId,userId);
-    const parent=await this.db.one<{list_id:string;title:string;description:string;checklist_title:string}>('SELECT c.list_id,c.title,c.description,cl.title AS checklist_title FROM cards c JOIN checklists cl ON cl.id=$2 WHERE c.id=$1',[item.card_id,item.checklist_id]);
+    const parent=await this.db.one<{list_id:string}>('SELECT c.list_id FROM cards c WHERE c.id=$1',[item.card_id]);
     const listId=body.list_id===undefined?parent!.list_id:id(String(body.list_id));
     const destination=await this.db.one('SELECT board_id,archived_at FROM lists WHERE id=$1',[listId]);
     if(!destination||destination.board_id!==item.board_id||destination.archived_at)bad('Lista de destino inválida.');
     const client=await this.db.pool.connect();
     try{await client.query('BEGIN');
-      const description=[`Convertido do checklist “${parent!.checklist_title}” do cartão “${parent!.title}”.`,parent!.description?.trim()?`\nContexto do cartão de origem:\n${parent!.description.trim()}`:''].join('\n');
-      const card=(await client.query(`INSERT INTO cards(list_id,title,description,due_date,position) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING *`,[listId,item.text,description,item.due_date])).rows[0];
+      const locked=await client.query('SELECT id FROM checklist_items WHERE id=$1 FOR UPDATE',[itemId]);
+      if(!locked.rows.length)bad('Este item já foi convertido ou removido.',409);
+      const card=(await client.query(`INSERT INTO cards(list_id,title,description,due_date,position) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING *`,[listId,item.text,item.text,item.due_date])).rows[0];
+      await client.query('INSERT INTO card_contexts(card_id,context_card_id) VALUES($1,$2)',[card.id,item.card_id]);
+      await client.query(`INSERT INTO card_contexts(card_id,context_card_id,position)
+        SELECT $1,ref.context_card_id,row_number() OVER (ORDER BY ref.position,ref.context_card_id)
+        FROM card_contexts ref JOIN cards c ON c.id=ref.context_card_id JOIN lists l ON l.id=c.list_id
+        WHERE ref.card_id=$2 AND l.board_id=$3 AND c.archived_at IS NULL AND l.archived_at IS NULL
+          AND c.kind IN ('normal','template') AND c.id<>$2
+        ON CONFLICT DO NOTHING`,[card.id,item.card_id,item.board_id]);
       await client.query(`INSERT INTO card_labels(card_id,label_id) SELECT $1,label_id FROM card_labels WHERE card_id=$2 ON CONFLICT DO NOTHING`,[card.id,item.card_id]);
+      const normalized=item.text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+      await client.query('UPDATE ai_checklist_history SET excluded=true WHERE card_id=$1 AND normalized_text=$2',[item.card_id,normalized]);
       await client.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);
       await client.query('COMMIT');await this.features.record(userId,item.board_id,card.id,'card_created',`converteu o item ${item.text} em cartão`);return card;
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
   }
   async fields(boardId:string,userId:string){await this.board(boardId,userId);return this.db.query('SELECT * FROM custom_fields WHERE board_id=$1 ORDER BY position,id',[boardId])}
   private fieldInput(body:Payload,old?:{name:string;type:string;options:unknown;show_on_card:boolean}){
+    assertOrbitFields(body,['name','type','options','show_on_card']);
     const name=body.name===undefined?old?.name:text(body.name,'Nome',100);
     const type=body.type===undefined?old?.type:text(body.type,'Tipo',16);
     if(!name||!type||!types.has(type))bad('Campo inválido.');
@@ -146,10 +197,14 @@ export class CardExtensionsService {
     if(type!=='dropdown'&&options.length)bad('Apenas dropdown aceita opções.');
     const show=body.show_on_card===undefined?old?.show_on_card??true:body.show_on_card;
     if(typeof show!=='boolean')bad('Visibilidade inválida.');
-    return {name,type,options,show};
+    return {name:name as string,type:type as string,options,show:show as boolean};
   }
-  async createField(boardId:string,userId:string,body:Payload){await this.board(boardId,userId);const field=this.fieldInput(body);return this.db.one('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM custom_fields WHERE board_id=$1),0),$5) RETURNING *',[boardId,field.name,field.type,JSON.stringify(field.options),field.show])}
-  async updateField(boardId:string,fieldId:string,userId:string,body:Payload){await this.board(boardId,userId);const old=await this.db.one('SELECT * FROM custom_fields WHERE id=$1 AND board_id=$2',[id(fieldId),boardId]);if(!old)bad('Campo não encontrado.',404);const field=this.fieldInput(body,old as {name:string;type:string;options:unknown;show_on_card:boolean});if(field.type!==old!.type)bad('Não é possível alterar o tipo de um campo.');const updated=await this.db.one('UPDATE custom_fields SET name=$3,options=$4,show_on_card=$5 WHERE id=$1 AND board_id=$2 RETURNING *',[fieldId,boardId,field.name,JSON.stringify(field.options),field.show]);if(field.type==='dropdown')await this.db.query(`DELETE FROM card_custom_values WHERE field_id=$1 AND NOT (value #>> '{}')=ANY($2::text[])`,[fieldId,field.options]);return updated}
+  private async assertReferenceField(boardId:string,field:{name:string;type:string;options:string[]}){
+    const policy=await this.db.one(`SELECT reference_board_id FROM board_architecture_contracts WHERE board_id=$1`,[boardId]);
+    if(policy&&!await this.db.one('SELECT id FROM custom_fields WHERE board_id=$1 AND name=$2 AND type=$3 AND options=$4::jsonb',[policy.reference_board_id,field.name,field.type,JSON.stringify(field.options)]))bad('Este campo não existe no quadro de referência Orbit.',409);
+  }
+  async createField(boardId:string,userId:string,body:Payload){await this.board(boardId,userId);const field=this.fieldInput(body);await this.assertReferenceField(boardId,field);return this.db.one('INSERT INTO custom_fields(board_id,name,type,options,position,show_on_card) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM custom_fields WHERE board_id=$1),0),$5) RETURNING *',[boardId,field.name,field.type,JSON.stringify(field.options),field.show])}
+  async updateField(boardId:string,fieldId:string,userId:string,body:Payload){await this.board(boardId,userId);const old=await this.db.one('SELECT * FROM custom_fields WHERE id=$1 AND board_id=$2',[id(fieldId),boardId]);if(!old)bad('Campo não encontrado.',404);const field=this.fieldInput(body,old as {name:string;type:string;options:unknown;show_on_card:boolean});if(field.type!==old!.type)bad('Não é possível alterar o tipo de um campo.');await this.assertReferenceField(boardId,field);const updated=await this.db.one('UPDATE custom_fields SET name=$3,options=$4,show_on_card=$5 WHERE id=$1 AND board_id=$2 RETURNING *',[fieldId,boardId,field.name,JSON.stringify(field.options),field.show]);if(field.type==='dropdown')await this.db.query(`DELETE FROM card_custom_values WHERE field_id=$1 AND NOT (value #>> '{}')=ANY($2::text[])`,[fieldId,field.options]);return updated}
   async deleteField(boardId:string,fieldId:string,userId:string){await this.board(boardId,userId);const result=await this.db.one('DELETE FROM custom_fields WHERE id=$1 AND board_id=$2 RETURNING id',[id(fieldId),boardId]);if(!result)bad('Campo não encontrado.',404);return {ok:true}}
   async setValue(cardId:string,fieldId:string,userId:string,body:Payload){const boardId=await this.card(cardId,userId);const field=await this.db.one('SELECT * FROM custom_fields WHERE id=$1 AND board_id=$2',[id(fieldId),boardId]);if(!field)bad('Campo não encontrado.',404);const input=body.value;if(input===null||input===''){await this.db.query('DELETE FROM card_custom_values WHERE card_id=$1 AND field_id=$2',[cardId,fieldId]);return {value:null}}
     let value:unknown=input;
@@ -165,6 +220,8 @@ export class CardExtensionsService {
 @Controller()
 export class CardExtensionsController {
   constructor(@Inject(CardExtensionsService) private service:CardExtensionsService){}
+  @Get('cards/:cardId/contexts') contexts(@Req() request:Request,@Param('cardId') cardId:string){return this.service.contexts(cardId,this.service.user(request))}
+  @Patch('cards/:cardId/contexts') updateContexts(@Req() request:Request,@Param('cardId') cardId:string,@Body() body:Payload){return this.service.updateContexts(cardId,this.service.user(request),body)}
   @Get('cards/:cardId/extensions') details(@Req() request:Request,@Param('cardId') cardId:string){return this.service.details(cardId,this.service.user(request))}
   @Get('boards/:boardId/checklists/catalog') catalog(@Req() request:Request,@Param('boardId') boardId:string){return this.service.catalog(boardId,this.service.user(request))}
   @Post('cards/:cardId/checklists') createChecklist(@Req() request:Request,@Param('cardId') cardId:string,@Body() body:Payload){return this.service.createChecklist(cardId,this.service.user(request),body)}

@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } f
 import { chmod, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { Db } from './db';
+import {credentials, VaultCredential} from './vault-credentials';
 import { backupDirectory } from './database-backup';
 import { decryptVaultPayload, encryptVaultPayload, vaultItemHtml } from './vault-crypto';
 
@@ -10,7 +11,7 @@ const ARCHIVE = /^orbit-vault-\d{4}-\d{2}-\d{2}T[^/]+\.vault\.enc$/;
 const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024;
 
 type Category = { id: string; name: string; icon: string; position: number };
-type Item = { id: string; title: string; category: string; content_html: string; created_at: string; updated_at: string };
+type Item = { id: string; title: string; category: string; content_html: string; credentials?:VaultCredential[]; created_at: string; updated_at: string };
 type Snapshot = { format: 'orbit-vault-v1'; created_at: string; owner_id: string; categories: Category[]; items: Item[] };
 export type VaultBackupManifest = { format: 'orbit-vault-aes-256-gcm-v1'; archive: string; owner_id: string; created_at: string; item_count: number; archive_bytes: number; sha256: string; key_fingerprint: string };
 
@@ -48,6 +49,7 @@ function decrypt(archive: Buffer, secret: Buffer): Snapshot {
   if (value.format !== 'orbit-vault-v1' || typeof value.owner_id !== 'string' || !Array.isArray(value.categories) || !Array.isArray(value.items)) throw new Error('Backup do cofre inválido.');
   for (const category of value.categories) if (typeof category.id !== 'string' || typeof category.name !== 'string' || typeof category.icon !== 'string' || !Number.isInteger(category.position)) throw new Error('Categoria inválida no backup do cofre.');
   for (const item of value.items) if (typeof item.id !== 'string' || typeof item.title !== 'string' || typeof item.category !== 'string' || typeof item.content_html !== 'string' || item.content_html.length > 500_000) throw new Error('Item inválido no backup do cofre.');
+  for(const item of value.items)credentials(item.credentials);
   return value as Snapshot;
 }
 
@@ -60,7 +62,7 @@ export async function createVaultBackup(db: Db, ownerId: string): Promise<VaultB
     const rows = (await client.query<{id:string;title:string;category:string;notes:string;secret_data:string;created_at:string;updated_at:string}>(
       'SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,COALESCE(c.description,v.notes) AS notes,v.secret_data,v.created_at,v.updated_at FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id WHERE v.owner_id=$1 ORDER BY v.created_at,v.id', [ownerId],
     )).rows;
-    items = rows.map(row => ({id:row.id,title:row.title,category:row.category,content_html:vaultItemHtml(decryptVaultPayload(row.secret_data),row.notes),created_at:row.created_at,updated_at:row.updated_at}));
+    items = rows.map(row => ({id:row.id,title:row.title,category:row.category,content_html:vaultItemHtml(decryptVaultPayload(row.secret_data),row.notes),credentials:credentials(decryptVaultPayload(row.secret_data).credentials),created_at:row.created_at,updated_at:row.updated_at}));
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
@@ -124,7 +126,7 @@ export async function restoreVaultBackup(db: Db, ownerId: string, path: string) 
     }
     for(const item of snapshot.items){
       const category=categories.get(item.category)||item.category;
-      await client.query('INSERT INTO vault_items(owner_id,title,category,secret_data,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)',[ownerId,item.title,category,encryptVaultPayload({content_html:item.content_html}),item.created_at,item.updated_at]);
+      await client.query('INSERT INTO vault_items(owner_id,title,category,secret_data,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)',[ownerId,item.title,category,encryptVaultPayload({content_html:item.content_html,credentials:credentials(item.credentials)}),item.created_at,item.updated_at]);
     }
     await client.query('COMMIT');
     return {restoredItems:snapshot.items.length,restoredCategories:snapshot.categories.length,archive:manifest.archive};

@@ -2,7 +2,7 @@
 
 ## Arquitetura preservada
 
-Orbit continua usando Next.js/React/Tailwind, NestJS e PostgreSQL (`pg`, SQL explícito), sem Docker. `Board → List → Card`, autenticação JWT, permissões de membros, componentes de cartão, sessões de IA anteriores e suas tabelas permanecem disponíveis. Um cartão comum não precisa de configuração nem cria um Run automaticamente.
+Orbit continua usando Next.js/React/Tailwind, NestJS e PostgreSQL (`pg`, SQL explícito), com ambientes Docker separados. `Board → List → Card`, autenticação JWT, permissões de membros, componentes de cartão, sessões de IA anteriores e suas tabelas permanecem disponíveis. Um cartão comum não precisa de configuração nem cria um Run automaticamente.
 
 A nova capacidade reutiliza o cadastro de projetos locais existente em **Perfil** (`ai_projects`, nome físico preservado), o worker de execuções e os avisos Socket.IO `board:changed`. Não há novo serviço de filas ou infraestrutura externa.
 
@@ -20,9 +20,9 @@ As migrations `001_executable_cards.sql` e `002_project_defaults_and_completion_
 
 Campos consultáveis (estado, card, executor, projeto e datas) são colunas/indexes. Configurações e resultados extensíveis são JSONB. Nenhuma coluna específica de GitHub ou Codex é adicionada ao Card.
 
-O projeto do cartão é único e usa o vínculo já existente da **Sessão de prompt** (`ai_project_id`). A área de execução não repete um seletor de projeto. O projeto carrega `execution` de `orbit.yaml` como defaults para agente, executor, action, skills, diretório, permissões e contexto. O cartão persiste apenas diferenças em `overrides`; alterar o YAML atualiza automaticamente os campos que não foram personalizados no cartão. A opção **Salvar esta configuração como padrão do projeto** grava esses valores em `orbit.yaml`.
+O projeto do cartão usa o vínculo de **IA do cartão**, com herança das configurações do quadro e projeto. Configurações internas de executor, skills, permissões, limites de arquivos e verificações são definidas em `.orbit/orbit.yaml` e na API `GET/PATCH /cards/:id/execution`.
 
-Conceitualmente, o Card mantém seus campos e passa a ter `execution`, `context`, `integrations`, `result` e `runs`. O detalhe de execução retorna a configuração completa; o Kanban carrega somente o resumo opcional de execução e o último estado. `result` é derivado do Run mais recente, não de comentários. Runs anteriores não são sobrescritos. A UI lista os últimos 50; os registros mais antigos permanecem no banco e acessíveis pelo ID.
+A interface atual usa **IA do cartão**, **Contextos** com vínculos vivos, **Próximo prompt** e **Execução**. Os painéis antigos **Execução opcional**, **Contexto**, **Limites de alteração** e **Integrações** foram removidos. Uma configuração persistida no backend não deve fazê-los reaparecer. Execuções Codex são registradas em `card_ai_runs` e exibidas na aba Execução; o histórico legado de `card_runs` continua disponível pela API para os executores que o utilizam.
 
 ## Conclusão por coluna
 
@@ -104,20 +104,17 @@ Cancelamento não desfaz efeitos já executados. Falha numa integração posteri
 Reaproveitamos a fila transacional e o worker existentes. Eventos: aliases `card.created`, `card.updated`, `card.moved`, `card.completed`, além de `execution.queued`, `execution.started`, `execution.completed`, `execution.failed`, `execution.cancelled`. Os nomes antigos continuam válidos.
 
 
-No cartão, selecione destinos após sucesso/falha. Também é possível configurar regras no editor existente, por exemplo `execution.completed → run_agent` com valor `qa`. A cadeia existente limita ciclos a cinco níveis e impede repetir a mesma regra. Importe modelos da seção **Automações** do cartão, revise e ative no editor do quadro. Importar não ativa nem executa o modelo.
+Configure regras no editor de automações do quadro. Não recrie formulários de automação nos cartões. A cadeia existente limita ciclos a cinco níveis e impede repetir a mesma regra.
 
-## Exemplo funcional pela interface
+## Fluxo atual pela interface
 
-1. Execute migrations; mantenha API e web iniciados.
-2. Cadastre a pasta deste repositório no Perfil, ou use um projeto já cadastrado.
-3. Crie um cartão normal, defina o projeto na **Sessão de prompt** e abra **Execução opcional**.
-4. Os campos vêm de `execution` no projeto. Habilite a capacidade e ajuste somente o que for particular ao cartão.
-5. Marque **Salvar esta configuração como padrão do projeto** para publicar os ajustes no `orbit.yaml`; deixe desmarcado para manter o ajuste local. As rules/skills/knowledge do agente entram automaticamente.
-6. Em **Automações**, escolha `Review` como destino após sucesso. Salve capacidades.
-7. Clique **Executar**. Acompanhe **Resultado** e **Histórico de execuções**.
-8. Para automatizar o início, autorize modo automático e a permissão correspondente; importe `development-flow` e ative a regra após ajustar a condição `Ready` ao nome da lista. Para QA, crie a regra de sucesso com ação `run_agent`, valor `qa`.
+1. Selecione o projeto em **IA do cartão**, ou herde o projeto padrão do quadro.
+2. Preencha descrição e checklist; vincule referências pela seção **Contextos**.
+3. Configure os limites e verificações do projeto pela API e `.orbit/orbit.yaml`, quando exigidos.
+4. Use o botão de execução da descrição ou comentários. Confira **Próximo prompt** e acompanhe o histórico real na aba **Execução**.
+5. Aprove a demanda somente após conferir alterações e verificações reais.
 
-Teste mínimo sem IA: selecione executor `plugin`, action `execute`, permissão de leitura e integração `filesystem / read` apontando para `README.md`. O conteúdo aparece como output. Isso testa a mesma fila e histórico sem chamar um modelo.
+Executores legados e plugins continuam disponíveis pelas rotas de execução abaixo. Eles não introduzem outro painel de configuração no cartão.
 
 ## API e validação
 
@@ -140,7 +137,7 @@ npm run build
 npm run test:browser -w apps/api
 ```
 
-Testes unitários cobrem parsing, recursos, configuração, schemas, permissões e paths/symlinks. Integração PostgreSQL cobre compatibilidade, migrations repetidas, concorrência, idempotência, erros, cancelamento, histórico, transições com executor determinístico. Navegador cobre configuração, plugin real, resultado, movimentação e histórico em desktop/mobile. Uma chamada real do adapter Codex foi validada separadamente com prompt inofensivo; os testes automatizados não gastam créditos nem implementam tarefas reais de software.
+Testes unitários cobrem parsing, recursos, configuração, schemas, permissões e paths/symlinks. Integração PostgreSQL cobre compatibilidade, migrations repetidas, concorrência, idempotência, erros, cancelamento, histórico, transições com executor determinístico. Selenium cobre cartões convertidos e configurados, a referência Orbit, ausência dos painéis antigos e navegação por toque nas abas atuais; também verifica que contextos e configuração interna permanecem intactos. Uma chamada real do adapter Codex foi validada separadamente com prompt inofensivo; os testes automatizados não gastam créditos nem implementam tarefas reais de software.
 
 ## Arquivos principais
 
@@ -150,3 +147,27 @@ Testes unitários cobrem parsing, recursos, configuração, schemas, permissões
 - `apps/web/lib/execution.ts`: contratos da interface.
 - `.orbit/`: recursos e fluxo de desenvolvimento de exemplo.
 - Alterações incrementais em `main.ts` e `prompt-sessions.ts`, CardDialog e CardFace conectam a arquitetura sem reescrever o domínio existente.
+
+### Modos de IA e fila de perguntas
+
+Em IA do cartão, Permissivo mantém o valor de API `bypass`, Planejamento mantém
+`planning` e Questionar usa `question`. Questionar examina o projeto em leitura
+e solicita uma decisão antes de implementar. A pergunta fica persistida em
+`card_ai_runs.status = waiting_answer`, fora da fila de execução e sem reter
+os bloqueios do cartão ou projeto. Outros cartões continuam a executar.
+
+A aba Execução apresenta a pergunta e recebe a resposta. O endpoint autenticado
+`POST /cards/:id/prompt-runs/:runId/answer` aceita apenas `{ "answer": "..." }`,
+com texto não vazio de até 4000 caracteres. Exige acesso ao quadro e o autor
+da execução; respostas duplicadas ou a execuções fora da espera retornam 409.
+A resposta recoloca a mesma execução na fila normal, respeitando pausa,
+ordem e bloqueios existentes, e retoma a sessão, modelo e projeto anteriores.
+Se outra decisão for necessária, a execução pode voltar à espera.
+`GET /codex/queue` inclui `waitingAnswers` do usuário para a fila de perguntas.
+Execuções em espera podem ser canceladas pelo endpoint de cancelamento existente.
+A espera sobrevive à reinicialização e não é considerada heartbeat vencido.
+
+O executor sinaliza perguntas com um bloco final não vazio
+`[[ORBIT_QUESTION]] ... [[/ORBIT_QUESTION]]`. Verificações de conclusão rodam
+quando a implementação conclui; escopo de escrita permanece validado em cada turno.
+A migração `060_prompt_questions.sql` habilita os novos valores persistidos.

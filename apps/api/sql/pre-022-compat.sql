@@ -1,5 +1,7 @@
 -- Temporary schema shim for historical migrations 004 and 022.
 -- Migration 022 removes these tables before the application starts.
+-- The current bootstrap already contains the undo constraint; migration 052 adds it.
+ALTER TABLE IF EXISTS git_card_commits DROP CONSTRAINT IF EXISTS git_card_commits_action_check;
 CREATE TABLE IF NOT EXISTS automations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid()
 );

@@ -44,7 +44,6 @@ export function BoardList({
   onAction,
   renderCard,
   query,
-  statusFilter,
   fieldFilter,
   labelFilter = '',
   dueFilter = '',
@@ -58,7 +57,6 @@ export function BoardList({
   onAction: Action;
   renderCard: (card: Card, listColor?: string | null) => React.ReactNode;
   query: string;
-  statusFilter: "all" | "open" | "completed";
   fieldFilter: string;
   labelFilter?: string;
   dueFilter?: string;
@@ -111,11 +109,9 @@ export function BoardList({
     // eslint-disable-next-line react-hooks/purity
     const now=Date.now();const due=card.due_date?new Date(card.due_date).getTime():null;
     const label=!labelFilter||card.labels.some(item=>item.id===labelFilter);
-    const dueMatch=dueFilter===''||dueFilter==='all'||(dueFilter==='overdue'?Boolean(due&&due<now&&!card.completed):dueFilter==='week'?Boolean(due&&due>=now&&due<=now+7*86400000):due===null);
+    const dueMatch=dueFilter===''||dueFilter==='all'||(dueFilter==='overdue'?Boolean(due&&due<now):dueFilter==='week'?Boolean(due&&due>=now&&due<=now+7*86400000):due===null);
     return (
       checkbox && label && dueMatch &&
-      (statusFilter === "all" ||
-        card.completed === (statusFilter === "completed")) &&
       (card.title.toLowerCase().includes(query.toLowerCase()) ||
         card.description?.toLowerCase().includes(query.toLowerCase()))
     );
@@ -251,6 +247,7 @@ export function BoardList({
     <div
       ref={setNodeRef}
       data-orbit-list={list.id}
+      tabIndex={-1}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -313,7 +310,7 @@ export function BoardList({
           title={list.collapsed ? "Expandir lista" : "Recolher lista"}
           className="rounded p-1 text-[#44546f] hover:bg-[#dfe1e6]"
         >
-          {list.collapsed ? (
+      {list.collapsed ? (
             <ChevronRight size={17} />
           ) : (
             <ChevronLeft size={17} />
@@ -434,14 +431,14 @@ export function BoardList({
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     disabled={busy || !title.trim()}
-                    className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
+                    className="min-h-11 rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white"
                   >
                     Adicionar cartão
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdding(false)}
-                    className="rounded p-1 hover:bg-[#dfe1e6]"
+                    className="min-h-11 min-w-11 rounded p-1 hover:bg-[#dfe1e6]"
                   >
                     <X size={20} />
                   </button>
@@ -450,7 +447,7 @@ export function BoardList({
             ) : (
               <button
                 onClick={() => openComposer(list.cards.length)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[#44546f] hover:bg-[#dfe1e6]"
+                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[#44546f] hover:bg-[#dfe1e6]"
               >
                 <Plus size={18} /> Adicionar um cartão
               </button>

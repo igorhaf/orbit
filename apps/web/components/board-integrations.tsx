@@ -1,7 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useId, useLayoutEffect, useRef } from "react";
 import {
   ArrowLeft,
   ArrowLeftRight,
@@ -71,51 +70,20 @@ export function BoardIntegrations({ left, right, expanded, onExpandedChange }: {
   const rail = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const [box, setBox] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const integrations = [
     ...(left.integrations || []).map(integration => ({ list: left, integration, side: "left" as const })),
     ...(right.integrations || []).map(integration => ({ list: right, integration, side: "right" as const })),
   ];
 
   useLayoutEffect(() => {
-    if (!expanded || !rail.current) return;
-    const scroll = rail.current.closest(".board-scroll");
-    if (!scroll) return;
-    const update = () => {
-      const anchor = rail.current!.getBoundingClientRect();
-      const bounds = scroll.getBoundingClientRect();
-      const minLeft = Math.max(8, bounds.left + 8);
-      const maxRight = Math.min(window.innerWidth - 8, bounds.right - 8);
-      if (anchor.right < minLeft || anchor.left > maxRight) {
-        onExpandedChange(null);
-        return;
-      }
-      const available = Math.max(0, maxRight - minLeft);
-      const width = Math.min(available, Math.max(320, Math.min(380, available * 0.5)));
-      const top = Math.max(anchor.top, bounds.top + 8);
-      setBox({
-        top,
-        left: Math.max(minLeft, Math.min(anchor.right + 4, maxRight - width)),
-        width,
-        height: Math.max(0, Math.min(anchor.bottom, bounds.bottom - 8, window.innerHeight - 8) - top),
-      });
-    };
-    update();
+    if (!expanded) return;
     const focusFrame = requestAnimationFrame(() => closeButton.current?.focus({ preventScroll: true }));
-    const observer = new ResizeObserver(update);
-    observer.observe(scroll);
-    observer.observe(rail.current);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
     const dismiss = (event: PointerEvent) => {
       if (!panel.current?.contains(event.target as Node) && !rail.current?.contains(event.target as Node)) onExpandedChange(null);
     };
     document.addEventListener("pointerdown", dismiss);
     return () => {
       cancelAnimationFrame(focusFrame);
-      observer.disconnect();
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
       document.removeEventListener("pointerdown", dismiss);
     };
   }, [expanded, onExpandedChange]);
@@ -128,29 +96,29 @@ export function BoardIntegrations({ left, right, expanded, onExpandedChange }: {
 
   return (
     <>
-      <button
-        ref={rail}
-        type="button"
-        title={label}
-        aria-label={label}
-        aria-expanded={expanded}
-        aria-controls={expanded ? panelId : undefined}
-        onClick={() => expanded ? close() : onExpandedChange(`${left.id}:${right.id}`)}
-        onKeyDown={event => { if (event.key === "Escape" && expanded) close(); }}
-        className={`-mx-3 flex w-6 shrink-0 self-stretch flex-col items-center gap-3 rounded-lg border py-3 text-white shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-white ${expanded ? "border-white/60 bg-[#0c66e4]" : "border-white/20 bg-white/15 hover:bg-white/30"}`}
-      >
-        {expanded ? <ChevronLeft size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
-        <Plug size={14} aria-hidden="true" />
-        <span className="text-[10px] font-semibold [writing-mode:vertical-rl]">Integrações{integrations.length ? ` · ${integrations.length}` : ""}</span>
-      </button>
-      {expanded && box && createPortal(
+      <div className="flex shrink-0 items-stretch gap-1">
+        <button
+          ref={rail}
+          type="button"
+          title={label}
+          aria-label={label}
+          aria-expanded={expanded}
+          aria-controls={expanded ? panelId : undefined}
+          onClick={() => expanded ? close() : onExpandedChange(`${left.id}:${right.id}`)}
+          onKeyDown={event => { if (event.key === "Escape" && expanded) close(); }}
+          className={`flex w-6 shrink-0 flex-col items-center gap-3 rounded-lg border py-3 text-white shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-white ${expanded ? "border-white/60 bg-[#0c66e4]" : "border-white/20 bg-white/15 hover:bg-white/30"}`}
+        >
+          {expanded ? <ChevronLeft size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+          <Plug size={14} aria-hidden="true" />
+          <span className="text-[10px] font-semibold [writing-mode:vertical-rl]">Integrações{integrations.length ? ` · ${integrations.length}` : ""}</span>
+        </button>
+        {expanded && (
         <aside
           ref={panel}
           id={panelId}
           aria-label={`Integrações entre ${left.title} e ${right.title}`}
-          style={{ position: "fixed", ...box }}
           onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); close(); } }}
-          className="z-40 flex min-h-0 flex-col overflow-hidden rounded-xl border border-[#dfe1e6] bg-[#f1f2f4] text-[#172b4d] shadow-xl"
+          className="flex w-[340px] shrink-0 flex-col self-stretch overflow-hidden rounded-xl border border-[#dfe1e6] bg-[#f1f2f4] text-[#172b4d] shadow-xl"
         >
           <header className="flex shrink-0 items-center gap-2 border-b border-[#dfe1e6] p-3">
             <Plug size={17} aria-hidden="true" className="text-[#0c66e4]" />
@@ -173,8 +141,9 @@ export function BoardIntegrations({ left, right, expanded, onExpandedChange }: {
               </div>
             )}
           </div>
-        </aside>, document.body,
-      )}
+        </aside>
+        )}
+      </div>
     </>
   );
 }

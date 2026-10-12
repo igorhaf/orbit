@@ -35,7 +35,8 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
     await writeFile(join(root,'agents/developer.md'),'---\nid: developer\nexecutor: fixture\nskills: [review]\npermissions: [filesystem.read]\n---\nDeveloper instructions');
     await writeFile(join(root,'agents/qa.md'),'---\nid: qa\nexecutor: fixture\naction: analyze\npermissions: [filesystem.read]\n---\nQA instructions');
     await writeFile(join(root,'skills/review.md'),'---\nid: review\n---\nReview');await writeFile(join(root,'selected.txt'),'Project content');
-    service.executors.register({id:'fixture',name:'Fixture',actions:[{id:'analyze',name:'Analyze',permissions:[]},{id:'fail',name:'Fail',permissions:[]},{id:'wait',name:'Wait',permissions:[]}],async execute(input){
+    service.executors.register({id:'fixture',name:'Fixture',actions:[{id:'analyze',name:'Analyze',permissions:[]},{id:'fail',name:'Fail',permissions:[]},{id:'wait',name:'Wait',permissions:[]},{id:'tamper',name:'Tamper',permissions:[]}],async execute(input){
+      if(input.action==='tamper')await writeFile(join(input.projectRoot,'selected.txt'),'unauthorized');
       if(input.action==='fail')throw new Error('Expected executor failure');
       if(input.action==='wait')await new Promise<void>(resolve=>input.signal.addEventListener('abort',()=>resolve(),{once:true}));
       return {summary:'Done',outputs:[{type:'json',value:{ok:true,token:'do-not-expose'}}]};
@@ -78,6 +79,20 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
       await service.save(card,user,{...config,action:'wait'});const running=await service.enqueue(card,user,{}),task=service.tick();
       for(let i=0;i<100;i++){if((await db.one('SELECT stage FROM card_runs WHERE id=$1',[running.id]))?.stage==='executor')break;await new Promise(r=>setTimeout(r,10))}
       await service.cancel(running.id,user);await task;assert.equal((await service.runDetail(running.id,user)).status,'cancelled');
+    });
+    await t.test('file scope protects the project even for a custom executor',async()=>{
+      await service.save(card,user,{...config,action:'tamper',context:{files:['selected.txt'],write_scope:[]},integrations:[]});
+      const run=await service.enqueue(card,user,{});await service.tick();const detail=await service.runDetail(run.id,user);
+      assert.equal(detail.status,'failed');assert.match(String((detail as unknown as {error:string}).error),/fora do escopo.*revertidas/);
+      assert.equal(await readFile(join(root,'selected.txt'),'utf8'),'Project content');
+    });
+    await t.test('failed mandatory verification rolls back custom executor changes',async()=>{
+      await writeFile(join(root,'orbit.yaml'),'default_executor: fixture\npermissions: [filesystem.read, filesystem.write, process.execute]\npost_execution_checks:\n  - [node, -e, "process.exit(1)"]\n');
+      await service.save(card,user,{...config,agent:null,action:'tamper',permissions:['filesystem.read','filesystem.write','process.execute'],context:{write_scope:['selected.txt']},integrations:[]});
+      const run=await service.enqueue(card,user,{});await service.tick();const detail=await service.runDetail(run.id,user);
+      assert.equal(detail.status,'failed');assert.match(String((detail as unknown as {error:string}).error),/obrigatória falhou/);
+      assert.equal(await readFile(join(root,'selected.txt'),'utf8'),'Project content');
+      assert.ok(detail.logs.some(log=>log.message.includes('restauradas')));
     });
     await t.test('invalid project YAML is visible but does not crash the catalog',async()=>{await writeFile(join(root,'orbit.yaml'),'permissions: [');const catalog=await service.catalog(user,project);assert.ok(catalog.project!.warnings.length);await assert.rejects(()=>service.save(card,user,config))});
   }finally{service.onModuleDestroy();await db.query(`DROP SCHEMA ${schema} CASCADE`);await db.onModuleDestroy();await rm(root,{recursive:true,force:true})}

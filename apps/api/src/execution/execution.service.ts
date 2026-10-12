@@ -1,3 +1,5 @@
+import {runProjectChecks,validateProjectChecks} from './project-checks';
+import {captureFileScope} from './file-scope';
 import {HttpException,Inject,Injectable,OnModuleInit,OnModuleDestroy,Optional} from '@nestjs/common';
 import {randomUUID} from 'node:crypto';
 import {Db} from '../db';
@@ -34,7 +36,7 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
   }
   onModuleDestroy(){this.stopping=true;if(this.timer)clearInterval(this.timer);for(const controller of this.controllers.values())controller.abort()}
   async card(id:string,user:string){await this.features.cardBoard(id,user);const row=await this.db.one('SELECT c.*,l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1 AND NOT EXISTS(SELECT 1 FROM vault_items WHERE card_id=c.id)',[id]);if(!row)throw new HttpException('Cartões no cofre não possuem execução.',409);return row as {id:string;title:string;description:string;board_id:string}}
-  async config(id:string):Promise<ExecutionConfig>{const row=await this.db.one('SELECT * FROM card_execution_configs WHERE card_id=$1',[id]);return row?validateConfig(row):emptyConfig()}
+  async config(id:string):Promise<ExecutionConfig>{const row=await this.db.one('SELECT * FROM card_execution_configs WHERE card_id=$1',[id]);return row?validateConfig(Object.fromEntries(Object.keys(emptyConfig()).map(key=>[key,row[key]]))):emptyConfig()}
   async catalog(user:string,id?:string){
     if(id&&!isId(id))throw new HttpException('Projeto inválido.',400);
     const project=id?await this.projects.get(id,user):null;
@@ -55,6 +57,7 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
     const executor=this.executors.get(context.executor),action=executor.actions.find(x=>x.id===config.action);
     if(!action)throw new Error('Ação não registrada para este executor.');
     for(const permission of action.permissions)if(!config.permissions.includes(permission))throw new Error(`A ação exige ${permission}.`);
+    if(validateProjectChecks(project.config.post_execution_checks).length&&!config.permissions.includes('process.execute'))throw new Error('As verificações obrigatórias do projeto exigem process.execute.');
     const enabledPlugins=stringList(project.config.plugins,'plugins');
     for(const integration of config.integrations){if(!enabledPlugins.includes(integration.plugin))throw new Error(`Plugin ${integration.plugin} não habilitado no projeto.`);this.plugins.validate(integration,config.permissions)}
     if(config.executor==='plugin'&&!config.integrations.length)throw new Error('Adicione uma integração.');
@@ -86,7 +89,16 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
       await client.query('COMMIT');this.events.boardChanged(card.board_id,'orbit');return {id:run.id,status:run.status};
     }catch(error){await client.query('ROLLBACK');if(error instanceof HttpException)throw error;throw new HttpException({message:redact((error as Error).message)},409)}finally{client.release()}
   }
-  async cancel(id:string,user:string){const run=await this.runDetail(id,user);await this.db.query("UPDATE card_runs SET cancel_requested=true WHERE id=$1 AND status IN ('queued','running')",[id]);this.controllers.get(id)?.abort();if(run.status==='queued')await this.runs.finish(run as Run,'cancelled',undefined,'Cancelado pelo usuário.');return {ok:true}}
+  async cancel(id:string,user:string){
+    const run=await this.runDetail(id,user);
+    const queued=await this.db.query("UPDATE card_runs SET status='cancelled',cancel_requested=true,error='Cancelado pelo usuário.',finished_at=now(),heartbeat_at=now() WHERE id=$1 AND status='queued' RETURNING id",[id]);
+    if(queued.length){await this.db.query("INSERT INTO card_run_logs(run_id,stage,message) VALUES($1,'cancelled','Cancelado pelo usuário.')",[id]);return {ok:true}}
+    const running=await this.db.query("UPDATE card_runs SET cancel_requested=true WHERE id=$1 AND status='running' RETURNING id",[id]);
+    if(running.length){this.controllers.get(id)?.abort();return {ok:true}}
+    // The run became terminal after runDetail read it; cancellation is already complete.
+    if(['success','failed','cancelled'].includes(run.status))return {ok:true};
+    throw new HttpException('Execução não pode ser cancelada neste estado.',409);
+  }
   async processRun(run:Run){
     const controller=new AbortController();this.controllers.set(run.id,controller);
     const heartbeat=setInterval(()=>void this.db.query("UPDATE card_runs SET heartbeat_at=now() WHERE id=$1 AND status='running' RETURNING cancel_requested",[run.id]).then(rows=>{if(!rows.length||rows[0].cancel_requested)controller.abort()}).catch(()=>controller.abort()),2000);
@@ -96,12 +108,27 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
       const {project,context,executor}=await this.resolved(run.input.config,run.input.card,run.user_id);
       await this.db.query('UPDATE card_runs SET input=input || $2::jsonb WHERE id=$1',[run.id,JSON.stringify({resources:context.resources})]);
       await this.runs.stage(run.id,'resources',`Recursos carregados: ${context.resources.map(x=>x.kind+':'+x.id).join(', ')||'apenas o cartão'}.`);
-      const input:ExecutionInput={runId:run.id,cardId:run.card_id,userId:run.user_id,projectId:project.id,title:run.input.card.title,prompt:context.prompt,workingDirectory:context.workingDirectory,projectRoot:project.root,permissions:run.input.config.permissions,action:run.action,integrations:run.input.config.integrations,signal:controller.signal};
+      const input:ExecutionInput={runId:run.id,cardId:run.card_id,userId:run.user_id,projectId:project.id,title:run.input.card.title,prompt:context.prompt,workingDirectory:context.workingDirectory,projectRoot:project.root,permissions:run.input.config.permissions,action:run.action,integrations:run.input.config.integrations,signal:controller.signal,writeScope:run.input.config.context.write_scope};
       await this.runs.stage(run.id,'executor',`Iniciando ${run.executor}.${run.action}.`);
       if(controller.signal.aborted)throw new Error('Execução cancelada.');
-      const result:ExecutionResult=await executor.execute(input);
+      let result:ExecutionResult;
+      const verifyScope=input.writeScope===undefined?null:await captureFileScope(project.root,input.writeScope);
+      const checks=validateProjectChecks(project.config.post_execution_checks);
+      try{
+      result=await executor.execute(input);
       if(run.executor!=='plugin')for(const integration of run.input.config.integrations){if(controller.signal.aborted)throw new Error('Execução cancelada.');await this.runs.stage(run.id,'plugin',`Executando ${integration.plugin}.${integration.action}.`);result.outputs.push(await this.plugins.execute(integration,input,{notifications:{publish:(notification)=>this.notifications.publish(integration.plugin,input.userId,notification)}}))}
       if(!result||typeof result.summary!=='string'||!Array.isArray(result.outputs)||result.outputs.length>30||JSON.stringify(result).length>200000)throw new Error('Resultado do executor inválido.');
+        if(verifyScope)await verifyScope();
+        if(checks.length){await this.runs.stage(run.id,'verification','Executando verificações obrigatórias do projeto.');await runProjectChecks(project.root,checks);}
+        if(controller.signal.aborted)throw new Error('Execução cancelada.');
+        if(verifyScope)await verifyScope();
+      }catch(error){
+        if(verifyScope){
+          if(checks.length){const restored=await verifyScope.rollback();if(restored.length)await this.runs.stage(run.id,'verification','As alterações da execução reprovada foram restauradas.');}
+          else await verifyScope();
+        }
+        throw error;
+      }
       await this.runs.stage(run.id,'result','Persistindo resultado.');
       await this.runs.finish(run,controller.signal.aborted?'cancelled':'success',result);
       if(!controller.signal.aborted)await this.features.notify(run.user_id,card.board_id,run.card_id,'card_execution','Execução concluída',`A execução do cartão “${run.input.card.title}” foi concluída.`);

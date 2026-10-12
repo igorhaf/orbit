@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Boxes, Check, PlugZap, Power, RefreshCw, Settings, ShieldCheck, Zap } from "lucide-react";
 import { api, Board, getToken, PluginCatalogItem, send, User } from "@/lib/api";
 import { AppHeader, WorkspaceSidebar } from "@/components/ui";
+import {CloudflareTunnelPanel} from "@/plugins/cloudflare-tunnel/CloudflareTunnelPanel";
+import {AlexaOrbitPanel} from '@/plugins/alexa-orbit/AlexaOrbitPanel';
 import { PluginConfiguration } from "@/components/plugin-configuration";
 
 export default function PluginsPage() {
@@ -70,6 +72,6 @@ export default function PluginsPage() {
       </main>
     </div>
     {selected && <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#091e42a6] p-4 pt-[10vh]" onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}><section role="dialog" aria-modal="true" className="w-full max-w-xl rounded-xl bg-white p-6 shadow-dialog"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[#0c66e4]">Plugin</p><h2 className="mt-1 text-xl font-bold text-[#172b4d]">{selected.name}</h2><p className="mt-1 font-mono text-xs text-[#626f86]">{selected.id} · v{selected.version}</p></div><button onClick={() => setSelected(null)} className="rounded px-2 py-1 text-xl text-[#626f86] hover:bg-[#f1f2f4]" aria-label="Fechar">×</button></div><div className="mt-6 space-y-2">{selected.actions.map(action => <div key={action.id} className="rounded-lg border border-[#dfe1e6] p-3"><div className="flex items-center gap-2"><Check size={15} className="text-[#22a06b]"/><strong className="text-sm text-[#172b4d]">{action.name}</strong></div><p className="mt-1 pl-6 font-mono text-xs text-[#626f86]">{selected.id}.{action.id}</p>{action.permissions?.length ? <p className="mt-2 pl-6 text-xs text-[#626f86]">Permissões: {action.permissions.join(", ")}</p> : null}</div>)}</div><button onClick={() => setSelected(null)} className="mt-6 w-full rounded-lg border border-[#c1c7d0] px-4 py-2 text-sm font-semibold text-[#172b4d] hover:bg-[#f1f2f4]">Fechar</button></section></div>}
-    {configuring&&<PluginConfiguration key={configuring.id} plugin={configuring} oauthResult={oauthResult} onClose={()=>{setConfiguring(null);setOauthResult(undefined);window.history.replaceState(null,'','/plugins')}}/>}
+    {configuring?.id==='alexa-orbit'?<AlexaOrbitPanel onClose={()=>{setConfiguring(null);window.history.replaceState(null,'','/plugins')}}/>:configuring?.id==='cloudflare-tunnel'?<CloudflareTunnelPanel onEnabledChanged={enabled=>{setPlugins(current=>current.map(item=>item.id==='cloudflare-tunnel'?{...item,enabled}:item));}} onClose={()=>{setConfiguring(null);window.history.replaceState(null,'','/plugins')}}/>:configuring&&<PluginConfiguration key={configuring.id} plugin={configuring} oauthResult={oauthResult} onClose={()=>{setConfiguring(null);setOauthResult(undefined);window.history.replaceState(null,'','/plugins')}}/>}
   </div>;
 }

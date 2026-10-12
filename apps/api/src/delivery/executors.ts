@@ -5,6 +5,7 @@ import {realpath} from 'node:fs/promises';
 import {isAbsolute,relative,resolve,sep} from 'node:path';
 import {Client} from 'ssh2';
 import {Db} from '../db';
+import {resolveVaultReference} from '../vault-credentials';
 import {SecretVault} from '../secrets';
 import {redact} from '../execution/security';
 
@@ -37,12 +38,14 @@ export class DeliveryCredentialService {
   constructor(@Inject(Db) private db:Db,@Inject(SecretVault) private vault:SecretVault){}
   async create(userId:string,input:{name:string;kind:string;value:string}){
     if(!['SSH_PRIVATE_KEY','SSH_PASSWORD','GIT_TOKEN','GIT_SSH_KEY'].includes(input.kind)||!input.name?.trim()||input.name.length>120||!input.value||input.value.length>20000)throw new Error('Credencial inválida.');
+    if(input.value.startsWith('orbit-vault://'))await resolveVaultReference(this.db,input.value,userId);
     return this.db.one('INSERT INTO delivery_credentials(owner_id,name,kind,encrypted_value) VALUES($1,$2,$3,$4) RETURNING id,name,kind,created_at',[userId,input.name.trim(),input.kind,this.vault.seal({value:input.value})]);
   }
+  private async openValue(encrypted:string,userId:string){const value=this.vault.open<{value:string}>(encrypted).value;return value.startsWith('orbit-vault://')?resolveVaultReference(this.db,value,userId):value}
   async list(userId:string){return this.db.query('SELECT id,name,kind,created_at FROM delivery_credentials WHERE owner_id=$1 ORDER BY name',[userId])}
-  async secret(id:string,userId:string,kinds:string[]){const row=await this.db.one<Credential>('SELECT kind,encrypted_value FROM delivery_credentials WHERE id=$1 AND owner_id=$2',[id,userId]);if(!row||!kinds.includes(row.kind))throw new Error('Credencial não autorizada ou incompatível.');return this.vault.open<{value:string}>(row.encrypted_value).value}
-  async resolve(id:string,userId:string,kinds:string[]){const row=await this.db.one<Credential>('SELECT kind,encrypted_value FROM delivery_credentials WHERE id=$1 AND owner_id=$2',[id,userId]);if(!row||!kinds.includes(row.kind))throw new Error('Credencial não autorizada ou incompatível.');return {kind:row.kind,value:this.vault.open<{value:string}>(row.encrypted_value).value}}
-  async redact(userId:string,value:string){let output=redact(value);for(const row of await this.db.query<{encrypted_value:string}>('SELECT encrypted_value FROM delivery_credentials WHERE owner_id=$1',[userId])){const secret=this.vault.open<{value:string}>(row.encrypted_value).value;if(secret)output=output.split(secret).join('[REDACTED]')}return output.slice(0,64000)}
+  async secret(id:string,userId:string,kinds:string[]){const row=await this.db.one<Credential>('SELECT kind,encrypted_value FROM delivery_credentials WHERE id=$1 AND owner_id=$2',[id,userId]);if(!row||!kinds.includes(row.kind))throw new Error('Credencial não autorizada ou incompatível.');return this.openValue(row.encrypted_value,userId)}
+  async resolve(id:string,userId:string,kinds:string[]){const row=await this.db.one<Credential>('SELECT kind,encrypted_value FROM delivery_credentials WHERE id=$1 AND owner_id=$2',[id,userId]);if(!row||!kinds.includes(row.kind))throw new Error('Credencial não autorizada ou incompatível.');return {kind:row.kind,value:await this.openValue(row.encrypted_value,userId)}}
+  async redact(userId:string,value:string){let output=redact(value);for(const row of await this.db.query<{encrypted_value:string}>('SELECT encrypted_value FROM delivery_credentials WHERE owner_id=$1',[userId])){const secret=await this.openValue(row.encrypted_value,userId);if(secret)output=output.split(secret).join('[REDACTED]')}return output.slice(0,64000)}
 }
 
 @Injectable()

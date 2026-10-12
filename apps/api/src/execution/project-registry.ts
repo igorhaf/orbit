@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {parseDocument,stringify} from 'yaml';
 import {Db} from '../db';
 import {DocumentResource,Resource,ResourceKind,permissions} from './types';
-import {identifier,readResource,safePath} from './security';
+import {identifier,readResource,safePath,redact} from './security';
 
 export function parseYaml(text:string):Record<string,unknown>{
   if(text.length>64000)throw new Error('Configuração excede 64 KB.');
@@ -77,6 +77,23 @@ export class ProjectRegistry {
     if(parsed.metadata.name!==undefined&&(typeof parsed.metadata.name!=='string'||parsed.metadata.name.length>200))throw new Error('Nome do recurso inválido.');
     if(stringList(parsed.metadata.permissions,'permissions').some(value=>!permissions.includes(value as typeof permissions[number])))throw new Error('Permissão do recurso desconhecida.');
     return {id,kind,name:typeof parsed.metadata.name==='string'?parsed.metadata.name:id,...parsed,hash:createHash('sha256').update(text).digest('hex')};
+  }
+  async skillPrompt(id:string,user:string,additionalSkills:string[]=[],additionalAgent?:string|null):Promise<{text:string;skills:string[]}>{
+    const project=await this.get(id,user);
+    if(project.warnings.length)throw new Error('Corrija a configuração do projeto: '+project.warnings.join('; '));
+    const execution=project.config.execution&&typeof project.config.execution==='object'&&!Array.isArray(project.config.execution)?project.config.execution as Record<string,unknown>:{};
+    const skills=[...stringList(project.config.skills,'skills'),...stringList(execution.skills,'execution.skills'),...additionalSkills];
+    const agentIds=[...new Set([execution.agent,additionalAgent].filter((agent):agent is string=>agent!==undefined&&agent!==null&&agent!==''))];
+    for(const agentId of agentIds){
+      if(!identifier(agentId))throw new Error('Agente configurado inválido.');
+      const agent=await new AgentRegistry(this).resolve(project,agentId);
+      skills.push(...stringList(agent.metadata.skills,`agent/${agentId}.skills`));
+    }
+    const unique=[...new Set(skills)];
+    const documents=await Promise.all(unique.map(skillId=>new SkillRegistry(this).resolve(project,skillId)));
+    const text=documents.map(skill=>`## Skill do projeto: ${skill.id}\n${redact(skill.body)}`).join('\n\n');
+    if(text.length>60000)throw new Error('As skills do projeto excedem o limite de contexto de 60 KB.');
+    return {skills:unique,text};
   }
   async saveExecutionDefaults(project:Project,user:string,defaults:Record<string,unknown>){
     const next={...project.config,execution:defaults};

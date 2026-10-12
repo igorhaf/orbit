@@ -132,7 +132,7 @@ ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_model varchar(100);
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_effort varchar(16);
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_execution_mode varchar(16) NOT NULL DEFAULT 'bypass';
 ALTER TABLE cards DROP CONSTRAINT IF EXISTS cards_ai_execution_mode_check;
-ALTER TABLE cards ADD CONSTRAINT cards_ai_execution_mode_check CHECK (ai_execution_mode IN ('planning','bypass'));
+ALTER TABLE cards ADD CONSTRAINT cards_ai_execution_mode_check CHECK (ai_execution_mode IN ('planning','bypass','question'));
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_start_at timestamptz;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_end_at timestamptz;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS schedule_all_day boolean NOT NULL DEFAULT false;
@@ -395,8 +395,9 @@ ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_name varchar(
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_summary varchar(360);
 ALTER TABLE card_ai_runs ALTER COLUMN status SET DEFAULT 'queued';
 ALTER TABLE card_ai_runs DROP CONSTRAINT IF EXISTS card_ai_runs_status_check;
-ALTER TABLE card_ai_runs ADD CONSTRAINT card_ai_runs_status_check CHECK(status IN ('queued','running','success','error','cancelled'));
+ALTER TABLE card_ai_runs ADD CONSTRAINT card_ai_runs_status_check CHECK(status IN ('queued','running','waiting_answer','success','error','cancelled'));
 CREATE INDEX IF NOT EXISTS card_ai_runs_card_started_idx ON card_ai_runs(card_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS card_ai_runs_user_created_idx ON card_ai_runs(user_id,created_at DESC,id DESC);
 CREATE TABLE IF NOT EXISTS card_ai_comment_jobs (
   comment_id uuid PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE,
   card_id uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,

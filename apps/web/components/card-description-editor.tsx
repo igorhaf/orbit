@@ -11,6 +11,7 @@ import { TableKit } from '@tiptap/extension-table';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { getToken } from '@/lib/api';
+import { clipboardFiles } from '@/lib/clipboard-files';
 
 function EditableImage({ node }: ReactNodeViewProps) {
   const src = String(node.attrs.src || '');
@@ -39,7 +40,7 @@ const DescriptionImage = TiptapImage.extend({ addNodeView() { return ReactNodeVi
 export function CardDescriptionEditor({ value, onChange, onFiles, onUploadChange, maxLength = 1_000_000 }: {
   value: string;
   onChange: (value: string) => void;
-  onFiles: (files: File[]) => Promise<{ url: string; name: string; mime_type: string }[]>;
+  onFiles: (files: File[]) => Promise<unknown[]>;
   onUploadChange: (uploading: boolean) => void;
   maxLength?: number;
 }) {
@@ -60,16 +61,11 @@ export function CardDescriptionEditor({ value, onChange, onFiles, onUploadChange
   async function addFiles(files: File[]) {
     if (!editor || !files.length || uploading) return;
     if (files.length > 10) { setError('Envie no máximo 10 anexos por vez.'); return; }
-    const position = editor.state.selection.from;
     setUploading(true);
     onUploadChange(true);
     setError('');
     try {
-      const attachments = await onFiles(files);
-      const content = attachments.map(attachment => /^image\/(?:avif|gif|jpe?g|png|webp)$/.test(attachment.mime_type)
-        ? { type: 'image', attrs: { src: attachment.url, alt: attachment.name } }
-        : { type: 'paragraph', content: [{ type: 'text', text: attachment.name, marks: [{ type: 'link', attrs: { href: attachment.url } }] }] });
-      editor.chain().focus().insertContentAt(position, content).run();
+      await onFiles(files);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível anexar os arquivos.');
     } finally {
@@ -102,8 +98,8 @@ export function CardDescriptionEditor({ value, onChange, onFiles, onUploadChange
         <input type="file" multiple className="sr-only" onChange={event => void handleFiles(event)} />
       </label>
     </div>
-    <div aria-label="Descrição do cartão" onPaste={event => {
-      const files = Array.from(event.clipboardData.files);
+    <div aria-label="Descrição do cartão" onPasteCapture={event => {
+      const files = clipboardFiles(event.clipboardData);
       if (files.length) { event.preventDefault(); void addFiles(files); }
     }} onDragOver={event => { if (event.dataTransfer.files.length) event.preventDefault(); }} onDrop={event => {
       const files = Array.from(event.dataTransfer.files);
