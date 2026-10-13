@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {Builder,By,until} from 'selenium-webdriver';
+import {Options} from 'selenium-webdriver/chrome.js';
+const password=process.env.ORBIT_VALIDATION_OWNER_PASSWORD;assert.ok(password,'Provide the owner password through the environment; it is never saved or printed.');
+let driver;
+try{
+ driver=await new Builder().forBrowser('chrome').setChromeOptions(new Options().addArguments('--headless=new','--no-sandbox','--disable-dev-shm-usage')).build();
+ await driver.sendAndGetDevToolsCommand('Page.addScriptToEvaluateOnNewDocument',{source:"new MutationObserver(()=>{if(document.body&&!document.body.hasAttribute('cz-shortcut-listen'))document.body.setAttribute('cz-shortcut-listen','true')}).observe(document,{childList:true,subtree:true})"});
+ await driver.sendAndGetDevToolsCommand('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:true});await driver.sendAndGetDevToolsCommand('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+ await driver.get(process.env.ORBIT_SELENIUM_BASE_URL||'http://127.0.0.1:3001');await driver.wait(until.elementLocated(By.id('email')),15000);await driver.findElement(By.id('email')).clear();await driver.findElement(By.id('email')).sendKeys(process.env.ORBIT_VALIDATION_OWNER_EMAIL||'igorhaf@gmail.com');await driver.findElement(By.id('password')).sendKeys(password);assert.ok((await driver.findElement(By.id('password')).getRect()).height>=44);assert.ok(await driver.executeScript('return document.documentElement.scrollWidth<=innerWidth+1')); await driver.findElement(By.css('form button:not([type="button"])')).click();await driver.wait(()=>driver.executeScript('return Boolean(localStorage.getItem("orbit_token"))'),20000);const owner=await driver.executeScript('return JSON.parse(localStorage.getItem("orbit_user"))');assert.equal(owner.is_root,true);await driver.get('http://127.0.0.1:3001/access');await driver.wait(until.elementLocated(By.xpath("//h1[normalize-space()='Acessos e perfis']")),15000);const warnings=(await driver.manage().logs().get('browser')).filter(log=>/hydrated|hydration|server rendered HTML/i.test(log.message));assert.equal(warnings.length,0);console.log('PASS owner login through the UI; ROOT preserved; no hydration warning with browser-injected attribute.');
+}finally{if(driver)await driver.quit()}

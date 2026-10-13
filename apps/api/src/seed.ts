@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 
 export async function seedDatabase(pool: Pool) {
   const { rows: [user] } = await pool.query(
-    `INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3)
+    `INSERT INTO users(name,email,password_hash,is_root) VALUES($1,$2,$3,true)
      ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name
      RETURNING id`,
     ['Igor', 'igorhaf@gmail.com', '$2b$12$87GMGtpzEwEEjmfwVIjFMu0U5Bq8.5N9xI/NHO4JBHcorA7pHJDG2'],

@@ -14,7 +14,9 @@ export class CodexExecutor implements Executor {
     {id:'implement-feature',name:'Implementar tarefa',permissions:['filesystem.read','filesystem.write','process.execute']},
     {id:'review-code',name:'Revisar',permissions:['filesystem.read','process.execute']},
   ];
+  constructor(private available:()=>boolean=()=>true){}
   async execute(input:ExecutionInput){
+    if(!this.available())throw new Error("O plugin de IA está desativado.");
     const directory=await mkdtemp(join(tmpdir(),'orbit-run-')),output=join(directory,'result.txt');
     try{
       const env:NodeJS.ProcessEnv={};

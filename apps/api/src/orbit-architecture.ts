@@ -8,13 +8,15 @@ export const orbitArchitecture = {
   cardInterface: {
     execution: 'prompt-runs',
     contexts: 'card-contexts',
+    contextHierarchy: 'primary-parent-tree-with-independent-contexts',
     obsoletePanels: ['Execução opcional', 'Contexto', 'Limites de alteração', 'Integrações'],
     executionConfiguration: 'backend',
   },
   cardAiModes: { bypass: 'Permissivo', planning: 'Planejamento', question: 'Questionar' },
   promptRunAnswer: ['answer'],
   promptWaitingStatus: 'waiting_answer',
-  cardCreate: ['title', 'position'],
+  cardPlugins: {endpoint:'/cards/:id/plugins',selection:['plugins'],fieldsEndpoint:'/cards/:id/plugins/:pluginId/fields',default:'basic',contribution:'cardLayouts',dependencies:true},
+  cardCreate: ['title', 'position', 'card_type_id'],
   cardUpdate: ['title', 'description', 'list_id', 'position', 'kind', 'target_board_id', 'link_url', 'mirror_expanded', 'start_date', 'due_date', 'reminder_minutes', 'recurrence', 'schedule', 'schedule_start_at', 'schedule_end_at', 'schedule_all_day', 'schedule_time_zone'],
   boardCreate: ['title', 'background', 'workspace_id'],
   listCreate: ['title', 'position', 'parent_list_id'],
@@ -33,8 +35,8 @@ export function assertOrbitFields(input: unknown, allowed: readonly string[]) {
 
 export const orbitArchitecturePrompt = `CONTRATO OBRIGATÓRIO DE ARQUITETURA ORBIT (versão 1):
 O projeto Orbit é a referência de arquitetura de quadros e orquestração. Consulte sua implementação atual e o contrato da API antes de criar estruturas. Não invente campos, formulários, estados, componentes ou recursos do produto. Não reproduza interfaces antigas.
-Quadro contém listas; lista contém cartões simples. Cartão tem título e descrição Markdown, uma única checklist e vínculos em Contextos. Contextos são referências vivas, não descrições copiadas. Módulos e demandas são cartões normais, derivados de itens de checklist pela conversão nativa. A conversão herda o pai e seus contextos. Use o fluxo de listas do quadro de referência; não crie uma lista por módulo.
+Quadro contém listas; lista contém cartões simples. Cartão tem título e descrição Markdown, uma única checklist e vínculos em Contextos. Contextos são referências vivas, não descrições copiadas. Módulos e demandas são cartões normais, derivados de itens de checklist pela conversão nativa. Cada cartão usado como contexto é pai do cartão que o referencia. A conversão de checklist cria um cartão filho e herda o pai e seus contextos. A hierarquia visual usa o contexto mais próximo como pai imediato e mantém os ancestrais herdados como referências vivas. Use o fluxo de listas do quadro de referência; não crie uma lista por módulo.
 Configuração de IA, skills, executor, permissões e projeto usam os campos de configuração existentes. Não transforme instruções ou entregáveis em novos campos personalizados. Em quadros com referência configurada, os campos personalizados são limitados aos da referência.
-Na interface do cartão, use IA do cartão, Contextos com vínculos vivos e o histórico de prompt-runs na aba Execução. Os painéis antigos Execução opcional, Contexto, Limites de alteração e Integrações foram retirados. Configurar uma execução pela API não autoriza renderizar esses painéis; escopo de arquivos e verificações obrigatórias são configurações internas do backend.
+Recursos de IA e desenvolvimento pertencem a plugins desacoplados. Configure layouts em /cards/:id/plugins usando apenas plugins declarados no catálogo. Desenvolvimento depende de IA; um cartão básico não possui IA. Campos específicos de plugins usam somente o contrato de cardLayouts, nunca campos inventados no card. Na interface do cartão, quando o plugin de IA estiver selecionado e ativo, use IA do cartão, Contextos com vínculos vivos e o histórico de prompt-runs na aba Execução. Os painéis antigos Execução opcional, Contexto, Limites de alteração e Integrações foram retirados. Configurar uma execução pela API não autoriza renderizar esses painéis; escopo de arquivos e verificações obrigatórias são configurações internas do backend.
 Use a API autenticada e seu contrato para alterações no Orbit. Não altere diretamente o banco, schema ou interface do Orbit como parte de uma tarefa de outro projeto.
 Preserve a identidade visual, layout e arquitetura do projeto selecionado. Mudanças de conteúdo devem ser integradas nos componentes existentes. Não publique relatórios internos, roteiros de teste, pendências editoriais ou artefatos de execução em páginas comerciais. Faça alterações pequenas, execute verificações reais e só declare aceites comprovados. Não faça commit, push, deploy ou ações de ciclo de vida sem autorização específica.`;

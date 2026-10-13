@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param, Patch, Post, Req } from '@nestjs/common';
+import {CardLayoutsService} from './plugins/card-layouts';
+import { Body, Controller, Delete, Get, HttpException, Inject,Optional, Injectable, Param, Patch, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { Db } from './db';
 import { FeaturesService } from './features';
@@ -16,7 +17,7 @@ const types=new Set(['text','number','date','dropdown','checkbox']);
 
 @Injectable()
 export class CardExtensionsService {
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService) {}
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Optional() @Inject(CardLayoutsService) private layouts?:CardLayoutsService) {}
   user(req:Request){return this.features.user(req)}
   async card(cardId:string,userId:string){
     const boardId=await this.features.cardBoard(id(cardId),userId);
@@ -128,13 +129,19 @@ export class CardExtensionsService {
   async deleteItem(itemId:string,userId:string){const item=await this.item(itemId,userId);const normalized=item.text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();await this.db.query('UPDATE ai_checklist_history SET excluded=true WHERE card_id=$1 AND normalized_text=$2',[item.card_id,normalized]);await this.db.query('DELETE FROM checklist_items WHERE id=$1',[itemId]);return {ok:true}}
   async contexts(cardId:string,userId:string){
     const boardId=await this.card(cardId,userId);
-    const [selected,candidates]=await Promise.all([
+    const [selected,candidates,children]=await Promise.all([
       linkedCardContexts(this.db,cardId,userId),
       this.db.query(`SELECT c.id,c.title,c.url_token FROM cards c JOIN lists l ON l.id=c.list_id
         WHERE l.board_id=$1 AND c.id<>$2 AND c.archived_at IS NULL AND l.archived_at IS NULL
           AND c.kind IN ('normal','template') ORDER BY c.title,c.id`,[boardId,cardId]),
+      this.db.query(`SELECT c.id,c.title,c.url_token FROM cards c JOIN lists l ON l.id=c.list_id
+        WHERE c.id IN (SELECT card_id FROM card_contexts WHERE context_card_id=$2 UNION SELECT card_id FROM structured_view_parents WHERE parent_card_id=$2) AND l.board_id=$1 AND c.id<>$2
+          AND c.archived_at IS NULL AND l.archived_at IS NULL
+          AND c.kind IN ('normal','template')
+          AND NOT EXISTS(SELECT 1 FROM vault_items v WHERE v.card_id=c.id)
+        ORDER BY c.title,c.id`,[boardId,cardId]),
     ]);
-    return {selected,candidates,prompt:cardContextsPrompt(selected)};
+    return {selected:selected.filter(context=>!context.inherited),inherited:selected.filter(context=>context.inherited),candidates,children,prompt:cardContextsPrompt(selected)};
   }
   async updateContexts(cardId:string,userId:string,body:Payload){
     assertOrbitFields(body,orbitArchitecture.contexts);
@@ -170,13 +177,9 @@ export class CardExtensionsService {
       const locked=await client.query('SELECT id FROM checklist_items WHERE id=$1 FOR UPDATE',[itemId]);
       if(!locked.rows.length)bad('Este item já foi convertido ou removido.',409);
       const card=(await client.query(`INSERT INTO cards(list_id,title,description,due_date,position) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0)) RETURNING *`,[listId,item.text,item.text,item.due_date])).rows[0];
-      await client.query('INSERT INTO card_contexts(card_id,context_card_id) VALUES($1,$2)',[card.id,item.card_id]);
-      await client.query(`INSERT INTO card_contexts(card_id,context_card_id,position)
-        SELECT $1,ref.context_card_id,row_number() OVER (ORDER BY ref.position,ref.context_card_id)
-        FROM card_contexts ref JOIN cards c ON c.id=ref.context_card_id JOIN lists l ON l.id=c.list_id
-        WHERE ref.card_id=$2 AND l.board_id=$3 AND c.archived_at IS NULL AND l.archived_at IS NULL
-          AND c.kind IN ('normal','template') AND c.id<>$2
-        ON CONFLICT DO NOTHING`,[card.id,item.card_id,item.board_id]);
+      await client.query('INSERT INTO card_plugin_layouts(card_id,plugin_ids,data,card_type_id) SELECT $1,plugin_ids,data,card_type_id FROM card_plugin_layouts WHERE card_id=$2 ON CONFLICT(card_id) DO UPDATE SET card_type_id=COALESCE(card_plugin_layouts.card_type_id,EXCLUDED.card_type_id)',[card.id,item.card_id]);
+      if(this.layouts){const copied=(await client.query('SELECT data FROM card_plugin_layouts WHERE card_id=$1',[card.id])).rows[0];if(copied)await client.query('UPDATE card_plugin_layouts SET data=$2::jsonb WHERE card_id=$1',[card.id,JSON.stringify(this.layouts.childData(copied.data))]);}
+      await client.query('INSERT INTO structured_view_parents(card_id,parent_card_id) VALUES($1,$2)',[card.id,item.card_id]);
       await client.query(`INSERT INTO card_labels(card_id,label_id) SELECT $1,label_id FROM card_labels WHERE card_id=$2 ON CONFLICT DO NOTHING`,[card.id,item.card_id]);
       const normalized=item.text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
       await client.query('UPDATE ai_checklist_history SET excluded=true WHERE card_id=$1 AND normalized_text=$2',[item.card_id,normalized]);

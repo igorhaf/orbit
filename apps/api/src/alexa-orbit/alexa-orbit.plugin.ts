@@ -8,7 +8,7 @@ import {PluginDefinition} from '../plugins/contract';
 import {AlexaOrbitService} from './alexa-orbit.service';
 import {AlexaSecurity} from './security';
 import {Envelope,PLUGIN_ID} from './model';
-export const alexaOrbitPluginDefinition:PluginDefinition={id:PLUGIN_ID,name:'Alexa · Orbit por voz',version:'1.0.0',scope:'account',configurable:true,description:'Custom Skill privada Orbit: criar tarefas, compras e compromissos.',capabilities:[{id:'voice.create',name:'Criar por voz'}],contributions:{settings:[{id:PLUGIN_ID,label:'Alexa · Orbit',href:'/plugins?configure=alexa-orbit'}]}};
+export const alexaOrbitPluginDefinition:PluginDefinition={id:PLUGIN_ID,dependencies:['ai'],name:'Alexa · Orbit por voz',version:'1.0.0',scope:'account',configurable:true,description:'Custom Skill privada Orbit: criar tarefas, compras e compromissos.',capabilities:[{id:'voice.create',name:'Criar por voz'}],contributions:{settings:[{id:PLUGIN_ID,label:'Alexa · Orbit',href:'/plugins?configure=alexa-orbit'}]}};
 @Controller()
 export class AlexaOrbitController{
  private logger=new Logger('AlexaOrbitEndpoint');

@@ -44,10 +44,13 @@ const coreRoutes = [
 ];
 
 async function tapElement(element) {
+  await driver.executeScript(target=>target.scrollIntoView({block:'center',inline:'nearest'}),element);
+  await driver.executeAsyncScript(done=>requestAnimationFrame(()=>requestAnimationFrame(done)));
   const point = await driver.executeScript((target) => {
     const rect = target.getBoundingClientRect();
     return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
   }, element);
+  assert.ok(await driver.executeScript((target,point)=>target.contains(document.elementFromPoint(point.x,point.y)),element,point),'Touch target must be visible and unobstructed.');
   await driver.sendAndGetDevToolsCommand('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [{ x: point.x, y: point.y, id: 1, radiusX: 2, radiusY: 2, force: 1 }],

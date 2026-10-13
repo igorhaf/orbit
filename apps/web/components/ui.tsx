@@ -45,7 +45,7 @@ const getFavoriteIdsSnapshot = (): string => {
 };
 const getFavoriteIdsServerSnapshot = (): string => '';
 
-export function Modal({ children, onClose, wide = false, extraWide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; extraWide?: boolean }) {
+export function Modal({ children, onClose, wide = false, extraWide = false, sidePanel = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; extraWide?: boolean; sidePanel?: boolean }) {
   const mounted = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerSnapshot);
   const modalId = useRef(Symbol('modal'));
   const closeRef = useRef(onClose);
@@ -62,10 +62,10 @@ export function Modal({ children, onClose, wide = false, extraWide = false }: { 
     };
   }, []);
   if (!mounted) return null;
-  return createPortal(<div className="fixed inset-0 z-50 flex min-h-full items-center justify-center overflow-y-auto bg-[#091e42b8] p-2 backdrop-blur-[3px] sm:p-6" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div onMouseDown={e => e.stopPropagation()} className={`fade-in relative max-h-[calc(100dvh-1rem)] w-full overflow-y-auto ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[820px]' : 'max-w-[560px]'} rounded-xl border border-[#dfe1e6] bg-white shadow-dialog sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl`} role="dialog" aria-modal="true">
-      {children}
-      <button aria-label="Fechar" onClick={onClose} className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-lg text-[#626f86] transition-colors hover:bg-[#f1f2f4] hover:text-[#172b4d]"><X size={20}/></button>
+  return createPortal(<div className={sidePanel?"fixed inset-0 z-50 overflow-hidden bg-[#091e4240]":"fixed inset-0 z-50 flex min-h-full items-center justify-center overflow-y-auto bg-[#091e42b8] p-2 backdrop-blur-[3px] sm:p-6"} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div onMouseDown={e => e.stopPropagation()} data-side-panel={sidePanel||undefined} className={sidePanel?'side-panel-in fixed inset-y-0 right-0 flex h-dvh w-full min-w-0 max-w-[900px] flex-col overflow-hidden border-l border-[#dfe1e6] bg-white shadow-dialog':`fade-in relative max-h-[calc(100dvh-1rem)] w-full overflow-y-auto ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[820px]' : 'max-w-[560px]'} rounded-xl border border-[#dfe1e6] bg-white shadow-dialog sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl`} role="dialog" aria-modal="true">
+      {sidePanel?<div data-side-panel-content className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">{children}</div>:children}
+      <button aria-label="Fechar" onClick={onClose} className={`absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-lg text-[#626f86] transition-colors hover:bg-[#f1f2f4] hover:text-[#172b4d] ${sidePanel?'z-10 border border-[#dfe1e6] bg-white shadow-sm':''}`}><X size={20}/></button>
     </div>
   </div>, document.body);
 }
@@ -221,6 +221,9 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     };
     const socket = io({ path: '/socket.io', auth: { token: localStorage.getItem('orbit_token') || '' } });
     socket.on('notification:changed', refresh);
+    const pluginsChanged=()=>window.dispatchEvent(new Event('plugins:changed'));
+    socket.on('plugins:changed',pluginsChanged);
+    socket.on('connect',pluginsChanged);
     return () => { active = false; socket.disconnect(); };
   }, [user, syncNotifications]);
   useEffect(() => {
@@ -311,6 +314,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     {label:'Backups',href:'/backups',icon:DatabaseBackup},
     {label:'Ferramentas',href:'/tools',icon:Wrench},
     {label:'Plugins',href:'/plugins',icon:FolderKanban},
+    ...(user?.is_root||user?.permissions?.includes('access.manage')?[{label:'Acessos · RBAC',href:'/access',icon:Settings}]:[]),
     {label:'Perfil e configurações',href:'/profile',icon:Settings},
     {label:'Lixeira',href:'/trash',icon:Archive},
     ...pluginNavigation.map(item=>({label:item.label,href:item.href,icon:FolderKanban})),
@@ -374,6 +378,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       {pluginNavigation.map(item => <button key={item.id} onClick={() => router.push(item.href)} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{item.label}</button>)}
       <button onClick={() => router.push('/notebooks')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={15} className="mr-1 inline"/>Cadernos</button>
       <button onClick={() => router.push('/vault')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={15} className="mr-1 inline"/>Cofre</button>
+      {(user?.is_root||user?.permissions?.includes('access.manage'))&&<button onClick={()=>router.push('/access')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Acessos {user?.is_root&&<span className="text-xs text-[#0c66e4]">ROOT</span>}</button>}
       <button onClick={() => router.push('/plugins')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Plugins</button>
     </nav>
 <button
@@ -393,7 +398,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         <button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>
       </div>}
     </div>
-    <button onClick={()=>setLimitsVisible(value=>!value)} aria-expanded={limitsVisible||quotaPaused} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible||quotaPaused?<Eye size={17}/>:<EyeClosed size={17}/>}Limites</button>
+    <button onClick={()=>setLimitsVisible(value=>!value)} aria-expanded={limitsVisible||quotaPaused} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible||quotaPaused?<Eye size={17}/>:<EyeClosed size={17}/>}{user?.is_root?'Limites':'Fila'}</button>
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
@@ -420,6 +425,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     </div>}
     {panel === 'account' && <div className="absolute right-0 top-full z-40 w-64 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
       <div className="border-b border-[#dfe1e6] px-3 py-2"><p className="text-[11px] font-bold uppercase tracking-wide text-[#626f86]">Conta</p><div className="mt-2 flex items-center gap-2"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/><div className="min-w-0"><p className="truncate text-sm font-semibold">{user?.name}</p><p className="truncate text-xs text-[#626f86]">{user?.email}</p></div></div></div>
+      {(user?.is_root||user?.permissions?.includes('access.manage'))&&<button onClick={()=>{setPanel(null);router.push('/access')}} className="min-h-11 w-full rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]">Acessos e perfis {user?.is_root?'· ROOT':''}</button>}
       <button onClick={() => {setPanel(null);router.push('/profile')}} className="mt-1 flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><UserRound size={16}/> Perfil e atividade</button>
       <button onClick={() => {setPanel(null);router.push('/profile?tab=cards')}} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><CheckSquare size={16}/> Cartões atribuídos</button>
       <button onClick={() => {setPanel(null);router.push('/profile?tab=settings')}} className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><Settings size={16}/> Configurações</button>
@@ -427,7 +433,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
     </div>
-  </header>{<CodexLimitsBar visible={limitsVisible} onAutoPaused={setQuotaPaused}/>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
+  </header>{<CodexLimitsBar visible={limitsVisible} isRoot={user?.is_root===true} onAutoPaused={setQuotaPaused}/>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
 }
 
 function InboxPanel({boards}:{boards:Board[]}) {

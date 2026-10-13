@@ -49,7 +49,14 @@ export type ConnectionProviderDefinition = {
   metadata?: Record<string, unknown>;
 };
 
+export type CardLayoutContribution = { id: string; name: string; slots: string[]; fields?: Array<{key:string;label:string;type:"text"|"textarea"|"select";maxLength?:number;showOnCard?:boolean;childDefault?:string;options?:Array<{value:string;label:string;color?:string;blocksExecution?:boolean}>}> };
+export type CardTypeContribution = { id: string; name: string; description?: string; slots?: string[] };
+export type BoardViewContribution = { id:string; name:string; description?:string; renderer:string; permission:string };
+
 export type PluginContribution = {
+  cardLayouts?: CardLayoutContribution[];
+  cardTypes?: CardTypeContribution[];
+  boardViews?: BoardViewContribution[];
   navigation?: Array<Record<string, unknown>>;
   settings?: Array<Record<string, unknown>>;
   cardActions?: Array<Record<string, unknown>>;
@@ -63,6 +70,7 @@ export type PluginDefinition = {
   name: string;
   version: string;
   description?: string;
+  dependencies?: string[];
   scope?: PluginScope;
   configurable?: boolean;
   configuration?: Array<{ key: string; label: string; secret: boolean }>;

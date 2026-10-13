@@ -95,7 +95,7 @@ test('prompt queue persists waiting, releases locks, and requeues the same run a
     return [];
   };
   const db={query,one:async(sql:string,args?:unknown[])=>(await query(sql,args))[0]||null,pool:{connect:async()=>({query:async(sql:string,args?:unknown[])=>({rows:await query(sql,args)}),release:()=>{released++;}})}};
-  const service=new PromptSessionsService(db as never,{cardBoard:async()=> 'board',notify:async()=>{},record:async()=>{}} as never,{execute:async(...args:unknown[])=>{modes.push(String(args[8]));calls++;if(calls===2)assert.equal(args[5],'saved-session');return {output:calls===1?question:'Concluído',sessionId:'saved-session',fileChanges:[],activities:[]};}} as never,{promptProgress:(_board:string,_card:string,event:{status:string})=>{events.push(event.status);pending.get(event.status)?.();}} as never);
+  const service=new PromptSessionsService(db as never,{cardBoard:async()=> 'board',notify:async()=>{},record:async()=>{}} as never,{isAvailable:()=>true,execute:async(...args:unknown[])=>{modes.push(String(args[8]));calls++;if(calls===2)assert.equal(args[5],'saved-session');return {output:calls===1?question:'Concluído',sessionId:'saved-session',fileChanges:[],activities:[]};}} as never,{promptProgress:(_board:string,_card:string,event:{status:string})=>{events.push(event.status);pending.get(event.status)?.();}} as never);
   Object.assign(service,{localPath:async()=>process.cwd(),queuePaused:async()=>false,descriptionImages:async()=>[]});
   const waiting=until('waiting_answer');
   const first=await service.execute('card','user');

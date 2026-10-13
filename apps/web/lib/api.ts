@@ -16,6 +16,8 @@ export type User = {
   ai_default_effort?: AiEffort | null;
   created_at?: string;
   role?: string;
+  is_root?: boolean;
+  permissions?: string[];
 };
 export type Label = { id: string; name: string; color: string };
 export type CustomField = { id:string;board_id?:string;name:string;type:'text'|'number'|'date'|'dropdown'|'checkbox';options:string[];position:number;show_on_card:boolean };
@@ -23,6 +25,8 @@ export type CustomValue = { field_id:string;name?:string;type?:CustomField['type
 export type ChecklistGroup = { id:string;card_id:string;title:string;position:number;items:ChecklistItem[] };
 export type CardExtensions = { checklists:ChecklistGroup[];values:CustomValue[] };
 export type Card = {
+  plugin_badges?:Array<{pluginId:string;field:string;value:string;label:string;color:string}>;
+  execution_blocked?:boolean;
   id: string;
   url_token?: string;
   execution?: {enabled:boolean;project_id:string|null;agent:string|null;executor:string|null}|null;
@@ -147,7 +151,7 @@ export type AppNotification = { id: string; plugin_id: string; target_url?: stri
 export type CalendarSource = {id:string;provider_id:string;connection_id:string|null;connection_name?:string|null;external_id:string;name:string;time_zone:string|null;color:string|null;access_role:string|null;is_primary:boolean;selected:boolean;visible:boolean;is_default:boolean;capabilities:Record<string,boolean>;metadata:Record<string,unknown>;settings:Record<string,unknown>};
 export type CalendarItem = {id:string;sourceId:string;resourceType:'event'|'card';title:string;description?:string|null;start:string;end?:string|null;allDay:boolean;timeZone?:string|null;location?:string|null;externalResourceId?:string|null;cardId?:string|null;cardUrlToken?:string|null;externalUrl?:string|null;status?:string;recurrence?:unknown[];attendees?:unknown[];conference?:unknown;metadata:Record<string,unknown>};
 export type PluginCatalogAction = {id:string;name:string;permissions?:string[];requiredCapabilities?:string[];inputSchema?:Record<string,unknown>;outputSchema?:Record<string,unknown>};
-export type PluginCatalogItem = {id:string;name:string;version:string;enabled:boolean;configurable?:boolean;capabilities:{id:string;name:string;permissions?:string[]}[];actions:PluginCatalogAction[];triggers?:unknown[];connectionProvider?:unknown;contributions?:Record<string,unknown>};
+export type PluginCatalogItem = {id:string;name:string;version:string;enabled:boolean;configuredEnabled?:boolean;dependencies?:string[];description?:string;status?:"active"|"disabled"|"blocked";blockedBy?:string[];dependents?:string[];configurable?:boolean;capabilities:{id:string;name:string;permissions?:string[]}[];actions:PluginCatalogAction[];triggers?:unknown[];connectionProvider?:unknown;contributions?:Record<string,unknown>};
 
 // Keep API calls on the same origin by default. Next.js proxies /api to Nest,
 // which also makes the app work from another device on the local network.

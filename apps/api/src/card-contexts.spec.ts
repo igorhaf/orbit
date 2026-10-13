@@ -37,7 +37,7 @@ test('conversion defaults description to the task title, retains deadline and li
   assert.match(insert.sql,/VALUES\(\$1,\$2,\$3,\$4,/);
   assert.deepEqual(insert.params,[list,'Ship feature','Ship feature',deadline]);
   assert.ok(!calls.some(call=>call.params.includes('Acceptance criteria')));
-  const link=calls.findIndex(call=>call.sql.includes('INSERT INTO card_contexts'));
+  const link=calls.findIndex(call=>call.sql.includes('INSERT INTO structured_view_parents'));
   assert.deepEqual(calls[link].params,[child,parent]);
   assert.ok(link<calls.findIndex(call=>call.sql.includes('DELETE FROM checklist_items')));
   assert.equal(calls.at(-1)!.sql,'COMMIT');

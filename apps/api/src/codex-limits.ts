@@ -42,6 +42,16 @@ export function exhaustedQuotaKey(limits:CodexLimits):string {
     .filter((window):window is LimitWindow=>!!window && [300,10080].includes(window.windowDurationMins) && Number.isFinite(window.usedPercent) && window.usedPercent>=99)
     .map(window=>window.windowDurationMins+':'+window.resetsAt).sort().join('|');
 }
+export function quotaResumeReady(limits:CodexLimits,key:string|null|undefined,now=Date.now()/1000){
+  const snapshot=limits.rateLimitsByLimitId?.codex||limits.rateLimits;
+  if(typeof key!=='string'||!key)return false;
+  const previous=key.split('|').map(part=>part.split(':').map(Number));
+  if(previous.some(parts=>parts.length!==2)||previous.some(([duration,reset])=>![300,10080].includes(duration)||!Number.isFinite(reset)||reset<=0))return false;
+  const windows=[snapshot?.primary,snapshot?.secondary];
+  if(exhaustedQuotaKey(limits))return false;
+  return previous.every(([duration,reset])=>{const current=windows.find(window=>window?.windowDurationMins===duration);return Boolean(current&&Number.isFinite(current.usedPercent)&&current.usedPercent>=0&&current.usedPercent<99&&Number.isFinite(current.resetsAt)&&(now>=reset||current.resetsAt>reset))});
+}
+
 const monitors=new WeakMap<Db,{checked:number;pending?:Promise<void>}>();
 export async function enforceCodexQuota(db:Db,force=false):Promise<void>{
   let monitor=monitors.get(db);
@@ -51,8 +61,12 @@ export async function enforceCodexQuota(db:Db,force=false):Promise<void>{
   const state=monitor;
   state.pending=(async()=>{
     try{
-      const key=exhaustedQuotaKey(await readCodexLimits());
-      if(key)await db.query("UPDATE users SET preferences=COALESCE(preferences,'{}'::jsonb) || $2::jsonb WHERE COALESCE(preferences->>'codexQuotaAcknowledged','')<>$1",[key,JSON.stringify({codexQueuePaused:true,codexQueueAutoPaused:true,codexQuotaKey:key})]);
+      const limits=await readCodexLimits();const key=exhaustedQuotaKey(limits);
+      if(key)await db.query("UPDATE users SET preferences=COALESCE(preferences,'{}'::jsonb) || $2::jsonb || jsonb_build_object('codexQueueAutoPaused',NOT(COALESCE(preferences->>'codexQueuePaused','false')='true' AND COALESCE(preferences->>'codexQueueAutoPaused','false')<>'true')) WHERE COALESCE(preferences->>'codexQuotaAcknowledged','')<>$1",[key,JSON.stringify({codexQueuePaused:true,codexQueueAutoPaused:true,codexQuotaKey:key})]);
+      else {
+        const candidates=await db.query<{id:string;quota_key:string}>("SELECT id,preferences->>'codexQuotaKey' AS quota_key FROM users WHERE preferences->>'codexQueuePaused'='true' AND preferences->>'codexQueueAutoPaused'='true' AND preferences->>'codexQueueAutoResume'='true'");
+        for(const user of candidates)if(quotaResumeReady(limits,user.quota_key))await db.query("UPDATE users SET preferences=preferences || '{\"codexQueuePaused\":false,\"codexQueueAutoPaused\":false}'::jsonb WHERE id=$1 AND preferences->>'codexQuotaKey'=$2 AND preferences->>'codexQueueAutoPaused'='true' AND preferences->>'codexQueueAutoResume'='true' AND preferences->>'codexQueuePaused'='true'",[user.id,user.quota_key]);
+      }
     }catch{
       // Keep the persisted queue state when quota data is unavailable.
     }finally{state.checked=Date.now();state.pending=undefined}

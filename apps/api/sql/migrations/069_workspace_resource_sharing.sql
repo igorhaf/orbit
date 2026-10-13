@@ -1,0 +1,1 @@
+CREATE TABLE workspace_resources(workspace_id uuid REFERENCES workspaces(id) ON DELETE CASCADE,resource_type text NOT NULL CHECK(resource_type IN ('vault','notebooks','projects')),resource_id uuid NOT NULL,can_edit boolean NOT NULL DEFAULT false,PRIMARY KEY(workspace_id,resource_type,resource_id));

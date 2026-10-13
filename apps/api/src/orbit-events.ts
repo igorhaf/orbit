@@ -5,6 +5,8 @@ import { Server } from 'socket.io';
 export class OrbitEvents {
   private server?: Server;
 
+  pluginsChanged(pluginId:string){this.server?.emit('plugins:changed',{pluginId,at:new Date().toISOString()})}
+
   attach(server: Server) { this.server = server; }
   boardChanged(boardId: string, source: string) {
     this.server?.to(`board:${boardId}`).emit('board:changed', { boardId, source, at: new Date().toISOString() });
