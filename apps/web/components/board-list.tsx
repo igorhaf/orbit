@@ -47,12 +47,13 @@ export function BoardList({
   fieldFilter,
   labelFilter = '',
   dueFilter = '',
+  cardTypes = [],
 }: {
   list: List;
   lists: List[];
   boards: Board[];
   onOpen: (card: Card) => void;
-  onAdd: (listId: string, text: string, position: number) => Promise<Card>;
+  onAdd: (listId: string, text: string, position: number, cardTypeId?: string) => Promise<Card>;
   onRename: (listId: string, title: string) => Promise<void>;
   onAction: Action;
   renderCard: (card: Card, listColor?: string | null) => React.ReactNode;
@@ -60,6 +61,7 @@ export function BoardList({
   fieldFilter: string;
   labelFilter?: string;
   dueFilter?: string;
+  cardTypes?: Array<{id:string;name:string}>;
 }) {
   void onOpen;
   const { confirm, confirmationModal } = useConfirmModal();
@@ -73,6 +75,7 @@ export function BoardList({
   } = useSortable({ id: `list:${list.id}`, data: { type: "list", list } });
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
+  const [cardTypeId,setCardTypeId]=useState("");
   const [insertPosition, setInsertPosition] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const [listTitle, setListTitle] = useState(list.title);
@@ -397,6 +400,7 @@ export function BoardList({
                       list.id,
                       title,
                       insertPosition ?? list.cards.length,
+                      cardTypes.length===1?cardTypes[0].id:cardTypeId||undefined,
                     );
                     // Newly created cards are appended by default. Always reveal
                     // the footer after creation so the latest card stays readable.
@@ -418,6 +422,7 @@ export function BoardList({
                   maxLength={300}
                   className="w-full rounded-lg border-0 bg-white p-3 text-sm shadow-card"
                 />
+                {cardTypes.length>1&&<label className="mt-2 block text-xs font-semibold">Tipo de cartão<select aria-label="Tipo de cartão" value={cardTypeId||cardTypes[0]?.id||''} onChange={event=>setCardTypeId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-[#dfe1e6] bg-white px-3 text-sm font-normal">{cardTypes.map(type=><option key={type.id} value={type.id}>{type.name}</option>)}</select></label>}
                 {insertPosition !== null && (
                   <p className="mt-1 text-xs text-[#626f86]">
                     Posição {insertPosition + 1} na lista

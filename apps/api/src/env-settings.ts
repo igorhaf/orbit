@@ -27,8 +27,8 @@ const groups = [
   { id: 'email', label: 'E-mail e relatórios', fields: [
     ['SMTP_HOST','Servidor SMTP',false],['SMTP_PORT','Porta SMTP',false],['SMTP_SECURE','SMTP com TLS implícito',false],['SMTP_FROM','Endereço remetente',false],['SMTP_USER','Usuário SMTP',false],['SMTP_PASSWORD','Senha SMTP',true],['EMAIL_INGEST_TOKEN','Token de recebimento de e-mail',true],['COMMENT_EMAIL_DOMAIN','Domínio de comentários por e-mail',false],
   ] },
-  { id: 'ai', label: 'Execução e IA', fields: [
-    ['CODEX_BIN','Executável Codex',false],['CODEX_AI_TIMEOUT_MS','Tempo limite de IA (ms)',false],['ORBIT_EXECUTION_TIMEOUT_MS','Tempo limite de execução (ms)',false],
+  { id: 'execution', label: 'Execução', fields: [
+    ['ORBIT_EXECUTION_TIMEOUT_MS','Tempo limite de execução (ms)',false],
   ] },
 ].map(group => ({ ...group, fields: group.fields.map(([key,label,secret]) => ({ key: String(key), label: String(label), secret: Boolean(secret) })) }));
 

@@ -91,6 +91,7 @@ export function CardComments({
   run,
   user,
   aiLocked,
+  aiEnabled=true,
   onAiActionStart,
   onAiActionEnd,
 }: {
@@ -102,6 +103,7 @@ export function CardComments({
   run: (action: () => Promise<unknown>) => Promise<boolean>;
   user: { id: string; name: string; avatar_url?: string | null } | null;
   aiLocked: boolean;
+  aiEnabled?:boolean;
   onAiActionStart: () => void;
   onAiActionEnd: () => void;
 }) {
@@ -307,14 +309,14 @@ export function CardComments({
                 onChange={(event) => void addFiles(event)}
               />
             </label>
-            <span className="inline-flex items-center gap-1 rounded bg-[#f0edff] px-2 py-1 text-xs text-[#403294]">
+            {aiEnabled && <span className="inline-flex items-center gap-1 rounded bg-[#f0edff] px-2 py-1 text-xs text-[#403294]">
               <Sparkles size={13} />
               <select aria-label="Ação de IA para o comentário" disabled={aiBusy || aiLocked} value={aiAction} onChange={(event) => setAiAction(event.target.value as CommentAiAction)} className="max-w-48 rounded border border-[#c3b6f7] bg-white px-2 py-1 text-xs text-[#403294]">
                 {commentAiActions.map((action) => <option key={action.id} value={action.id}>{action.label}</option>)}
               </select>
               <button type="button" disabled={aiBusy || aiLocked} onClick={() => void commentAi(aiAction)} className="rounded bg-[#6554c0] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#5243aa] disabled:opacity-50">Gerar</button>
               {aiBusy && <LoaderCircle size={12} className="animate-spin" />}
-            </span>
+            </span>}
             <button
               type="button"
               disabled={!body.trim() && !pending.length}
@@ -323,13 +325,13 @@ export function CardComments({
             >
               Salvar
             </button>
-            <button
+            {aiEnabled && <button
               type="submit"
               disabled={aiLocked || (!body.trim() && !pending.length)}
               className="rounded bg-[#0c66e4] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0052cc] disabled:opacity-50"
             >
               Executar
-            </button>
+            </button>}
           </div>
           {aiResult && (
             <div className="mt-2 rounded border border-[#c3b6f7] bg-[#f7f5ff] p-2 text-sm">
@@ -480,7 +482,7 @@ export function CardComments({
                     <Copy size={12} className="mr-1 inline" />
                     Copiar link
                   </button>
-                  <button
+                  {aiEnabled && <><button
                     onClick={() => {
                       setAiAction("elaborate");
                       void commentAi("elaborate", comment);
@@ -499,7 +501,7 @@ export function CardComments({
                   >
                     <Play size={12} fill="currentColor" />
                     Executar
-                  </button>
+                  </button></>}
                   {!comment.is_ai&&!comment.ai_status&&comment.author_id === user?.id && (
                     <>
                       <button

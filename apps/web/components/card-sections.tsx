@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, Board, Card, CardExtensions } from '@/lib/api';
 import { CardChecklists } from './card-checklists';
-import { GitActivity, GitCardSection } from './git-card-panel';
+import {CardPluginSlot} from '@/plugins/card-layouts/CardSlot';
 import { CardContexts } from './card-contexts';
 
 export function CardChecklistSection({card,board,onChanged}: {card:Card;board:Board;onChanged:()=>Promise<void>}){
@@ -15,7 +15,6 @@ export function CardChecklistSection({card,board,onChanged}: {card:Card;board:Bo
   return <div className="space-y-7">{error&&<p role="alert" className="rounded bg-[#ffebe6] p-2 text-sm text-[#ae2a19]">{error}</p>}{data&&<CardChecklists card={card} board={board} groups={data.checklists} mutate={mutate}/>}</div>;
 }
 
-export function CardSections({card,board,onChanged}: {card:Card;board:Board;onChanged:()=>Promise<void>}){
-  const projectId=card.ai_project_id||board.ai_default_project_id||'';
-  return <div className="space-y-7"><GitActivity cardId={card.id}/><GitCardSection cardId={card.id} projectId={projectId}/><CardContexts key={`contexts:${card.id}`} card={card} board={board} onChanged={onChanged}/></div>;
+export function CardSections({card,board,onChanged,gitEnabled=true}: {card:Card;board:Board;onChanged:()=>Promise<void>;gitEnabled?:boolean}){
+  return <div className="space-y-7"><CardPluginSlot slot="development.git" slots={gitEnabled?["development.git"]:[]} card={card} board={board} onChanged={onChanged}/><CardContexts key={`contexts:${card.id}`} card={card} board={board} onChanged={onChanged}/></div>;
 }

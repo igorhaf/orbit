@@ -1,4 +1,5 @@
 "use client";
+import {CardBadges} from '@/plugins/card-layouts/CardBadges';
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckSquare,
@@ -35,7 +36,9 @@ import { CardAttachments } from "./card-attachments";
 import { CardDatesPanel, CardLabelsPanel } from "./card-extras";
 import { CardChecklistSection, CardSections } from "./card-sections";
 import { CardComments } from "./card-comments";
-import { CardAi } from "./card-ai";
+import {CardPlugins,CardPluginFields,useCardPlugins} from "@/plugins/card-layouts/CardPlugins";
+import {CardPluginSlot} from "@/plugins/card-layouts/CardSlot";
+import {CardTypeSelector} from "@/plugins/card-layouts/CardTypeSelector";
 import { CardOperations } from "./card-operations";
 import { PromptExecution } from "./prompt-execution";
 
@@ -77,7 +80,7 @@ function PromptPreview({ card, board }: { card: Card; board: Board }) {
   const modelLabel = selectedModel ? `${selectedModel.name} · ${selectedModel.version}` : run?.model || model;
   const prompt = run?.prompt || `Você está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio.\n\nCARTÃO: ${card.title}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description || card.title}${contextsPrompt}`;
   return <section className="mt-6 space-y-4" aria-label="Próximo prompt">
-    <div className="flex min-w-max flex-nowrap gap-3 overflow-x-auto text-xs"><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{modelLabel}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
+    <div className="flex min-w-0 max-w-full flex-nowrap gap-3 overflow-x-auto text-xs"><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Modelo: <b>{modelLabel}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Esforço: <b>{run?.effort || effort}</b></span><span className="shrink-0 rounded bg-[#e9f2ff] px-3 py-2">Projeto: <b>{card.ai_project_id ? "Definido no cartão" : board.ai_default_project_id ? "Padrão do quadro" : "Selecione no cartão"}</b></span></div>
     <p className="text-sm text-[#626f86]">Prévia da instrução usada na sessão. Após executar, esta aba mostra o prompt completo enviado.</p>
     <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-4 font-mono text-xs leading-5">{prompt}</pre>
   </section>;
@@ -143,7 +146,9 @@ export function CardDialog({
   onClose,
   onChanged,
   onDeleted,
+  sidePanel = false,
 }: {
+  sidePanel?: boolean;
   card: Card;
   board: Board;
   onClose: () => void;
@@ -151,6 +156,9 @@ export function CardDialog({
   onDeleted: () => Promise<void>;
 }) {
   const { confirm, confirmationModal } = useConfirmModal();
+  const cardPlugins=useCardPlugins(card.id);
+  const aiEnabled=cardPlugins.has("ai.controls");
+
   const [details, setDetails] = useState<CardDetails>({
     comments: [],
     checklist: [],
@@ -165,6 +173,7 @@ export function CardDialog({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"card" | "prompt" | "output">("card");
+  const visibleTab=cardPlugins.has("ai.prompt")?tab:"card";
   const [aiActionPending, setAiActionPending] = useState(false);
   const [previousCard, setPreviousCard] = useState(card);
   const markedActivityRead = useRef("");
@@ -314,12 +323,12 @@ export function CardDialog({
 
   return (
     <>
-    <Modal onClose={onClose} extraWide>
-      <div className="max-h-[84vh] overflow-y-auto rounded-xl bg-[#f7f8fa] p-4 text-[#172b4d] sm:p-6">
+    <Modal onClose={onClose} extraWide sidePanel={sidePanel}>
+      <div className={sidePanel?"min-h-full min-w-0 max-w-full bg-[#f7f8fa] p-4 text-[#172b4d] sm:p-6":"max-h-[84vh] overflow-y-auto rounded-xl bg-[#f7f8fa] p-4 text-[#172b4d] sm:p-6"}>
         <div className="pr-9">
           <div className="flex items-start gap-3">
             <CreditCard size={22} className="mt-1 shrink-0" />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1"><CardBadges badges={cardPlugins.state.badges}/>
               <input
                 value={title}
                 maxLength={300}
@@ -367,10 +376,10 @@ export function CardDialog({
             {error}
           </div>
         )}
-        <nav className="mt-6 flex gap-1 border-b border-[#dfe1e6]" aria-label="Abas do cartão">
-          {[ ["card", "Cartão"], ["prompt", "Próximo prompt"], ["output", "Execução"] ].map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as typeof tab)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === id ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86] hover:text-[#172b4d]"}`}>{id === "card" && (promptRunning || executionRunning) && <LoaderCircle size={14} className="mr-1 inline animate-spin" aria-label="Execução em andamento" />}<span>{label}</span>{id === "card" && mainTabStatus && <span className={`ml-1 text-[11px] font-medium ${mainTabExecution ? "text-[#579dff]" : mainTabStatus === "Falhou" ? "text-[#ae2a19]" : "text-[#216e4e]"}`}>({mainTabStatus})</span>}</button>)}
+        <nav className="mt-6 flex gap-1 overflow-x-auto border-b border-[#dfe1e6]" aria-label="Abas do cartão">
+          {[ ["card", "Cartão"], ...(cardPlugins.has("ai.prompt")?[["prompt", "Próximo prompt"]]:[]), ...(cardPlugins.has("ai.execution")?[["output", "Execução"]]:[]) ].map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as typeof tab)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === id ? "border-[#0c66e4] text-[#0c66e4]" : "border-transparent text-[#626f86] hover:text-[#172b4d]"}`}>{id === "card" && aiEnabled && (promptRunning || executionRunning) && <LoaderCircle size={14} className="mr-1 inline animate-spin" aria-label="Execução em andamento" />}<span>{label}</span>{id === "card" && aiEnabled && mainTabStatus && <span className={`ml-1 text-[11px] font-medium ${mainTabExecution ? "text-[#579dff]" : mainTabStatus === "Falhou" ? "text-[#ae2a19]" : "text-[#216e4e]"}`}>({mainTabStatus})</span>}</button>)}
         </nav>
-        {tab === "card" && <div className="mt-6 grid gap-7 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]">
+        {visibleTab === "card" && <div className={sidePanel?"mt-6 grid gap-7":"mt-6 grid gap-7 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]"}>
           <div className="min-w-0 space-y-7">
             <div className="flex flex-wrap gap-5 pl-1">
               {card.labels?.length > 0 && (
@@ -471,8 +480,11 @@ export function CardDialog({
               </button>
             </div>
             <div className="pl-0 sm:pl-8">
+              {['normal','template'].includes(card.kind||'normal')&&<CardTypeSelector cardId={card.id} onChanged={onChanged}/>}
+              <CardPlugins model={cardPlugins}/>
+              <CardPluginFields key={card.id+cardPlugins.state.selected.join()} cardId={card.id} model={cardPlugins}/>
               <div className="grid gap-4">
-              <CardAi
+              {aiEnabled && <CardPluginSlot slot="ai.controls" slots={cardPlugins.state.slots}
                 key={card.id}
                 card={card}
                 board={board}
@@ -495,7 +507,7 @@ export function CardDialog({
                     await onChanged();
                   }
                 }}
-              />
+              />}
               </div>
               <section className="mt-6">
                 {editingDescription ? (
@@ -558,7 +570,7 @@ export function CardDialog({
                 )}
               </section>
               <CardAttachments attachments={details.attachments} />
-              <CardAi
+              {aiEnabled && <CardPluginSlot slot="ai.controls" slots={cardPlugins.state.slots}
                 key={`text-assistant:${card.id}`}
                 card={card}
                 board={board}
@@ -577,7 +589,7 @@ export function CardDialog({
                   );
                   if (changed) setDescription(nextDescription);
                 }}
-              />
+              />}
             </div>
             {details.externalResources.length > 0 && (
               <section>
@@ -639,10 +651,10 @@ export function CardDialog({
                 </div>
               </section>
             )}
-            <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} onOpenExecution={() => setTab("output")} onChanged={onChanged} aiLocked={aiLocked} onExecutionStart={() => setAiActionPending(true)} onExecutionEnd={() => setAiActionPending(false)} />
+            {aiEnabled && <CardPromptSummary key={`prompt-summary:${card.id}`} card={card} onOpenExecution={() => setTab("output")} onChanged={onChanged} aiLocked={aiLocked} onExecutionStart={() => setAiActionPending(true)} onExecutionEnd={() => setAiActionPending(false)} />}
             <CardChecklistSection card={card} board={board} onChanged={onChanged} />
           </div>
-          <aside className="min-w-0 space-y-6 border-l border-[#dfe1e6] pl-0 xl:pl-7">
+          <aside className={sidePanel?"min-w-0 space-y-6 border-t border-[#dfe1e6] pt-6":"min-w-0 space-y-6 border-l border-[#dfe1e6] pl-0 xl:pl-7"}>
             <CardComments
               card={card}
               board={board}
@@ -651,11 +663,13 @@ export function CardDialog({
               refreshDetails={loadDetails}
               run={run}
               user={user}
+              aiEnabled={cardPlugins.has("ai.comments")}
               aiLocked={aiLocked}
               onAiActionStart={() => setAiActionPending(true)}
               onAiActionEnd={() => setAiActionPending(false)}
             />
             <CardSections
+              gitEnabled={cardPlugins.has("development.git")}
               key={`sections:${card.id}`}
               card={card}
               board={board}
@@ -705,10 +719,10 @@ export function CardDialog({
             </div>
           </aside>
         </div>}
-        {tab === "prompt" && <PromptPreview card={card} board={board} />}
-        <div className={tab === "output" ? "mt-6" : "hidden"}>
-          <PromptExecution card={card} board={board} active={tab === "output"} />
-        </div>
+        {visibleTab === "prompt" && <PromptPreview card={card} board={board} />}
+        {cardPlugins.has("ai.execution") && <div className={visibleTab === "output" ? "mt-6" : "hidden"}>
+          <PromptExecution card={card} board={board} active={visibleTab === "output"} />
+        </div>}
         </div>
       </Modal>
       {panel === "labels" && (

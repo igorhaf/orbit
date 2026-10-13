@@ -4,7 +4,7 @@ import { ArrowRight, CheckCircle2, Eye, EyeOff, LayoutDashboard, Sparkles } from
 import { send, setSession, User } from '@/lib/api';
 
 export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
-  const [email,setEmail] = useState('igorhaf@gmail.com');
+  const [email,setEmail] = useState('');
   const [password,setPassword] = useState('');
   const [showPassword,setShowPassword] = useState(false);
   const [busy,setBusy] = useState(false);
@@ -40,14 +40,14 @@ export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
       </div>
       <div className="mx-auto w-full max-w-[420px] rounded-xl bg-white px-6 py-8 shadow-[0_8px_32px_#091e421a] sm:px-10">
         <h2 className="text-center text-base font-bold">Entre para continuar</h2>
-        <p className="mt-1 text-center text-sm text-[#626f86]">Este espaço usa uma conta pessoal.</p>
+        <p className="mt-1 text-center text-sm text-[#626f86]">Entre com seu e-mail e senha.</p>
         <form onSubmit={submit} className="mt-7 space-y-4">
-          <div><label htmlFor="email" className="mb-1 block text-xs font-bold">E-mail</label><input id="email" required type="email" value={email} onChange={e=>setEmail(e.target.value)} className="w-full rounded border border-[#8590a2] px-3 py-2.5 text-sm"/></div>
-          <div><label htmlFor="password" className="mb-1 block text-xs font-bold">Senha</label><div className="relative"><input id="password" required type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Sua senha" className="w-full rounded border border-[#8590a2] py-2.5 pl-3 pr-12 text-sm"/><button type="button" onClick={()=>setShowPassword(visible=>!visible)} aria-label={showPassword?'Ocultar senha':'Mostrar senha'} aria-controls="password" className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r text-[#626f86] hover:text-[#172b4d] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0c66e4]"><span className="sr-only">{showPassword?'Ocultar senha':'Mostrar senha'}</span>{showPassword?<EyeOff size={18} aria-hidden="true"/>:<Eye size={18} aria-hidden="true"/>}</button></div></div>
+          <div><label htmlFor="email" className="mb-1 block text-xs font-bold">E-mail</label><input id="email" required type="email" value={email} onChange={e=>setEmail(e.target.value)} className="min-h-11 w-full rounded border border-[#8590a2] px-3 py-2.5 text-sm"/></div>
+          <div><label htmlFor="password" className="mb-1 block text-xs font-bold">Senha</label><div className="relative"><input id="password" required type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Sua senha" className="min-h-11 w-full rounded border border-[#8590a2] py-2.5 pl-3 pr-12 text-sm"/><button type="button" onClick={()=>setShowPassword(visible=>!visible)} aria-label={showPassword?'Ocultar senha':'Mostrar senha'} aria-controls="password" className="absolute inset-y-0 right-0 flex min-h-11 w-11 items-center justify-center rounded-r text-[#626f86] hover:text-[#172b4d] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0c66e4]"><span className="sr-only">{showPassword?'Ocultar senha':'Mostrar senha'}</span>{showPassword?<EyeOff size={18} aria-hidden="true"/>:<Eye size={18} aria-hidden="true"/>}</button></div></div>
           {error && <p role="alert" className="rounded bg-[#ffebe6] px-3 py-2 text-xs text-[#ae2a19]">{error}</p>}
-          <button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded bg-[#0c66e4] py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">{busy?'Aguarde...':'Entrar'} <ArrowRight size={16}/></button>
+          <button disabled={busy} className="flex min-h-11 w-full items-center justify-center gap-2 rounded bg-[#0c66e4] py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">{busy?'Aguarde...':'Entrar'} <ArrowRight size={16}/></button>
         </form>
-        <p className="mt-6 border-t border-[#dfe1e6] pt-5 text-center text-xs text-[#626f86]">Acesso exclusivo da conta configurada neste projeto.</p>
+        <p className="mt-6 border-t border-[#dfe1e6] pt-5 text-center text-xs text-[#626f86]">Acesso seguro aos seus quadros e projetos.</p>
       </div>
     </div>
   </div>;

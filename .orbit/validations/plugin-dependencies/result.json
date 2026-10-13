@@ -1,0 +1,33 @@
+{
+  "validated_at": "2026-10-12T22:51:17.360015+00:00",
+  "environment": "development",
+  "scope": "decomposition planning and live dependency state",
+  "build": "passed",
+  "unit_tests": {
+    "passed": 177,
+    "failed": 0
+  },
+  "live_selenium": {
+    "checks": 17,
+    "independent_browsers": 2,
+    "result": "passed",
+    "widths": [
+      320,
+      375,
+      768,
+      1440
+    ]
+  },
+  "mobile_selenium": {
+    "result": "passed",
+    "widths": [
+      320,
+      375,
+      430,
+      768
+    ]
+  },
+  "new_google_microsoft_bases": "planned, not extracted in this phase",
+  "calendar_email_layouts": "planned",
+  "plan": "docs/plugins/DECOMPOSITION-PLAN.md"
+}

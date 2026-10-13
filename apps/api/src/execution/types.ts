@@ -13,7 +13,7 @@ export type Capability={id:string;name:string;permissions:string[]};
 export interface Executor {id:string;name:string;actions:Capability[];execute(input:ExecutionInput):Promise<ExecutionResult>}
 export type PluginAction=import('../plugins/contract').ActionDefinition&{execute:(config:Record<string,unknown>,context:import('../plugins/contract').PluginActionContext)=>Promise<Output>};
 export type Plugin=import('../plugins/contract').PluginDefinition;
-export const permissions=['filesystem.read','filesystem.write','process.execute','mail.read','mail.draft','mail.send','repository.read','repository.write','issues.read','issues.write','pull_requests.read','pull_requests.write','branches.read','branches.write'] as const;
+export const permissions=['ai.read','ai.write','filesystem.read','filesystem.write','process.execute','mail.read','mail.draft','mail.send','repository.read','repository.write','issues.read','issues.write','pull_requests.read','pull_requests.write','branches.read','branches.write'] as const;
 export const emptyConfig=():ExecutionConfig=>({project_id:null,enabled:false,agent:null,executor:null,action:null,skills:[],working_directory:'.',mode:'manual',permissions:[],context:{},integrations:[]});
 
 export const emptyDefaults=():ExecutionDefaults=>{const config=emptyConfig();delete (config as Partial<ExecutionConfig>).project_id;delete (config as Partial<ExecutionConfig>).enabled;return config as ExecutionDefaults};

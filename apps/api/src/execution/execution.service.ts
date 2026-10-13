@@ -1,3 +1,4 @@
+import {CardLayoutsService} from '../plugins/card-layouts';
 import {runProjectChecks,validateProjectChecks} from './project-checks';
 import {captureFileScope} from './file-scope';
 import {HttpException,Inject,Injectable,OnModuleInit,OnModuleDestroy,Optional} from '@nestjs/common';
@@ -23,11 +24,11 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
   private timer?:ReturnType<typeof setInterval>;private active=false;private stopping=false;
   private controllers=new Map<string,AbortController>();
   private notifications:PluginNotifications;
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(PluginRegistry) plugins:PluginRegistry,@Optional() @Inject(PluginNotifications) notifications?:PluginNotifications){
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(ProjectRegistry) private projects:ProjectRegistry,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(PluginRegistry) plugins:PluginRegistry,@Optional() @Inject(PluginNotifications) notifications?:PluginNotifications,@Optional() @Inject(CardLayoutsService) private layouts?:CardLayoutsService){
     this.plugins=plugins;
     this.notifications=notifications||new PluginNotifications(this.db);
     this.runs=new RunRepository(db);this.context=new ContextBuilder(db,projects);
-    this.executors.register(new CodexExecutor());
+    this.executors.register(new CodexExecutor(()=>this.plugins.isEnabled('ai')));
     this.executors.register(new PluginActionExecutor(this.plugins,this.notifications));
     this.plugins.register(filesystemPlugin());
   }
@@ -79,6 +80,7 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
     }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
   }
   async enqueue(id:string,user:string,body:{request_key?:string}){
+    await this.layouts?.assertExecutionAllowed(id,user);
     const card=await this.card(id,user),config=await this.config(id);
     if(!config.enabled)throw new HttpException('Habilite a execução neste cartão.',409);
     try{await this.resolved(config,card,user)}catch(error){throw new HttpException({message:redact((error as Error).message)},400)}
@@ -103,6 +105,7 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
     const controller=new AbortController();this.controllers.set(run.id,controller);
     const heartbeat=setInterval(()=>void this.db.query("UPDATE card_runs SET heartbeat_at=now() WHERE id=$1 AND status='running' RETURNING cancel_requested",[run.id]).then(rows=>{if(!rows.length||rows[0].cancel_requested)controller.abort()}).catch(()=>controller.abort()),2000);
     try{
+      await this.layouts?.assertExecutionAllowed(run.card_id,run.user_id);
       const card=await this.card(run.card_id,run.user_id);
       await this.runs.stage(run.id,'context',`Agente: ${run.agent||'nenhum'}; executor: ${run.executor}; skills: ${run.input.config.skills.join(', ')||'nenhuma'}.`);
       const {project,context,executor}=await this.resolved(run.input.config,run.input.card,run.user_id);

@@ -722,6 +722,21 @@ DROP INDEX IF EXISTS delivery_runs_card_trigger_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS delivery_runs_trigger_key_idx ON delivery_runs(pipeline_id,trigger_key) WHERE trigger_key IS NOT NULL;
 ALTER TABLE delivery_steps ADD COLUMN IF NOT EXISTS retry_delay_ms integer NOT NULL DEFAULT 0 CHECK (retry_delay_ms BETWEEN 0 AND 60000);
 
+-- Dependency must exist before backup tables on a new installation.
+CREATE TABLE IF NOT EXISTS integration_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plugin_id varchar(80) NOT NULL,
+  external_account_id varchar(500),
+  display_name varchar(255) NOT NULL,
+  credentials_encrypted text NOT NULL,
+  enabled boolean NOT NULL DEFAULT true,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(owner_id,plugin_id,external_account_id)
+);
+
 CREATE TABLE IF NOT EXISTS backup_cloud_copies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   archive text NOT NULL,
