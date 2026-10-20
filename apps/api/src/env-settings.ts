@@ -10,10 +10,11 @@ import { googleRedirectUri } from './google/redirect-uri';
 import { BackupService } from './backup-service';
 import {Db} from './db';
 import {parseVaultReference,resolveVaultReference} from './vault-credentials';
+import type {PluginConfigurationField} from './plugins/contract';
 
 const groups = [
   { id: 'runtime', label: 'Aplicação', fields: [
-    ['DATABASE_URL','URL do banco de dados',true],['JWT_SECRET','Chave de sessão',true],['API_PORT','Porta da API',false],['WEB_ORIGIN','Origem web permitida',false],['NEXT_PUBLIC_API_URL','URL pública da API web',false],['API_PUBLIC_URL','URL pública da API',false],['ORBIT_SECRET_KEY','Chave de criptografia de integrações',true],['VAULT_ENCRYPTION_KEY','Chave de criptografia do cofre',true],
+    ['DATABASE_URL','URL do banco de dados',true],['JWT_SECRET','Chave de sessão',true],['API_PORT','Porta da API',false],['WEB_ORIGIN','Origem web permitida',false],['NEXT_PUBLIC_API_URL','URL pública da API web',false],['API_PUBLIC_URL','URL pública da API',false],['ORBIT_SECRET_KEY','Chave ativa de criptografia de integrações',true],['ORBIT_SECRET_KEY_PREVIOUS','Chave anterior de criptografia de integrações (rotação)',true],['VAULT_ENCRYPTION_KEY','Chave ativa de criptografia do cofre',true],['VAULT_ENCRYPTION_KEY_PREVIOUS','Chave anterior de criptografia do cofre (rotação)',true],
   ] },
   { id: 'backup', label: 'Backups', fields: [
     ['ORBIT_BACKUP_KEY','Chave de criptografia dos backups',true],['ORBIT_BACKUP_DIR','Pasta local dos backups',false],['ORBIT_BACKUP_KEEP','Quantidade de backups locais',false],['ORBIT_CONFIG_BACKUP_PATHS','Outros arquivos de configuração ignorados pelo Git (caminhos relativos, separados por vírgulas)',false],['ORBIT_RESTORE_DATABASE_URL','Banco de destino para restauração',true],
@@ -78,7 +79,7 @@ export class EnvironmentSettingsController {
     try { stored.NEXT_PUBLIC_API_URL=readStoredEnv(await readFile(webEnvFile,'utf8')).NEXT_PUBLIC_API_URL||stored.NEXT_PUBLIC_API_URL; } catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error}
     return stored;
   }
-  private values(fields:Array<{key:string;label:string;secret:boolean}>,stored:Record<string,string>,hideSecrets=false){return fields.map(field=>{const value=stored[field.key]??process.env[field.key]??'';return {...field,value:value.startsWith('orbit-vault://')||hideSecrets&&field.secret?'':value,vaultReference:parseVaultReference(value)?value:undefined,configured:Boolean(value)}})}
+  private values(fields:Array<{key:string;label:string;secret:boolean}&Partial<PluginConfigurationField>>,stored:Record<string,string>,hideSecrets=false){return fields.map(field=>{const value=stored[field.key]??process.env[field.key]??'';return {...field,value:value.startsWith('orbit-vault://')||hideSecrets&&field.secret?'':value,vaultReference:parseVaultReference(value)?value:undefined,configured:Boolean(value)}})}
   private plugin(id:string){
     try{return this.plugins.getById(id)}catch{throw new HttpException('Plugin não encontrado.',404)}
   }
@@ -99,6 +100,26 @@ export class EnvironmentSettingsController {
     for(const [key,value] of Object.entries(changes))if(value.startsWith('orbit-vault://')){
       if(!allowed.has(key)||!this.db)throw new HttpException('Esta configuração não aceita constantes do cofre.',400);
       await resolveVaultReference(this.db,value,owner);
+    }
+  }
+  private validatePluginFields(changes:Record<string,string>,clear:string[],fields:PluginConfigurationField[]){
+    const byKey=new Map(fields.map(field=>[field.key,field]));
+    for(const key of clear)if(byKey.get(key)?.required)throw new HttpException(`O campo ${byKey.get(key)!.label} é obrigatório.`,400);
+    for(const [key,value] of Object.entries(changes)){
+      const field=byKey.get(key)!;const type=field.type||'text';
+      if(value.startsWith('orbit-vault://')){
+        if(!(field.secret||field.allowVaultReference))throw new HttpException(`O campo ${field.label} não aceita referência ao Cofre.`,400);
+        continue;
+      }
+      if(field.required&&!value.trim())throw new HttpException(`O campo ${field.label} é obrigatório.`,400);
+      if(field.maxLength!==undefined&&value.length>field.maxLength)throw new HttpException(`O campo ${field.label} excede o limite de ${field.maxLength} caracteres.`,400);
+      if(type==='number'){
+        const number=Number(value);
+        if(!value.trim()||!Number.isFinite(number)||(field.min!==undefined&&number<field.min)||(field.max!==undefined&&number>field.max))throw new HttpException(`O campo ${field.label} deve ser numérico e respeitar os limites definidos.`,400);
+      }else if(type==='boolean'&&!['true','false'].includes(value))throw new HttpException(`O campo ${field.label} deve ser verdadeiro ou falso.`,400);
+      else if(type==='url'){
+        try{const url=new URL(value);if(!['http:','https:'].includes(url.protocol))throw new Error('protocol')}catch{throw new HttpException(`O campo ${field.label} deve ser uma URL HTTP ou HTTPS válida.`,400)}
+      }else if(type==='select'&&!field.options?.some(option=>option.value===value))throw new HttpException(`O campo ${field.label} deve corresponder a uma opção declarada pelo plugin.`,400);
     }
   }
   private async applyReferences(changes:Record<string,string>){
@@ -137,9 +158,10 @@ export class EnvironmentSettingsController {
 
   @Patch('plugins/:id')
   async updatePlugin(@Req() req:Request,@Param('id') id:string,@Body() body:Record<string,unknown>){
-    const owner=this.features.user(req);const plugin=this.plugin(id);
-    const {changes,clear}=this.validate(body,new Set((plugin.configuration||[]).map(field=>field.key)));
-    await this.validateReferences(changes,owner,new Set((plugin.configuration||[]).map(field=>field.key)));
+    const owner=this.features.user(req);const plugin=this.plugin(id);const fields=plugin.configuration||[];
+    const {changes,clear}=this.validate(body,new Set(fields.map(field=>field.key)));
+    this.validatePluginFields(changes,clear,fields);
+    await this.validateReferences(changes,owner,new Set(fields.filter(field=>field.secret||field.allowVaultReference).map(field=>field.key)));
     await saveEnvironment(envFile,changes,clear);
     await this.applyReferences(changes);
     const backup=await this.backupNotice();

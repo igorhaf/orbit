@@ -49,6 +49,21 @@ export type ConnectionProviderDefinition = {
   metadata?: Record<string, unknown>;
 };
 
+export type PluginConfigurationField = {
+  key: string;
+  label: string;
+  secret: boolean;
+  type?: "text" | "textarea" | "number" | "boolean" | "url" | "select";
+  required?: boolean;
+  description?: string;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  maxLength?: number;
+  options?: Array<{ value: string; label: string }>;
+  allowVaultReference?: boolean;
+};
+
 export type CardLayoutContribution = { id: string; name: string; slots: string[]; fields?: Array<{key:string;label:string;type:"text"|"textarea"|"select";maxLength?:number;showOnCard?:boolean;childDefault?:string;options?:Array<{value:string;label:string;color?:string;blocksExecution?:boolean}>}> };
 export type CardTypeContribution = { id: string; name: string; description?: string; slots?: string[] };
 export type BoardViewContribution = { id:string; name:string; description?:string; renderer:string; permission:string };
@@ -73,7 +88,7 @@ export type PluginDefinition = {
   dependencies?: string[];
   scope?: PluginScope;
   configurable?: boolean;
-  configuration?: Array<{ key: string; label: string; secret: boolean }>;
+  configuration?: PluginConfigurationField[];
   capabilities?: CapabilityDefinition[];
   actions?: ActionDefinition[];
   connectionProvider?: ConnectionProviderDefinition;

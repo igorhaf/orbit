@@ -19,7 +19,7 @@ import {createVaultBackup,readVaultBackup,restoreVaultBackup,vaultBackupPath} fr
 import {DeliveryCredentialService} from './delivery/executors';
 
 test('vault constants, deploy resolution, deletion protection and encrypted backup restore in isolated PostgreSQL',async()=>{
- const url=new URL(process.env.DATABASE_URL!);url.hostname=process.env.ORBIT_SELENIUM_DB_HOST||url.hostname;
+ const url=new URL(process.env.DATABASE_URL!);url.hostname=process.env.ORBIT_TEST_DB_HOST||process.env.ORBIT_SELENIUM_DB_HOST||url.hostname;
  const adminUrl=new URL(url);adminUrl.username=execFileSync('docker',['exec','orbit-db-dev','printenv','POSTGRES_USER'],{encoding:'utf8'}).trim();adminUrl.password=execFileSync('docker',['exec','orbit-db-dev','printenv','POSTGRES_PASSWORD'],{encoding:'utf8'}).trim();
  const schema=`vault_test_${randomUUID().replaceAll('-','')}`,admin=new Pool({connectionString:adminUrl.toString()});
  const directory=await mkdtemp(join(tmpdir(),'orbit-vault-constants-'));
@@ -28,14 +28,18 @@ test('vault constants, deploy resolution, deletion protection and encrypted back
  const db=new Db();await db.pool.end();db.pool=new Pool({connectionString:url.toString(),options:`-c search_path=${schema}`});
  try{
   await admin.query(`CREATE SCHEMA ${schema} AUTHORIZATION ${url.username}`);
-  for(const table of ['users','vault_categories','vault_items','cards','delivery_credentials','vault_backup_restores','integration_connections'])await admin.query(`CREATE TABLE ${schema}.${table} (LIKE public.${table} INCLUDING ALL)`);
+  for(const table of ['users','vault_categories','vault_items','cards','delivery_credentials','vault_backup_restores','integration_connections','oauth_states'])await admin.query(`CREATE TABLE ${schema}.${table} (LIKE public.${table} INCLUDING ALL)`);
+  await admin.query(`CREATE TABLE ${schema}.access_audit (id bigserial PRIMARY KEY,actor_id uuid,action text NOT NULL,target text,created_at timestamptz NOT NULL DEFAULT now(),scope_type text,scope_id uuid)`);
   await admin.query(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${schema} TO ${url.username}`);
+  await admin.query(`GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA ${schema} TO ${url.username}`);
   const owners=[randomUUID(),randomUUID()];for(const owner of owners)await db.query('INSERT INTO users(id,name,email,password_hash) VALUES($1,$2,$3,$4)',[owner,'Validation',`${owner}@example.invalid`,'test']);
   const category=await db.one<{id:string}>('INSERT INTO vault_categories(owner_id,name,icon) VALUES($1,$2,$3) RETURNING id',[owners[0],'Implantação','LockKeyhole']);
   const fields=[{id:randomUUID(),name:'Servidor',constant:'SSH_PASSWORD',value:'secret-first'},{id:randomUUID(),name:'Pessoal',constant:'',value:'personal-only'}];
   const item=await db.one<{id:string}>('INSERT INTO vault_items(owner_id,title,category,secret_data) VALUES($1,$2,$3,$4) RETURNING id',[owners[0],'Credenciais',category!.id,encryptVaultPayload({content_html:'<p>Notas preservadas</p>',credentials:fields})]);
   const reference=vaultReference(owners[0],item!.id,fields[0].id),catalog=await vaultConstants(db,owners[0]);assert.equal(catalog.length,1);assert.equal(catalog[0].label,'Implantação · SSH_PASSWORD');assert(!JSON.stringify(catalog).includes('secret-first'));
   await assert.rejects(()=>resolveVaultReference(db,reference,owners[1]),/não autorizada/);
+  assert.equal(await resolveVaultReference(db,reference,owners[0]),'secret-first');
+  const accessHistory=await db.query<{actor_id:string;action:string;target:string;scope_type:string;scope_id:string}>('SELECT actor_id,action,target,scope_type,scope_id FROM access_audit WHERE scope_id=$1',[item!.id]);assert.equal(accessHistory.length,1);assert.deepEqual(accessHistory[0],{actor_id:owners[0],action:'vault.credential.resolved',target:fields[0].id,scope_type:'vault_item',scope_id:item!.id});assert(!JSON.stringify(accessHistory).includes('secret-first'));
   const {EnvironmentSettingsController}=await import('./env-settings');const registry=new PluginRegistry();registry.register({id:'vault_fixture',name:'Fixture',version:'1.0.0',configuration:[{key:'ORBIT_TEST_VAULT_TOKEN',label:'Token',secret:true}]});
   const controller=new EnvironmentSettingsController({user:()=>owners[0]} as never,registry,undefined,db);
   await controller.updatePlugin({} as never,'vault_fixture',{values:{ORBIT_TEST_VAULT_TOKEN:reference},clear:[]});
@@ -58,7 +62,11 @@ test('vault constants, deploy resolution, deletion protection and encrypted back
   const connection=await db.one<{id:string}>("INSERT INTO integration_connections(owner_id,plugin_id,external_account_id,display_name,credentials_encrypted) VALUES($1,'google',$2,'OAuth fixture',$3) RETURNING id",[owners[0],randomUUID(),new SecretVault().seal(envelope)]);
   const originalFetch=globalThis.fetch;process.env.GOOGLE_CLIENT_ID='client-fixture';process.env.GOOGLE_CLIENT_SECRET='client-fixture-secret';
   try{globalThis.fetch=async(_url,options)=>{assert.equal(new URLSearchParams(String(options?.body)).get('refresh_token'),'oauth-refresh');return new Response(JSON.stringify({access_token:'oauth-new-access',expires_in:3600,scope:'drive.file'}),{status:200})};
-    assert.equal(await new GoogleCredentials(db,new SecretVault()).token(owners[0],connection!.id,['drive.file']),'oauth-new-access');
+    const google=new GoogleCredentials(db,new SecretVault());assert.equal(await google.token(owners[0],connection!.id,['drive.file']),'oauth-new-access');
+    globalThis.fetch=async(input)=>String(input).includes('/token')?new Response(JSON.stringify({access_token:'oauth-login-access',refresh_token:'oauth-login-refresh',expires_in:3600,scope:'drive.file'}),{status:200}):new Response(JSON.stringify({id:'google-idempotency-fixture',email:'idempotency@example.invalid'}),{status:200});
+    const connect=async(code:string)=>{const started=await google.start(owners[0],'drive',['drive.file'],'http://localhost/callback');return google.complete(code,new URL(started.url).searchParams.get('state')!,'drive')};
+    const first=await connect('code-one'),second=await connect('code-two');assert.equal(first.id,second.id);
+    const duplicateConnections=await db.query('SELECT id FROM integration_connections WHERE owner_id=$1 AND plugin_id=$2 AND external_account_id=$3',[owners[0],'google','google-idempotency-fixture']);assert.equal(duplicateConnections.length,1);
   }finally{globalThis.fetch=originalFetch}
   const updatedConnection=await db.one<{credentials_encrypted:string}>('SELECT credentials_encrypted FROM integration_connections WHERE id=$1',[connection!.id]);
   const persisted=new SecretVault().open<{access_token:string;refresh_token:string}>(updatedConnection!.credentials_encrypted);assert.equal(persisted.access_token,envelope.access_token);assert.equal(persisted.refresh_token,envelope.refresh_token);

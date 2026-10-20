@@ -9,7 +9,7 @@ type Window = {usedPercent:number;windowDurationMins:number;resetsAt:number};
 type Snapshot = {primary?:Window|null;secondary?:Window|null};
 type Limits = {rateLimits?:Snapshot;rateLimitsByLimitId?:Record<string,Snapshot>};
 
-export function CodexLimitsBar({visible,isRoot,onAutoPaused}:{visible:boolean;isRoot:boolean;onAutoPaused:(paused:boolean)=>void}){
+export function CodexLimitsBar({visible,isRoot}:{visible:boolean;isRoot:boolean}){
   const [waitingAnswers,setWaitingAnswers]=useState<WaitingAnswer[]>([]);
   const [autoPaused,setAutoPaused]=useState(false);
   const [autoResume,setAutoResume]=useState(false);
@@ -24,7 +24,7 @@ export function CodexLimitsBar({visible,isRoot,onAutoPaused}:{visible:boolean;is
       const results=await Promise.allSettled([isRoot?api<Limits>('/codex/limits'):Promise.resolve(null),api<{paused:boolean;autoPaused:boolean;autoResume:boolean;waitingAnswers:WaitingAnswer[]}>('/codex/queue')]);
       if(!active)return;
       if(results[0].status==='fulfilled'){setLimits(results[0].value);setError('')}else{setLimits(null);setError(results[0].reason instanceof Error?results[0].reason.message:'Limites indisponíveis.')}
-      if(results[1].status==='fulfilled'){setWaitingAnswers(results[1].value.waitingAnswers||[]);setPaused(results[1].value.paused);setAutoPaused(results[1].value.autoPaused);setAutoResume(results[1].value.autoResume);onAutoPaused(results[1].value.autoPaused);setQueueError('')}else{setPaused(null);setQueueError('Não foi possível consultar a fila.')}
+      if(results[1].status==='fulfilled'){setWaitingAnswers(results[1].value.waitingAnswers||[]);setPaused(results[1].value.paused);setAutoPaused(results[1].value.autoPaused);setAutoResume(results[1].value.autoResume);setQueueError('')}else{setPaused(null);setQueueError('Não foi possível consultar a fila.')}
     };
     void refresh();
     const timer=setInterval(()=>void refresh(),5_000);
@@ -32,7 +32,7 @@ export function CodexLimitsBar({visible,isRoot,onAutoPaused}:{visible:boolean;is
     const focus=()=>void refresh();
     window.addEventListener('focus',focus);
     return ()=>{active=false;clearInterval(timer);window.removeEventListener('focus',focus);window.removeEventListener('queues:changed',refresh)};
-  },[isRoot,onAutoPaused]);
+  },[isRoot]);
   const snapshot=limits?.rateLimitsByLimitId?.codex||limits?.rateLimits;
   const windows=[snapshot?.primary,snapshot?.secondary];
   const describe=(minutes:number)=>{
@@ -43,12 +43,12 @@ export function CodexLimitsBar({visible,isRoot,onAutoPaused}:{visible:boolean;is
   const toggle=async()=>{
     if(paused===null)return;
     setBusy(true);
-    try{const result=await send<{paused:boolean;autoPaused:boolean}>('/codex/queue','PATCH',{paused:!paused});setPaused(result.paused);setAutoPaused(result.autoPaused);onAutoPaused(result.autoPaused);setQueueError('')}
+    try{const result=await send<{paused:boolean;autoPaused:boolean}>('/codex/queue','PATCH',{paused:!paused});setPaused(result.paused);setAutoPaused(result.autoPaused);setQueueError('')}
     catch(cause){setQueueError(cause instanceof Error?cause.message:'Não foi possível alterar a fila.')}
     finally{setBusy(false)}
   };
   const toggleAutoResume=async(checked:boolean)=>{setBusy(true);try{const result=await send<{autoResume:boolean}>('/codex/queue','PATCH',{autoResume:checked});setAutoResume(result.autoResume);setQueueError('');window.dispatchEvent(new Event('queues:changed'))}catch(cause){setQueueError((cause as Error).message)}finally{setBusy(false)}};
-  if(!visible&&!autoPaused&&!waitingAnswers.length)return null;
+  if(!visible)return null;
   return <div id="codex-limits-bar" role="status" className={`relative z-20 flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 text-sm text-white ${isRoot?'bg-[#c9372c]':'bg-[#44546f]'}`}>
     {autoPaused&&<span><strong>{isRoot?'Fila pausada automaticamente: cota em 1% ou menos.':'Fila pausada automaticamente.'}</strong></span>}
     {isRoot&&(error?<span>{error}</span>:limits?<><span><strong>5 horas:</strong> {describe(300)}</span><span><strong>Semanal:</strong> {describe(10080)}</span></>:<span>Consultando limites do Codex…</span>)}

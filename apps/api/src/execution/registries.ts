@@ -24,7 +24,15 @@ export class PluginRegistry {
     this.unique(capabilities,'Capability');this.unique(actions,'Action');
     this.unique(notifications,'Plugin notification');
     const configuration=plugin.configuration||[];
-    if(new Set(configuration.map(field=>field.key)).size!==configuration.length||configuration.some(field=>!/^[A-Z][A-Z0-9_]*$/.test(field.key)||!field.label))throw new Error(`Configuração inválida para ${plugin.id}.`);
+    if(new Set(configuration.map(field=>field.key)).size!==configuration.length||configuration.some(field=>{
+      const type=field.type||'text';
+      return !/^[A-Z][A-Z0-9_]*$/.test(field.key)||!field.label||!['text','textarea','number','boolean','url','select'].includes(type)||
+        (field.min!==undefined&&!Number.isFinite(field.min))||(field.max!==undefined&&!Number.isFinite(field.max))||
+        (field.min!==undefined&&field.max!==undefined&&field.min>field.max)||
+        (field.maxLength!==undefined&&(!Number.isInteger(field.maxLength)||field.maxLength<1||field.maxLength>20000))||
+        (type==='select'&&(!field.options?.length||new Set(field.options.map(option=>option.value)).size!==field.options.length||field.options.some(option=>!option.value||!option.label)))||
+        (type!=='select'&&field.options!==undefined);
+    }))throw new Error(`Configuração inválida para ${plugin.id}.`);
     const owned=new Set([...this.items.values()].flatMap(item=>(item.configuration||[]).map(field=>field.key)));
     if(configuration.some(field=>owned.has(field.key)))throw new Error(`Variável de plugin já registrada: ${plugin.id}.`);
     const known=new Set(capabilities.map(item=>item.id));

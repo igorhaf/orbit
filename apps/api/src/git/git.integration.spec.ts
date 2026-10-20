@@ -24,6 +24,12 @@ test('Git plugin versions without deploy, uses configured branches and tracks a 
   await db.query(`CREATE SCHEMA ${schema}`);await db.pool.end();db.pool=new Pool({connectionString:process.env.DATABASE_URL,options:`-c search_path=${schema},public`});
   try{
     await db.query(await readFile(resolve(__dirname,'../../sql/schema.sql'),'utf8'));
+    // schema.sql is the bootstrap snapshot; the production membership view is migration-owned.
+    // Keep this isolated fixture's authority projection explicit so the test exercises the
+    // same board-member authorization boundary without requiring the whole migration chain.
+    await db.query(`CREATE VIEW authorized_board_members AS
+      SELECT bm.board_id,bm.user_id,bm.role FROM board_members bm
+      JOIN boards b ON b.id=bm.board_id WHERE b.closed_at IS NULL`);
     await fixtureGit(root,'init','-b','main');await fixtureGit(root,'config','user.email','orbit-test@example.invalid');await fixtureGit(root,'config','user.name','Orbit Test');
     await writeFile(join(root,'README.md'),'initial\n');await fixtureGit(root,'add','README.md');await fixtureGit(root,'commit','-m','chore: initial');
     await fixtureGit(remote,'init','--bare');await fixtureGit(root,'remote','add','origin',remote);

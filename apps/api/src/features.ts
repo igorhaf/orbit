@@ -1,9 +1,10 @@
 import {AccessRequest,AccessService} from './access/access';
-import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Optional, Param, Patch, Post, Query, Req } from '@nestjs/common';
-import { Request } from 'express';
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Optional, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
+import { Request,Response } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { Db } from './db';
 import { OrbitEvents } from './orbit-events';
+import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
 
 export const SINGLE_EMAIL = 'igorhaf@gmail.com';
 const bad = (message: string, status = 400): never => { throw new HttpException({ message }, status); };
@@ -376,7 +377,12 @@ export class FeaturesService {
 
 @Controller()
 export class FeaturesController {
-  constructor(@Inject(FeaturesService) private features: FeaturesService) {}
+  constructor(@Inject(FeaturesService) private features: FeaturesService,@Inject(RequestRateLimiter) private requestLimits:RequestRateLimiter) {}
+  private async limitSearch(operation:string,req:Request,response:Response,user:string){
+    const origin=req.ip||req.socket.remoteAddress||'unknown';
+    const result=await this.requestLimits.consume(operation,[{kind:'identity',value:user,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_SEARCH_IDENTITY',60)},{kind:'origin',value:origin,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_SEARCH_ORIGIN',300)}],60_000);
+    if(!result.allowed){response.setHeader('Retry-After',String(result.retryAfterSeconds));response.setHeader('Cache-Control','no-store');throw new HttpException('Limite de consultas atingido. Tente novamente em instantes.',429)}
+  }
   @Get('account') account(@Req() req: Request) { return this.features.account(this.features.user(req)); }
   @Patch('account') updateAccount(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updateProfile(this.features.user(req),body); }
   @Patch('account/preferences') preferences(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updatePreferences(this.features.user(req),body); }
@@ -391,8 +397,8 @@ export class FeaturesController {
   @Post('cards/:id/watch/toggle') watchCard(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('card',id,this.features.user(req));}
   @Post('lists/:id/watch/toggle') watchList(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('list',id,this.features.user(req));}
   @Post('boards/:id/watch/toggle') watchBoard(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('board',id,this.features.user(req));}
-  @Get('search') search(@Req() req: Request,@Query('q') q='') { return this.features.search(this.features.user(req),q); }
-  @Get('search/advanced') advancedSearch(@Req() req:Request,@Query() query:Record<string,string>){return this.features.advancedSearch(this.features.user(req),query);}
+  @Get('search') async search(@Req() req: Request,@Res({passthrough:true}) response:Response,@Query('q') q='') { const user=this.features.user(req);await this.limitSearch('query.search',req,response,user);return this.features.search(user,q); }
+  @Get('search/advanced') async advancedSearch(@Req() req:Request,@Res({passthrough:true}) response:Response,@Query() query:Record<string,string>){const user=this.features.user(req);await this.limitSearch('query.search-advanced',req,response,user);return this.features.advancedSearch(user,query);}
   @Get('saved-searches') savedSearches(@Req() req:Request){return this.features.savedSearches(this.features.user(req));}
   @Post('saved-searches') saveSearch(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.saveSearch(this.features.user(req),body);}
   @Delete('saved-searches/:id') deleteSavedSearch(@Req() req:Request,@Param('id') id:string){return this.features.deleteSavedSearch(this.features.user(req),id);}

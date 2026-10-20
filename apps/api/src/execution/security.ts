@@ -23,11 +23,21 @@ export function noSecrets(value:unknown){
     noSecrets(item);
   }
 }
+export function containsSecretText(value:string){
+  // Orbit card links carry a non-authorizing selection UUID. Board access still
+  // requires membership, so this one exact internal URL shape is not a secret.
+  const uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  const internalCardUrl=new RegExp(`(^|[\\s(])(/board/${uuid}\\?card=${uuid}&)token=${uuid}(?=$|[\\s)#])`,'gi');
+  const text=value.replace(internalCardUrl,'$1$2selection=[card]');
+  if(/(?:-----BEGIN .*PRIVATE KEY-----|\b(?:sk-|ghp_|glpat-|xox[baprs]-)[A-Za-z0-9_-]{12,}|\bBearer\s+[A-Za-z0-9._-]{10,}|\b(?:[\w.-]*(?:password|secret|token|api[_-]?key|authorization|private[_-]?key))['"]?\s*[:=]\s*['"]?[^\s,'";]+)/i.test(text))return true;
+  return Object.entries(process.env).some(([key,secret])=>/(?:PASSWORD|TOKEN|SECRET|KEY|DATABASE_URL)/i.test(key)&&Boolean(secret&&secret.length>=8&&text.includes(secret)));
+}
 export function redact(value:string){
-  let text=value.replace(/(?:Bearer\s+)[\w.-]+/gi,'Bearer [REDACTED]').replace(/\b(?:sk-|ghp_)[A-Za-z0-9_-]{15,}/g,'[REDACTED]').replace(/((?:password|token|secret|api[_-]?key)["']?\s*[=:]\s*)[^\s,;]+/gi,'$1[REDACTED]');
+  let text=value.replace(/(?:Bearer\s+)[\w.-]+/gi,'Bearer [REDACTED]').replace(/\b(?:sk-|ghp_|glpat-|xox[baprs]-)[A-Za-z0-9_-]{12,}/gi,'[REDACTED]').replace(/((?:[\w.-]*(?:password|secret|token|api[_-]?key|authorization|private[_-]?key))["']?\s*[:=]\s*["']?)[^\s,"';]+/gi,'$1[REDACTED]');
   for(const [key,secret] of Object.entries(process.env))if(/PASSWORD|TOKEN|SECRET|KEY|DATABASE_URL/i.test(key)&&secret&&secret.length>=8)text=text.split(secret).join('[REDACTED]');
   return text.slice(0,64000);
 }
+export function redactFileChanges<T extends {diff:string}>(changes:T[]):T[]{return changes.map(change=>({...change,diff:redact(change.diff)}))}
 export function scrub(value:unknown):unknown {
   if(typeof value==='string')return redact(value);
   if(Array.isArray(value))return value.map(scrub);

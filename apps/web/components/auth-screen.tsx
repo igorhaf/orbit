@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LayoutDashboard, Sparkles } from 'lucide-react';
 import { send, setSession, User } from '@/lib/api';
 
@@ -47,6 +48,7 @@ export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
           {error && <p role="alert" className="rounded bg-[#ffebe6] px-3 py-2 text-xs text-[#ae2a19]">{error}</p>}
           <button disabled={busy} className="flex min-h-11 w-full items-center justify-center gap-2 rounded bg-[#0c66e4] py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">{busy?'Aguarde...':'Entrar'} <ArrowRight size={16}/></button>
         </form>
+        <Link href="/auth/recover" className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-[#0c66e4] hover:underline">Esqueci minha senha</Link>
         <p className="mt-6 border-t border-[#dfe1e6] pt-5 text-center text-xs text-[#626f86]">Acesso seguro aos seus quadros e projetos.</p>
       </div>
     </div>

@@ -1,7 +1,6 @@
 import {HttpException,Injectable,Logger} from '@nestjs/common';
-import {SkillRequestSignatureVerifier,TimestampVerifier} from 'ask-sdk-express-adapter';
 import {IncomingHttpHeaders} from 'node:http';
-import {X509Certificate,createHash} from 'node:crypto';
+import {X509Certificate,createHash,verify as verifySignature,type KeyObject} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -9,8 +8,13 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {rootCertificates} from 'node:tls';
 import {Configuration,Envelope} from './model';
-class OfficialVerifier extends SkillRequestSignatureVerifier{certificate(url:string){return this.certCache.get(url)}clear(){this.certCache.clear()}}
 const execute=promisify(execFile);
+export function verifyAlexaRequestSignature(raw:string,signature:string,publicKey:KeyObject):boolean{
+ if(!/^[A-Za-z0-9+/]+={0,2}$/.test(signature))return false;
+ const bytes=Buffer.from(signature,'base64');
+ if(!bytes.length||bytes.toString('base64').replace(/=+$/,'')!==signature.replace(/=+$/,''))return false;
+ return verifySignature('RSA-SHA256',Buffer.from(raw,'utf8'),publicKey,bytes);
+}
 export async function verifyNativeChain(pem:string){
  const blocks=pem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g);if(!blocks?.length||pem.length>100000)throw new Error('Certificado inválido.');
  const leaf=new X509Certificate(blocks[0]);if(!leaf.subjectAltName?.split(/,\s*/).includes('DNS:echo-api.amazon.com')||Date.parse(leaf.validFrom)>Date.now()||Date.parse(leaf.validTo)<Date.now())throw new Error('Certificado inválido.');
@@ -33,16 +37,23 @@ export function verifyIdentity(envelope:Envelope,config:Configuration){
 @Injectable()
 export class AlexaSecurity{
  private logger=new Logger('AlexaOrbitSecurity');
- private signature=new OfficialVerifier();private timestamp=new TimestampVerifier();private trusted=new Map<string,number>();
+ private certificates=new Map<string,{certificate:X509Certificate;expiresAt:number}>();private trusted=new Map<string,number>();
+ private async certificate(url:string){
+  const cached=this.certificates.get(url);if(cached&&cached.expiresAt>Date.now())return cached.certificate;
+  const response=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(4000)});if(!response.ok)throw new Error('Certificado indisponível.');
+  const contentLength=Number(response.headers.get('content-length')||0);if(contentLength>100000)throw new Error('Certificado inválido.');
+  const pem=await response.text();if(pem.length>100000)throw new Error('Certificado inválido.');
+  const leaf=pem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/)?.[0];if(!leaf)throw new Error('Certificado inválido.');
+  const certificate=new X509Certificate(leaf),digest=createHash('sha256').update(pem).digest('hex');
+  if((this.trusted.get(digest)||0)<Date.now()){await verifyNativeChain(pem);this.trusted.set(digest,Math.min(Date.now()+3600000,Date.parse(certificate.validTo)))}
+  this.certificates.set(url,{certificate,expiresAt:Math.min(Date.now()+3600000,Date.parse(certificate.validTo))});return certificate;
+ }
  async verify(body:Buffer|undefined,headers:IncomingHttpHeaders,config:Configuration):Promise<Envelope>{
   let stage='body';
-  try{if(!body||body.length>64000)throw new Error('Corpo inválido.');const raw=body.toString('utf8'),envelope=JSON.parse(raw) as Envelope;stage='identity';verifyIdentity(envelope,config);stage='timestamp';await this.timestamp.verify(raw);stage='signature_headers';
-    const certUrl=headers.signaturecertchainurl,signature=headers['signature-256'];if(typeof certUrl!=='string'||typeof signature!=='string')throw new Error('Assinatura ausente.');const url=new URL(certUrl);if(url.protocol!=='https:'||url.hostname!=='s3.amazonaws.com'||url.port&&url.port!=='443'||url.username||url.password||url.search||url.hash||!url.pathname.startsWith('/echo.api/'))throw new Error('URL de certificado inválida.');
-    stage='signature';
-    if(this.trusted.size>20){this.trusted.clear();this.signature.clear()}
-    let timer:NodeJS.Timeout|undefined;try{await Promise.race([this.signature.verify(raw,headers),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Verificação indisponível.')),4000)})])}finally{if(timer)clearTimeout(timer)}
-    stage='certificate_chain';
-    const pem=this.signature.certificate(certUrl);if(!pem)throw new Error('Certificado indisponível.');const digest=createHash('sha256').update(pem).digest('hex');if((this.trusted.get(digest)||0)<Date.now()){await verifyNativeChain(pem);this.trusted.set(digest,Math.min(Date.now()+3600000,Date.parse(new X509Certificate(pem).validTo)))}return envelope;
+  try{if(!body||body.length>64000)throw new Error('Corpo inválido.');const raw=body.toString('utf8'),envelope=JSON.parse(raw) as Envelope;stage='identity';verifyIdentity(envelope,config);stage='signature_headers';
+    const certUrl=headers.signaturecertchainurl,signature=headers['signature-256'];if(typeof certUrl!=='string'||typeof signature!=='string')throw new Error('Assinatura ausente.');const url=new URL(certUrl);if(url.protocol!=='https:'||url.hostname!=='s3.amazonaws.com'||url.port&&url.port!=='443'||url.username||url.password||url.search||url.hash||!/^\/echo\.api\/[A-Za-z0-9._/-]+$/.test(url.pathname)||url.pathname.includes('//')||url.pathname.split('/').some(part=>part==='.'||part==='..'))throw new Error('URL de certificado inválida.');
+    stage='certificate_chain';if(this.trusted.size>20){this.trusted.clear();this.certificates.clear()}const certificate=await this.certificate(url.toString());
+    stage='signature';if(!verifyAlexaRequestSignature(raw,signature,certificate.publicKey))throw new Error('Assinatura inválida.');return envelope;
   }catch(error){this.logger.warn(JSON.stringify({event:'alexa_request_rejected',stage,reason:error instanceof AlexaVerificationError?error.reason:stage}));throw new HttpException('Requisição Alexa inválida.',400)}
  }
 }

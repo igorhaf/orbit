@@ -1,7 +1,7 @@
 import {isAiRoute} from '../plugins/ai/routes';
 import type {PluginDefinition} from '../plugins/contract';
 import {corePrivileges,permissionForRoute,evaluatePermissions,Privilege} from './privileges';
-import {Body,CanActivate,Controller,ExecutionContext,Get,HttpException,Inject,Injectable,Param,Patch,Post,Req} from '@nestjs/common';
+import {Body,CanActivate,Controller,ExecutionContext,Get,HttpException,Inject,Injectable,Param,Patch,Post,Put,Query,Req} from '@nestjs/common';
 import type {Request} from 'express';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
@@ -39,8 +39,8 @@ export class AccessService {
  registerResources(provider:{list:(user:string,type:string)=>Promise<string[]>;authorize:(user:string,type:string,key:string,write:boolean)=>Promise<boolean>}){this.resourceProviders.push(provider)}
  async sharedResources(user:string,type:string){return [...new Set((await Promise.all(this.resourceProviders.map(provider=>provider.list(user,type)))).flat())]}
  async sharedResource(user:string,type:string,key:string,write:boolean){for(const provider of this.resourceProviders)if(await provider.authorize(user,type,key,write))return true;return false}
- private memberships=new Map<string,(user:string,scope:string)=>Promise<boolean>>();
- registerMembership(type:string,provider:(user:string,scope:string)=>Promise<boolean>){this.memberships.set(type,provider)}
+ private memberships=new Map<string,(user:string,scope:string,permission:string)=>Promise<boolean>>();
+ registerMembership(type:string,provider:(user:string,scope:string,permission:string)=>Promise<boolean>){this.memberships.set(type,provider)}
  private scopes=new Map<string,(scope:string)=>Promise<boolean>>();
  constructor(@Inject(Db) private db:Db){}
  registerScope(type:string,enabled:(scope:string)=>Promise<boolean>){this.scopes.set(type,enabled)}
@@ -49,15 +49,16 @@ export class AccessService {
  async grants(user:string,type='global',scope='*'){return this.db.query<{role_id:string;name:string;permissions:string[]}>('SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id WHERE g.user_id=$1 AND g.scope_type=$2 AND g.scope_id=$3',[user,type,scope])}
  async isAdmin(user:string){return Boolean(await this.db.one("SELECT user_id FROM access_grants WHERE user_id=$1 AND scope_type='global' AND role_id IN ('administrator','platform_admin')",[user]))}
  async initializeDefaults(){const read=this.catalog().filter(p=>p.endsWith('.read')&&!p.startsWith('settings.'));if(this.catalog().includes('views.board.use'))read.push('views.board.use');await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id='user' AND NOT defaults_initialized",[read]);await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id IN ('administrator','platform_admin') AND NOT defaults_initialized",[this.catalog()])}
- async effective(user:string){const account=await this.account(user);if(account.is_root)return ['*'];const roles=await this.grants(user);const grouped=await this.db.query<{permissions:string[]}>('SELECT g.permissions FROM access_groups g JOIN access_group_members m ON m.group_id=g.id WHERE m.user_id=$1',[user]);const exceptions=await this.db.query<{permission_id:string;effect:string}>('SELECT permission_id,effect FROM access_user_exceptions WHERE user_id=$1',[user]);const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');const rolePermissions=roles.flatMap(r=>r.permissions);return evaluatePermissions(false,rolePermissions,grouped.flatMap(g=>g.permissions),exceptions,disabled.map(p=>p.permission_id),this.catalog())}
+ async effective(user:string,type='global',scope='*'){const account=await this.account(user);if(account.is_root)return ['*'];const roles=type==='global'?await this.grants(user):await this.db.query<{role_id:string;name:string;permissions:string[]}>(`SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id
+   WHERE g.user_id=$1 AND ((g.scope_type='global' AND g.scope_id='*') OR (g.scope_type=$2 AND g.scope_id=$3))`,[user,type,scope]);const grouped=await this.db.query<{permissions:string[]}>('SELECT g.permissions FROM access_groups g JOIN access_group_members m ON m.group_id=g.id WHERE m.user_id=$1',[user]);const exceptions=await this.db.query<{permission_id:string;effect:string}>('SELECT permission_id,effect FROM access_user_exceptions WHERE user_id=$1',[user]);const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');const rolePermissions=roles.flatMap(r=>r.permissions);return evaluatePermissions(false,rolePermissions,grouped.flatMap(g=>g.permissions),exceptions,disabled.map(p=>p.permission_id),this.catalog())}
  async has(user:string,permission:string,type='global',scope='*'){
   const account=await this.account(user);if(account.is_root)return true;
-  const granted=(await this.effective(user)).includes(permission);if(!granted)return false;
+  const granted=(await this.effective(user,type,scope)).includes(permission);if(!granted)return false;
   if(type==='global')return true;
-  const provider=this.scopes.get(type),membership=this.memberships.get(type);return Boolean(provider&&await provider(scope)&&membership&&await membership(user,scope));
+  const provider=this.scopes.get(type),membership=this.memberships.get(type);return Boolean(provider&&await provider(scope)&&membership&&await membership(user,scope,permission));
  }
 
- async require(user:string,permission:string,type='global',scope='*'){if(!await this.has(user,permission,type,scope))deny()}
+ async require(user:string,permission:string,type='global',scope='*'){if(!await this.has(user,permission,type,scope)){await this.audit(user,'access.denied',permission,type==='global'?undefined:{type,id:scope});deny()}}
  async boardPermission(board:string,user:string,permission='boards.read'){
   const account=await this.account(user);if(account.is_root)return true;if(!await this.has(user,permission))return false;
   const row=await this.db.one('SELECT b.workspace_id,bm.role FROM boards b LEFT JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$2 WHERE b.id=$1',[board,user]);if(!row)return false;
@@ -66,8 +67,13 @@ export class AccessService {
  }
  async me(user:string){return {...await this.account(user),roles:await this.grants(user),permissions:await this.effective(user),is_admin:await this.isAdmin(user)}}
 
- async audit(actor:string,action:string,target?:string){await this.db.query('INSERT INTO access_audit(actor_id,action,target) VALUES($1,$2,$3)',[actor,action,target||null])}
+ async audit(actor:string,action:string,target?:string,scope?:{type:string;id:string}){const type=scope?text(scope.type,80):null;const scopeId=scope?id(scope.id):null;await this.db.query('INSERT INTO access_audit(actor_id,action,target,scope_type,scope_id) VALUES($1,$2,$3,$4,$5)',[actor,action,target||null,type,scopeId])}
  async roles(){return this.db.query('SELECT * FROM access_roles ORDER BY name')}
+ private async assertScope(type:string,scope:string){const provider=this.scopes.get(type);if(!provider)deny('Tipo de escopo não registrado.',404);if(!await provider(scope))deny('Escopo inexistente ou indisponível.',404)}
+ async scopedAssignments(actor:string,type:string,scope:string){await this.require(actor,'access.manage');type=text(type,80);scope=text(scope,120);await this.assertScope(type,scope);return this.db.query(`SELECT u.id AS user_id,u.name,u.email,COALESCE(array_agg(g.role_id) FILTER(WHERE g.role_id IS NOT NULL),'{}') AS roles
+   FROM users u LEFT JOIN access_grants g ON g.user_id=u.id AND g.scope_type=$1 AND g.scope_id=$2
+   WHERE NOT u.disabled AND g.user_id IS NOT NULL GROUP BY u.id ORDER BY u.name`,[type,scope])}
+ async assignScopedRoles(actor:string,user:string,type:string,scope:string,values:unknown){await this.require(actor,'access.manage');user=id(user);type=text(type,80);scope=text(scope,120);await this.assertScope(type,scope);const target=await this.db.one<{id:string;is_root:boolean}>('SELECT id,is_root FROM users WHERE id=$1',[user]);if(!target)deny('Usuário não encontrado.',404);if(target.is_root)deny('A conta ROOT é protegida.');const roles=await this.validateRoles(actor,values);const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query('DELETE FROM access_grants WHERE user_id=$1 AND scope_type=$2 AND scope_id=$3',[user,type,scope]);for(const role of roles)await client.query('INSERT INTO access_grants(user_id,role_id,scope_type,scope_id) VALUES($1,$2,$3,$4)',[user,role,type,scope]);await client.query('UPDATE users SET session_version=session_version+1 WHERE id=$1',[user]);await client.query('COMMIT');this.revoke(user);await this.audit(actor,'role.scope.updated',`${type}:${scope}:${user}`,{type,id:scope});return {ok:true,roles}}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}}
  async users(){return this.db.query(`SELECT u.id,u.name,u.email,u.is_root,u.disabled,u.created_at,COALESCE(array_agg(g.role_id) FILTER(WHERE g.role_id IS NOT NULL),'{}') AS roles FROM users u LEFT JOIN access_grants g ON g.user_id=u.id AND g.scope_type='global' GROUP BY u.id ORDER BY u.is_root DESC,u.name`)}
  async validateRoles(actor:string,values:unknown){if(!Array.isArray(values)||values.some(v=>typeof v!=='string')||values.length>20)deny('Perfis inválidos.',400);const roles=await this.roles();const selected=roles.filter(role=>values.includes(role.id));if(selected.length!==new Set(values).size)deny('Perfil inexistente.',400);const me=await this.me(actor);if(!me.is_root&&!me.is_admin&&selected.some(role=>(role.permissions as string[]).some(p=>!me.permissions.includes(p))))deny('Não é permitido delegar permissões que você não possui.');return [...new Set(values)] as string[]}
  async createUser(actor:string,body:Record<string,unknown>){await this.require(actor,'access.manage');if(Object.keys(body).some(key=>!['name','email','password','roles'].includes(key)))deny('Campo de usuário inválido.',400);const name=text(body.name);const email=text(body.email,255).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))deny('E-mail inválido.',400);const password=text(body.password,200);if(password.length<12)deny('Use uma senha com pelo menos 12 caracteres.',400);const roles=await this.validateRoles(actor,body.roles===undefined?['user']:body.roles);const client=await this.db.pool.connect();try{await client.query('BEGIN');const user=(await client.query('INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3) RETURNING id',[name,email,await bcrypt.hash(password,12)])).rows[0];for(const role of roles)await client.query('INSERT INTO access_grants(user_id,role_id) VALUES($1,$2)',[user.id,role]);await client.query('COMMIT');await this.audit(actor,'user.created',user.id);return {id:user.id}}catch(error){await client.query('ROLLBACK');if((error as {code?:string}).code==='23505')deny('E-mail já cadastrado.',409);throw error}finally{client.release()}}
@@ -79,7 +85,7 @@ export class AccessService {
 export class AccessGuard implements CanActivate {
  constructor(@Inject(AccessService) private access:AccessService,@Inject(Db) private db:Db){}
  async canActivate(context:ExecutionContext){const req=context.switchToHttp().getRequest<AccessRequest>();const path=req.path;
-  if(path==='/health'||(req.method==='POST'&&['/auth/login','/auth/register','/email/comments','/email/inbox','/integrations/alexa/orbit'].includes(path))||(/^\/(calendar\/(google|microsoft)|google\/drive|dropbox|mail\/(gmail|outlook_mail))\/oauth\/callback$/.test(path)&&req.method==='GET'))return true;
+  if(path==='/health'||(req.method==='POST'&&['/auth/login','/auth/register','/auth/recovery','/auth/complete','/email/comments','/email/inbox','/integrations/alexa/orbit'].includes(path))||(/^\/(calendar\/(google|microsoft)|google\/drive|dropbox|mail\/(gmail|outlook_mail))\/oauth\/callback$/.test(path)&&req.method==='GET'))return true;
   const token=req.headers.authorization?.replace(/^Bearer /i,'');if(!token)deny('Faça login para continuar.',401);const account=await this.access.authenticate(token!);req.orbitActor=account.id;req.orbitUser=account.id;
   const as=req.headers['x-orbit-act-as'];if(as){if(!account.is_root||typeof as!=='string')deny();await this.access.account(id(as));req.orbitUser=as;await this.access.audit(account.id,'root.act-as',as)}
   const resource=path.match(/^\/(vault|notebooks)\/([0-9a-f-]{36})(?:\/|$)/i)||path.match(/^\/ai\/(projects)\/([0-9a-f-]{36})(?:\/|$)/i);
@@ -121,7 +127,9 @@ export class AccessController {
  @Get('users') users(){return this.access.users()}
  @Get('roles') roles(){return this.access.roles()}
  @Get('permissions') permissions(){return this.access.catalog()}
- @Get('audit') audit(){return this.db.query('SELECT a.*,u.name AS actor_name FROM access_audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 200')}
+ @Get('scopes/:type/:scope/assignments') scopedAssignments(@Req() req:AccessRequest,@Param('type') type:string,@Param('scope') scope:string){return this.access.scopedAssignments(req.orbitActor!,type,scope)}
+ @Put('scopes/:type/:scope/users/:user/roles') scopedRoles(@Req() req:AccessRequest,@Param('type') type:string,@Param('scope') scope:string,@Param('user') user:string,@Body() body:Record<string,unknown>){return this.access.assignScopedRoles(req.orbitActor!,user,type,scope,body.roles)}
+ @Get('audit') async audit(@Req() req:AccessRequest,@Query('scope_type') scopeType?:string,@Query('scope_id') scopeId?:string){await this.access.require(req.orbitActor!,'access.audit.read');if(Boolean(scopeType)!==Boolean(scopeId))deny('Informe o tipo e o identificador do escopo juntos.',400);const type=scopeType?text(scopeType,80):null;const key=scopeId?id(scopeId):null;return this.db.query('SELECT a.*,u.name AS actor_name FROM access_audit a LEFT JOIN users u ON u.id=a.actor_id WHERE ($1::text IS NULL OR a.scope_type=$1) AND ($2::uuid IS NULL OR a.scope_id=$2) ORDER BY a.id DESC LIMIT 200',[type,key])}
  @Post('users') create(@Req() req:AccessRequest,@Body() body:Record<string,unknown>){return this.access.createUser(req.orbitActor!,body)}
  @Patch('users/:id') update(@Req() req:AccessRequest,@Param('id') user:string,@Body() body:Record<string,unknown>){return this.access.updateUser(req.orbitActor!,user,body)}
  @Post('roles/:id') role(@Req() req:AccessRequest,@Param('id') role:string,@Body() body:Record<string,unknown>){return this.access.saveRole(req.orbitActor!,role,body)}

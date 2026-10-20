@@ -8,7 +8,7 @@ import {parseMarkdown,parseYaml,ProjectRegistry,AgentRegistry,SkillRegistry,Proj
 import {ExecutorRegistry,PluginRegistry,filesystemPlugin} from './registries';
 import {validateConfig} from './config';
 import {emptyConfig,ExecutionInput} from './types';
-import {safePath,noSecrets,scrub,redact} from './security';
+import {safePath,noSecrets,scrub,redact,redactFileChanges,containsSecretText} from './security';
 import {Db} from '../db';
 import {ContextBuilder} from './context-builder';
 
@@ -28,6 +28,13 @@ test('configuration is optional, constrained and rejects secrets',()=>{
   assert.throws(()=>noSecrets({nested:{apiKey:'secret'}}));
   assert.deepEqual(scrub({token:'123',value:'Bearer abc.def.ghi'}),{token:'[REDACTED]',value:'Bearer [REDACTED]'});
   assert.ok(!redact('CLI error: {"access_token":"do-not-expose"}').includes('do-not-expose'));
+  assert.equal(containsSecretText('ROTATION_TOKEN=private-value-123'),true);
+  assert.equal(containsSecretText('A senha pode ser redefinida na tela de acesso.'),false);
+  assert.equal(containsSecretText('Referência: [contexto](/board/11111111-1111-4111-8111-111111111111?card=22222222-2222-4222-8222-222222222222&token=33333333-3333-4333-8333-333333333333)'),false);
+  assert.equal(containsSecretText('https://external.example/board/11111111-1111-4111-8111-111111111111?card=22222222-2222-4222-8222-222222222222&token=33333333-3333-4333-8333-333333333333'),true);
+  assert.equal(containsSecretText('token=private-value-123456'),true);
+  assert.equal(redact('PRIVATE_KEY="private-marker"').includes('private-marker'),false);
+  assert.equal(redactFileChanges([{path:'config.ts',kind:'update',diff:'+API_TOKEN=private-marker'}])[0].diff,'+API_TOKEN=[REDACTED]');
 });
 test('resource registries build selected context and reject traversal and symlink escape',async()=>{
   const root=await mkdtemp(join(tmpdir(),'orbit-resources-'));

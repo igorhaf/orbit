@@ -113,7 +113,6 @@ function NotificationPanel({ items, onRead, onReadAll, onClearAll, onChoose }: {
 
 export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: User | null; boards?: Board[]; onCreate?: () => void; onSearch?: (s:string)=>void }) {
   const [limitsVisible,setLimitsVisible]=useState(false);
-  const [quotaPaused,setQuotaPaused]=useState(false);
   const router = useRouter();
   const [user, updateUser] = useState<User | null>(initialUser);
   const [previousUser, setPreviousUser] = useState(initialUser);
@@ -398,7 +397,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         <button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>
       </div>}
     </div>
-    <button onClick={()=>setLimitsVisible(value=>!value)} aria-expanded={limitsVisible||quotaPaused} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible||quotaPaused?<Eye size={17}/>:<EyeClosed size={17}/>}{user?.is_root?'Limites':'Fila'}</button>
+    <button onClick={()=>setLimitsVisible(value=>!value)} aria-label={limitsVisible?'Recolher barra da fila':'Mostrar barra da fila'} aria-expanded={limitsVisible} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible?<Eye size={17}/>:<EyeClosed size={17}/>}{user?.is_root?'Limites':'Fila'}</button>
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
@@ -433,7 +432,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
     </div>
-  </header>{<CodexLimitsBar visible={limitsVisible} isRoot={user?.is_root===true} onAutoPaused={setQuotaPaused}/>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
+  </header>{<CodexLimitsBar visible={limitsVisible} isRoot={user?.is_root===true}/>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
 }
 
 function InboxPanel({boards}:{boards:Board[]}) {

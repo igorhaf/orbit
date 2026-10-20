@@ -51,11 +51,19 @@ export class MailService {
   message(ownerId: string, providerId: string, connectionId: string, messageId: string) {
     return this.providers.get(providerId).getMessage(ownerId, id(connectionId, "Conexão"), text(messageId, "Mensagem", 1000));
   }
-  compose(ownerId: string, providerId: string, connectionId: string, operation: "draft" | "send" | "reply", body: unknown) {
+  async compose(ownerId: string, providerId: string, connectionId: string, operation: "draft" | "send" | "reply", body: unknown) {
     const provider = this.providers.get(providerId), message = validateCompose(body);
     if (operation === "draft") return provider.createDraft(ownerId, id(connectionId, "Conexão"), message);
-    if (operation === "reply") return provider.reply(ownerId, id(connectionId, "Conexão"), message);
-    return provider.send(ownerId, id(connectionId, "Conexão"), message);
+    try {
+      const result = operation === "reply"
+        ? await provider.reply(ownerId, id(connectionId, "Conexão"), message)
+        : await provider.send(ownerId, id(connectionId, "Conexão"), message);
+      await this.db.query("INSERT INTO access_audit(actor_id,action) VALUES($1,'mail.delivery.succeeded')", [ownerId]).catch(() => undefined);
+      return result;
+    } catch (error) {
+      await this.db.query("INSERT INTO access_audit(actor_id,action) VALUES($1,'mail.delivery.failed')", [ownerId]).catch(() => undefined);
+      throw error;
+    }
   }
 
   private resource(value: MailThread | MailMessage) {

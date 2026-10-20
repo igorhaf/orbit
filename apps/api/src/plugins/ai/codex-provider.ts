@@ -9,9 +9,14 @@ import { prepareOrbitCodexHome } from '../../codex-home';
 import { orbitArchitecturePrompt } from '../../orbit-architecture';
 import { captureFileScope } from '../../execution/file-scope';
 import {runProjectChecks} from '../../execution/project-checks';
+import {redact} from '../../execution/security';
 
 const MAX_OUTPUT = 20_000;
 const stripAnsi=(value:string)=>value.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`,'g'),'');
+const timeoutSetting=(key:string,fallback:number)=>{
+  const parsed=Number(process.env[key]);
+  return Number.isFinite(parsed)?Math.min(3_600_000,Math.max(100,Math.floor(parsed))):fallback;
+};
 export type PromptFileChange = {path:string;kind:'add'|'delete'|'update';additions:number;deletions:number;diff:string};
 export type PromptActivity = {id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
 type ProgressDetails = {fileChanges?:Array<Pick<PromptFileChange,'path'|'kind'>>;activity?:PromptActivity};
@@ -21,7 +26,7 @@ export type CodexPromptImage = { name:string; mimeType:string; data:Buffer };
 export const codexErrorMessage=(detail:string) => {
   if (/ENOENT/.test(detail)) return 'O executável local do Codex não foi encontrado. Configure CODEX_BIN no servidor.';
   if (/mountinfo path is not absolute/i.test(detail)) return 'O Codex CLI instalado tem uma falha no sandbox Linux (mountinfo path is not absolute). Atualize o CODEX_BIN para uma versão estável posterior à correção e reinicie a API.';
-  if (/tempo limite/i.test(detail)) return detail;
+  if (/(?:tempo limite|inatividade|tempo máximo|execução não está mais ativa)/i.test(detail)) return detail;
   if (/(?:usage limit|rate limit|quota|insufficient_quota|too many requests|credits? exhausted)/i.test(detail)) return 'O limite de uso ou de tokens da conta do Codex foi excedido. Verifique sua cota e tente novamente mais tarde.';
   if (/(?:context length|context window|maximum.*tokens|too many tokens|token limit)/i.test(detail)) return 'A solicitação excedeu o limite de tokens do modelo. Reduza o conteúdo ou divida a tarefa em partes menores.';
   if (/(?:not logged in|not authenticated|authentication required|unauthorized|invalid api key|login required|http\s*401|status\s*401)/i.test(detail)) return 'O Codex local não está autenticado. Execute `codex login` no servidor e tente novamente.';
@@ -43,7 +48,7 @@ export class CodexAiService {
     const result=await this.run(instruction, process.cwd(), model, effort, undefined, undefined, undefined, undefined, 'planning');
     return typeof result==='string'?result:result.output;
   }
-  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], writeScope?:string[], projectChecks:string[][]=[], allowQuestions=false): Promise<CodexExecution> {
+  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], writeScope?:string[], projectChecks:string[][]=[], allowQuestions=false): Promise<CodexExecution> {
     const verify=writeScope===undefined?null:await captureFileScope(projectPath,writeScope);
     try{
       const scoped=writeScope===undefined?instruction:`ESCRITA LIMITADA A ESTES ARQUIVOS (qualquer alteração fora desta lista será revertida e falhará a execução):\n${writeScope.join('\n')}\n\n${instruction}`;
@@ -87,14 +92,15 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
-  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<void>|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[]): Promise<string|CodexExecution> {
+  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[]): Promise<string|CodexExecution> {
     if(!this.available())throw new HttpException('O plugin de IA está desativado.',409);
     const codexHome = await prepareOrbitCodexHome();
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
     const imageFiles:string[]=[];
     const executable = process.env.CODEX_BIN || 'codex';
-    const timeout = Number(process.env.CODEX_AI_TIMEOUT_MS || 300_000);
+    const idleTimeout = timeoutSetting('CODEX_AI_TIMEOUT_MS',300_000);
+    const maxRuntime = timeoutSetting('CODEX_AI_MAX_RUNTIME_MS',900_000);
     let detectedSessionId: string|null = sessionId || null;
     const changedFiles=new Map<string,'add'|'delete'|'update'>();
     const activities=new Map<string,PromptActivity>();
@@ -119,7 +125,7 @@ export class CodexAiService {
           ...imageFiles.flatMap(image=>['--image',image]),
           ...(progress ? ['--json'] : []),
           '--output-last-message', output, '-',
-        ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['pipe', progress?'pipe':'ignore', 'pipe'] });
+        ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['pipe', progress?'pipe':'ignore', 'pipe'], detached:process.platform!=='win32' });
         child.stdin?.on('error', () => { /* The Codex process may exit before consuming the prompt. */ });
         child.stdin?.end(`${orbitArchitecturePrompt}\n\n${instruction}`);
         let stderr = '';
@@ -128,35 +134,43 @@ export class CodexAiService {
         const streamedItems=new Map<string,string>();
         let settled=false;
         let timedOut=false;
+        let timeoutMessage='A resposta do Codex excedeu o tempo limite.';
         let killTimer:ReturnType<typeof setTimeout>|undefined;
         let timeoutTimer:ReturnType<typeof setTimeout>|undefined;
         let finish:(error?:Error)=>void=()=>undefined;
-        const heartbeatTimer=setInterval(()=>{
-          if(child.exitCode===null&&child.signalCode===null)void Promise.resolve(onHeartbeat?.()).catch(()=>undefined);
-        },5_000);
-        heartbeatTimer.unref();
-        const armTimeout=()=>{
-          if(timeoutTimer)clearTimeout(timeoutTimer);
-          timeoutTimer=setTimeout(() => {
-          timedOut=true;
-          try{child.kill('SIGTERM')}catch{ /* The Codex process may already have exited. */ }
-          killTimer=setTimeout(()=>{
-            if(child.exitCode===null&&child.signalCode===null)try{child.kill('SIGKILL')}catch{ /* The process may have exited during shutdown. */ }
-            finish(new Error('A resposta do Codex excedeu o tempo limite.'));
-          },5_000);
+        const terminateProcessGroup=(signal:NodeJS.Signals)=>{
+          try{
+            if(process.platform!=='win32'&&child.pid)process.kill(-child.pid,signal);
+            else child.kill(signal);
+          }catch{/* O processo pode ter terminado entre a verificação e o sinal. */}
+        };
+        const timeoutProcess=(message:string)=>{
+          if(settled||timedOut)return;
+          timedOut=true;timeoutMessage=message;
+          terminateProcessGroup('SIGTERM');
+          killTimer=setTimeout(()=>{terminateProcessGroup('SIGKILL');killTimer=undefined;finish(new Error(timeoutMessage));},2_000);
           killTimer.unref();
-          }, timeout);
+        };
+        const armIdleTimeout=()=>{
+          if(timeoutTimer)clearTimeout(timeoutTimer);
+          timeoutTimer=setTimeout(()=>timeoutProcess('O Codex ficou sem enviar progresso e excedeu o limite de inatividade.'),idleTimeout);
           timeoutTimer.unref();
         };
-        armTimeout();
-        const clearTimers=()=>{if(timeoutTimer)clearTimeout(timeoutTimer);if(killTimer)clearTimeout(killTimer);clearInterval(heartbeatTimer);};
+        const heartbeatTimer=setInterval(()=>{
+          if(child.exitCode===null&&child.signalCode===null)void Promise.resolve(onHeartbeat?.()).then(active=>{if(active===false)timeoutProcess('A execução não está mais ativa neste worker.')}).catch(()=>undefined);
+        },timeoutSetting('CODEX_AI_HEARTBEAT_INTERVAL_MS',5_000));
+        heartbeatTimer.unref();
+        armIdleTimeout();
+        const maxRuntimeTimer=setTimeout(()=>timeoutProcess('A execução do Codex excedeu o tempo máximo permitido.'),maxRuntime);
+        maxRuntimeTimer.unref();
+        const clearTimers=()=>{if(timeoutTimer)clearTimeout(timeoutTimer);if(maxRuntimeTimer)clearTimeout(maxRuntimeTimer);if(killTimer&&!timedOut)clearTimeout(killTimer);clearInterval(heartbeatTimer);};
         finish=(error?:Error)=>{
           if(settled)return;
           settled=true;clearTimers();
           if(error)reject(error);else resolve();
         };
         child.stdout?.on('data',(chunk:Buffer)=>{
-          armTimeout();
+          armIdleTimeout();
           stdout+=chunk.toString();const lines=stdout.split(/\r?\n/);stdout=lines.pop()||'';
           for(const line of lines){
             try {
@@ -202,10 +216,10 @@ export class CodexAiService {
             else if(update&&!update.fileChanges&&!update.activity)progress?.(update.message.slice(0,2000));
           }
         });
-        child.stderr?.on('data', (chunk: Buffer) => { armTimeout();stderr = (stderr + chunk.toString()).slice(-2000); });
-        child.on('error', error => {console.error('[CodexAi] Falha ao iniciar o processo.',error);finish(error)});
+        child.stderr?.on('data', (chunk: Buffer) => { armIdleTimeout();stderr = (stderr + chunk.toString()).slice(-2000); });
+        child.on('error', error => {console.error('[CodexAi] Falha ao iniciar o processo.',redact(error.message));finish(error)});
         child.on('close', code => {
-          if(timedOut)finish(new Error('A resposta do Codex excedeu o tempo limite.'));
+          if(timedOut)finish(new Error(timeoutMessage));
           else if (code === 0) finish();
           else finish(new Error(stderr || 'O Codex não conseguiu concluir a solicitação.'));
         });
@@ -223,7 +237,7 @@ export class CodexAiService {
         progress?.('A sessão anterior não está disponível neste armazenamento; iniciando uma nova sessão.');
         return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat, executionMode);
       }
-      console.error('[CodexAi] Execução falhou.',error);
+      console.error('[CodexAi] Execução falhou.',redact(detail));
       await sessionPersistence;
       const failure=sessionPersistenceError||error;
       const failureDetail = failure instanceof Error ? failure.message : '';
@@ -250,7 +264,7 @@ export class CodexAiService {
           }
         }
       }catch{/* O resumo de arquivos ainda pode ser exibido sem diff. */}
-      diff=diff.slice(0,30000);
+      diff=redact(diff.slice(0,30000));
       const lines=diff.split(/\r?\n/);
       reviewed.push({...change,additions:lines.filter(line=>line.startsWith('+')&&!line.startsWith('+++')).length,deletions:lines.filter(line=>line.startsWith('-')&&!line.startsWith('---')).length,diff});
     }

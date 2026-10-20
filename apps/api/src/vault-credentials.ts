@@ -36,6 +36,7 @@ export async function resolveVaultReference(db:Db,reference:string,owner?:string
   const field=row&&credentials(decryptVaultPayload(row.secret_data).credentials).find(field=>field.id===parsed.credential&&field.constant);
   if(!field)throw new HttpException('Constante do cofre não encontrada.',409);
   if(!field.value)throw new HttpException('A constante selecionada está sem valor.',409);
+  if(owner!==undefined)await db.query('INSERT INTO access_audit(actor_id,action,target,scope_type,scope_id) VALUES($1,$2,$3,$4,$5)',[owner,'vault.credential.resolved',field.id,'vault_item',parsed.item]);
   return field.value;
 }
 export async function assertVaultReferencesRetained(db:Db,owner:string,item:string,next:VaultCredential[]){
@@ -49,7 +50,7 @@ export async function assertVaultReferencesRetained(db:Db,owner:string,item:stri
 }
 export async function loadVaultEnvironment(db:Db){
   for(const [key,value] of Object.entries(process.env))if(value?.startsWith('orbit-vault://')){
-    if(['DATABASE_URL','JWT_SECRET','VAULT_ENCRYPTION_KEY','ORBIT_SECRET_KEY','ORBIT_BACKUP_KEY'].includes(key))throw new Error(`Referência do cofre não permitida em ${key}.`);
+    if(['DATABASE_URL','JWT_SECRET','VAULT_ENCRYPTION_KEY','VAULT_ENCRYPTION_KEY_PREVIOUS','ORBIT_SECRET_KEY','ORBIT_SECRET_KEY_PREVIOUS','ORBIT_BACKUP_KEY'].includes(key))throw new Error(`Referência do cofre não permitida em ${key}.`);
     try{process.env[key]=await resolveVaultReference(db,value)}catch{delete process.env[key];console.error(`Constante do cofre indisponível para ${key}. Configure novamente esta integração.`)}
   }
 }

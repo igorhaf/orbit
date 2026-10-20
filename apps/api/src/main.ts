@@ -1,7 +1,15 @@
+import {genericPlugins} from './plugins/records/catalog';
+import {ExtensionRecords} from './plugins/records/records.service';
+import {ExtensionRecordsController} from './plugins/records/records.controller';
+import {DocumentScanner} from './plugins/records/documents';
+import {auditHistoryPlugin,AuditHistoryController} from './plugins/records/audit';
 import {visualBoardPlugin,structuredViewPlugin} from './plugins/board-views/board-view.plugins';
 import {BoardViewsService,BoardViewsController} from './plugins/board-views/board-views';
 import {QueueManagement} from './plugins/ai/queue-management';
 import {AccessManagement,AccessManagementController} from './access/management';
+import {AuthLifecycle,SmtpAuthMailer} from './access/auth-lifecycle';
+import {LoginAttemptLimiter,authenticateLoginAccount} from './access/login-attempts';
+import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
 import {AccessService,AccessGuard,AccessController} from './access/access';
 import {WorkspacesService,WorkspacesController,workspacesPlugin} from './workspaces/workspaces.plugin';
 import {isAiRoute} from './plugins/ai/routes';
@@ -17,11 +25,12 @@ import {AlexaOrbitService,ORBIT_VOICE_OPERATIONS} from './alexa-orbit/alexa-orbi
 import {AlexaSecurity} from './alexa-orbit/security';
 import {alexaOrbitBodyParser} from './alexa-orbit/body-parser';
 import {AlexaOrbitController,alexaOrbitPluginDefinition} from './alexa-orbit/alexa-orbit.plugin';
+import { MonitoringController, MonitoringService } from './monitoring';
 import { NestFactory } from '@nestjs/core';
-import { Request, Response, json } from 'express';
-import * as bcrypt from 'bcryptjs';
+import { NextFunction, Request, Response, json } from 'express';
 import * as jwt from 'jsonwebtoken';
 import {decryptVaultPayload,encryptVaultPayload,vaultItemHtml} from './vault-crypto';
+import {containsSecretText,redact} from './execution/security';
 import {credentials, vaultConstants, assertVaultReferencesRetained, loadVaultEnvironment, refreshVaultEnvironment} from './vault-credentials';
 import { join, resolve } from 'node:path';
 import { PoolClient } from 'pg';
@@ -63,6 +72,7 @@ import { MicrosoftGraphSubscriptionManager } from './calendar/microsoft-subscrip
 import { OutlookCalendarController, OutlookCalendarPlugin, outlookCalendarPluginDefinition } from './calendar/outlook-calendar.plugin';
 import { MicrosoftTeamsPlugin, microsoftTeamsPluginDefinition } from './calendar/microsoft-teams.plugin';
 import { notebookHtmlToMarkdown } from './notebook-markdown';
+import { sanitizeNotebookHtml } from './notebook-sanitizer';
 import { PlannerController, PlannerPlugin, plannerPluginDefinition } from './planner/planner.plugin';
 import { EnvironmentSettingsController } from './env-settings';
 import { restoreDatabaseBackup } from './database-backup';
@@ -89,16 +99,6 @@ const VAULT_CATEGORY_ICONS=new Set(['AtSign','Banknote','BriefcaseBusiness','Clo
 const optionalText = (v: unknown, max = 10000) => {
   if (typeof v !== 'string' || v.length > max) fail('Texto inválido.');
   return v as string;
-};
-// Notebook pages intentionally retain safe inline styling from the clipboard,
-// while stripping executable and externally active markup before persistence.
-const sanitizeNotebookHtml = (value: unknown) => {
-  const html = optionalText(value, 500_000);
-  return html
-    .replace(/<\/?(?:script|iframe|object|embed|form|input|button|meta|link)[^>]*>/gi, '')
-    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s(?:href|src)\s*=\s*(?:"\s*(?:javascript|vbscript):[^"]*"|'\s*(?:javascript|vbscript):[^']*'|\s*(?:javascript|vbscript):[^\s>]+)/gi, '')
-    .replace(/style\s*=\s*("[^"]*"|'[^']*')/gi, attribute => attribute.replace(/(?:expression\s*\(|url\s*\(\s*['"]?\s*javascript:|behavior\s*:|-moz-binding\s*:)/gi, ''));
 };
 const optionalDate = (v: unknown): Date | null => {
   if (v === null || v === '') return null;
@@ -138,6 +138,8 @@ class Service {
     }
   }
   user(req: Request) { return this.features.user(req); }
+  private assertCardTextSafe(text:string){if(containsSecretText(text))fail('Credenciais não podem ser armazenadas em cartões ou comentários. Use uma referência ao Cofre.');}
+  private safeCardText(text:string){this.assertCardTextSafe(text);return text;}
   private encryptVault(payload:Payload) { return encryptVaultPayload(payload); }
   private decryptVault(value:string):Payload {
     try { return decryptVaultPayload(value); }
@@ -300,11 +302,14 @@ class Service {
   pluginsChanged(id:string){this.events.pluginsChanged(id)}
   featuresAccessRevoke(user:string){this.features.access?.revoke(user)}
   async register() { return fail('Cadastro desativado. Contas são criadas pela administração de acessos.', 403); }
-  async login(body: Payload) {
+  async login(body: Payload,origin='unknown') {
     const email = value(body.email, 'E-mail', 255).toLowerCase();
     const password = value(body.password, 'Senha', 200);
-    const row = await this.db.one('SELECT id,name,email,avatar_url,preferences,password_hash,is_root,disabled,session_version FROM users WHERE email=$1', [email]);
-    if (!row || row.disabled || !(await bcrypt.compare(password, row.password_hash))) return fail('E-mail ou senha incorretos.', 401);
+    const attempts=new LoginAttemptLimiter(this.db);
+    if(!await attempts.tryStartAttempt(email,origin))throw new HttpException({message:'Muitas tentativas de acesso. Aguarde antes de tentar novamente.',retry_after_seconds:await attempts.retryAfterSeconds(email,origin)},429);
+    const row=await authenticateLoginAccount(this.db,email,password);
+    if(!row)return fail('E-mail ou senha incorretos.',401);
+    await attempts.recordSuccess(email,origin);
     return { user: { id: row.id, name: row.name, email: row.email, avatar_url: row.avatar_url, preferences: row.preferences, is_root:row.is_root }, token: jwt.sign({ sub: row.id, email: row.email,version:row.session_version }, process.env.JWT_SECRET!, { expiresIn: '14d' }) };
   }
   async inboxEmail(body:Payload, token?:string) {
@@ -319,12 +324,12 @@ class Service {
   aiCard(card:string,user:string,body:Payload){return this.aiOperations().aiCard(card,user,body)}
   aiComment(card:string,user:string,body:Payload){return this.aiOperations().aiComment(card,user,body)}
   aiMerge(user:string,body:Payload){return this.aiOperations().aiMerge(user,body)}
-  aiEmailSummary(user:string,body:Payload,project?:string|null){return this.aiOperations().aiEmailSummary(user,body,project)}
+  aiEmailSummary(user:string,body:Payload,project?:string|null){return this.aiOperations().aiEmailSummary(user,{...body,email:typeof body.email==='string'?redact(body.email):body.email},project)}
   async createEmailCard(userId:string,body:Payload){
-    const email=optionalText(body.email,20_000);const sender=body.sender===undefined?null:optionalText(body.sender,255);const subject=body.subject===undefined?null:optionalText(body.subject,500);let listId:string|undefined;
+    const email=redact(optionalText(body.email,20_000));const sender=body.sender===undefined?null:redact(optionalText(body.sender,255));const subject=body.subject===undefined?null:redact(optionalText(body.subject,500));let listId:string|undefined;
     if(body.list_id!==undefined)listId=uuid(value(body.list_id,'Lista',36));else {const inbox=await this.db.one(`SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL ORDER BY l.position LIMIT 1`,[userId]);listId=typeof inbox?.id==='string'?inbox.id:undefined}if(!listId)fail('Inbox não encontrada.',404);const targetListId=listId as string;await this.listBoard(targetListId,userId);
     const target=await this.db.one<{ai_default_project_id:string|null}>(`SELECT b.ai_default_project_id FROM lists l JOIN boards b ON b.id=l.board_id WHERE l.id=$1 AND b.owner_id=$2`,[targetListId,userId]);
-    const proposal=await this.aiEmailSummary(userId,{email},target?.ai_default_project_id||null);const created=await this.createCards(targetListId,userId,[proposal.title],undefined);const cardId=created[0].id;await this.db.query('UPDATE cards SET description=$2,due_date=$3,updated_at=now() WHERE id=$1',[cardId,proposal.summary,proposal.due_date]);const group=await this.db.one(`INSERT INTO checklists(card_id,title,position) VALUES($1,'Checklist do e-mail',0) RETURNING id`,[cardId]);for(let index=0;index<proposal.items.length;index++)await this.db.query('INSERT INTO checklist_items(card_id,checklist_id,text,position) VALUES($1,$2,$3,$4)',[cardId,group!.id,proposal.items[index],index]);await this.db.query('INSERT INTO email_sources(card_id,sender,subject,body) VALUES($1,$2,$3,$4)',[cardId,sender,subject,email]);return {card_id:cardId,...proposal};
+    const proposal=await this.aiEmailSummary(userId,{email},target?.ai_default_project_id||null);this.assertCardTextSafe(proposal.title);this.assertCardTextSafe(proposal.summary);for(const item of proposal.items)this.assertCardTextSafe(item);const created=await this.createCards(targetListId,userId,[proposal.title],undefined);const cardId=created[0].id;await this.db.query('UPDATE cards SET description=$2,due_date=$3,updated_at=now() WHERE id=$1',[cardId,proposal.summary,proposal.due_date]);const group=await this.db.one(`INSERT INTO checklists(card_id,title,position) VALUES($1,'Checklist do e-mail',0) RETURNING id`,[cardId]);for(let index=0;index<proposal.items.length;index++)await this.db.query('INSERT INTO checklist_items(card_id,checklist_id,text,position) VALUES($1,$2,$3,$4)',[cardId,group!.id,proposal.items[index],index]);await this.db.query('INSERT INTO email_sources(card_id,sender,subject,body) VALUES($1,$2,$3,$4)',[cardId,sender,subject,email]);return {card_id:cardId,...proposal};
   }
   async inboundEmailCard(body:Payload,token:string|undefined){if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN)fail('Canal de e-mail não autorizado.',401);const account=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);if(!account)fail('Conta não encontrada.',404);return this.createEmailCard(String((account as Payload).id),{email:body.body,sender:body.sender,subject:body.subject,list_id:body.list_id})}
   async boards(userId: string, status: string) {
@@ -908,6 +913,7 @@ class Service {
     return (await this.createCards(listId,userId,[title],body.position,cardTypeId||undefined))[0];
   }
   private async createCards(listId: string,userId: string,titles: string[],requestedPosition: unknown,cardTypeId?:string) {
+    for(const title of titles)this.assertCardTextSafe(title);
     const boardId=await this.listBoard(listId,userId);
     const kinds=await Promise.all(titles.map(title=>this.classifyTitle(title,userId)));
     const client=await this.db.pool.connect();
@@ -960,6 +966,7 @@ class Service {
       return this.db.one('UPDATE cards SET list_id=$2,position=$3,mirror_expanded=$4,updated_at=now() WHERE id=$1 RETURNING *',[id,listId,position,expanded]);
     }
     const title=body.title===undefined?original.title as string:value(body.title,'Título',300);
+    this.assertCardTextSafe(title);
     const special=body.title===undefined||original.kind==='template'?null:await this.classifyTitle(title,userId);
     const kind=special?.kind||original.kind as string;
     if(['separator','board','link'].includes(kind)&&Object.keys(body).some(key=>!['title','list_id','position'].includes(key)))fail('Este tipo de cartão não possui detalhes editáveis.',409);
@@ -972,6 +979,7 @@ class Service {
     }
     const description=descriptionAfterTitleEdit(original.title as string,original.description as string,title,
       body.description===undefined?undefined:optionalText(body.description,1_000_000));
+    this.assertCardTextSafe(description);
     let scheduleStart=original.schedule_start_at as Date|null;
     let scheduleEnd=original.schedule_end_at as Date|null;
     let scheduleAllDay=original.schedule_all_day as boolean;
@@ -1063,6 +1071,7 @@ class Service {
   async comment(id: string,userId: string,body: Payload) {
     const boardId=await this.contentCard(id,userId);
     const text = value(body.body,'Comentário',5000);
+    this.assertCardTextSafe(text);
     const execute = body.execute === true;
     if(body.attachments!==undefined&&(!Array.isArray(body.attachments)||body.attachments.length>10))fail('Anexos inválidos.');
     const promptSettings=execute ? await this.prompts.commentSettings(id,userId) : null;
@@ -1112,7 +1121,7 @@ class Service {
   async updateComment(id:string,userId:string,body:Payload){
     uuid(id);const old=await this.db.one('SELECT c.author_id,c.author_label,c.card_id,l.board_id,jobs.status AS ai_status FROM comments c JOIN cards card ON card.id=c.card_id JOIN lists l ON l.id=card.list_id LEFT JOIN card_ai_comment_jobs jobs ON jobs.comment_id=c.id WHERE c.id=$1',[id]);
     if(!old)fail('Comentário não encontrado.',404);await this.member(old!.board_id,userId);if(old!.author_label)fail('Comentários do GPT não podem ser editados.',403);if(old!.ai_status)fail('Comentários que fazem parte do chat não podem ser editados.',409);if(old!.author_id!==userId)fail('Você só pode editar seus comentários.',403);
-    const text=value(body.body,'Comentário',5000);const updated=await this.db.one('UPDATE comments SET body=$2,edited_at=now() WHERE id=$1 RETURNING *',[id,text]);
+    const text=value(body.body,'Comentário',5000);this.assertCardTextSafe(text);const updated=await this.db.one('UPDATE comments SET body=$2,edited_at=now() WHERE id=$1 RETURNING *',[id,text]);
     await this.features.record(userId,old!.board_id,old!.card_id,'comment_updated','editou um comentário');return updated;
   }
   async deleteComment(id: string,userId: string) {
@@ -1132,10 +1141,11 @@ class Service {
     response.setHeader('Content-Type',row!.mime_type||'application/octet-stream');response.setHeader('Content-Length',row!.data.length);response.setHeader('X-Content-Type-Options','nosniff');response.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(row!.name)}`);response.send(row!.data);
   }
   async cardEmail(id:string,userId:string){await this.contentCard(id,userId);const domain=process.env.COMMENT_EMAIL_DOMAIN||'orbit.local';return {address:`card+${id}@${domain}`,enabled:Boolean(process.env.COMMENT_EMAIL_DOMAIN),instructions:'Configure your email provider to forward messages to the Orbit inbound endpoint.'};}
-  async inboundComment(body:Payload,token:string|undefined){if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN)fail('Canal de e-mail não autorizado.',401);const cardId=uuid(value(body.card_id,'Cartão',36));const row=await this.db.one('SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1',[cardId]);if(!row)fail('Cartão não encontrado.',404);const account=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);const text=value(body.body,'Comentário',5000);const comment=await this.db.one('INSERT INTO comments(card_id,author_id,body) VALUES($1,$2,$3) RETURNING *',[cardId,account!.id,text]);await this.features.record(account!.id,row!.board_id,cardId,'email_comment','comentou por e-mail');return comment;}
+  async inboundComment(body:Payload,token:string|undefined){if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN)fail('Canal de e-mail não autorizado.',401);const cardId=uuid(value(body.card_id,'Cartão',36));const row=await this.db.one('SELECT l.board_id FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1',[cardId]);if(!row)fail('Cartão não encontrado.',404);const account=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);const text=value(body.body,'Comentário',5000);this.assertCardTextSafe(text);const comment=await this.db.one('INSERT INTO comments(card_id,author_id,body) VALUES($1,$2,$3) RETURNING *',[cardId,account!.id,text]);await this.features.record(account!.id,row!.board_id,cardId,'email_comment','comentou por e-mail');return comment;}
   async createChecklist(id: string,userId: string,body: Payload) {
     const boardId=await this.contentCard(id,userId);
     const text = value(body.text,'Item',300);
+    this.assertCardTextSafe(text);
     const dueDate=body.due_date?optionalDate(body.due_date):null;
     if (dueDate && Number.isNaN(dueDate.getTime())) fail('Data inválida.');
     let group=await this.db.one('SELECT id FROM checklists WHERE card_id=$1 ORDER BY position LIMIT 1',[id]);
@@ -1153,7 +1163,7 @@ class Service {
     if (dueDate instanceof Date && Number.isNaN(dueDate.getTime())) fail('Data inválida.');
     const item=await this.db.one(`UPDATE checklist_items SET text=COALESCE($2,text),completed=COALESCE($3,completed),
       due_date=CASE WHEN $4::boolean THEN $5::timestamptz ELSE due_date END WHERE id=$1 RETURNING *`,
-      [id,body.text===undefined?null:value(body.text,'Item',300),typeof body.completed==='boolean'?body.completed:null,
+      [id,body.text===undefined?null:this.safeCardText(value(body.text,'Item',300)),typeof body.completed==='boolean'?body.completed:null,
         dueDate!==undefined,dueDate===undefined?null:dueDate]);
     if (body.completed!==undefined) await this.features.record(userId,boardId,row.card_id,'checklist_updated',body.completed?'concluiu um item de checklist':'reabriu um item de checklist');
     return item;
@@ -1218,7 +1228,13 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Service) private service: Service,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(Db) private db:Db,@Inject(BackupService) private backupService:BackupService,@Inject(QueueManagement) private queues:QueueManagement) {}
+  constructor(@Inject(Service) private service: Service,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(Db) private db:Db,@Inject(BackupService) private backupService:BackupService,@Inject(QueueManagement) private queues:QueueManagement,@Inject(AuthLifecycle) private auth:AuthLifecycle,@Inject(RequestRateLimiter) private requestLimits:RequestRateLimiter) {}
+  private async checkRequestLimit(operation:string,req:Request,response:Response,identity:string,identityLimit:number,originLimit:number,windowMs:number){
+    const origin=req.ip||req.socket.remoteAddress||'unknown';
+    const result=await this.requestLimits.consume(operation,[{kind:'identity',value:identity,limit:identityLimit},{kind:'origin',value:origin,limit:originLimit}],windowMs);
+    if(!result.allowed){response.setHeader('Retry-After',String(result.retryAfterSeconds));response.setHeader('Cache-Control','no-store');}
+    return result;
+  }
   @Get('codex/limits') async codexLimits(@Req() req:Request){
     this.service.user(req);
     try{return await readCodexLimits()}catch(error){return fail((error as Error).message,502)}
@@ -1255,7 +1271,33 @@ class ApiController {
   @Post('backups/:archive/upload') async uploadBackup(@Req() req:Request,@Param('archive') archive:string,@Body() body:Payload){try{return await this.backupService.uploadExisting(this.service.user(req),archive,body?.connectionId)}catch(error){return fail((error as Error).message,409)}}
   @Post('backups/:archive/restore') async restoreBackup(@Req() req:Request,@Param('archive') archive:string){this.service.user(req);if(!/^orbit-\d{4}-\d{2}-\d{2}T[^/]+\.backup\.enc$/.test(archive))fail('Arquivo de backup inválido.');const target=process.env.ORBIT_RESTORE_DATABASE_URL||fail('Configure ORBIT_RESTORE_DATABASE_URL para restaurar em um banco novo e vazio.',409);const root=resolve(process.env.ORBIT_BACKUP_DIR||join(__dirname,'../../../backups'));const path=resolve(root,archive);if(!path.startsWith(`${root}/`))fail('Arquivo de backup inválido.');try{return await restoreDatabaseBackup(path,target)}catch(error){return fail((error as Error).message,409)}}
   @Post('auth/register') register() { return this.service.register(); }
-  @Post('auth/login') login(@Body() body: Payload) { return this.service.login(body); }
+  @Post('auth/login') async login(@Req() req:Request,@Res({passthrough:true}) response:Response,@Body() body: Payload) {
+    const email=typeof body.email==='string'?body.email.trim().toLowerCase():'invalid';
+    const limit=await this.checkRequestLimit('auth.login',req,response,email,configuredRequestLimit('ORBIT_RATE_LIMIT_LOGIN_IDENTITY',30),configuredRequestLimit('ORBIT_RATE_LIMIT_LOGIN_ORIGIN',180),15*60*1000);
+    if(!limit.allowed)throw new HttpException('Limite de tentativas de autenticação atingido. Tente novamente mais tarde.',429);
+    try{return await this.service.login(body,req.ip||req.socket.remoteAddress||'unknown')}
+    catch(error){
+      if(error instanceof HttpException&&error.getStatus()===429){const body=error.getResponse();const seconds=body&&typeof body==='object'&&'retry_after_seconds' in body?Number(body.retry_after_seconds):1;response.setHeader('Retry-After',String(Math.max(1,seconds)))}
+      throw error;
+    }
+  }
+  @Post('auth/recovery') async recovery(@Req() req:Request,@Res({passthrough:true}) response:Response,@Body() body:Payload) {
+    const email=typeof body.email==='string'?body.email.trim().toLowerCase():'invalid';
+    const limit=await this.checkRequestLimit('auth.recovery',req,response,email,configuredRequestLimit('ORBIT_RATE_LIMIT_RECOVERY_IDENTITY',5),configuredRequestLimit('ORBIT_RATE_LIMIT_RECOVERY_ORIGIN',20),60*60*1000);
+    if(!limit.allowed)return {ok:true};
+    return this.auth.requestRecovery(body.email);
+  }
+  @Post('auth/complete') async completeAuth(@Req() req:Request,@Res({passthrough:true}) response:Response,@Body() body:Payload) {
+    const token=typeof body.token==='string'?body.token:'invalid';
+    const limit=await this.checkRequestLimit('auth.complete',req,response,token,configuredRequestLimit('ORBIT_RATE_LIMIT_COMPLETE_IDENTITY',5),configuredRequestLimit('ORBIT_RATE_LIMIT_COMPLETE_ORIGIN',50),60*60*1000);
+    if(!limit.allowed)throw new HttpException('Limite de tentativas atingido. Solicite um novo link e tente novamente.',429);
+    return this.auth.complete(body.token,body.password);
+  }
+  @Post('access/invitations') async inviteUser(@Req() req:Request,@Res({passthrough:true}) response:Response,@Body() body:Payload) {
+    const actor=this.service.user(req),limit=await this.checkRequestLimit('auth.invitation',req,response,actor,configuredRequestLimit('ORBIT_RATE_LIMIT_INVITATION_IDENTITY',20),configuredRequestLimit('ORBIT_RATE_LIMIT_INVITATION_ORIGIN',100),60*60*1000);
+    if(!limit.allowed)throw new HttpException('Limite de convites atingido. Tente novamente mais tarde.',429);
+    return this.auth.invite(actor,body);
+  }
   @Post('email/inbox') inboxEmail(@Req() req:Request,@Body() body:Payload) { return this.service.inboxEmail(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined); }
   @Get('auth/me') me(@Req() req: Request) { return this.service.me(this.service.user(req)); }
   @Get('vault/categories') vaultCategories(@Req() req:Request){return this.service.vaultCategories(this.service.user(req));}
@@ -1341,14 +1383,18 @@ class ApiController {
   @Patch('cards/:id') updateCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateCard(id,this.service.user(req),body); }
   @Delete('cards/:id') deleteCard(@Req() req: Request,@Param('id') id: string) { return this.service.deleteCard(id,this.service.user(req)); }
   @Get('cards/:id/details') cardDetails(@Req() req: Request,@Param('id') id: string) { return this.service.cardDetails(id,this.service.user(req)); }
-  @Post('cards/:id/comments') comment(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.comment(id,this.service.user(req),body); }
+  @Post('cards/:id/comments') async comment(@Req() req: Request,@Res({passthrough:true}) response:Response,@Param('id') id: string,@Body() body: Payload) {
+    const actor=this.service.user(req);
+    if(Array.isArray(body.attachments)&&body.attachments.length){const limit=await this.checkRequestLimit('attachment.comment-upload',req,response,actor,configuredRequestLimit('ORBIT_RATE_LIMIT_UPLOAD_IDENTITY',30),configuredRequestLimit('ORBIT_RATE_LIMIT_UPLOAD_ORIGIN',120),60_000);if(!limit.allowed)throw new HttpException('Limite de envio de anexos atingido. Tente novamente em instantes.',429);}
+    return this.service.comment(id,actor,body);
+  }
   @Post('comments/:id/execute') executeComment(@Req() req: Request,@Param('id') id: string) { return this.prompts.executeSavedComment(id,this.service.user(req)); }
   @Get('cards/:id/comment-email') commentEmail(@Req() req:Request,@Param('id') id:string){return this.service.cardEmail(id,this.service.user(req));}
   @Post('email/comments') inboundComment(@Req() req:Request,@Body() body:Payload){return this.service.inboundComment(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined)}
   @Patch('comments/:id') updateComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateComment(id,this.service.user(req),body)}
   @Delete('comments/:id') deleteComment(@Req() req: Request,@Param('id') id: string) { return this.service.deleteComment(id,this.service.user(req)); }
   @Get('comment-attachments/:id/content') commentAttachmentContent(@Req() req:Request,@Param('id') id:string,@Res() response:Response){return this.service.commentAttachmentContent(id,this.service.user(req),response)}
-  @Post('cards/:id/attachments') addCardAttachment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.addCardAttachment(id,this.service.user(req),body)}
+  @Post('cards/:id/attachments') async addCardAttachment(@Req() req:Request,@Res({passthrough:true}) response:Response,@Param('id') id:string,@Body() body:Payload){const actor=this.service.user(req);const limit=await this.checkRequestLimit('attachment.card-upload',req,response,actor,configuredRequestLimit('ORBIT_RATE_LIMIT_UPLOAD_IDENTITY',30),configuredRequestLimit('ORBIT_RATE_LIMIT_UPLOAD_ORIGIN',120),60_000);if(!limit.allowed)throw new HttpException('Limite de envio de anexos atingido. Tente novamente em instantes.',429);return this.service.addCardAttachment(id,actor,body)}
   @Get('card-attachments/:id/content') cardAttachmentContent(@Req() req:Request,@Param('id') id:string,@Res() response:Response){return this.service.cardAttachmentContent(id,this.service.user(req),response)}
   @Post('cards/:id/checklist') createChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createChecklist(id,this.service.user(req),body); }
   @Patch('checklist/:id') updateChecklist(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateChecklist(id,this.service.user(req),body); }
@@ -1356,7 +1402,7 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ imports:[AiPluginModule], providers: [QueueManagement,...aiCardProviders,CardLayoutsService,CardTypesService,BoardViewsService,AccessManagement,AccessService,AccessGuard,WorkspacesService,AlexaOrbitService,AlexaSecurity,{provide:ORBIT_VOICE_OPERATIONS,useFactory:(service:Service)=>({createCard:(list:string,owner:string,title:string)=>service.createCard(list,owner,{title}),scheduleCard:(card:string,owner:string,schedule:unknown)=>service.updateCard(card,owner,{schedule})}),inject:[Service]},CloudflareTunnelPlugin, Db, FeaturesService, Service, CardExtensionsService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, GoogleCredentials,GoogleDriveBackupPlugin,BackupService,PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
+@Module({ imports:[AiPluginModule], providers: [ExtensionRecords,DocumentScanner,MonitoringService,QueueManagement,...aiCardProviders,CardLayoutsService,CardTypesService,BoardViewsService,AccessManagement,AccessService,AccessGuard,AuthLifecycle,{provide:'AUTH_MAILER',useClass:SmtpAuthMailer},RequestRateLimiter,WorkspacesService,AlexaOrbitService,AlexaSecurity,{provide:ORBIT_VOICE_OPERATIONS,useFactory:(service:Service)=>({createCard:(list:string,owner:string,title:string)=>service.createCard(list,owner,{title}),scheduleCard:(card:string,owner:string,schedule:unknown)=>service.updateCard(card,owner,{schedule})}),inject:[Service]},CloudflareTunnelPlugin, Db, FeaturesService, Service, CardExtensionsService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, GoogleCredentials,GoogleDriveBackupPlugin,BackupService,PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
   {provide:BackupDestinationRegistry,useFactory:(drive:GoogleDriveBackupPlugin)=>{const registry=new BackupDestinationRegistry();registry.register(drive);return registry},inject:[GoogleDriveBackupPlugin]},
   {provide:CommandExecutorRegistry,useFactory:(local:LocalCommandExecutor,ssh:SshCommandExecutor)=>{const registry=new CommandExecutorRegistry();registry.register(local);registry.register(ssh);return registry},inject:[LocalCommandExecutor,SshCommandExecutor]},
   {provide:DeploymentStrategyRegistry,useFactory:()=>new DeploymentStrategyRegistry()},
@@ -1364,7 +1410,7 @@ class ApiController {
   {provide:StepHandlerRegistry,useFactory:(handlers:DeliveryHandlers,deployments:DeploymentStrategyRegistry,promotions:PromotionStrategyRegistry)=>{const registry=new StepHandlerRegistry();handlers.register(registry,deployments,promotions);return registry},inject:[DeliveryHandlers,DeploymentStrategyRegistry,PromotionStrategyRegistry]},
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:async(db:Db,ai:CodexAiService,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService,backups:BackupService,cloudflare:CloudflareTunnelPlugin)=>{const registry=new PluginRegistry();registry.register(aiPluginDefinition(ai));registry.register(softwareDevelopmentPlugin);registry.register(visualBoardPlugin);registry.register(structuredViewPlugin);registry.register(workspacesPlugin);registry.register(alexaOrbitPluginDefinition);registry.setEnabled('alexa-orbit',false);registry.register(cloudflareTunnelPluginDefinition(cloudflare));registry.setEnabled('cloudflare-tunnel',false);registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(googleDriveBackupPluginDefinition(backups));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}ai.setAvailability(()=>registry.isEnabled('ai'));return registry;},inject:[Db,CodexAiService,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService,BackupService,CloudflareTunnelPlugin]}, CardExecutionService], controllers: [CardLayoutsController,CardTypesController,BoardViewsController,AccessManagementController,AccessController,WorkspacesController,AlexaOrbitController,CloudflareTunnelController, ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController,GoogleDriveBackupController,GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
+  {provide:PluginRegistry,useFactory:async(db:Db,ai:CodexAiService,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService,backups:BackupService,cloudflare:CloudflareTunnelPlugin)=>{const registry=new PluginRegistry();registry.register(aiPluginDefinition(ai));registry.register(softwareDevelopmentPlugin);registry.register(visualBoardPlugin);registry.register(structuredViewPlugin);registry.register(workspacesPlugin);for(const plugin of [...genericPlugins,auditHistoryPlugin])registry.register(plugin);registry.register(alexaOrbitPluginDefinition);registry.setEnabled('alexa-orbit',false);registry.register(cloudflareTunnelPluginDefinition(cloudflare));registry.setEnabled('cloudflare-tunnel',false);registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(googleDriveBackupPluginDefinition(backups));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}ai.setAvailability(()=>registry.isEnabled('ai'));return registry;},inject:[Db,CodexAiService,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService,BackupService,CloudflareTunnelPlugin]}, CardExecutionService], controllers: [ExtensionRecordsController,AuditHistoryController,MonitoringController,CardLayoutsController,CardTypesController,BoardViewsController,AccessManagementController,AccessController,WorkspacesController,AlexaOrbitController,CloudflareTunnelController, ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController,GoogleDriveBackupController,GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1373,9 +1419,20 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule,{rawBody:true});
   app.enableShutdownHooks();
   app.useGlobalGuards(app.get(AccessGuard));
+  const trustedProxies=(process.env.ORBIT_TRUSTED_PROXY_CIDRS||'').split(',').map(value=>value.trim()).filter(Boolean);
+  if(trustedProxies.length)app.getHttpAdapter().getInstance().set('trust proxy',trustedProxies);
   app.enableCors({ origin: process.env.WEB_ORIGIN || 'http://localhost:3000' });
   app.use('/integrations/alexa/orbit',alexaOrbitBodyParser);
+  app.use('/integrations/alexa/orbit',async(req:Request,res:Response,next:NextFunction)=>{
+    try{
+      const origin=req.ip||req.socket.remoteAddress||'unknown';
+      const limit=await app.get(RequestRateLimiter).consume('alexa.request',[{kind:'origin',value:origin,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_ALEXA_ORIGIN',120)}],60_000);
+      if(!limit.allowed)return res.setHeader('Retry-After',String(limit.retryAfterSeconds)),res.setHeader('Cache-Control','no-store'),res.status(429).json({message:'Limite de solicitações atingido.'});
+      return next();
+    }catch(error){return next(error)}
+  });
   app.use(json({limit:'16mb'}));
+  app.use(app.get(MonitoringService).requestMiddleware);
   const plugins=app.get(PluginRegistry);
   app.get(CodexAiService).setAvailability(()=>plugins.isEnabled('ai'));
   app.get(AccessService).registerPlugins(plugins.catalog());

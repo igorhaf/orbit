@@ -1,5 +1,5 @@
-import {execFile} from 'node:child_process';
 import {redact} from './security';
+import {runManagedProcess} from './managed-process';
 
 export function validateProjectChecks(value:unknown):string[][] {
   if(value===undefined)return [];
@@ -8,10 +8,12 @@ export function validateProjectChecks(value:unknown):string[][] {
 }
 
 export async function runProjectChecks(root:string,checks:string[][],timeout=90000){
-  for(const [executable,...args] of validateProjectChecks(checks))await new Promise<void>((resolve,reject)=>{
-    execFile(executable,args,{cwd:root,timeout,maxBuffer:256*1024},(error,stdout,stderr)=>{
-      if(error)reject(new Error(`Verificação obrigatória falhou: ${executable} ${args.join(' ')}. ${redact((stderr||stdout||error.message).slice(-2000))}`));
-      else resolve();
-    });
-  });
+  for(const [executable,...args] of validateProjectChecks(checks)){
+    try{
+      const result=await runManagedProcess(executable,args,{cwd:root,timeoutMs:timeout,maxOutputBytes:256*1024});
+      if(result.code!==0)throw new Error(result.stderr||result.stdout||`terminou com código ${result.code}`);
+    }catch(error){
+      throw new Error(`Verificação obrigatória falhou: ${executable} ${args.join(' ')}. ${redact((error instanceof Error?error.message:String(error)).slice(-2000))}`);
+    }
+  }
 }

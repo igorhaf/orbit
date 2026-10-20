@@ -7,6 +7,8 @@ import {softwareDevelopmentPlugin} from './software-development/software-develop
 import {CodexAiService} from './ai/codex-provider';
 import {isAiRoute} from './ai/routes';
 import {defineCardLayout,definePlugin} from './sdk';
+const samplePlugin={id:'sample',name:'Sample',version:'1.0.0',dependencies:['workspaces']};
+import {workspacesPlugin} from '../workspaces/workspaces.plugin';
 
 test('dependency selection, suspension and reactivation preserve independent configured state',()=>{
  const registry=new PluginRegistry();registry.register(definePlugin(aiPlugin));registry.register(definePlugin(softwareDevelopmentPlugin));
@@ -22,6 +24,16 @@ test('missing dependencies and cycles cannot execute; registering the missing de
  registry.register(aiPlugin);assert.equal(registry.isEnabled('software-development'),true);
  const cycle=new PluginRegistry();cycle.register({id:'a',name:'A',version:'1.0.0',dependencies:['b']});assert.throws(()=>cycle.register({id:'b',name:'B',version:'1.0.0',dependencies:['a']}),/circular/);assert.equal(cycle.isEnabled('a'),false);
  assert.throws(()=>definePlugin({id:'self',name:'Self',version:'1.0.0',dependencies:['self']}),/si mesmo/);
+});
+test('an unavailable optional external provider does not suspend the sample domain plugin',()=>{
+ const registry=new PluginRegistry();
+ registry.register(workspacesPlugin);registry.register(samplePlugin);
+ registry.register({id:'google',name:'Google core',version:'1.0.0'});
+ registry.register({id:'google-drive',name:'Google Drive',version:'1.0.0',dependencies:['google']});
+ registry.setEnabled('google',false);
+ assert.equal(registry.isEnabled('sample'),true);
+ assert.equal(registry.catalog().find(plugin=>plugin.id==='sample')?.status,'active');
+ assert.equal(registry.catalog().find(plugin=>plugin.id==='google-drive')?.status,'blocked');
 });
 test('layout fields are plugin owned, reject unknown fields and retain data when layout is removed',async()=>{
  const registry=new PluginRegistry();registry.register({id:'notes',name:'Notes',version:'1.0.0',contributions:{cardLayouts:[defineCardLayout({id:'notes.card',name:'Notes',slots:[],fields:[{key:'requirements',label:'Requirements',type:'textarea',maxLength:20}]})]}});

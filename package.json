@@ -22,8 +22,10 @@
     "test:selenium:vault-credentials": "node .orbit/validations/vault-credentials/vault-credentials.selenium.mjs",
     "test:selenium:vault": "node .orbit/validations/vault-journey/vault-journey.selenium.mjs",
     "test:unit": "npm test -w apps/api",
+    "test:integration:dev": "node scripts/with-dev-database.mjs --isolated npm run test:integration -w apps/api",
     "db:backup": "npm run db:backup -w apps/api --",
-    "test:selenium:board-views": "node .orbit/validations/board-views/board-views.selenium.mjs"
+    "test:selenium:board-views": "node .orbit/validations/board-views/board-views.selenium.mjs",
+    "db:migrate:dev-host": "node scripts/migrate-dev-host.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

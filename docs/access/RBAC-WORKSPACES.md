@@ -33,8 +33,8 @@ A autorização mantém a identidade real para auditoria, inclusive quando um re
 
 ## Implantação e validação
 
-Esta implementação está em DEV. PROD e Safdoulas não foram implantados nesta revisão. Aplicar as migrations versionadas antes de incorporar o código em outra instância. Não editar checksums de migrations já aplicadas.
+Esta implementação está em DEV. Outras instâncias não foram alteradas nesta revisão. Aplicar as migrations versionadas antes de incorporar o código em outra instância. Não editar checksums de migrations já aplicadas.
 
-`npm run build` e `npm run test:unit` verificam compilação, lint e regras. As jornadas HTTP e Selenium estão em `.orbit/validations/rbac-workspaces`. Selenium valida usuários, grupos, exceções, compartilhamento, toques e larguras 320/375/768/1440. A suíte mobile compartilhada fica em `.orbit/validations/mobile-responsiveness`.
+`npm run build` e `npm run test:unit` verificam compilação, lint e regras. As jornadas HTTP e Selenium estão em `.orbit/validations/rbac-workspaces`. Os scripts Selenium permanecem apenas como referência e não estão autorizados neste host. A suíte mobile compartilhada fica em `.orbit/validations/mobile-responsiveness`.
 
-Os perfis institucionais continuam cadastrados como informação e configuração de privilégios. Habilitação, conflito de interesses, distribuição, avaliação e deliberação SAFDOULA são regras do produto; nenhum exercício institucional foi executado.
+Os perfis exclusivos de clientes foram retirados; políticas e papéis de um produto devem ser declarados por suas extensões, preservando o motor genérico de autorização.

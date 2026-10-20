@@ -2,6 +2,8 @@ import {CardLayoutsService} from '../../plugins/card-layouts';
 import { assertOrbitFields, orbitArchitecture } from '../../orbit-architecture';
 import { extractPromptQuestion, questionGuidance } from '../../prompt-question';
 import {validateProjectChecks} from '../../execution/project-checks';
+import {runManagedProcess} from '../../execution/managed-process';
+import {redact,redactFileChanges} from '../../execution/security';
 import { enforceCodexQuota } from '../../codex-limits';
 import { HttpException, Inject, Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { access, mkdir, realpath, stat, readdir } from 'node:fs/promises';
@@ -10,7 +12,6 @@ import { constants } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
-import { spawn } from 'node:child_process';
 import { PoolClient } from 'pg';
 import { CodexAiService, CodexPromptImage } from '../../codex-ai';
 import { Db } from '../../db';
@@ -45,6 +46,9 @@ const pathIsWithin=(root:string,path:string)=>{const rel=relative(root,path);ret
 const npm=process.platform==='win32'?'npm.cmd':'npm';
 const summaryStart='[[ORBIT_SUMMARY]]';
 const summaryEnd='[[/ORBIT_SUMMARY]]';
+// Heartbeats run every five seconds. Two minutes tolerate temporary process or
+// database stalls without leaving genuinely abandoned runs stuck indefinitely.
+const staleRunAfter='2 minutes';
 
 @Injectable()
 export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
@@ -69,11 +73,11 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   private async recoverStaleRuns(){
     const stale=await this.db.query<{id:string;card_id:string;user_id:string;board_id:string;title:string}>(`WITH expired AS (
       UPDATE card_ai_runs SET status='error',error='A execução foi interrompida porque o processo responsável deixou de responder.',finished_at=now()
-      WHERE status IN ('queued','running') AND heartbeat_at < now()-interval '20 seconds'
+      WHERE status IN ('queued','running') AND heartbeat_at < now()-$1::interval
       RETURNING id,card_id,user_id
     )
     SELECT expired.id,expired.card_id,expired.user_id,l.board_id,c.title
-    FROM expired JOIN cards c ON c.id=expired.card_id JOIN lists l ON l.id=c.list_id`);
+    FROM expired JOIN cards c ON c.id=expired.card_id JOIN lists l ON l.id=c.list_id`,[staleRunAfter]);
     for(const run of stale){
       const message='A execução foi interrompida porque o processo responsável deixou de responder.';
       try{await this.features.notify(run.user_id,run.board_id,run.card_id,'prompt_execution','Falha no prompt',message)}catch(error){console.error('Não foi possível notificar sobre uma execução de prompt interrompida.',error)}
@@ -125,24 +129,19 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const supplied=resolve(value);
     return pathIsWithin(roots.container,supplied)?resolve(roots.host,relative(roots.container,supplied)):supplied;
   }
-  private async command(directory:string,args:string[]){
-    await new Promise<void>((resolveCommand,reject)=>{
-      const child=spawn(npm,args,{cwd:directory,stdio:['ignore','pipe','pipe']});let output='';
-      child.stdout.on('data',chunk=>{output=(output+chunk.toString()).slice(-2000);});child.stderr.on('data',chunk=>{output=(output+chunk.toString()).slice(-2000);});
-      child.on('error',reject);child.on('close',code=>code===0?resolveCommand():reject(new Error(output.trim()||`${args.join(' ')} terminou com código ${code}.`)));
-    });
+  private async command(directory:string,args:string[],signal?:AbortSignal){
+    const result=await runManagedProcess(npm,args,{cwd:directory,timeoutMs:15*60_000,maxOutputBytes:2000,signal});
+    if(result.code!==0)throw new Error(result.stderr.trim()||result.stdout.trim()||`${args.join(' ')} terminou com código ${result.code}.`);
   }
-  private async nativeChanges(directory:string){
-    return new Promise<boolean>((resolveChanges,reject)=>{
-      const child=spawn('git',['status','--porcelain'],{cwd:directory,stdio:['ignore','pipe','pipe']});let output='',error='';
-      child.stdout.on('data',chunk=>{output+=chunk.toString();});child.stderr.on('data',chunk=>{error=(error+chunk.toString()).slice(-2000);});
-      child.on('error',reject);child.on('close',code=>code===0?resolveChanges(Boolean(output.trim())):reject(new Error(error||'Não foi possível verificar as alterações do Orbit.')));
-    });
+  private async nativeChanges(directory:string,signal?:AbortSignal){
+    const result=await runManagedProcess('git',['status','--porcelain'],{cwd:directory,timeoutMs:30_000,maxOutputBytes:4*1024*1024,signal});
+    if(result.code!==0)throw new Error(result.stderr.trim()||'Não foi possível verificar as alterações do Orbit.');
+    return Boolean(result.stdout.trim());
   }
-  private async validateNativeChanges(directory:string,progress:(message:string)=>void){
-    if(!await this.nativeChanges(directory))return;
-    progress('Aplicando migrações e seed no Orbit em desenvolvimento…');await this.command(directory,['run','db:prepare']);
-    progress('Compilando o Orbit em desenvolvimento…');await this.command(directory,['run','build']);
+  private async validateNativeChanges(directory:string,progress:(message:string)=>void,signal?:AbortSignal){
+    if(!await this.nativeChanges(directory,signal))return;
+    progress('Aplicando migrações e seed no Orbit em desenvolvimento…');await this.command(directory,['run','db:prepare'],signal);
+    progress('Compilando o Orbit em desenvolvimento…');await this.command(directory,['run','build'],signal);
   }
   private async nativeProject(userId:string){
     const current=await this.db.one('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native FROM ai_projects WHERE owner_id=$1 AND is_native=true LIMIT 1',[userId]);
@@ -455,7 +454,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       : '';
     const initialCommentIsAlreadyInHistory=commentReply&&conversationRows.some(row=>row.body===additional);
     let previousSessionId:string|null=null;let continuing=false;
-    const executionGuidance='Use o histórico anterior como referência e confira o estado atual dos arquivos e das verificações; não presuma que uma execução anterior concluiu ou validou o trabalho. Implemente somente a solicitação atual e os itens pendentes da checklist deste cartão. Não execute checklists dos cartões de contexto nem repita trabalho já comprovado. Implemente a solicitação nesta execução. Você pode editar arquivos, executar builds e verificações adequadas e respeitar as regras de ciclo de vida do projeto: só reinicie serviços quando o usuário solicitar explicitamente. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio. Não encerre com a execução pendente nem publique alterações sem pedido explícito do usuário. ECONOMIA DE DADOS: use o histórico e a descrição como contexto sem repeti-los na resposta; envie mensagens de progresso curtas; não copie arquivos completos, diffs ou saídas de terminal para a resposta. Em comandos de validação longos, grave a saída em arquivo temporário, mostre apenas sucesso/falha e, se falhar, apresente somente as linhas relevantes do erro. Seja breve, salvo quando o usuário pedir detalhes.';
+    const executionGuidance='Use o histórico anterior como referência e confira o estado atual dos arquivos e das verificações; não presuma que uma execução anterior concluiu ou validou o trabalho. Implemente somente a solicitação atual e os itens pendentes da checklist deste cartão. Não execute checklists dos cartões de contexto nem repita trabalho já comprovado. Implemente a solicitação nesta execução. Você pode editar arquivos, executar builds e verificações adequadas e respeitar as regras de ciclo de vida do projeto: só reinicie serviços quando o usuário solicitar explicitamente. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio. Não encerre com a execução pendente nem publique alterações sem pedido explícito do usuário. TRABALHO LONGO E RETOMADA: divida solicitações grandes em etapas pequenas, independentes e verificáveis; conclua e registre cada etapa no artefato persistente apropriado antes de iniciar a próxima. Não concentre muitas demandas, verificações ou alterações em um único bloco longo. Antes de repetir uma etapa após interrupção, confira arquivos, histórico e verificações para reaproveitar o progresso válido e evitar efeitos duplicados. Envie progresso curto em cada marco e, se o limite da execução se aproximar, deixe um checkpoint explícito com o que foi concluído, o próximo passo e os riscos, para a próxima execução continuar dali. ECONOMIA DE DADOS: use o histórico e a descrição como contexto sem repeti-los na resposta; envie mensagens de progresso curtas; não copie arquivos completos, diffs ou saídas de terminal para a resposta. Em comandos de validação longos, grave a saída em arquivo temporário, mostre apenas sucesso/falha e, se falhar, apresente somente as linhas relevantes do erro. Seja breve, salvo quando o usuário pedir detalhes.';
     const contextsPrompt=cardContextsPrompt(await linkedCardContexts(this.db,cardId,userId));
     const skillsPrompt=await this.skillInstructions(projectId as string,userId,cardId);
     const configuredScope=await this.db.one<{context:{write_scope?:string[]};permissions:string[]}>('SELECT context,permissions FROM card_execution_configs WHERE card_id=$1',[cardId]);
@@ -477,7 +476,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const makePrompt=()=>(continuing
       ? `${executionGuidance}\n\nContinue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir. ${commentReply?'A conversa completa já está nesta sessão; use-a como contexto e processe somente o comentário novo abaixo. ':''}Esta orientação substitui instruções anteriores da sessão que impeçam a implementação ou a validação local.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nDESCRIÇÃO ATUAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${commentReply?'':conversationPrompt}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}${summaryInstruction}`
       : `${executionGuidance}\n\nVocê está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${conversationPrompt}${additional&&!initialCommentIsAlreadyInHistory?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}${summaryInstruction}`)+modeGuidance;
-    let prompt=makePrompt();
+    let prompt=redact(makePrompt());
     const client=await this.db.pool.connect();let run:{id:string};
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[cardId]);
       if(resume){
@@ -512,7 +511,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         projectClient=await this.db.pool.connect();
         await projectClient.query('SELECT pg_advisory_lock(hashtext($1)::bigint)',[projectLockName]);projectLocked=true;
         const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND id<>$3 AND codex_session_id IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1',[cardId,currentProject.id,run!.id]);
-        previousSessionId=resume?.codex_session_id||previous?.codex_session_id||null;continuing=Boolean(previousSessionId);prompt=makePrompt();
+        previousSessionId=resume?.codex_session_id||previous?.codex_session_id||null;continuing=Boolean(previousSessionId);prompt=redact(makePrompt());
         while(await this.queuePaused(userId)){
           const pending=await this.db.one<{status:string}>('SELECT status FROM card_ai_runs WHERE id=$1',[run!.id]);
           if(pending?.status!=='queued')return;
@@ -524,21 +523,26 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
           if(!state||state.status==='cancelled')return;
           throw new Error('A execução deixou de estar disponível na fila.');
         }
-        let streamedOutput='';let outputWrite:Promise<unknown>=Promise.resolve();const fileChanges=new Map<string,{path:string;kind:'add'|'delete'|'update'}>();const activities=new Map<string,{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}>();
+        let streamedOutput='';let outputWrite:Promise<unknown>=Promise.resolve();const fileChanges=new Map<string,{path:string;kind:'add'|'delete'|'update';additions:number;deletions:number;diff:string}>();const activities=new Map<string,{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}>();
         const progress=(message:string,output=false,replace=false,details?:{fileChanges?:Array<{path:string;kind:'add'|'delete'|'update'}>;activity?:{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}})=>{
-          if(output){streamedOutput=replace?message:streamedOutput+message;outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET output=$2 WHERE id=$1',[run!.id,streamedOutput])).catch(()=>undefined);}
-          if(details?.fileChanges){for(const change of details.fileChanges)fileChanges.set(change.path,change);outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET file_changes=$2 WHERE id=$1',[run!.id,JSON.stringify([...fileChanges.values()])])).catch(()=>undefined);}
-          if(details?.activity){activities.set(details.activity.id,details.activity);outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET activities=$2 WHERE id=$1',[run!.id,JSON.stringify([...activities.values()])])).catch(()=>undefined);}
+          const safeMessage=redact(message);const safeActivity=details?.activity?{...details.activity,command:redact(details.activity.command),output:redact(details.activity.output)}:undefined;
+          if(output){streamedOutput=replace?safeMessage:streamedOutput+safeMessage;outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET output=$2 WHERE id=$1',[run!.id,streamedOutput])).catch(()=>undefined);}
+          if(details?.fileChanges){for(const change of details.fileChanges)fileChanges.set(change.path,{...change,additions:0,deletions:0,diff:''});outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET file_changes=$2 WHERE id=$1',[run!.id,JSON.stringify([...fileChanges.values()])])).catch(()=>undefined);}
+          if(safeActivity){activities.set(safeActivity.id,safeActivity);outputWrite=outputWrite.then(()=>this.db.query('UPDATE card_ai_runs SET activities=$2 WHERE id=$1',[run!.id,JSON.stringify([...activities.values()])])).catch(()=>undefined);}
           void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).catch(()=>undefined);
-          this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message,output,replace,files:details?.fileChanges?[...fileChanges.values()]:undefined,activity:details?.activity});
+          this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message:safeMessage,output,replace,files:details?.fileChanges?[...fileChanges.values()].map(({path,kind})=>({path,kind})):undefined,activity:safeActivity});
         };
         progress(`Iniciando ${model} com esforço ${effort}.`);
-        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined),()=>this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).then(()=>undefined),initialQuestion?'planning':questionMode?'bypass':card.ai_execution_mode==='planning'?'planning':'bypass',promptImages,initialQuestion?[]:writeScope,initialQuestion?[]:projectChecks,questionMode);
+        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined),async()=>{
+          const active=await this.db.query<{id:string}>("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running' RETURNING id",[run!.id,this.workerId]);
+          return active.length>0;
+        },initialQuestion?'planning':questionMode?'bypass':card.ai_execution_mode==='planning'?'planning':'bypass',promptImages,initialQuestion?[]:writeScope,initialQuestion?[]:projectChecks,questionMode);
         await enforceCodexQuota(this.db,true);
-        for(const change of result.fileChanges)fileChanges.set(change.path,change);
-        for(const activity of result.activities)activities.set(activity.id,activity);
+        for(const change of redactFileChanges(result.fileChanges))fileChanges.set(change.path,change);
+        for(const activity of result.activities)activities.set(activity.id,{...activity,command:redact(activity.command),output:redact(activity.output)});
         await outputWrite;
-        const question=questionMode?extractPromptQuestion(result.output):null;
+        const safeResultOutput=redact(result.output);
+        const question=questionMode?extractPromptQuestion(safeResultOutput):null;
         if(initialQuestion&&!question)throw new Error('O modo Questionar não retornou uma pergunta válida. Tente novamente.');
         if(question){
           const waiting=await this.db.one("UPDATE card_ai_runs SET status='waiting_answer',output=$2,summary=NULL,codex_session_id=$3,file_changes=$4,activities=$5 WHERE id=$1 AND worker_id=$6 AND status='running' RETURNING id",[run!.id,question,result.sessionId,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),this.workerId]);
@@ -551,15 +555,16 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         }
         let validationError:string|null=null;
         if(currentProject.is_native){
-          const validationHeartbeat=setInterval(()=>void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).catch(()=>undefined),5_000);
+          const validationAbort=new AbortController();
+          const validationHeartbeat=setInterval(()=>void this.db.query<{id:string}>("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running' RETURNING id",[run!.id,this.workerId]).then(active=>{if(!active.length)validationAbort.abort()}).catch(()=>undefined),5_000);
           validationHeartbeat.unref();
-          try{await this.validateNativeChanges(localPath,message=>{void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).catch(()=>undefined);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})});}
-          catch(error){validationError=errorMessage(error);}
+          try{await this.validateNativeChanges(localPath,message=>{void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).catch(()=>undefined);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})},validationAbort.signal);}
+          catch(error){validationError=redact(errorMessage(error));}
           finally{clearInterval(validationHeartbeat);}
         }
         const stillOwned=await this.db.one("SELECT 1 FROM card_ai_runs WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]);
         if(!stillOwned)return;
-        const promptResult=extractPromptSummary(result.output,summaryLineLimit);
+        const promptResult=extractPromptSummary(safeResultOutput,summaryLineLimit);
         if(commentReply){
           const replyClient=await this.db.pool.connect();
           try{
@@ -580,8 +585,8 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:validationError?'error':'success',message:validationError||'Execução concluída.'});
       }
       catch(error){
-        console.error('[PromptSessions] Execução falhou.',run!.id,error);
-        const message=errorMessage(error);
+        const message=redact(errorMessage(error));
+        console.error('[PromptSessions] Execução falhou.',run!.id,message);
         const failed=await this.db.one<{id:string}>("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1 AND status IN ('queued','running') RETURNING id",[run!.id,message]);
         if(!failed)return;
         if(commentReply){await this.db.query("UPDATE card_ai_comment_jobs SET status='error',error=$2,finished_at=now() WHERE comment_id=$1 AND answer_comment_id IS NULL",[commentReply.comment_id,message]);this.events.commentChanged(context.boardId,cardId);}

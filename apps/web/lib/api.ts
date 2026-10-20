@@ -226,6 +226,11 @@ export async function commentAttachmentBlob(id:string):Promise<Blob>{
   if(!response.ok)throw new Error('Não foi possível abrir o anexo.');
   return response.blob();
 }
+export async function authenticatedBlob(path:string):Promise<Blob>{
+  const response=await fetch(`${BASE}${path}`,{headers:{Authorization:`Bearer ${getToken()||''}`},cache:'no-store'});
+  if(!response.ok)throw new Error('Não foi possível baixar o arquivo autorizado.');
+  return response.blob();
+}
 export const initials = (name: string) => name.split(' ').filter(Boolean).slice(0,2).map(n => n[0].toUpperCase()).join('');
 export const cardUrl = (boardId: string, cardId?: string | null, token?: string | null) => `/board/${boardId}${cardId ? `?card=${cardId}${token ? `&token=${encodeURIComponent(token)}` : ''}` : ''}`;
 export const dateLabel = (date: string) => new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });

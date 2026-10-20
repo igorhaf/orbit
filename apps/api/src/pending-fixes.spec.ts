@@ -37,6 +37,61 @@ test('Codex receives long prompts through stdin instead of process arguments',as
   }
 });
 
+test('Codex kills a silent process after the inactivity deadline',async()=>{
+  const directory=await mkdtemp(join(tmpdir(),'orbit-codex-idle-'));
+  const executable=join(directory,'silent-codex.mjs');
+  const previous={bin:process.env.CODEX_BIN,home:process.env.CODEX_HOME,idle:process.env.CODEX_AI_TIMEOUT_MS,max:process.env.CODEX_AI_MAX_RUNTIME_MS};
+  try{
+    await writeFile(executable,`#!/usr/bin/env node\nawait new Promise(resolve=>setTimeout(resolve,5000));\n`);
+    await chmod(executable,0o755);
+    process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;process.env.CODEX_AI_TIMEOUT_MS='120';process.env.CODEX_AI_MAX_RUNTIME_MS='2000';
+    await assert.rejects(()=>new CodexAiService().complete('travou','gpt-6-luna','low'),/inatividade/);
+  }finally{
+    if(previous.bin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previous.bin;
+    if(previous.home===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previous.home;
+    if(previous.idle===undefined)delete process.env.CODEX_AI_TIMEOUT_MS;else process.env.CODEX_AI_TIMEOUT_MS=previous.idle;
+    if(previous.max===undefined)delete process.env.CODEX_AI_MAX_RUNTIME_MS;else process.env.CODEX_AI_MAX_RUNTIME_MS=previous.max;
+    await rm(directory,{recursive:true,force:true});
+  }
+});
+
+test('Codex enforces an absolute deadline even when a process keeps producing output',async()=>{
+  const directory=await mkdtemp(join(tmpdir(),'orbit-codex-deadline-'));
+  const executable=join(directory,'chatty-codex.mjs');
+  const previous={bin:process.env.CODEX_BIN,home:process.env.CODEX_HOME,idle:process.env.CODEX_AI_TIMEOUT_MS,max:process.env.CODEX_AI_MAX_RUNTIME_MS};
+  try{
+    await writeFile(executable,`#!/usr/bin/env node\nsetInterval(()=>process.stdout.write('still alive\\n'),15);\n`);
+    await chmod(executable,0o755);
+    process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;process.env.CODEX_AI_TIMEOUT_MS='500';process.env.CODEX_AI_MAX_RUNTIME_MS='160';
+    await assert.rejects(()=>new CodexAiService().execute('travou',directory,'gpt-6-luna','low',()=>undefined),/tempo máximo/);
+  }finally{
+    if(previous.bin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previous.bin;
+    if(previous.home===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previous.home;
+    if(previous.idle===undefined)delete process.env.CODEX_AI_TIMEOUT_MS;else process.env.CODEX_AI_TIMEOUT_MS=previous.idle;
+    if(previous.max===undefined)delete process.env.CODEX_AI_MAX_RUNTIME_MS;else process.env.CODEX_AI_MAX_RUNTIME_MS=previous.max;
+    await rm(directory,{recursive:true,force:true});
+  }
+});
+
+test('Codex stops promptly when the run is no longer owned by its worker',async()=>{
+  const directory=await mkdtemp(join(tmpdir(),'orbit-codex-orphan-'));
+  const executable=join(directory,'orphan-codex.mjs');
+  const previous={bin:process.env.CODEX_BIN,home:process.env.CODEX_HOME,idle:process.env.CODEX_AI_TIMEOUT_MS,max:process.env.CODEX_AI_MAX_RUNTIME_MS,heartbeat:process.env.CODEX_AI_HEARTBEAT_INTERVAL_MS};
+  try{
+    await writeFile(executable,`#!/usr/bin/env node\nsetInterval(()=>process.stdout.write('still alive\\n'),15);\n`);
+    await chmod(executable,0o755);
+    process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;process.env.CODEX_AI_TIMEOUT_MS='1000';process.env.CODEX_AI_MAX_RUNTIME_MS='2000';process.env.CODEX_AI_HEARTBEAT_INTERVAL_MS='100';
+    await assert.rejects(()=>new CodexAiService().execute('órfão',directory,'gpt-6-luna','low',()=>undefined,null,undefined,()=>false),/não está mais ativa/);
+  }finally{
+    if(previous.bin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previous.bin;
+    if(previous.home===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previous.home;
+    if(previous.idle===undefined)delete process.env.CODEX_AI_TIMEOUT_MS;else process.env.CODEX_AI_TIMEOUT_MS=previous.idle;
+    if(previous.max===undefined)delete process.env.CODEX_AI_MAX_RUNTIME_MS;else process.env.CODEX_AI_MAX_RUNTIME_MS=previous.max;
+    if(previous.heartbeat===undefined)delete process.env.CODEX_AI_HEARTBEAT_INTERVAL_MS;else process.env.CODEX_AI_HEARTBEAT_INTERVAL_MS=previous.heartbeat;
+    await rm(directory,{recursive:true,force:true});
+  }
+});
+
 test('project creation reports a duplicate path instead of an internal error',async()=>{
   const service=new PromptSessionsService({one:async()=>null} as never,{} as never,{} as never,{} as never);
   await assert.rejects(

@@ -5,7 +5,6 @@ import express,{json,Request} from 'express';
 import type {RawBodyRequest} from '@nestjs/common';
 import {alexaOrbitBodyParser} from './body-parser';
 import {randomUUID,generateKeyPairSync,sign} from 'node:crypto';
-import {SkillRequestSignatureVerifier} from 'ask-sdk-express-adapter';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
@@ -17,7 +16,7 @@ import {FeaturesService} from '../features';
 import {AlexaOrbitController} from './alexa-orbit.plugin';
 import {interpretation,interpretationPrompt,closingSpeech} from './interpretation';
 import {AlexaOrbitService} from './alexa-orbit.service';
-import {AlexaSecurity,verifyIdentity,verifyNativeChain} from './security';
+import {AlexaSecurity,verifyAlexaRequestSignature,verifyIdentity,verifyNativeChain} from './security';
 import {appointmentInstant,configuration,emptyConfiguration,Envelope,Configuration} from './model';
 const owner=randomUUID(),boardId=randomUUID(),columnId=randomUUID(),calendarId=randomUUID();
 const config:Configuration={...emptyConfiguration,skillId:'amzn1.ask.skill.fixture',allowedUserIds:['amzn1.ask.account.fixture'],timeZone:'America/Recife',taskDestination:{boardId,columnId},purchaseDestination:{boardId,columnId},appointmentDestination:{calendarId,boardId,columnId},developmentSimulation:true};
@@ -31,7 +30,7 @@ test('missing destinations and service failure stay isolated; disabled plugin wr
 test('exact dates, leap days, DST gaps and ambiguity',()=>{assert.equal(appointmentInstant('2026-10-15','15:00','Europe/Lisbon'),'2026-10-15T14:00:00.000Z');for(const [date,time,zone] of [['2026-02-30','10:00','UTC'],['2026-W40','10:00','UTC'],['2026-10-15','AF','UTC'],['2026-03-08','02:30','America/New_York'],['2026-11-01','01:30','America/New_York']])assert.throws(()=>appointmentInstant(date,time,zone))});
 test('wrong skill, unauthorized user and old/future/invalid timestamp fail closed',()=>{for(const mutate of [(e:Envelope)=>{e.context!.System!.application!.applicationId='amzn1.ask.skill.other'},(e:Envelope)=>{e.context!.System!.user!.userId='amzn1.ask.account.other'},(e:Envelope)=>{e.request.timestamp=new Date(Date.now()-160000).toISOString()},(e:Envelope)=>{e.request.timestamp=new Date(Date.now()+160000).toISOString()},(e:Envelope)=>{e.request.timestamp='invalid'}]){const e=envelope('AddTaskIntent');mutate(e);assert.throws(()=>verifyIdentity(e,config),/inválida/)}});
 test('real official signature verifier rejects unsigned/hostile public requests',async()=>{const security=new AlexaSecurity(),raw=Buffer.from(JSON.stringify(envelope('AddTaskIntent')));await assert.rejects(()=>security.verify(raw,{},config),/inválida/);await assert.rejects(()=>security.verify(raw,{'signature-256':'invalid',signaturecertchainurl:'https://evil.test/cert'},config),/inválida/)});
-test('official SHA256 signature validation rejects tampered body',()=>{const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048}),raw='{"request":"fixture"}',signature=sign('RSA-SHA256',Buffer.from(raw),privateKey).toString('base64'),verifier=new SkillRequestSignatureVerifier() as unknown as {_validateRequestBody:(key:string,signature:string,body:string)=>void};const key=publicKey.export({type:'spki',format:'pem'}).toString();verifier._validateRequestBody(key,signature,raw);assert.throws(()=>verifier._validateRequestBody(key,signature,raw+' '))});
+test('native SHA256 signature verification accepts authentic bytes and rejects tampering or malformed base64',()=>{const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048}),raw='{"request":"fixture"}',signature=sign('RSA-SHA256',Buffer.from(raw),privateKey).toString('base64');assert.equal(verifyAlexaRequestSignature(raw,signature,publicKey),true);assert.equal(verifyAlexaRequestSignature(raw+' ',signature,publicKey),false);assert.equal(verifyAlexaRequestSignature(raw,'not base64!',publicKey),false)});
 test('configuration rejects unknown fields and invalid destinations/URLs',()=>{assert.throws(()=>configuration({...config,invented:true}));assert.throws(()=>configuration({...config,taskDestination:{boardId:'bad',columnId}}));assert.throws(()=>configuration({...config,publicEndpoint:'http://example.test/integrations/alexa/orbit'}))});
 test('pt-BR model uses supported slots, carrier phrases and matching dialog prompts',()=>{const model=JSON.parse(readFileSync(resolve(__dirname,'alexa/pt-BR.json'),'utf8')).interactionModel;assert.equal(model.languageModel.invocationName,'orbit');for(const intent of model.languageModel.intents){for(const utterance of intent.samples){const slots=[...utterance.matchAll(/\{(\w+)\}/g)].map(match=>match[1]);for(const name of slots)assert(intent.slots?.some((slot:{name:string})=>slot.name===name));if(intent.slots?.some((slot:{type:string})=>slot.type==='AMAZON.SearchQuery')&&slots.length){assert.equal(slots.length,1);assert(utterance.replace(/\{\w+\}/g,'').trim())}}}for(const intent of model.dialog.intents)for(const slot of intent.slots)assert(model.prompts.some((prompt:{id:string})=>prompt.id===slot.prompts.elicitation))});
 

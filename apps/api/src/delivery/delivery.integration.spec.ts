@@ -105,6 +105,17 @@ test('delivery runs full Git → deploy → test → approval → promotion flow
     await assert.rejects(()=>runner.start(owner,supplemental,{mode:'bypass',reason:'Dependency validation',bypassOptions:{tests:true}}),/Bypass remove output obrigatório/);
     assert.equal((await db.one<{count:string}>('SELECT count(*) FROM delivery_runs WHERE pipeline_id=$1',[supplemental]))!.count,'3');
     await db.query('DELETE FROM delivery_steps WHERE pipeline_id=$1',[supplemental]);
+    const gateTest=await addStep('test.run',{command:'exit 17',executor:'local',workingDirectory:root},0,'stop');
+    const gatedDeploy=await addStep('deploy.execute',{strategy:'git',environmentId:environmentIds.development,deployTargetId:targetIds.development},1,'stop');
+    const revisionBeforeGate=await git(paths.development,'log','-1','--format=%H');
+    const gated=await runner.start(owner,supplemental,{mode:'normal'});
+    for(let i=0;i<300;i++){const status=(await db.one<{status:string}>('SELECT status FROM delivery_runs WHERE id=$1',[gated.id]))!.status;if(status==='failed')break;if(status==='success')throw new Error('A pipeline publicou mesmo com o gate de teste falhando.');await pause(20)}
+    assert.equal((await db.one<{status:string}>('SELECT status FROM delivery_runs WHERE id=$1',[gated.id]))!.status,'failed');
+    assert.equal((await db.one<{status:string}>('SELECT status FROM delivery_step_runs WHERE run_id=$1 AND step_id=$2',[gated.id,gateTest!.id]))!.status,'failed');
+    assert.equal((await db.one<{status:string}>('SELECT status FROM delivery_step_runs WHERE run_id=$1 AND step_id=$2',[gated.id,gatedDeploy!.id]))!.status,'pending');
+    assert.equal((await db.one<{count:string}>('SELECT count(*) FROM delivery_audit WHERE run_id=$1 AND event=\'deployment.started\'',[gated.id]))!.count,'0');
+    assert.equal(await git(paths.development,'log','-1','--format=%H'),revisionBeforeGate);
+    await db.query('DELETE FROM delivery_steps WHERE pipeline_id=$1',[supplemental]);
     const oldVaultKey=process.env.ORBIT_SECRET_KEY,oldFixture=process.env.ORBIT_DELIVERY_TEST_SECRET;
     try{
       process.env.ORBIT_SECRET_KEY=oldVaultKey||'integration-only-vault-key';process.env.ORBIT_DELIVERY_TEST_SECRET='delivery-redaction-fixture-74f0c3';

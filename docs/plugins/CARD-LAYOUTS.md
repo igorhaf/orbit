@@ -47,5 +47,3 @@ O plugin `software-development` declara o campo `role`: `executable` (Executáve
 O rótulo aparece no quadro, na Gestão estruturada e no cartão aberto. A função pode ser alterada nos campos do plugin. Contextos conservam descrição, checklists e relações, mas não oferecem ações de execução/commit; as APIs rejeitam novas execuções. A classificação como contexto é recusada enquanto houver execução pendente. Dados anteriores de execução são preservados.
 
 Uma relação pai/filho não determina a função: um executável pode ser contexto para outro cartão. Ao converter checklist em filho, o campo recebe o `childDefault` declarado pelo plugin (Executável para desenvolvimento), mantendo a herança do pai. Cartões antigos sem classificação exibem “Não classificado” até uma escolha explícita.
-
-SAFDOULA: 94 demandas Dxx executáveis e 26 contextos (principal, base, referências, jornadas e roteiro QA). Nenhuma demanda é iniciada pela classificação.

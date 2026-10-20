@@ -21,3 +21,6 @@ dist
 
 # Local browser downloads used by validation scripts
 .orbit/validations/**/browser-cache/
+
+# Host-specific project endpoints and paths
+/.orbit/runtime.json

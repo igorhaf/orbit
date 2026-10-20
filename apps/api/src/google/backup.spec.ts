@@ -161,3 +161,44 @@ test('remote copies remain visible after local retention removes the archive',as
     const listed=await service.list('owner');assert.equal(listed.length,1);assert.equal('remoteOnly' in listed[0] && listed[0].remoteOnly,true);assert.equal(listed[0].cloudCopies[0].archiveFileId,'archive');
   }finally{if(old===undefined)delete process.env.ORBIT_BACKUP_DIR;else process.env.ORBIT_BACKUP_DIR=old;await rm(root,{recursive:true,force:true})}
 });
+
+test('failed cloud delivery keeps the local archive and retries the same copy safely',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'orbit-backup-retry-')),old=process.env.ORBIT_BACKUP_DIR;
+  process.env.ORBIT_BACKUP_DIR=root;
+  const archive='orbit-2026-10-14T12-00-00-000Z-fixture.backup.enc';
+  await writeFile(join(root,archive),Buffer.from('encrypted local fixture'));
+  let row:Record<string,unknown>|null=null,attempts=0;
+  const db={async one(sql:string,params:unknown[]=[]){
+    if(sql.startsWith('SELECT * FROM backup_cloud_copies'))return row;
+    if(sql.startsWith('INSERT INTO backup_cloud_copies')){
+      row={id:'copy-fixture',archive:String(params[0]),owner_id:String(params[1]),provider:'google_drive',connection_id:String(params[2]),status:'uploading',folder_id:null,archive_file_id:null,manifest_file_id:null,error:null,created_at:'now',updated_at:'now'};
+      return row;
+    }
+    if(sql.startsWith("UPDATE backup_cloud_copies SET status='failed'")){
+      row={...row!,status:'failed',error:String(params[1])};return row;
+    }
+    if(sql.startsWith("UPDATE backup_cloud_copies SET status='success'")){
+      row={...row!,status:'success',folder_id:params[1],archive_file_id:params[2],manifest_file_id:params[3],error:null};return row;
+    }
+    return null;
+  }};
+  const destinations=new BackupDestinationRegistry();
+  destinations.register({id:'google_drive',name:'Google Drive',async upload(){attempts++;if(attempts===1)throw new Error('simulated Drive outage');return{folderId:'folder-fixture',archiveFileId:'archive-fixture',manifestFileId:'manifest-fixture'}},async download(){}});
+  const service=new BackupService(db as never,destinations,{} as never);
+  const upload=(service as unknown as {uploadVerified(owner:string,manifest:{archive:string},connection:string):Promise<{status:string;error:string|null}>}).uploadVerified.bind(service);
+  try{
+    const manifest={archive} as Parameters<typeof upload>[1];
+    const first=await upload('owner-fixture',manifest,'connection-fixture');
+    assert.equal(first.status,'failed');
+    assert.match(first.error||'',/Verifique a conexão/);
+    assert.equal(await readFile(join(root,archive),'utf8'),'encrypted local fixture');
+    const second=await upload('owner-fixture',manifest,'connection-fixture');
+    assert.equal(second.status,'success');
+    assert.equal(attempts,2);
+    assert.equal((row as unknown as {id:string}|null)?.id,'copy-fixture');
+    assert.equal(await readFile(join(root,archive),'utf8'),'encrypted local fixture');
+  }finally{
+    if(old===undefined)delete process.env.ORBIT_BACKUP_DIR;else process.env.ORBIT_BACKUP_DIR=old;
+    await rm(root,{recursive:true,force:true});
+  }
+});

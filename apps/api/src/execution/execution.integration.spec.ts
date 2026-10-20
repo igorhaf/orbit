@@ -8,6 +8,7 @@ import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {Pool} from 'pg';
 import {Db} from '../db';
+import {SecretVault} from '../secrets';
 import {FeaturesService} from '../features';
 import {OrbitEvents} from '../orbit-events';
 import {migrateVersions} from '../migrations';
@@ -63,7 +64,7 @@ test('executable cards preserve normal cards and persist audited runs',async t=>
     await t.test('legacy cards remain valid and generic scheduling and links stay provider-neutral',async()=>{
       const legacy=await db.one('SELECT schedule_start_at FROM cards WHERE id=$1',[card]);assert.equal(legacy?.schedule_start_at,null);
       await db.query("UPDATE cards SET schedule_start_at='2026-10-01T12:00:00Z',schedule_end_at='2026-10-01T13:00:00Z',schedule_time_zone='America/Recife' WHERE id=$1",[card]);
-      const connection=(await db.one("INSERT INTO integration_connections(owner_id,plugin_id,label) VALUES($1,'fixture','Fixture') RETURNING id",[user]))!.id;
+      const connection=(await db.one("INSERT INTO integration_connections(owner_id,plugin_id,label,display_name,credentials_encrypted) VALUES($1,'fixture','Fixture','Fixture',$2) RETURNING id",[user,new SecretVault().seal({})]))!.id;
       await db.query("INSERT INTO external_resources(owner_id,plugin_id,connection_id,resource_type,external_id,orbit_entity_type,orbit_entity_id) VALUES($1,'fixture',$2,'event','external-1','card',$3)",[user,connection,card]);
       assert.equal((await db.one("SELECT count(*)::int n FROM external_resources WHERE orbit_entity_type='card' AND orbit_entity_id=$1",[card]))?.n,1);
     });

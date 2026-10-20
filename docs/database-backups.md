@@ -48,7 +48,7 @@ The local copy is retained for operational convenience; Google Drive holds the o
 
 ## Restore without overwriting the live database
 
-Create a new, empty database first. Set `ORBIT_RESTORE_DATABASE_URL` to its connection string in `apps/api/.env`, then run:
+Create a new, empty, disposable database whose name starts with `orbit_restore_`. The application rejects other target names before connecting, which prevents accidental restores into the live DEV, PROD, or customer databases. Set `ORBIT_RESTORE_DATABASE_URL` to its connection string in `apps/api/.env`, then run:
 
 ```bash
 npm run db:backup -- restore /path/to/orbit-backup.backup.enc

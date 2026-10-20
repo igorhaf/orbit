@@ -63,6 +63,7 @@ Edite `apps/api/.env` e configure pelo menos:
 - `JWT_SECRET`: segredo aleatório com pelo menos 32 caracteres. Gere com `openssl rand -hex 32`.
 - `ORBIT_BACKUP_KEY`: chave independente para criptografar backups. Gere outra chave com `openssl rand -hex 32` e guarde uma cópia fora deste servidor.
 - `ORBIT_SECRET_KEY` e `VAULT_ENCRYPTION_KEY`: chaves independentes para criptografia das credenciais de integrações e do cofre. Gere cada uma com `openssl rand -hex 32`.
+- `ORBIT_SECRET_KEY_PREVIOUS` e `VAULT_ENCRYPTION_KEY_PREVIOUS`: chaves anteriores usadas para abrir registros cifrados antes da rotação. Ao trocar uma chave ativa, copie seu valor antigo para a variável `*_PREVIOUS` correspondente e mantenha-a configurada até confirmar que todos os dados cifrados antigos foram regravados por um procedimento de migração verificado. O Orbit preserva o formato legado na leitura, grava somente com a chave ativa e não recriptografa dados automaticamente; ausência ou divergência de chave falha sem revelar o conteúdo.
 - `API_PORT`, `WEB_ORIGIN` e `NEXT_PUBLIC_API_URL`: ajuste se for usar portas ou origens diferentes das locais.
 
 Não reutilize a mesma chave para banco, backup, integrações e cofre. Não envie arquivos `.env` ao Git, e não perca a chave de backup: sem ela, um arquivo criptografado não pode ser restaurado.
@@ -128,6 +129,8 @@ Com o banco disponível e os arquivos `.env` configurados:
 npm run db:migrate
 npm run dev
 ```
+
+Ao aplicar migrations diretamente do host para a instância Docker de desenvolvimento, use `npm run db:migrate:dev-host`. O comando carrega `apps/api/.env`, resolve o endereço do container `orbit-db-dev` e usa a pasta privada `~/.local/share/orbit-dev-migration-backups` para o backup local. Se o Google Drive estiver indisponível, a migração interrompe antes do DDL; para uma exceção deliberada somente em DEV, informe `npm run db:migrate:dev-host -- --allow-dev-local-only-backup` e confirme o backup local verificado.
 
 Abra <http://localhost:3000>. A API estará em <http://localhost:4000>; `GET /health` verifica sua disponibilidade. Para executar cartões, inicie a API depois de instalar e configurar o Codex, e confira se o serviço está sob o usuário autenticado no Codex.
 

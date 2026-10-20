@@ -200,7 +200,15 @@ export async function verifyDatabaseBackup(archiveInput: string) {
   } finally { await rm(work, { recursive: true, force: true }); }
 }
 
+export function assertIsolatedRestoreTarget(targetUrl: string) {
+  const target = parseConnection(targetUrl);
+  if (!/^orbit_restore_[a-z0-9_]+$/.test(target.database)) {
+    throw new Error('Restore target database must use the isolated orbit_restore_ prefix; never target DEV, production, or a customer database.');
+  }
+}
+
 export async function restoreDatabaseBackup(archiveInput: string, targetUrl: string) {
+  assertIsolatedRestoreTarget(targetUrl);
   const archive = resolve(archiveInput);
   const manifest = await verifyDatabaseBackup(archive);
   const target = parseConnection(targetUrl);

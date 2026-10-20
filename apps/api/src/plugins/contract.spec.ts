@@ -50,6 +50,18 @@ test("plugin registry discovers definitions, actions, capabilities and connectio
   assert.deepEqual(registry.catalog()[0].contributions.settings, [{ id: "example-settings" }]);
 });
 
+test('plugin configuration fields validate their declared control and option schema',()=>{
+  const registry=new PluginRegistry();
+  registry.register({...example(),configuration:[
+    {key:'EXAMPLE_MODE',label:'Mode',secret:false,type:'select',options:[{value:'safe',label:'Safe'}]},
+    {key:'EXAMPLE_SECRET',label:'Secret',secret:true,type:'textarea',allowVaultReference:true},
+    {key:'EXAMPLE_LIMIT',label:'Limit',secret:false,type:'number',min:1,max:10},
+  ]});
+  assert.equal(registry.getById('example').configuration?.[0].type,'select');
+  assert.throws(()=>new PluginRegistry().register({...example(),configuration:[{key:'EXAMPLE_MODE',label:'Mode',secret:false,type:'select',options:[]}]}),/Configuração inválida/);
+  assert.throws(()=>new PluginRegistry().register({...example(),configuration:[{key:'EXAMPLE_LIMIT',label:'Limit',secret:false,type:'number',min:10,max:1}]}),/Configuração inválida/);
+});
+
 test("plugin registry rejects duplicates, missing plugins and malformed definitions", () => {
   const registry = new PluginRegistry();
   registry.register(example());

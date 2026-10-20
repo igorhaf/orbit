@@ -45,6 +45,11 @@ test('core and plugin environment settings have separate ownership',async()=>{
   try{
     const core=await controller.list({} as never);
     assert(core.groups.some(group=>group.fields.some(field=>field.key==='GOOGLE_CLIENT_ID')));
+    const coreFields=core.groups.flatMap(group=>group.fields);
+    for(const key of ['ORBIT_SECRET_KEY_PREVIOUS','VAULT_ENCRYPTION_KEY_PREVIOUS']){
+      const field=coreFields.find(item=>item.key===key);
+      assert(field);assert.equal(field.secret,true);assert.equal(field.value,'');
+    }
     assert.equal(core.groups.flatMap(group=>group.fields).find(field=>field.key==='GOOGLE_CLIENT_SECRET')?.value,'');
     assert(core.groups.every(group=>group.fields.every(field=>field.key!=='ORBIT_TEST_PLUGIN_ONLY_TOKEN'&&field.key!=='DROPBOX_CLIENT_SECRET')));
     const plugin=await controller.pluginSettings({} as never,'fixture_plugin');
@@ -56,4 +61,21 @@ test('core and plugin environment settings have separate ownership',async()=>{
     assert.equal(registry.catalog()[0].configurable,true);
     assert.equal(JSON.stringify(registry.catalog()).includes('ORBIT_TEST_PLUGIN_ONLY_TOKEN'),false);
   }finally{if(previous===undefined)delete process.env.ORBIT_TEST_PLUGIN_ONLY_TOKEN;else process.env.ORBIT_TEST_PLUGIN_ONLY_TOKEN=previous}
+});
+
+test('plugin settings expose declared field types and reject values outside the plugin contract',async()=>{
+  const registry=new PluginRegistry();
+  registry.register({id:'typed_fixture',name:'Typed fixture',version:'1.0.0',configuration:[
+    {key:'ORBIT_TYPED_MODE',label:'Mode',secret:false,type:'select',required:true,options:[{value:'safe',label:'Safe'}]},
+    {key:'ORBIT_TYPED_LIMIT',label:'Limit',secret:false,type:'number',min:1,max:5},
+    {key:'ORBIT_TYPED_SECRET',label:'Secret',secret:true},
+  ]});
+  const controller=new EnvironmentSettingsController({user:()=> 'owner'} as never,registry);
+  const fields=(await controller.pluginSettings({} as never,'typed_fixture')).fields;
+  assert.equal(fields.find(field=>field.key==='ORBIT_TYPED_MODE')?.type,'select');
+  assert.deepEqual(fields.find(field=>field.key==='ORBIT_TYPED_MODE')?.options,[{value:'safe',label:'Safe'}]);
+  await assert.rejects(()=>controller.updatePlugin({} as never,'typed_fixture',{values:{ORBIT_TYPED_MODE:'invented'},clear:[]}),/opção declarada/);
+  await assert.rejects(()=>controller.updatePlugin({} as never,'typed_fixture',{values:{ORBIT_TYPED_LIMIT:'8'},clear:[]}),/limites definidos/);
+  await assert.rejects(()=>controller.updatePlugin({} as never,'typed_fixture',{values:{ORBIT_TYPED_MODE:'safe'},clear:['ORBIT_TYPED_MODE']}),/obrigatório/);
+  await assert.rejects(()=>controller.updatePlugin({} as never,'typed_fixture',{values:{ORBIT_TYPED_MODE:'orbit-vault://not-a-secret'},clear:[]}),/não aceita referência ao Cofre/);
 });

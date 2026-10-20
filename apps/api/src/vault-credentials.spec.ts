@@ -29,4 +29,8 @@ test('startup resolves credential references before constructing integrations',a
   const previous=process.env.ORBIT_TEST_VAULT_TOKEN;
   try{process.env.ORBIT_TEST_VAULT_TOKEN=vaultReference(owner,item,id);await loadVaultEnvironment(db);assert.equal(process.env.ORBIT_TEST_VAULT_TOKEN,rows[0].value)}finally{if(previous===undefined)delete process.env.ORBIT_TEST_VAULT_TOKEN;else process.env.ORBIT_TEST_VAULT_TOKEN=previous}
 });
+test('encryption keys cannot be replaced by notebook references',async()=>{
+  const previous=process.env.ORBIT_SECRET_KEY_PREVIOUS;
+  try{process.env.ORBIT_SECRET_KEY_PREVIOUS=vaultReference(owner,item,id);await assert.rejects(()=>loadVaultEnvironment(db),/Referência do cofre não permitida/)}finally{if(previous===undefined)delete process.env.ORBIT_SECRET_KEY_PREVIOUS;else process.env.ORBIT_SECRET_KEY_PREVIOUS=previous}
+});
 test.after(()=>{if(old===undefined)delete process.env.VAULT_ENCRYPTION_KEY;else process.env.VAULT_ENCRYPTION_KEY=old});

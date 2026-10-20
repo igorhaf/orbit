@@ -12,4 +12,4 @@ Endpoints: `GET/PATCH /boards/:id/views`, `GET /boards/:id/views/:viewId/relatio
 
 Validação atual: lint, TypeScript, testes de autorização do serviço, testes de hierarquia em `.orbit/validations/board-views/hierarchy.spec.ts` e leituras autenticadas da API. Os scripts Selenium existentes ficam como referência; sua execução dentro do Orbit ou neste host está desautorizada após um travamento da máquina e requer nova autorização explícita em ambiente adequado.
 
-API do plugin: `PATCH /boards/:id/views/structured/cards/:cardId/parent`, corpo `{ "parentId": "uuid" }` ou `{ "parentId": null }`. Relações retornam `links` para a árvore e `contextLinks` para referências associadas. Cartões preexistentes sem pai explícito ficam na raiz; o SAFDOULA foi organizado usando a estrutura de jornadas do planejamento.
+API do plugin: `PATCH /boards/:id/views/structured/cards/:cardId/parent`, corpo `{ "parentId": "uuid" }` ou `{ "parentId": null }`. Relações retornam `links` para a árvore e `contextLinks` para referências associadas. Cartões preexistentes sem pai explícito ficam na raiz.
