@@ -62,6 +62,167 @@ test('plugin configuration fields validate their declared control and option sch
   assert.throws(()=>new PluginRegistry().register({...example(),configuration:[{key:'EXAMPLE_LIMIT',label:'Limit',secret:false,type:'number',min:10,max:1}]}),/Configuração inválida/);
 });
 
+test("plugins can contribute versioned record kinds without editing the shared catalog", () => {
+  const registry = new PluginRegistry();
+  registry.register({
+    id: "client-intake",
+    name: "Client intake",
+    version: "1.0.0",
+    dependencies: ["versioned-records"],
+    contributions: {
+      recordKinds: {
+        application: {
+          label: "Application",
+          schema: {
+            type: "object",
+            properties: { applicant: { type: "string", minLength: 1 } },
+            required: ["applicant"],
+            additionalProperties: false,
+          },
+          initial: "draft",
+          transitions: { draft: ["submitted"], submitted: [] },
+          immutable: ["submitted"],
+          example: { applicant: "Sample applicant" },
+          validate: (payload) => payload.applicant
+            ? []
+            : [{ severity: "warning", code: "missing_applicant", path: "applicant", message: "Review applicant details." }],
+        },
+      },
+    },
+  });
+  assert.deepEqual(
+    registry.getById("client-intake").contributions?.recordKinds?.application?.example,
+    { applicant: "Sample applicant" },
+  );
+  assert.deepEqual(
+    registry.getById("client-intake").contributions?.recordKinds?.application?.validate?.({}, { resolveRecord: async () => null }),
+    [{ severity: "warning", code: "missing_applicant", path: "applicant", message: "Review applicant details." }],
+  );
+  assert.throws(() => new PluginRegistry().register({
+    id: "invalid-records",
+    name: "Invalid records",
+    version: "1.0.0",
+    contributions: { recordKinds: { application: {
+      label: "Application",
+      schema: { type: "unknown" },
+      initial: "draft",
+      transitions: { draft: [] },
+      example: {},
+    } } },
+  }));
+});
+
+test("plugin routes may delegate permission checks to their resource-level policy", () => {
+  const registry = new PluginRegistry();
+  registry.register({
+    id: "scoped-resource",
+    name: "Scoped resource",
+    version: "1.0.0",
+    handlesRoute: (path) => path.startsWith("/scoped-resource/"),
+    routePermission: () => null,
+  });
+  assert.equal(registry.routePlugin("/scoped-resource/records/123"), "scoped-resource");
+  assert.equal(registry.getById("scoped-resource").routePermission?.("/scoped-resource/records/123", "GET"), null);
+});
+
+test("record kinds validate scoped authorization metadata", () => {
+  const definition = {
+    label: "Process",
+    schema: { type: "object", additionalProperties: false, properties: {} },
+    initial: "draft",
+    transitions: { draft: [] },
+    example: {},
+  };
+  assert.doesNotThrow(() => new PluginRegistry().register({
+    id: "scoped-process",
+    name: "Scoped process",
+    version: "1.0.0",
+    contributions: { recordKinds: { process: { ...definition, resourceScoped: true, managePermission: "plugin.sample-process.manage" } } },
+  }));
+  assert.throws(() => new PluginRegistry().register({
+    id: "bad-scope",
+    name: "Bad scope",
+    version: "1.0.0",
+    contributions: { recordKinds: { process: { ...definition, managePermission: "plugin.sample-process.manage" } } },
+  }), /Permissão administrativa inválida/);
+});
+
+test("record kinds can prepare authorized transitions and enforce unique fields", () => {
+  const registry = new PluginRegistry();
+  registry.register({
+    id: "workflow-record",
+    name: "Workflow record",
+    version: "1.0.0",
+    contributions: { recordKinds: { case: {
+      label: "Case",
+      schema: { type: "object", properties: { protocol: { type: ["string", "null"] } }, required: ["protocol"], additionalProperties: false },
+      initial: "draft",
+      transitions: { draft: [] },
+      uniqueFields: ["protocol"],
+      availableTransitions: async () => ["submitted"],
+      authorizeTransition: async () => true,
+      prepareTransition: async (_from, _to, payload, context) => ({ ...payload, protocol: await context.nextSequence?.() || "1" }),
+      example: { protocol: null },
+    } } },
+  });
+  const definition = registry.getById("workflow-record").contributions?.recordKinds?.case;
+  assert.equal(typeof definition?.prepareTransition, "function");
+  assert.deepEqual(definition?.uniqueFields, ["protocol"]);
+  assert.throws(() => new PluginRegistry().register({
+    id: "bad-unique-record",
+    name: "Bad unique record",
+    version: "1.0.0",
+    contributions: { recordKinds: { case: {
+      label: "Case",
+      schema: { type: "object", properties: { protocol: { type: "string" } }, additionalProperties: false },
+      initial: "draft",
+      transitions: { draft: [] },
+      uniqueFields: ["missing"],
+      example: {},
+    } } },
+  }), /Campos únicos inválidos/);
+});
+
+test("record kinds can hide plugin-generated records from generic creation forms", () => {
+  const registry = new PluginRegistry();
+  registry.register({
+    id: "generated-records", name: "Generated records", version: "1.0.0",
+    contributions: { recordKinds: { output: {
+      label: "Output",
+      schema: { type: "object", properties: { source: { type: "string" } }, required: ["source"], additionalProperties: false },
+      initial: "generated", transitions: { generated: [] }, serverCreated: true, example: { source: "example" },
+    } } },
+  });
+  assert.equal(registry.getById("generated-records").contributions?.recordKinds?.output.serverCreated, true);
+  assert.throws(() => new PluginRegistry().register({
+    id: "bad-generated-record", name: "Bad generated record", version: "1.0.0",
+    contributions: { recordKinds: { output: {
+      label: "Output", schema: { type: "object" }, initial: "generated", transitions: { generated: [] }, serverCreated: "yes" as never, example: {},
+    } } },
+  }), /Origem de criação inválida/);
+});
+
+test("record kinds expose validated plugin-owned detail actions to the shared records UI", () => {
+  const registry = new PluginRegistry();
+  registry.register({
+    id: "record-actions", name: "Record actions", version: "1.0.0",
+    contributions: { recordKinds: { item: {
+      label: "Item", schema: { type: "object" }, initial: "draft", transitions: { draft: ["done"], done: [] },
+      detailActions: [{ id: "publish-item", label: "Publish", retryLabel: "Retry", states: ["draft"], permission: "publish", path: "/plugins/item/{recordId}/publish", ownsTransitions: true, when: { "payload.channel": "email" } }],
+      example: {},
+    } } },
+  });
+  assert.equal(registry.getById("record-actions").contributions?.recordKinds?.item.detailActions?.[0].id, "publish-item");
+  assert.throws(() => new PluginRegistry().register({
+    id: "unsafe-record-action", name: "Unsafe record action", version: "1.0.0",
+    contributions: { recordKinds: { item: {
+      label: "Item", schema: { type: "object" }, initial: "draft", transitions: { draft: [] },
+      detailActions: [{ id: "publish-item", label: "Publish", states: ["draft"], permission: "publish", path: "//evil.example/collect" }],
+      example: {},
+    } } },
+  }), /Ação de registro inválida/);
+});
+
 test("plugin registry rejects duplicates, missing plugins and malformed definitions", () => {
   const registry = new PluginRegistry();
   registry.register(example());
@@ -91,4 +252,12 @@ test("existing Trello integration exposes the stable plugin contract", () => {
     "cards.external.read",
     "cards.external.write",
   ]);
+});
+
+
+test("navigation groups are declared by plugins and malformed sections are rejected",()=>{
+ const grouped={id:"grouped-navigation",name:"Grouped",version:"1.0.0",contributions:{navigation:[{id:"sample-link",label:"Sample",href:"/sample",group:{id:"sample-group",label:"Sample"},section:{id:"workflow",label:"Workflow",order:1}}]}};
+ const registry=new PluginRegistry();registry.register(grouped);assert.equal(registry.getById(grouped.id).contributions?.navigation?.[0].group?.id,"sample-group");
+ assert.throws(()=>new PluginRegistry().register({...grouped,contributions:{navigation:[{...grouped.contributions.navigation[0],group:undefined}]}}),/exige um grupo/);
+ assert.throws(()=>new PluginRegistry().register({...grouped,contributions:{navigation:[{...grouped.contributions.navigation[0],href:"//external.test"}]}}),/navegação inválido/);
 });

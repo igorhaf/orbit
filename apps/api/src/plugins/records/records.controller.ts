@@ -50,6 +50,14 @@ export class ExtensionRecordsController {
   ) {
     return this.records.detail(plugin, id, String(req.orbitUser));
   }
+  @Get(":plugin/records/:id/versions/:revision/snapshot") versionSnapshot(
+    @Req() req: AccessRequest,
+    @Param("plugin") plugin: string,
+    @Param("id") id: string,
+    @Param("revision") revision: string,
+  ) {
+    return this.records.versionSnapshot(plugin, id, Number(revision), String(req.orbitUser));
+  }
   @Post(":plugin/records/:id/versions") version(
     @Req() req: AccessRequest,
     @Param("plugin") plugin: string,

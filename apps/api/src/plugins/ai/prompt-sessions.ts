@@ -2,7 +2,6 @@ import {CardLayoutsService} from '../../plugins/card-layouts';
 import { assertOrbitFields, orbitArchitecture } from '../../orbit-architecture';
 import { extractPromptQuestion, questionGuidance } from '../../prompt-question';
 import {validateProjectChecks} from '../../execution/project-checks';
-import {runManagedProcess} from '../../execution/managed-process';
 import {redact,redactFileChanges} from '../../execution/security';
 import { enforceCodexQuota } from '../../codex-limits';
 import { HttpException, Inject, Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
@@ -43,7 +42,6 @@ const selectedModel=(value:unknown):string=>{if(typeof value!=='string'||!catalo
 const selectedEffort=(value:unknown):Effort=>{if(value!=='low'&&value!=='medium'&&value!=='high'&&value!=='xhigh')fail('Esforço inválido.');return value as Effort;};
 const has=(body:Payload,key:string)=>Object.prototype.hasOwnProperty.call(body,key);
 const pathIsWithin=(root:string,path:string)=>{const rel=relative(root,path);return rel===''||(rel!=='..'&&!rel.startsWith(`..${sep}`)&&!isAbsolute(rel));};
-const npm=process.platform==='win32'?'npm.cmd':'npm';
 const summaryStart='[[ORBIT_SUMMARY]]';
 const summaryEnd='[[/ORBIT_SUMMARY]]';
 // Heartbeats run every five seconds. Two minutes tolerate temporary process or
@@ -58,16 +56,22 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents,@Optional() @Inject(ProjectRegistry) private projectRegistry?:ProjectRegistry,@Optional() @Inject(CardLayoutsService) private layouts?:CardLayoutsService){}
   private async member(boardId:string,userId:string){if(!await this.db.one('SELECT board_id FROM board_members WHERE board_id=$1 AND user_id=$2',[boardId,userId]))fail('Quadro não encontrado.',404);}
   async onModuleInit(){
+    this.staleRunTimer=setInterval(()=>void this.maintainAiQueues().catch(error=>console.error('Não foi possível atualizar as filas de IA.',error)),5_000);
+    this.staleRunTimer.unref();
+    if(!this.codex.isAvailable())return;
+    await this.db.query("UPDATE card_ai_comment_jobs SET status='queued',started_at=NULL,error=NULL WHERE status='running' AND answer_comment_id IS NULL");
+    await this.maintainAiQueues();
+  }
+  private async maintainAiQueues(){
+    if(!this.codex.isAvailable())return;
     await enforceCodexQuota(this.db);
     await this.recoverStaleRuns();
-    this.staleRunTimer=setInterval(()=>void enforceCodexQuota(this.db).then(()=>this.recoverStaleRuns()).catch(error=>console.error('Não foi possível limpar execuções de prompt abandonadas.',error)),5_000);
-    this.staleRunTimer.unref();
-    await this.db.query("UPDATE card_ai_comment_jobs SET status='queued',started_at=NULL,error=NULL WHERE status='running' AND answer_comment_id IS NULL");
     const queued=await this.db.query<{card_id:string}>('SELECT DISTINCT card_id FROM card_ai_comment_jobs WHERE status=$1',['queued']);
     for(const job of queued)void this.drainCommentQueue(job.card_id).catch((error:unknown)=>console.error('Não foi possível retomar a fila de comentários do GPT.',error));
   }
   async onModuleDestroy(){
     if(this.staleRunTimer)clearInterval(this.staleRunTimer);
+    if(!this.codex.isAvailable())return;
     await this.db.query("UPDATE card_ai_runs SET status='error',error='A execução foi interrompida porque o servidor foi reiniciado.',finished_at=now() WHERE worker_id=$1 AND status IN ('queued','running')",[this.workerId]).catch(()=>undefined);
   }
   private async recoverStaleRuns(){
@@ -96,21 +100,20 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   async globalSettings(userId:string){return this.db.one<{ai_default_model:string|null;ai_default_effort:Effort|null}>('SELECT ai_default_model,ai_default_effort FROM users WHERE id=$1',[userId]);}
   async updateProject(userId:string,id:string,body:Payload){
     const projectId=uuid(id,'Projeto');
-    const current=await this.db.one<{name:string;local_path:string;ai_default_model:string|null;ai_default_effort:Effort|null;is_native:boolean}>('SELECT name,local_path,ai_default_model,ai_default_effort,is_native FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
+    const current=await this.db.one<{name:string;local_path:string;ai_default_model:string|null;ai_default_effort:Effort|null;is_internal_orbit:boolean}>('SELECT name,local_path,ai_default_model,ai_default_effort,is_internal_orbit FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
     if(!current)fail('Projeto não encontrado.',404);
-    const existing=current as {name:string;local_path:string;ai_default_model:string|null;ai_default_effort:Effort|null;is_native:boolean};
+    const existing=current as {name:string;local_path:string;ai_default_model:string|null;ai_default_effort:Effort|null;is_internal_orbit:boolean};
     const rawName=body.name;const name=rawName===undefined?existing.name:typeof rawName==='string'&&rawName.trim()&&rawName.trim().length<=120?rawName.trim():fail('Nome inválido.');
     const localPath=body.local_path===undefined?existing.local_path:await this.localPath(body.local_path);
-    if(body.local_path!==undefined&&localPath!==existing.local_path){
-      if(localPath===this.nativeProjectPath())fail('Esta pasta pertence ao projeto nativo do Orbit.',409);
-      if(await this.db.one('SELECT id FROM ai_projects WHERE owner_id=$1 AND local_path=$2 AND id<>$3',[userId,localPath,projectId]))fail('Esta pasta já está cadastrada como projeto.',409);
-    }
+    if(body.local_path!==undefined&&localPath!==existing.local_path&&await this.db.one('SELECT id FROM ai_projects WHERE owner_id=$1 AND local_path=$2 AND id<>$3',[userId,localPath,projectId]))fail('Esta pasta já está cadastrada como projeto.',409);
+    const isRoot=Boolean((await this.db.one<{is_root:boolean}>('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);
+    if(has(body,'is_internal_orbit')&&!isRoot)fail('Somente o usuário root pode classificar um projeto como Orbit interno.',403);
+    const isInternalOrbit=has(body,'is_internal_orbit')?body.is_internal_orbit===true:existing.is_internal_orbit;
     const model=!has(body,'ai_default_model')?existing.ai_default_model:body.ai_default_model===null||body.ai_default_model===''?null:selectedModel(body.ai_default_model);
     const effort=!has(body,'ai_default_effort')?existing.ai_default_effort:body.ai_default_effort===null||body.ai_default_effort===''?null:selectedEffort(body.ai_default_effort);
-    const updated=await this.db.one<{local_path:string}>('UPDATE ai_projects SET name=$3,local_path=$4,ai_default_model=$5,ai_default_effort=$6,updated_at=now() WHERE id=$1 AND owner_id=$2 RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native',[projectId,userId,name,localPath,model,effort]);
+    const updated=await this.db.one<{local_path:string}>('UPDATE ai_projects SET name=$3,local_path=$4,ai_default_model=$5,ai_default_effort=$6,is_internal_orbit=$7,updated_at=now() WHERE id=$1 AND owner_id=$2 RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_internal_orbit',[projectId,userId,name,localPath,model,effort,isInternalOrbit]);
     return updated?this.exposeProjectPath(updated):updated;
   }
-  private nativeProjectPath(){return resolve(process.env.ORBIT_NATIVE_ROOT||(process.env.ORBIT_ENV==='development'?'/home/meada/projetos/orbit':'/home/meada/projetos/orbit-dev'));}
   private runningInContainer(){return existsSync('/.dockerenv')||Boolean(process.env.KUBERNETES_SERVICE_HOST);}
   private projectPathRoots(){
     const host=process.env.ORBIT_HOST_PROJECTS_ROOT,container=process.env.ORBIT_CONTAINER_PROJECTS_ROOT;
@@ -129,29 +132,9 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const supplied=resolve(value);
     return pathIsWithin(roots.container,supplied)?resolve(roots.host,relative(roots.container,supplied)):supplied;
   }
-  private async command(directory:string,args:string[],signal?:AbortSignal){
-    const result=await runManagedProcess(npm,args,{cwd:directory,timeoutMs:15*60_000,maxOutputBytes:2000,signal});
-    if(result.code!==0)throw new Error(result.stderr.trim()||result.stdout.trim()||`${args.join(' ')} terminou com código ${result.code}.`);
-  }
-  private async nativeChanges(directory:string,signal?:AbortSignal){
-    const result=await runManagedProcess('git',['status','--porcelain'],{cwd:directory,timeoutMs:30_000,maxOutputBytes:4*1024*1024,signal});
-    if(result.code!==0)throw new Error(result.stderr.trim()||'Não foi possível verificar as alterações do Orbit.');
-    return Boolean(result.stdout.trim());
-  }
-  private async validateNativeChanges(directory:string,progress:(message:string)=>void,signal?:AbortSignal){
-    if(!await this.nativeChanges(directory,signal))return;
-    progress('Aplicando migrações e seed no Orbit em desenvolvimento…');await this.command(directory,['run','db:prepare'],signal);
-    progress('Compilando o Orbit em desenvolvimento…');await this.command(directory,['run','build'],signal);
-  }
-  private async nativeProject(userId:string){
-    const current=await this.db.one('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native FROM ai_projects WHERE owner_id=$1 AND is_native=true LIMIT 1',[userId]);
-    if(current)return current;
-    const localPath=await this.localPath(this.nativeProjectPath(),false,false);
-    return this.db.one('INSERT INTO ai_projects(owner_id,name,local_path,is_native) VALUES($1,$2,$3,true) RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native',[userId,'Orbit (nativo)',localPath]);
-  }
   async projects(userId:string){
-    const root=Boolean((await this.db.one('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);if(root)await this.nativeProject(userId);const shared=await this.features.access?.sharedResources(userId,'projects')||[];
-    const projects=await this.db.query<{local_path:string}>('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_native FROM ai_projects WHERE owner_id=$1 OR id=ANY($2::uuid[]) OR $3 ORDER BY is_native DESC,name',[userId,shared,root]);
+    const root=Boolean((await this.db.one('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);const shared=await this.features.access?.sharedResources(userId,'projects')||[];
+    const projects=await this.db.query<{local_path:string}>('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_internal_orbit FROM ai_projects WHERE (owner_id=$1 OR id=ANY($2::uuid[]) OR $3) ORDER BY is_internal_orbit DESC,name',[userId,shared,root]);
     return projects.map(project=>this.exposeProjectPath(project));
   }
   async executionProjects(userId:string){return this.projects(userId);}
@@ -214,12 +197,14 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   async createProject(userId:string,body:Payload){
     const rawName=body.name;if(typeof rawName!=='string'||!rawName.trim()||rawName.trim().length>120)fail('Nome inválido.');const name=rawName as string;
     const localPath=await this.localPath(body.local_path,body.create_directory===true);
-    if(localPath===this.nativeProjectPath())fail('O Orbit é um projeto nativo e não pode ser adicionado à lista de projetos.');
-    const project=await this.db.one<{local_path:string}>('INSERT INTO ai_projects(owner_id,name,local_path) VALUES($1,$2,$3) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at',[userId,name.trim(),localPath]);
+    const isInternalOrbit=body.is_internal_orbit===true;
+    if(body.is_internal_orbit!==undefined&&typeof body.is_internal_orbit!=='boolean')fail('A classificação de projeto interno é inválida.');
+    if(isInternalOrbit&&(await this.db.one<{is_root:boolean}>('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root!==true)fail('Somente o usuário root pode classificar um projeto como Orbit interno.',403);
+    const project=await this.db.one<{local_path:string}>('INSERT INTO ai_projects(owner_id,name,local_path,is_internal_orbit) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_internal_orbit',[userId,name.trim(),localPath,isInternalOrbit]);
     if(!project)throw new HttpException({message:'Esta pasta já está cadastrada como projeto.'},409);
     return this.exposeProjectPath(project);
   }
-  async deleteProject(userId:string,id:string){const project=await this.db.one('DELETE FROM ai_projects WHERE id=$1 AND owner_id=$2 AND NOT is_native RETURNING id',[uuid(id,'Projeto'),userId]);if(!project)fail('Projeto não encontrado.',404);return {ok:true};}
+  async deleteProject(userId:string,id:string){const project=await this.db.one('DELETE FROM ai_projects WHERE id=$1 AND owner_id=$2 RETURNING id',[uuid(id,'Projeto'),userId]);if(!project)fail('Projeto não encontrado.',404);return {ok:true};}
   async updateBoard(boardId:string,userId:string,body:Payload){
     await this.features.member(boardId,userId);const member=await this.db.one<{role:string}>('SELECT role FROM board_members WHERE board_id=$1 AND user_id=$2',[boardId,userId]);if(!member||member.role!=='owner')fail('Apenas o proprietário pode configurar a IA do quadro.',403);
     const board=await this.db.one<{ai_default_project_id:string|null;ai_default_model:string|null;ai_default_effort:Effort|null}>('SELECT ai_default_project_id,ai_default_model,ai_default_effort FROM boards WHERE id=$1',[boardId]);
@@ -311,7 +296,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     try{
       await client.query('SELECT pg_advisory_lock(hashtext($1)::bigint)',[lockName]);locked=true;
       while(true){
-        if(!this.codex.isAvailable()){await new Promise(resolveDelay=>setTimeout(resolveDelay,750));continue;}
+        if(!this.codex.isAvailable())break;
         const active=await this.db.one<{active:boolean}>('SELECT EXISTS(SELECT 1 FROM card_runs WHERE card_id=$1 AND status IN (\'queued\',\'running\')) OR EXISTS(SELECT 1 FROM card_ai_runs WHERE card_id=$1 AND status=\'running\') AS active',[cardId]);
         if(active?.active){await new Promise(resolveDelay=>setTimeout(resolveDelay,750));continue;}
         await enforceCodexQuota(this.db);
@@ -426,9 +411,8 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     await this.layouts?.assertExecutionAllowed(cardId,userId);
     const context=await this.card(cardId,userId);const card=context.card;const model=resume?.model||commentReply?.model||card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model;const effort=resume?.effort||commentReply?.effort||card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort;const projectId=resume?.project_id||commentReply?.project_id||card.ai_project_id||card.ai_default_project_id;
     if(!model)fail('Escolha um modelo no cartão, quadro, projeto ou configuração global.',409);if(!effort)fail('Escolha um esforço no cartão, quadro, projeto ou configuração global.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
-    const project=await this.db.one<{id:string;name:string;local_path:string;is_native:boolean}>('SELECT id,name,local_path,is_native FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
-    if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string;is_native:boolean};
-    if(currentProject.is_native&&process.env.ORBIT_ENV==='production')fail('O código PROD é somente leitura. Para desenvolver o Orbit, use o ambiente DEV em http://localhost:3001.',409);
+    const project=await this.db.one<{id:string;name:string;local_path:string;is_internal_orbit:boolean}>('SELECT id,name,local_path,is_internal_orbit FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
+    if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string;is_internal_orbit:boolean};
     const localPath=await this.localPath(currentProject.local_path);
     const instructionLimit=commentReply?5000:4000;
     const additional=body.instruction===undefined?'':typeof body.instruction==='string'&&body.instruction.trim().length<=instructionLimit?body.instruction.trim():fail('A instrução adicional é inválida.');
@@ -553,15 +537,6 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
           }
           return;
         }
-        let validationError:string|null=null;
-        if(currentProject.is_native){
-          const validationAbort=new AbortController();
-          const validationHeartbeat=setInterval(()=>void this.db.query<{id:string}>("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running' RETURNING id",[run!.id,this.workerId]).then(active=>{if(!active.length)validationAbort.abort()}).catch(()=>undefined),5_000);
-          validationHeartbeat.unref();
-          try{await this.validateNativeChanges(localPath,message=>{void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]).catch(()=>undefined);this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message})},validationAbort.signal);}
-          catch(error){validationError=redact(errorMessage(error));}
-          finally{clearInterval(validationHeartbeat);}
-        }
         const stillOwned=await this.db.one("SELECT 1 FROM card_ai_runs WHERE id=$1 AND worker_id=$2 AND status='running'",[run!.id,this.workerId]);
         if(!stillOwned)return;
         const promptResult=extractPromptSummary(safeResultOutput,summaryLineLimit);
@@ -570,19 +545,18 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
           try{
             await replyClient.query('BEGIN');
             const publishedSummary=promptResult.summary||'A execução foi concluída; consulte a aba Execução para ver os detalhes.';
-            const answerBody=validationError?`${publishedSummary}\n\n> A resposta foi concluída e a sessão foi preservada, mas a validação automática do projeto falhou. Consulte a aba Execução para ver o erro antes da publicação.`:publishedSummary;
-            const answer=(await replyClient.query<{id:string}>('INSERT INTO comments(card_id,author_id,author_label,body) VALUES($1,$2,$3,$4) RETURNING id',[cardId,userId,commentReply.authorLabel,answerBody])).rows[0];
-            await replyClient.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,suggested_commit_type=$9,suggested_commit_name=$10,suggested_commit_summary=$11,finished_at=now() WHERE id=$1",[run!.id,validationError?'error':'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),validationError,result.sessionId,promptResult.commit.type,promptResult.commit.name,promptResult.commit.summary]);
-            await replyClient.query("UPDATE card_ai_comment_jobs SET status='success',answer_comment_id=$2,error=$3,finished_at=now() WHERE comment_id=$1",[commentReply.comment_id,answer.id,validationError]);
+            const answer=(await replyClient.query<{id:string}>('INSERT INTO comments(card_id,author_id,author_label,body) VALUES($1,$2,$3,$4) RETURNING id',[cardId,userId,commentReply.authorLabel,publishedSummary])).rows[0];
+            await replyClient.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,suggested_commit_type=$9,suggested_commit_name=$10,suggested_commit_summary=$11,finished_at=now() WHERE id=$1",[run!.id,'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),null,result.sessionId,promptResult.commit.type,promptResult.commit.name,promptResult.commit.summary]);
+            await replyClient.query("UPDATE card_ai_comment_jobs SET status='success',answer_comment_id=$2,error=NULL,finished_at=now() WHERE comment_id=$1",[commentReply.comment_id,answer.id]);
             await replyClient.query('COMMIT');
           }catch(error){await replyClient.query('ROLLBACK');throw error}finally{replyClient.release()}
           this.events.commentChanged(context.boardId,cardId);
         }else{
-          await this.db.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,suggested_commit_type=$9,suggested_commit_name=$10,suggested_commit_summary=$11,finished_at=now() WHERE id=$1",[run!.id,validationError?'error':'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),validationError,result.sessionId,promptResult.commit.type,promptResult.commit.name,promptResult.commit.summary]);
+          await this.db.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,suggested_commit_type=$9,suggested_commit_name=$10,suggested_commit_summary=$11,finished_at=now() WHERE id=$1",[run!.id,'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),null,result.sessionId,promptResult.commit.type,promptResult.commit.name,promptResult.commit.summary]);
           await this.features.record(userId,context.boardId,cardId,'prompt_execution',`${continuing?'continuou':'iniciou'} a conversa com ${model} em ${currentProject.name}`);
         }
-        await this.features.notify(userId,context.boardId,cardId,'prompt_execution',validationError?'Prompt concluído com falha na validação':'Prompt concluído',validationError||`O cartão “${card.title}” terminou de processar o prompt.`);
-        this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:validationError?'error':'success',message:validationError||'Execução concluída.'});
+        await this.features.notify(userId,context.boardId,cardId,'prompt_execution','Prompt concluído',`O cartão “${card.title}” terminou de processar o prompt.`);
+        this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'});
       }
       catch(error){
         const message=redact(errorMessage(error));

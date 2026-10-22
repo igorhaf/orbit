@@ -1,3 +1,10 @@
+import {VaultService} from './plugins/vault/vault.service';
+import {VaultController} from './plugins/vault/vault.controller';
+import {vaultPlugin,installVaultAccess,vaultFeatureAccess} from './plugins/vault/vault.plugin';
+import {recordCardsPlugin,RecordCardsService,RecordCardsController} from './plugins/record-cards/record-cards.plugin';
+import { projectBoardsPlugin, projectBoardCreationAccess } from './plugins/project-boards/project-boards.plugin';
+import { collectionsPlugin, installCollectionsAccess } from './plugins/collections/collections.plugin';
+import { processBoardPlugin } from './plugins/process-board/process-board.plugin';
 import {genericPlugins} from './plugins/records/catalog';
 import {ExtensionRecords} from './plugins/records/records.service';
 import {ExtensionRecordsController} from './plugins/records/records.controller';
@@ -5,6 +12,7 @@ import {DocumentScanner} from './plugins/records/documents';
 import {auditHistoryPlugin,AuditHistoryController} from './plugins/records/audit';
 import {visualBoardPlugin,structuredViewPlugin} from './plugins/board-views/board-view.plugins';
 import {BoardViewsService,BoardViewsController} from './plugins/board-views/board-views';
+import {hasBoardViewAfterChange,REQUIRED_BOARD_VIEW_PLUGIN_IDS} from './plugins/board-views/required-views';
 import {QueueManagement} from './plugins/ai/queue-management';
 import {AccessManagement,AccessManagementController} from './access/management';
 import {AuthLifecycle,SmtpAuthMailer} from './access/auth-lifecycle';
@@ -12,7 +20,6 @@ import {LoginAttemptLimiter,authenticateLoginAccount} from './access/login-attem
 import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
 import {AccessService,AccessGuard,AccessController} from './access/access';
 import {WorkspacesService,WorkspacesController,workspacesPlugin} from './workspaces/workspaces.plugin';
-import {isAiRoute} from './plugins/ai/routes';
 import {AiPluginModule,aiPluginDefinition} from './plugins/ai/ai.plugin';
 import {softwareDevelopmentPlugin} from './plugins/software-development/software-development.plugin';
 import {CardLayoutsService,CardLayoutsController} from './plugins/card-layouts';
@@ -29,9 +36,8 @@ import { MonitoringController, MonitoringService } from './monitoring';
 import { NestFactory } from '@nestjs/core';
 import { NextFunction, Request, Response, json } from 'express';
 import * as jwt from 'jsonwebtoken';
-import {decryptVaultPayload,encryptVaultPayload,vaultItemHtml} from './vault-crypto';
 import {containsSecretText,redact} from './execution/security';
-import {credentials, vaultConstants, assertVaultReferencesRetained, loadVaultEnvironment, refreshVaultEnvironment} from './vault-credentials';
+import {loadVaultEnvironment} from './credential-store';
 import { join, resolve } from 'node:path';
 import { PoolClient } from 'pg';
 import { Db } from './db';
@@ -94,8 +100,6 @@ const value = (v: unknown, name: string, max = 300) => {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max) fail(`${name} inválido.`);
   return (v as string).trim();
 };
-const BUILT_IN_VAULT_CATEGORIES=new Set(['site','api','ssh','bank_test','license','custom']);
-const VAULT_CATEGORY_ICONS=new Set(['AtSign','Banknote','BriefcaseBusiness','Cloud','Code2','CreditCard','Database','Fingerprint','Folder','Globe','KeyRound','Laptop','LockKeyhole','Mail','Monitor','Network','Rocket','Shield','Smartphone','Terminal','UserRound','WalletCards','Wifi','Wrench']);
 const optionalText = (v: unknown, max = 10000) => {
   if (typeof v !== 'string' || v.length > max) fail('Texto inválido.');
   return v as string;
@@ -138,102 +142,8 @@ class Service {
     }
   }
   user(req: Request) { return this.features.user(req); }
-  private assertCardTextSafe(text:string){if(containsSecretText(text))fail('Credenciais não podem ser armazenadas em cartões ou comentários. Use uma referência ao Cofre.');}
+  private assertCardTextSafe(text:string){if(containsSecretText(text))fail('Credenciais não podem ser armazenadas em cartões ou comentários. Use uma referência de credencial.');}
   private safeCardText(text:string){this.assertCardTextSafe(text);return text;}
-  private encryptVault(payload:Payload) { return encryptVaultPayload(payload); }
-  private decryptVault(value:string):Payload {
-    try { return decryptVaultPayload(value); }
-    catch { return fail('Não foi possível abrir este item do cofre.',409); }
-  }
-  async vaultCategories(userId:string) { return this.db.query('SELECT id,name AS label,icon,position FROM vault_categories WHERE owner_id=$1 ORDER BY position,id',[userId]); }
-  async createVaultCategory(userId:string,body:Payload) {
-    const name=value(body.name,'Nome da categoria',48);
-    const icon=body.icon===undefined?'LockKeyhole':value(body.icon,'Ícone',32);
-    if(!VAULT_CATEGORY_ICONS.has(icon))fail('Ícone da categoria inválido.');
-    if(await this.db.one('SELECT id FROM vault_categories WHERE owner_id=$1 AND lower(name)=lower($2)',[userId,name]))fail('Essa categoria já existe.',409);
-    return this.db.one('INSERT INTO vault_categories(owner_id,name,icon,position) VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM vault_categories WHERE owner_id=$1),0)) RETURNING id,name AS label,icon,position',[userId,name,icon]);
-  }
-  async reorderVaultCategories(userId:string,body:Payload) {
-    if(!Array.isArray(body.ids)||body.ids.some(id=>typeof id!=='string'))fail('Ordem das categorias inválida.');
-    const ids=(body.ids as string[]).map(uuid);
-    if(new Set(ids).size!==ids.length)fail('Ordem das categorias inválida.');
-    const owned=await this.db.query<{id:string}>('SELECT id FROM vault_categories WHERE owner_id=$1',[userId]);
-    if(owned.length!==ids.length||owned.some(category=>!ids.includes(category.id)))fail('A lista de categorias mudou. Atualize a página e tente novamente.',409);
-    for(let position=0;position<ids.length;position++)await this.db.query('UPDATE vault_categories SET position=$3 WHERE id=$1 AND owner_id=$2',[ids[position],userId,position]);
-    return this.vaultCategories(userId);
-  }
-  private async validateVaultCategory(userId:string,category:string) {
-    if(BUILT_IN_VAULT_CATEGORIES.has(category))return;
-    if(!await this.db.one('SELECT id FROM vault_categories WHERE id=$1 AND owner_id=$2',[uuid(category),userId]))fail('Categoria do cofre inválida.',400);
-  }
-  async vaultConstants(userId:string){return vaultConstants(this.db,userId);}
-  async vault(userId:string) {const shared=await this.features.access?.sharedResources(userId,'vault')||[],root=Boolean((await this.db.one('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);return this.db.query('SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,v.created_at,v.updated_at,v.card_id,c.url_token,l.board_id FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id LEFT JOIN lists l ON l.id=c.list_id WHERE v.owner_id=$1 OR v.id=ANY($2::uuid[]) OR $3 ORDER BY v.updated_at DESC',[userId,shared,root]); }
-
-  async vaultItem(id:string,userId:string) {
-    uuid(id); const item=await this.db.one<{id:string;title:string;category:string;notes:string;secret_data:string;created_at:string;updated_at:string;card_id:string|null;url_token:string|null;board_id:string|null}>('SELECT v.id,COALESCE(c.title,v.title) AS title,v.category,COALESCE(c.description,v.notes) AS notes,v.secret_data,v.created_at,v.updated_at,v.card_id,c.url_token,l.board_id FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id LEFT JOIN lists l ON l.id=c.list_id WHERE v.id=$1 AND v.owner_id=$2',[id,userId]);
-    if(!item) return fail('Item do cofre não encontrado.',404);
-    const stored=this.decryptVault(item.secret_data);
-    const content_html=vaultItemHtml(stored,item.notes);
-    const {notes,secret_data,...visible}=item;void notes;void secret_data;
-    return {...visible,content_html,credentials:credentials(stored.credentials)};
-  }
-  async createVaultItem(userId:string,body:Payload) {
-    const title=value(body.title??'Novo texto','Título',300);const category=value(body.category??'custom','Categoria',48);await this.validateVaultCategory(userId,category);
-    const content_html=body.content_html===undefined?'':sanitizeNotebookHtml(body.content_html);
-    const row=await this.db.one<{id:string}>('INSERT INTO vault_items(owner_id,title,category,secret_data) VALUES($1,$2,$3,$4) RETURNING id',[userId,title,category,this.encryptVault({content_html,credentials:credentials(body.credentials)})]);
-    return this.vaultItem(row!.id,userId);
-  }
-  async updateVaultItem(id:string,userId:string,body:Payload) {
-    uuid(id);const existing=await this.vaultItem(id,userId);
-    const title=body.title===undefined?null:value(body.title,'Título',300);const category=body.category===undefined?null:value(body.category,'Categoria',48);
-    if(category!==null)await this.validateVaultCategory(userId,category);
-    const content_html=body.content_html===undefined?existing.content_html:sanitizeNotebookHtml(body.content_html);
-    const client=await this.db.pool.connect();
-    try{
-      await client.query('BEGIN');
-      const row=(await client.query('SELECT card_id,secret_data FROM vault_items WHERE id=$1 AND owner_id=$2 FOR UPDATE',[id,userId])).rows[0];
-      if(!row)fail('Item do cofre não encontrado.',404);
-      const fields=credentials(body.credentials===undefined?this.decryptVault(row.secret_data).credentials:body.credentials);
-      await assertVaultReferencesRetained(this.db,userId,id,fields);
-      await client.query("UPDATE vault_items SET title=$3,category=COALESCE($4,category),notes='',secret_data=$5,updated_at=now() WHERE id=$1 AND owner_id=$2",[id,userId,title??existing.title,category,this.encryptVault({content_html,credentials:fields})]);
-      if(row.card_id)await client.query('UPDATE cards SET title=$2,description=$3,updated_at=now() WHERE id=$1',[row.card_id,title??existing.title,notebookHtmlToMarkdown(content_html)]);
-      await client.query('COMMIT');
-    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
-    const updated=await this.vaultItem(id,userId);await refreshVaultEnvironment(userId,id,updated.credentials);return updated;
-  }
-  async deleteVaultItem(id:string,userId:string) {
-    uuid(id);await assertVaultReferencesRetained(this.db,userId,id,[]);const client=await this.db.pool.connect();
-    try{
-      await client.query('BEGIN');
-      const item=(await client.query('DELETE FROM vault_items WHERE id=$1 AND owner_id=$2 RETURNING card_id',[id,userId])).rows[0];
-      if(!item)fail('Item do cofre não encontrado.',404);
-      if(item.card_id)await client.query('DELETE FROM cards WHERE id=$1',[item.card_id]);
-      await client.query('COMMIT');return {ok:true};
-    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
-  }
-  async copyVaultToCard(id:string,userId:string,body:Payload) {
-    uuid(id);const listId=uuid(value(body.list_id,'Lista',36));const boardId=await this.listBoard(listId,userId);
-    const item=await this.vaultItem(id,userId);
-    const description=notebookHtmlToMarkdown(item.content_html);
-    const card=await this.db.one<{id:string;url_token:string}>(`INSERT INTO cards(list_id,title,description,position,kind)
-      VALUES($1,$2,$3,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0),'normal') RETURNING id,url_token`,[listId,item.title,description]);
-    return {card_id:card!.id,board_id:boardId,url_token:card!.url_token};
-  }
-  async putCardInVault(cardId:string,userId:string,body:Payload) {
-    const boardId=await this.cardBoard(cardId,userId);
-    const card=await this.db.one<{id:string;title:string;description:string;kind:string}>('SELECT id,title,description,kind FROM cards WHERE id=$1',[cardId]);
-    if(!card)fail('Cartão não encontrado.',404);
-    if(card!.kind!=='normal')fail('Somente cartões simples podem ser movidos para o cofre.',409);
-    const category=value(body.category??'custom','Categoria',48);await this.validateVaultCategory(userId,category);
-    const row=await this.db.one<{id:string}>('INSERT INTO vault_items(owner_id,title,category,notes,secret_data,card_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(card_id) DO NOTHING RETURNING id',[userId,card!.title,category,card!.description,this.encryptVault({}),cardId]);
-    if(!row)fail('Este cartão já está no cofre.',409);
-    await this.features.record(userId,boardId,cardId,'card_updated','moveu o cartão para o cofre');
-    return this.vaultItem(row!.id,userId);
-  }
-  async restoreVaultCard(id:string,userId:string) {
-    uuid(id);await assertVaultReferencesRetained(this.db,userId,id,[]);const client=await this.db.pool.connect();
-    try{await client.query('BEGIN');const item=(await client.query<{card_id:string|null;url_token:string|null;list_id:string|null}>('SELECT v.card_id,c.url_token,c.list_id FROM vault_items v LEFT JOIN cards c ON c.id=v.card_id WHERE v.id=$1 AND v.owner_id=$2 FOR UPDATE OF v',[id,userId])).rows[0];if(!item)fail('Item do cofre não encontrado.',404);if(!item.card_id||!item.list_id)fail('Este item não está associado a um cartão.',409);const board=(await client.query<{board_id:string}>('SELECT board_id FROM lists WHERE id=$1 AND archived_at IS NULL',[item.list_id])).rows[0];if(!board)fail('A lista original está arquivada ou não existe.',409);await client.query('DELETE FROM vault_items WHERE id=$1 AND owner_id=$2',[id,userId]);await client.query('COMMIT');return {card_id:item.card_id,url_token:item.url_token,board_id:board.board_id};}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
-  }
   async notebooks(userId:string) {
     const shared=await this.features.access?.sharedResources(userId,'notebooks')||[],root=Boolean((await this.db.one('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);return this.db.query('SELECT id,title,content_html,created_at,updated_at FROM notebooks WHERE owner_id=$1 OR id=ANY($2::uuid[]) OR $3 ORDER BY updated_at DESC',[userId,shared,root]);
   }
@@ -334,7 +244,7 @@ class Service {
   async inboundEmailCard(body:Payload,token:string|undefined){if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN)fail('Canal de e-mail não autorizado.',401);const account=await this.db.one('SELECT id FROM users WHERE email=$1',[SINGLE_EMAIL]);if(!account)fail('Conta não encontrada.',404);return this.createEmailCard(String((account as Payload).id),{email:body.body,sender:body.sender,subject:body.subject,list_id:body.list_id})}
   async boards(userId: string, status: string) {
     if (status !== 'active' && status !== 'closed') fail('Filtro inválido.');
-    return this.db.query(`SELECT b.id,b.title,b.background,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.description,b.closed_at,b.is_inbox,b.is_collection,
+    const rows = await this.db.query<{id:string;is_collection:boolean}>(`SELECT b.id,b.title,b.background,b.starred,b.owner_id,b.created_at,b.workspace_id,b.favorite_position,b.description,b.closed_at,b.is_inbox,b.is_collection,
       (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image,
       w.name AS workspace_name,v.visited_at,
       (SELECT count(*)::int FROM authorized_board_members bm2 WHERE bm2.board_id=b.id) AS member_count,
@@ -349,6 +259,9 @@ class Service {
         WHERE l.board_id=b.id AND l.archived_at IS NULL AND c.archived_at IS NULL AND c.kind<>'separator'
       ) card_stats ON true
       WHERE bm.user_id=$1 AND (b.closed_at IS NOT NULL)=($2='closed') ORDER BY b.starred DESC,b.favorite_position ASC NULLS LAST,v.visited_at DESC NULLS LAST,b.created_at DESC`, [userId,status]);
+    if(!this.features.access)return rows;
+    const base=await this.features.access.availableBoards(rows,userId);const provided=await this.features.access.additionalBoards(userId,status);
+    return [...base,...provided.filter(board=>!base.some(existing=>existing.id===board.id))];
   }
   async createBoard(userId: string, body: Payload) {
     assertOrbitFields(body,orbitArchitecture.boardCreate);
@@ -370,7 +283,7 @@ class Service {
       await client.query('INSERT INTO board_members(board_id,user_id,role) VALUES($1,$2,$3)', [board.id,userId,'owner']);
       await client.query(`INSERT INTO board_architecture_contracts(board_id,reference_board_id)
         SELECT $1,b.id FROM boards b JOIN ai_projects p ON p.id=b.ai_default_project_id
-        WHERE b.owner_id=$2 AND p.is_native AND b.closed_at IS NULL AND b.id<>$1
+        WHERE b.owner_id=$2 AND p.is_internal_orbit AND b.closed_at IS NULL AND b.id<>$1
         ORDER BY b.created_at LIMIT 1`,[board.id,userId]);
       await client.query('COMMIT');
       await this.features.record(userId,board.id,null,'board_created',`criou o quadro ${title}`);
@@ -434,9 +347,11 @@ class Service {
         AND NOT EXISTS(SELECT 1 FROM vault_items vaulted WHERE vaulted.card_id=c.id)
       ORDER BY slot.position,slot.created_at`, [boardId,userId]);
     const labels = await this.db.query('SELECT id,board_id,name,color FROM labels WHERE board_id=$1 ORDER BY name', [boardId]);
-    const members = await this.db.query('SELECT u.id,u.name,u.email,u.avatar_url,bm.role FROM authorized_board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
-    const decorated=await this.cardLayouts.decorateCards(cards);
-    return { ...board, lists: lists.map(list => ({...list, cards: decorated.filter(card => card.list_id === list.id)})), labels, members };
+    const members = await this.features.access?.boardMembers(boardId,userId)??await this.db.query('SELECT u.id,u.name,u.email,u.avatar_url,bm.role FROM authorized_board_members bm JOIN users u ON u.id=bm.user_id WHERE bm.board_id=$1 ORDER BY bm.role DESC,u.name', [boardId]);
+    const recordCard=await this.db.one<{card_id:string}>('SELECT card_id FROM record_card_links WHERE board_id=$1',[boardId]);
+    const decorated=(await this.cardLayouts.decorateCards(cards)).map((card):Record<string,unknown>=>({...card,managed_record:recordCard?.card_id===card.id}));
+    const record_scope=await this.features.access?.boardScope(boardId,userId);
+    return { ...board, record_scope, lists: lists.map(list => ({...list, cards: decorated.filter(card => card.list_id === list.id)})), labels, members };
   }
   async updateBoard(boardId: string,userId: string,body: Payload) {
     await this.member(boardId,userId);
@@ -1248,13 +1163,13 @@ class ApiController {
   @Get('codex/queues') allQueues(@Req() req:Request){return this.queues.list(this.service.user(req)).then(result=>({...result,aiAvailable:this.plugins.isEnabled('ai')}))}
   @Get('architecture') architecture(@Req() req:Request) { this.service.user(req);return orbitArchitecture; }
   @Get('health') health() { return { status: 'ok' }; }
-  @Get('plugins') pluginsCatalog(){return {plugins:this.plugins.catalog()}}
-  @Patch('plugins/:id') async setPluginEnabled(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){this.service.user(req);if(typeof body.enabled!=='boolean')fail('Estado do plugin inválido.');const enabled=body.enabled as boolean;try{this.plugins.getById(id)}catch(error){return fail((error as Error).message,404)}await this.db.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);this.plugins.setEnabled(id,enabled);this.service.pluginsChanged(id);return {id,enabled}}
+  private hiddenPluginIds(){return new Set((process.env.ORBIT_HIDDEN_PLUGINS||'').split(',').map(id=>id.trim()).filter(Boolean))}
+  @Get('plugins') pluginsCatalog(){const hidden=this.hiddenPluginIds();return {plugins:this.plugins.catalog().filter(plugin=>!hidden.has(plugin.id))}}
+  @Patch('plugins/:id') async setPluginEnabled(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){this.service.user(req);if(!this.plugins.isInstalled(id))return fail('O plugin não está instalado nesta instância.',404);if(typeof body.enabled!=='boolean')fail('Estado do plugin inválido.');const enabled=body.enabled as boolean;try{this.plugins.getById(id)}catch(error){return fail((error as Error).message,404)}if((REQUIRED_BOARD_VIEW_PLUGIN_IDS as readonly string[]).includes(id)&&!enabled){const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query("SELECT pg_advisory_xact_lock(hashtextextended('orbit.required-board-view',0))");const rows=await client.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings WHERE plugin_id=ANY($1::text[])',[REQUIRED_BOARD_VIEW_PLUGIN_IDS]);const states=new Map(rows.rows.map(row=>[row.plugin_id,row.enabled]));if(!hasBoardViewAfterChange(states,id,enabled))fail('Mantenha ativo pelo menos um modo de quadro: Quadro visual ou Gestão estruturada.',409);await client.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);await client.query('COMMIT')}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}}else await this.db.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);this.plugins.setEnabled(id,enabled);this.service.pluginsChanged(id);return {id,enabled}}
   @Get('backups') async backups(@Req() req:Request){try{return await this.backupService.list(this.service.user(req))}catch(error){return fail((error as Error).message,409)}}
   @Get('backups/options') async backupOptions(@Req() req:Request){return this.backupService.options(this.service.user(req))}
   @Patch('backups/automatic') async configureAutomaticBackups(@Req() req:Request,@Body() body:Payload){const owner=this.service.user(req);if(typeof body.connectionId!=='string'||typeof body.enabled!=='boolean')fail('Configuração automática inválida.',400);return this.backupService.configureAutomatic(owner,body.connectionId as string,body.enabled as boolean)}
   @Post('backups') async createBackup(@Req() req:Request,@Body() body:Payload){try{return await this.backupService.create(this.service.user(req),body||{})}catch(error){return fail((error as Error).message,409)}}
-  @Get('backups/vault') async vaultBackups(@Req() req:Request){return this.backupService.listVault(this.service.user(req))}
   @Get('backups/config') async configBackups(@Req() req:Request){return this.backupService.listConfig(this.service.user(req))}
   @Get('backups/attachments') async attachmentBackups(@Req() req:Request){return this.backupService.listAttachments(this.service.user(req))}
   @Post('backups/attachments/sync') async syncAttachmentBackups(@Req() req:Request){try{return await this.backupService.syncAttachments(this.service.user(req),100)}catch(error){return fail((error as Error).message,409)}}
@@ -1263,10 +1178,6 @@ class ApiController {
   @Post('backups/config') async createConfigBackup(@Req() req:Request){this.service.user(req);try{return await this.backupService.syncConfigs()}catch(error){return fail((error as Error).message,409)}}
   @Post('backups/config/cloud/:copyId/download') async downloadConfigBackup(@Req() req:Request,@Param('copyId') copyId:string){try{return await this.backupService.downloadConfig(this.service.user(req),copyId)}catch(error){return fail((error as Error).message,409)}}
   @Post('backups/config/:archive/upload') async uploadConfigBackup(@Req() req:Request,@Param('archive') archive:string,@Body() body:Payload){try{return await this.backupService.uploadExistingConfig(this.service.user(req),archive,body?.connectionId)}catch(error){return fail((error as Error).message,409)}}
-  @Post('backups/vault') async createVaultBackup(@Req() req:Request){try{return await this.backupService.createVault(this.service.user(req))}catch(error){return fail((error as Error).message,409)}}
-  @Post('backups/vault/cloud/:copyId/download') async downloadVaultBackup(@Req() req:Request,@Param('copyId') copyId:string){try{return await this.backupService.downloadVault(this.service.user(req),copyId)}catch(error){return fail((error as Error).message,409)}}
-  @Post('backups/vault/:archive/upload') async uploadVaultBackup(@Req() req:Request,@Param('archive') archive:string,@Body() body:Payload){try{return await this.backupService.uploadExistingVault(this.service.user(req),archive,body?.connectionId)}catch(error){return fail((error as Error).message,409)}}
-  @Post('backups/vault/:archive/restore') async restoreVaultBackup(@Req() req:Request,@Param('archive') archive:string){try{return await this.backupService.restoreVault(this.service.user(req),archive)}catch(error){return fail((error as Error).message,409)}}
   @Post('backups/cloud/:copyId/download') async downloadBackup(@Req() req:Request,@Param('copyId') copyId:string){try{return await this.backupService.download(this.service.user(req),copyId)}catch(error){return fail((error as Error).message,409)}}
   @Post('backups/:archive/upload') async uploadBackup(@Req() req:Request,@Param('archive') archive:string,@Body() body:Payload){try{return await this.backupService.uploadExisting(this.service.user(req),archive,body?.connectionId)}catch(error){return fail((error as Error).message,409)}}
   @Post('backups/:archive/restore') async restoreBackup(@Req() req:Request,@Param('archive') archive:string){this.service.user(req);if(!/^orbit-\d{4}-\d{2}-\d{2}T[^/]+\.backup\.enc$/.test(archive))fail('Arquivo de backup inválido.');const target=process.env.ORBIT_RESTORE_DATABASE_URL||fail('Configure ORBIT_RESTORE_DATABASE_URL para restaurar em um banco novo e vazio.',409);const root=resolve(process.env.ORBIT_BACKUP_DIR||join(__dirname,'../../../backups'));const path=resolve(root,archive);if(!path.startsWith(`${root}/`))fail('Arquivo de backup inválido.');try{return await restoreDatabaseBackup(path,target)}catch(error){return fail((error as Error).message,409)}}
@@ -1300,17 +1211,6 @@ class ApiController {
   }
   @Post('email/inbox') inboxEmail(@Req() req:Request,@Body() body:Payload) { return this.service.inboxEmail(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined); }
   @Get('auth/me') me(@Req() req: Request) { return this.service.me(this.service.user(req)); }
-  @Get('vault/categories') vaultCategories(@Req() req:Request){return this.service.vaultCategories(this.service.user(req));}
-  @Post('vault/categories') createVaultCategory(@Req() req:Request,@Body() body:Payload){return this.service.createVaultCategory(this.service.user(req),body);}
-  @Patch('vault/categories/order') reorderVaultCategories(@Req() req:Request,@Body() body:Payload){return this.service.reorderVaultCategories(this.service.user(req),body);}
-  @Get('vault') vault(@Req() req:Request){return this.service.vault(this.service.user(req));}
-  @Post('vault') createVaultItem(@Req() req:Request,@Body() body:Payload){return this.service.createVaultItem(this.service.user(req),body);}
-  @Get('vault/constants') vaultConstants(@Req() req:Request){return this.service.vaultConstants(this.service.user(req));}
-  @Get('vault/:id') vaultItem(@Req() req:Request,@Param('id') id:string){return this.service.vaultItem(id,this.service.user(req));}
-  @Patch('vault/:id') updateVaultItem(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateVaultItem(id,this.service.user(req),body);}
-  @Post('vault/:id/copy-to-card') copyVaultToCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.copyVaultToCard(id,this.service.user(req),body);}
-  @Delete('vault/:id') deleteVaultItem(@Req() req:Request,@Param('id') id:string){return this.service.deleteVaultItem(id,this.service.user(req));}
-  @Post('vault/:id/restore-card') restoreVaultCard(@Req() req:Request,@Param('id') id:string){return this.service.restoreVaultCard(id,this.service.user(req));}
   @Get('notebooks') notebooks(@Req() req:Request){return this.service.notebooks(this.service.user(req));}
   @Post('notebooks') createNotebook(@Req() req:Request,@Body() body:Payload){return this.service.createNotebook(this.service.user(req),body);}
   @Patch('notebooks/:id') updateNotebook(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateNotebook(id,this.service.user(req),body);}
@@ -1322,7 +1222,6 @@ class ApiController {
   @Post('email/cards') createEmailCard(@Req() req:Request,@Body() body:Payload){return this.service.createEmailCard(this.service.user(req),body);}
   @Post('email/inbox') inboundEmailCard(@Req() req:Request,@Body() body:Payload){return this.service.inboundEmailCard(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined)}
   @Post('cards/:id/ai') aiCard(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiCard(id,this.service.user(req),body);}
-  @Post('cards/:id/vault') putCardInVault(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.putCardInVault(id,this.service.user(req),body);}
   @Post('cards/:id/comments/ai') aiComment(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.aiComment(id,this.service.user(req),body);}
   @Get('ai/models') aiModels(){return this.prompts.models();}
   @Patch('ai/settings') updateGlobalAiSettings(@Req() req:Request,@Body() body:Payload){return this.prompts.updateGlobal(this.service.user(req),body);}
@@ -1402,7 +1301,7 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ imports:[AiPluginModule], providers: [ExtensionRecords,DocumentScanner,MonitoringService,QueueManagement,...aiCardProviders,CardLayoutsService,CardTypesService,BoardViewsService,AccessManagement,AccessService,AccessGuard,AuthLifecycle,{provide:'AUTH_MAILER',useClass:SmtpAuthMailer},RequestRateLimiter,WorkspacesService,AlexaOrbitService,AlexaSecurity,{provide:ORBIT_VOICE_OPERATIONS,useFactory:(service:Service)=>({createCard:(list:string,owner:string,title:string)=>service.createCard(list,owner,{title}),scheduleCard:(card:string,owner:string,schedule:unknown)=>service.updateCard(card,owner,{schedule})}),inject:[Service]},CloudflareTunnelPlugin, Db, FeaturesService, Service, CardExtensionsService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, GoogleCredentials,GoogleDriveBackupPlugin,BackupService,PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
+@Module({ imports:[AiPluginModule], providers: [VaultService,RecordCardsService,ExtensionRecords,DocumentScanner,MonitoringService,QueueManagement,...aiCardProviders,CardLayoutsService,CardTypesService,BoardViewsService,AccessManagement,AccessService,AccessGuard,AuthLifecycle,{provide:'AUTH_MAILER',useClass:SmtpAuthMailer},RequestRateLimiter,WorkspacesService,AlexaOrbitService,AlexaSecurity,{provide:ORBIT_VOICE_OPERATIONS,useFactory:(service:Service)=>({createCard:(list:string,owner:string,title:string)=>service.createCard(list,owner,{title}),scheduleCard:(card:string,owner:string,schedule:unknown)=>service.updateCard(card,owner,{schedule})}),inject:[Service]},CloudflareTunnelPlugin, Db, FeaturesService, Service, CardExtensionsService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, GoogleCredentials,GoogleDriveBackupPlugin,BackupService,PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
   {provide:BackupDestinationRegistry,useFactory:(drive:GoogleDriveBackupPlugin)=>{const registry=new BackupDestinationRegistry();registry.register(drive);return registry},inject:[GoogleDriveBackupPlugin]},
   {provide:CommandExecutorRegistry,useFactory:(local:LocalCommandExecutor,ssh:SshCommandExecutor)=>{const registry=new CommandExecutorRegistry();registry.register(local);registry.register(ssh);return registry},inject:[LocalCommandExecutor,SshCommandExecutor]},
   {provide:DeploymentStrategyRegistry,useFactory:()=>new DeploymentStrategyRegistry()},
@@ -1410,7 +1309,7 @@ class ApiController {
   {provide:StepHandlerRegistry,useFactory:(handlers:DeliveryHandlers,deployments:DeploymentStrategyRegistry,promotions:PromotionStrategyRegistry)=>{const registry=new StepHandlerRegistry();handlers.register(registry,deployments,promotions);return registry},inject:[DeliveryHandlers,DeploymentStrategyRegistry,PromotionStrategyRegistry]},
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:async(db:Db,ai:CodexAiService,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService,backups:BackupService,cloudflare:CloudflareTunnelPlugin)=>{const registry=new PluginRegistry();registry.register(aiPluginDefinition(ai));registry.register(softwareDevelopmentPlugin);registry.register(visualBoardPlugin);registry.register(structuredViewPlugin);registry.register(workspacesPlugin);for(const plugin of [...genericPlugins,auditHistoryPlugin])registry.register(plugin);registry.register(alexaOrbitPluginDefinition);registry.setEnabled('alexa-orbit',false);registry.register(cloudflareTunnelPluginDefinition(cloudflare));registry.setEnabled('cloudflare-tunnel',false);registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(googleDriveBackupPluginDefinition(backups));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}ai.setAvailability(()=>registry.isEnabled('ai'));return registry;},inject:[Db,CodexAiService,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService,BackupService,CloudflareTunnelPlugin]}, CardExecutionService], controllers: [ExtensionRecordsController,AuditHistoryController,MonitoringController,CardLayoutsController,CardTypesController,BoardViewsController,AccessManagementController,AccessController,WorkspacesController,AlexaOrbitController,CloudflareTunnelController, ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController,GoogleDriveBackupController,GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
+  {provide:PluginRegistry,useFactory:async(db:Db,ai:CodexAiService,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService,backups:BackupService,cloudflare:CloudflareTunnelPlugin)=>{const registry=new PluginRegistry();registry.register(aiPluginDefinition(ai));registry.register(softwareDevelopmentPlugin);registry.register(visualBoardPlugin);registry.register(structuredViewPlugin);registry.register(collectionsPlugin);registry.register(projectBoardsPlugin);registry.register(vaultPlugin);registry.register(processBoardPlugin);registry.register(recordCardsPlugin);registry.register(workspacesPlugin);for(const plugin of [...genericPlugins,auditHistoryPlugin])registry.register(plugin);registry.register(alexaOrbitPluginDefinition);registry.setEnabled('alexa-orbit',false);registry.register(cloudflareTunnelPluginDefinition(cloudflare));registry.setEnabled('cloudflare-tunnel',false);registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(googleDriveBackupPluginDefinition(backups));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}for(const row of await db.query<{plugin_id:string;installed:boolean}>('SELECT plugin_id,installed FROM plugin_installations')){try{registry.setInstalled(row.plugin_id,row.installed)}catch{continue}}backups.setVaultAvailability(()=>registry.isEnabled('vault'));ai.setAvailability(()=>registry.isEnabled('ai'));return registry;},inject:[Db,CodexAiService,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService,BackupService,CloudflareTunnelPlugin]}, CardExecutionService], controllers: [VaultController,RecordCardsController,ExtensionRecordsController,AuditHistoryController,MonitoringController,CardLayoutsController,CardTypesController,BoardViewsController,AccessManagementController,AccessController,WorkspacesController,AlexaOrbitController,CloudflareTunnelController, ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController,GoogleDriveBackupController,GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
 class AppModule {}
 
 async function bootstrap() {
@@ -1437,13 +1336,22 @@ async function bootstrap() {
   app.get(CodexAiService).setAvailability(()=>plugins.isEnabled('ai'));
   app.get(AccessService).registerPlugins(plugins.catalog());
   app.get(AccessService).bindPlugins(plugins.list());
+  installVaultAccess(plugins,app.get(AccessService));
+  app.use(vaultFeatureAccess(plugins));
+  installCollectionsAccess(app.get(Db),plugins,app.get(AccessService));
+  app.use(projectBoardCreationAccess(plugins));
+  app.get(RecordCardsService).install();
+  app.get(FeaturesService).registerNotificationProvider(user=>app.get(RecordCardsService).reminders(user));
+  app.get(FeaturesService).registerBoardLinkProvider((board,user)=>app.get(RecordCardsService).target(board,user));
+  app.get(OrbitCardCalendarSource).registerSupplement((user,source,start,end)=>app.get(RecordCardsService).calendarItems(user,source,start,end));
+  app.use(app.get(RecordCardsService).middleware());
   plugins.setAuthorizer((plugin,action,user)=>app.get(AccessService).authorizePluginAction(user,plugin,action));
   await app.get(AccessService).initializeDefaults();
   app.use((req:Request,res:Response,next:()=>void)=>{
     const path=req.path;let pluginId:string|undefined;
-    if(isAiRoute(path)&&!/^\/codex\/queues?(?:\/|$)/.test(path))pluginId='ai';
-    else if(path==='/workspaces'||path.startsWith('/workspaces/'))pluginId='workspaces';
-    else if(path==='/planner'||path.startsWith('/planner/')||path==='/ai/schedule')pluginId='planner';
+    pluginId=plugins.routePlugin(path);
+    if(!pluginId&&(path==='/workspaces'||path.startsWith('/workspaces/')))pluginId='workspaces';
+    else if(!pluginId&&(path==='/planner'||path.startsWith('/planner/')||path==='/ai/schedule'))pluginId='planner';
     else if(path==='/github'||path.startsWith('/github/'))pluginId='github';
     else if(path==='/git'||path.startsWith('/git/'))pluginId='git';
     else if(path==='/delivery'||path.startsWith('/delivery/'))pluginId='delivery';

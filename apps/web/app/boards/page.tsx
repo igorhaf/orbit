@@ -1,4 +1,5 @@
 "use client";
+import {useCreationAvailability} from '@/plugins/project-boards/use-creation-availability';
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -30,10 +31,13 @@ import {
   useConfirmModal,
   WorkspaceSidebar,
 } from "@/components/ui";
+import { usePluginAvailability } from '@/lib/plugin-availability';
 import { useHydrated } from "@/lib/use-hydrated";
 
 export default function BoardsPage() {
+  const {canCreateBoard}=useCreationAvailability();
   const router = useRouter();
+  const {processBoards} = usePluginAvailability();
   const { confirm, confirmationModal } = useConfirmModal();
   const [user, setCurrentUser] = useState<User | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
@@ -199,12 +203,12 @@ export default function BoardsPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <button
+              {canCreateBoard&&<button
                 onClick={() => setCreate(true)}
                 className="flex items-center gap-2 rounded bg-[#0c66e4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]"
               >
                 <Plus size={17} /> Criar quadro
-              </button>
+              </button>}
             </div>
           </div>
           {error && (
@@ -283,6 +287,7 @@ export default function BoardsPage() {
               <LayoutDashboard size={19} /> Todos os quadros
             </h2>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              {processBoards.filter(board=>board.name.toLowerCase().includes(query.toLowerCase())).map(board=><button key={board.id} onClick={()=>router.push(board.href)} className="min-h-[112px] min-w-0 rounded-xl border bg-white p-4 text-left shadow-sm"><strong className="block break-words">{board.name}</strong><span className="mt-2 block text-sm">Gestão estruturada · grupos e fases</span></button>)}
               {filtered.filter((board) => !board.is_inbox && !board.is_collection).map((board) => (
                       <div key={board.id} className="relative">
                         <BoardTile
@@ -305,12 +310,12 @@ export default function BoardsPage() {
                         </button>
                       </div>
                     ))}
-              <button
+              {canCreateBoard&&<button
                 onClick={() => setCreate(true)}
                 className="flex h-[112px] items-center justify-center gap-2 rounded bg-[#dfe1e6] p-3 text-center text-sm font-semibold text-[#44546f] hover:bg-[#cdd3db]"
               >
                 <Plus size={18} /> Criar novo quadro
-              </button>
+              </button>}
             </div>
             {visibleBoards.length > 0 && filtered.length === 0 && (
               <p className="py-8 text-sm text-[#626f86]">
@@ -369,7 +374,7 @@ export default function BoardsPage() {
           )}
         </main>
       </div>
-      {create && (
+      {create && canCreateBoard && (
         <CreateBoardModal
           onClose={() => setCreate(false)}
           onCreate={createBoard}

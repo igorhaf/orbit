@@ -6,6 +6,8 @@ import {
 } from "@/components/access-shell";
 
 export type Schema = {
+  title?: string;
+  description?: string;
   type?: string | string[];
   properties?: Record<string, Schema>;
   items?: Schema;
@@ -263,12 +265,13 @@ export default function SchemaFields({
         .map(([key, field]) => (
           <div key={key} className="min-w-0">
             <p className="mb-1 text-sm font-semibold">
-              {fieldLabel(key)}
+              {field.title || fieldLabel(key)}
               {schema.required?.includes(key) ? " *" : ""}
             </p>
+            {field.description && <p className="mb-2 text-sm">{field.description}</p>}
             <Field
               schema={field}
-              label={fieldLabel(key)}
+              label={field.title || fieldLabel(key)}
               value={value[key]}
               onChange={(next) => {
                 const updated = { ...value };

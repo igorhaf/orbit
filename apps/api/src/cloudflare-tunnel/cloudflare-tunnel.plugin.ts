@@ -4,7 +4,7 @@ import type {PoolClient} from 'pg';
 import {Db} from '../db';
 import {SecretVault} from '../secrets';
 import {openVaultIntegrationCredentials} from '../vault-integration-credentials';
-import {parseVaultReference,resolveVaultReference} from '../vault-credentials';
+import {parseVaultReference,resolveVaultReference} from '../credential-store';
 import {FeaturesService} from '../features';
 import type {PluginDefinition} from '../plugins/contract';
 import {defaults, parseConfiguration, PLUGIN_ID, ProcessIdentity, TunnelConfig} from './configuration';

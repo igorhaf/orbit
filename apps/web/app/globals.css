@@ -124,3 +124,56 @@ html[data-theme="dark"] .notebook-tool { color: #b6c2cf; }
 html[data-theme="dark"] .notebook-tool:hover { background: #38414a; color: #dee4ea; }
 html[data-theme="dark"] .notebook-paper { border-color: #3b4754; }
 html[data-theme="dark"] .notebook-editor td, html[data-theme="dark"] .notebook-editor th { border-color: #596773; }
+
+/* Terroso brand palette: warm paper, wine, terracotta, olive and wood. */
+html[data-theme="terroso"] {
+  color-scheme: light;
+  color: #4d281e;
+  background: #f6efdf;
+  --orbit-surface: #fffaf0;
+  --orbit-surface-raised: #f2e5d1;
+  --orbit-surface-hover: #ead6bd;
+  --orbit-border: #d8bea1;
+  --orbit-text: #4d281e;
+  --orbit-muted: #795b4a;
+  --orbit-wine: #a20e4b;
+  --orbit-wine-dark: #710b36;
+  --orbit-terracotta: #c65328;
+  --orbit-olive: #56613a;
+  --orbit-wood: #713824;
+}
+html[data-theme="terroso"] body { color: var(--orbit-text); background: #f6efdf; }
+html[data-theme="terroso"] :is(.bg-white,[class~="bg-[#f7f8fa]"],[class~="bg-[#f8f9fb]"],[class~="bg-[#fbfcfe]"]) { background-color: var(--orbit-surface) !important; }
+html[data-theme="terroso"] [class~="bg-[#f1f2f4]"] { background-color: var(--orbit-surface-raised) !important; }
+html[data-theme="terroso"] :is([class~="bg-[#cdd3db]"],[class~="bg-[#dfe1e6]"],[class~="bg-[#e9eaed]"]) { background-color: var(--orbit-surface-hover) !important; }
+html[data-theme="terroso"] :is([class~="bg-[#172b4d]"],[class~="bg-[#1d2125]"]) { background-color: #57291f !important; }
+html[data-theme="terroso"] :is([class~="bg-[#6554c0]"],[class~="bg-[#403294]"],[class~="bg-[#0c66e4]"],[class~="bg-[#0055cc]"]) { background-color: var(--orbit-wine) !important; }
+html[data-theme="terroso"] :is([class~="hover:bg-[#5243aa]"],[class~="hover:bg-[#0055cc]"],[class~="hover:bg-[#0052cc]"]):hover { background-color: var(--orbit-wine-dark) !important; }
+html[data-theme="terroso"] :is([class~="bg-[#e9d8fd]"],[class~="bg-[#e9ddff]"],[class~="bg-[#eeedfd]"],[class~="bg-[#f0edff]"],[class~="bg-[#f7f5ff]"],[class~="bg-[#e9e5fa]"]) { background-color: #f0dce4 !important; }
+html[data-theme="terroso"] :is([class~="bg-[#d9eef8]"],[class~="bg-[#cce0ff]"],[class~="bg-[#d8e8ff]"],[class~="bg-[#deebff]"],[class~="bg-[#e9f2ff]"]) { background-color: #f7e4d2 !important; }
+html[data-theme="terroso"] :is([class~="bg-[#baf3db]"],[class~="bg-[#dffcf0]"],[class~="bg-[#e3fcef]"],[class~="bg-green-50"]) { background-color: #e4ead8 !important; }
+html[data-theme="terroso"] :is([class~="bg-[#ffebe6]"],[class~="bg-[#ffd5d2]"],[class~="bg-red-50"]) { background-color: #f5dfd8 !important; }
+html[data-theme="terroso"] :is([class~="bg-[#fff1b8]"],[class~="bg-[#fff7d6]"]) { background-color: #f5e8bd !important; }
+html[data-theme="terroso"] :is([class~="hover:bg-[#f1f2f4]"],[class~="hover:bg-[#f7f8fa]"],[class~="hover:bg-[#dfe1e6]"],[class~="hover:bg-white"]):hover { background-color: var(--orbit-surface-hover) !important; }
+html[data-theme="terroso"] :is([class~="hover:bg-[#e9e5fa]"],[class~="hover:bg-[#e9d8fd]"],[class~="hover:bg-[#f7f5ff]"]):hover { background-color: #e9ced8 !important; }
+html[data-theme="terroso"] :is([class~="border-[#8590a2]"],[class~="border-[#c1c7d0]"],[class~="border-[#dfe1e6]"],[class~="border-[#f1f2f4]"]) { border-color: var(--orbit-border) !important; }
+html[data-theme="terroso"] :is([class~="border-[#0c66e4]"],[class~="border-[#388bff]"],[class~="border-[#c3b6f7]"],[class~="border-[#b3d4ff]"],[class~="border-[#6554c0]"]) { border-color: #c87991 !important; }
+html[data-theme="terroso"] :is([class~="text-[#172b4d]"],[class~="text-[#344563]"],[class~="text-[#44546f]"]) { color: var(--orbit-text) !important; }
+html[data-theme="terroso"] :is([class~="text-[#626f86]"],[class~="text-[#738496]"],[class~="text-[#8590a2]"],[class~="text-[#8993a4]"]) { color: var(--orbit-muted) !important; }
+html[data-theme="terroso"] :is([class~="text-[#0c66e4]"],[class~="text-[#0055cc]"],[class~="text-[#0747a6]"],[class~="text-[#403294]"],[class~="text-[#5e2a96]"],[class~="text-[#6554c0]"]) { color: var(--orbit-wine) !important; }
+html[data-theme="terroso"] :is([class~="text-[#216e4e]"],[class~="text-[#22a06b]"],[class~="text-green-800"]) { color: #465531 !important; }
+html[data-theme="terroso"] :is([class~="text-[#ae2a19]"],[class~="text-[#e5484d]"],[class~="text-red-700"],[class~="text-red-800"]) { color: #a63124 !important; }
+html[data-theme="terroso"] :is(input,textarea,select) { color: var(--orbit-text); background-color: #fffaf0; border-color: var(--orbit-border); }
+html[data-theme="terroso"] option { color: var(--orbit-text); background-color: #fffaf0; }
+html[data-theme="terroso"] :is(input,textarea)::placeholder { color: #927462; }
+html[data-theme="terroso"] input:focus, html[data-theme="terroso"] textarea:focus { outline-color: #b33365; }
+html[data-theme="terroso"] .shadow-card { box-shadow: 0 1px 2px #71382420, 0 3px 9px #71382412; }
+html[data-theme="terroso"] .shadow-dialog { box-shadow: 0 20px 60px #54271940; }
+html[data-theme="terroso"] .notebook-paper { background-color: #fffaf0; border-color: var(--orbit-border); }
+html[data-theme="terroso"] .notebook-editor { color: var(--orbit-text); }
+html[data-theme="terroso"] .notebook-tool { color: #795b4a; }
+html[data-theme="terroso"] .notebook-tool:hover { background: #ead6bd; color: #4d281e; }
+html[data-theme="terroso"] .notebook-editor td, html[data-theme="terroso"] .notebook-editor th { border-color: var(--orbit-border); }
+html[data-theme="terroso"] .theme-preference-control { color: var(--orbit-text); }
+html[data-theme-forced="true"] .theme-preference-options { display: none; }
+html[data-theme-forced="true"] .theme-forced-notice { display: block; }

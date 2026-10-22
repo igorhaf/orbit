@@ -7,6 +7,8 @@ export class OrbitCardCalendarSource implements CalendarSourceProvider {
   readonly id = "orbit_cards";
   readonly name = "Orbit · Cards agendados";
   constructor(@Inject(Db) private db: Db) {}
+  private supplements:Array<(user:string,source:string,start:Date,end:Date)=>Promise<CalendarItem[]>>=[];
+  registerSupplement(provider:(user:string,source:string,start:Date,end:Date)=>Promise<CalendarItem[]>){this.supplements.push(provider)}
   private async ensure(ownerId: string) {
     const existing = await this.db.one<{ id: string }>(
       "SELECT id FROM calendar_sources WHERE owner_id=$1 AND provider_id=$2 AND external_id=$3",
@@ -59,7 +61,7 @@ export class OrbitCardCalendarSource implements CalendarSourceProvider {
       AND c.schedule_start_at<$3 AND COALESCE(c.schedule_end_at,c.schedule_start_at)>=$2 ORDER BY c.schedule_start_at`,
       [ownerId, start, end],
     );
-    return rows.map((row) => ({
+    const native:CalendarItem[]=rows.map((row) => ({
       id: `card:${row.id}`,
       sourceId,
       resourceType: "card",
@@ -79,5 +81,6 @@ export class OrbitCardCalendarSource implements CalendarSourceProvider {
         listTitle: row.list_title,
       },
     }));
+    return [...native,...(await Promise.all(this.supplements.map(provider=>provider(ownerId,sourceId,start,end)))).flat()];
   }
 }

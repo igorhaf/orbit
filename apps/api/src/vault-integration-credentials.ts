@@ -1,6 +1,6 @@
 import {Db} from './db';
 import {SecretVault} from './secrets';
-import {credentials,parseVaultReference,resolveVaultReference} from './vault-credentials';
+import {credentials,parseVaultReference,resolveVaultReference} from './credential-store';
 import {decryptVaultPayload,encryptVaultPayload} from './vault-crypto';
 
 export async function openVaultIntegrationCredentials<T>(db:Db,vault:SecretVault,sealed:string,owner:string):Promise<T>{

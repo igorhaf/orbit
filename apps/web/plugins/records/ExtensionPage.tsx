@@ -15,9 +15,32 @@ type Kind = {
   label: string;
   schema: Schema;
   initial: string;
+  serverCreated?: boolean;
+  detailActions?: Array<{
+    id: string;
+    label: string;
+    retryLabel?: string;
+    description?: string;
+    states: string[];
+    permission: "write" | "publish";
+    path: string;
+    ownsTransitions?: boolean;
+    when?: Record<string, string | number | boolean | null>;
+    download?: { recordIdField: string; revisionField: string; fileNameField: string; path: string };
+  }>;
   immutable?: string[];
   example: Record<string, unknown>;
 };
+function pathValue(source: Record<string, unknown>, path: string): unknown {
+  return path.split(".").reduce<unknown>((value, key) => value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined, source);
+}
+function fillActionPath(path: string, values: Record<string, string | number>) {
+  return path.replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (_match, key: string) => {
+    const value = values[key];
+    if (value === undefined) throw new Error(`A ação exige o valor ${key}.`);
+    return encodeURIComponent(String(value));
+  });
+}
 type Plugin = {
   id: string;
   name: string;
@@ -36,6 +59,8 @@ type RecordRow = {
 };
 type Detail = RecordRow & {
   next_states: string[];
+  validation_issues?: Array<{ severity: "error" | "warning"; code: string; path: string; message: string }>;
+  record_permissions?: { write: boolean; publish: boolean };
   versions: Array<{
     revision: number;
     state: string;
@@ -89,7 +114,7 @@ const stateLabel = (state: string) =>
     paused: "Pausado",
   })[state] || state;
 
-export default function ExtensionPage({ pluginId }: { pluginId: string }) {
+export default function ExtensionPage({ pluginId, workspaceId, recordId, embedded=false, onChanged }: { pluginId: string; workspaceId?:string;recordId?:string;embedded?:boolean;onChanged?:()=>Promise<void> }) {
   const [user, setUser] = useState<User | null>(null),
     [plugin, setPlugin] = useState<Plugin | null>(null),
     [spaces, setSpaces] = useState<Workspace[]>([]),
@@ -118,12 +143,32 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
     [variant, setVariant] = useState("original"),
     [source, setSource] = useState(""),
     [sourceRevision, setSourceRevision] = useState(1);
+  const [relatedRecord, setRelatedRecord] = useState("");
+  const [relatedRevision, setRelatedRevision] = useState(1);
   const selection = useRef(0);
+  const formSelection = useRef(0);
+  const [formSchema, setFormSchema] = useState<Schema | null>(null);
+  async function chooseForm(recordId: string, revision?: number, preserveAnswers = false) {
+    const generation = ++formSelection.current;
+    setFormSchema(null);
+    if (!recordId) { setPayload({}); return; }
+    try {
+      const selected = rows.find((row) => row.id === recordId && row.kind === "form");
+      const snapshot = await api<RecordRow>(`/extensions/forms/records/${encodeURIComponent(recordId)}/versions/${revision || selected?.revision || 1}/snapshot`);
+      if (generation !== formSelection.current) return;
+      if (snapshot.kind !== "form" || snapshot.state !== "published") throw new Error("Selecione uma versão publicada do formulário.");
+      setFormSchema(snapshot.payload.schema as Schema);
+      setPayload((current) => ({ ...current, form_id: recordId, form_revision: snapshot.revision, answers: preserveAnswers ? current.answers || {} : {} }));
+    } catch (error) { if (generation === formSelection.current) setError((error as Error).message); }
+  }
+  const editableKinds = (plugin?.kinds || []).filter((item) => !item.serverCreated);
   const definition = plugin?.kinds.find(
     (item) => item.id === (editing ? kind : detail?.kind || kind),
   );
   const canWrite = Boolean(user?.is_root || workspaceAccess.write),
     canPublish = Boolean(user?.is_root || workspaceAccess.publish);
+  const detailCanWrite = Boolean(user?.is_root || (detail?.record_permissions ? detail.record_permissions.write : canWrite)),
+    detailCanPublish = Boolean(user?.is_root || (detail?.record_permissions ? detail.record_permissions.publish : canPublish));
   const refreshCatalog = useCallback(async () => {
     const catalog = await api<Plugin[]>("/extensions");
     setPlugin(catalog.find((item) => item.id === pluginId) || null);
@@ -135,6 +180,22 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
         if (active) {
           setUser(account);
           setSpaces(workspaces);
+          const query = new URLSearchParams(window.location.search);
+          const requestedWorkspace = workspaceId || query.get("workspace");
+          const requestedRecord = recordId || query.get("record");
+          if (requestedWorkspace && workspaces.some((space) => space.id === requestedWorkspace)) {
+            void Promise.all([
+              api<RecordRow[]>(`/extensions/${pluginId}/workspaces/${encodeURIComponent(requestedWorkspace)}/records`),
+              api<{ write: boolean; publish: boolean }>(`/extensions/${pluginId}/workspaces/${encodeURIComponent(requestedWorkspace)}/access`),
+              requestedRecord ? api<Detail>(`/extensions/${pluginId}/records/${encodeURIComponent(requestedRecord)}`) : Promise.resolve(null),
+            ]).then(([records, permissions, selected]) => {
+              if (!active) return;
+              setWorkspace(requestedWorkspace);
+              setRows(records);
+              setWorkspaceAccess(permissions);
+              if (selected && (selected as Detail & { workspace_id: string }).workspace_id === requestedWorkspace) setDetail(selected);
+            }).catch((error) => { if (active) setError(error.message); });
+          }
         }
       })
       .catch((error) => {
@@ -160,7 +221,7 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
       active = false;
       window.removeEventListener("plugins:changed", refresh);
     };
-  }, [pluginId, refreshCatalog]);
+  }, [pluginId, refreshCatalog, workspaceId, recordId]);
 
   async function chooseWorkspace(id: string) {
     const request = ++selection.current;
@@ -211,6 +272,7 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
       if (result?.id) await open(result.id);
       else if (detail) await open(detail.id);
       setMessage("Operação concluída.");
+      await onChanged?.();
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -218,7 +280,10 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
     }
   }
   function edit(row?: RecordRow) {
-    setKind(row?.kind || plugin?.kinds[0]?.id || "");
+    formSelection.current++;
+    setFormSchema(null);
+    if (pluginId === "forms" && row?.kind === "submission") void chooseForm(String(row.payload.form_id), Number(row.payload.form_revision), true);
+    setKind(row?.kind || editableKinds[0]?.id || "");
     setTitle(row?.title || "");
     setPayload(row?.payload || {});
     setDetail(row ? detail : null);
@@ -227,6 +292,8 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
     setFile(null);
     setVariant(String(row?.payload.variant || "original"));
     setSource(String(row?.payload.source_id || ""));
+    setRelatedRecord(String(row?.payload.related_record_id || ""));
+    setRelatedRevision(Number(row?.payload.related_record_revision || 1));
     setSourceRevision(Number(row?.payload.source_revision || 1));
   }
   async function save() {
@@ -260,6 +327,7 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
             "",
           data_base64,
           variant,
+          ...(relatedRecord ? { related_record_id: relatedRecord, related_record_revision: relatedRevision } : {}),
           ...(variant === "anonymized"
             ? { source_id: source, source_revision: sourceRevision }
             : {}),
@@ -298,7 +366,7 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
   }
 
   return (
-    <AccessShell
+    <AccessShell embedded={embedded}
       user={user}
       title={
         pluginId === "audit-history"
@@ -429,17 +497,27 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                         value={kind}
                         disabled={Boolean(detail)}
                         onChange={(event) => {
+                          formSelection.current++;
+                          setFormSchema(null);
                           setKind(event.target.value);
                           setPayload({});
                         }}
                       >
-                        {plugin.kinds.map((kind) => (
+                        {editableKinds.map((kind) => (
                           <option key={kind.id} value={kind.id}>
                             {kind.label}
                           </option>
                         ))}
                       </select>
                     </label>
+                    {pluginId === "forms" && kind === "submission" && <label className="block">
+                      Formulário publicado
+                      <select className={input} required disabled={Boolean(detail)} value={String(payload.form_id || "")} onChange={(event) => void chooseForm(event.target.value)}>
+                        <option value="">Selecione o formulário a responder</option>
+                        {rows.filter((row) => row.kind === "form" && row.state === "published").map((form) => <option key={form.id} value={form.id}>{form.title} · v{form.revision}</option>)}
+                        {detail && !rows.some((row) => row.id === payload.form_id) && <option value={String(payload.form_id)}>{String(payload.form_id)} · v{String(payload.form_revision)}</option>}
+                      </select>
+                    </label>}
                     <label className="block">
                       Título
                       <input
@@ -477,6 +555,14 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                             </option>
                           </select>
                         </label>
+                        <details className="rounded border p-3">
+                          <summary>Relacionar a um registro ou processo (opcional)</summary>
+                          <p className="my-2 text-sm">Preserva a versão do processo a que este comprovante pertence.</p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label>ID do registro<input className={input} value={relatedRecord} onChange={(event) => setRelatedRecord(event.target.value)} /></label>
+                            <label>Versão do registro<input className={input} min={1} type="number" value={relatedRevision} onChange={(event) => setRelatedRevision(Number(event.target.value))} /></label>
+                          </div>
+                        </details>
                         {variant === "anonymized" && (
                           <div className="grid gap-3 sm:grid-cols-2">
                             <label>
@@ -511,12 +597,14 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                         {definition && (
                           <SchemaFields
                             key={`${detail?.id || "new"}:${kind}:${templateVersion}`}
-                            schema={definition.schema}
+                            schema={pluginId === "forms" && kind === "submission" && formSchema ? { ...definition.schema, properties: { ...definition.schema.properties, answers: { ...formSchema, title: "Respostas" } } } : definition.schema}
                             value={payload}
                             onChange={setPayload}
                             skip={
                               pluginId === "workflows" && kind === "process"
                                 ? ["current_state", "protocol"]
+                                : pluginId === "forms" && kind === "submission"
+                                  ? formSchema ? ["form_id", "form_revision"] : ["form_id", "form_revision", "answers"]
                                 : pluginId === "deadlines"
                                   ? ["started_at", "due_at", "paused_at"]
                                   : []
@@ -549,7 +637,7 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                       </label>
                     )}
                     <div className="flex flex-wrap gap-3">
-                      <button disabled={busy} className={button}>
+                      <button disabled={busy || (pluginId === "forms" && kind === "submission" && !formSchema)} className={button}>
                         {busy ? "Salvando…" : "Salvar"}
                       </button>
                       <button
@@ -573,7 +661,7 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                         </p>
                         <p className="break-all text-xs">ID: {detail.id}</p>
                       </div>
-                      {canWrite &&
+                      {detailCanWrite &&
                         (!definition?.immutable?.includes(detail.state) ||
                           detail.state === "published") &&
                         pluginId !== "deadlines" && (
@@ -586,6 +674,23 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                           </button>
                         )}
                     </div>
+                    {detail.validation_issues !== undefined && detail.validation_issues.length > 0 && (
+                      <section
+                        aria-label="Validação do registro"
+                        className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-4"
+                        role="status"
+                      >
+                        <h3 className="font-semibold">Validação do registro</h3>
+                        <p className="mt-1 text-sm">Revise os avisos e inconsistências antes de concluir a análise.</p>
+                        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">
+                          {detail.validation_issues.map((issue, index) => (
+                            <li key={`${issue.code}-${index}`}>
+                              <span className="font-medium">{fieldLabel(issue.path.split(/[.[]/)[0])}:</span> {issue.message}
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
                     <dl className="space-y-3">
                       {Object.entries(detail.payload).map(([key, value]) => (
                         <div key={key} className="min-w-0">
@@ -604,8 +709,36 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                         </div>
                       ))}
                     </dl>
-                    {canPublish &&
-                      !definition?.immutable?.includes(detail.state) && (
+                    {(definition?.detailActions || []).filter((item) =>
+                      item.states.includes(detail.state)
+                      && (item.permission === "write" ? detailCanWrite : detailCanPublish)
+                      && Object.entries(item.when || {}).every(([path, expected]) => pathValue({ payload: detail.payload, state: detail.state }, path) === expected),
+                    ).map((item) => (
+                      <section key={item.id} className="space-y-2 rounded-lg border border-blue-400/30 bg-blue-400/5 p-4">
+                        {item.description && <p className="text-sm">{item.description}</p>}
+                        <button type="button" className={button} disabled={busy} onClick={() => void action(async () => {
+                          const result = await send<Record<string, unknown>>(fillActionPath(item.path, { recordId: detail.id }), "POST", {});
+                          if (item.download) {
+                            const fileId = result[item.download.recordIdField];
+                            const revision = result[item.download.revisionField];
+                            const fileName = result[item.download.fileNameField];
+                            if (typeof fileId !== "string" || typeof revision !== "number" || typeof fileName !== "string") throw new Error("A ação não retornou os dados necessários para baixar o arquivo.");
+                            const blob = await authenticatedBlob(fillActionPath(item.download.path, { recordId: fileId, revision }));
+                            const url = URL.createObjectURL(blob);
+                            const anchor = document.createElement("a");
+                            anchor.href = url;
+                            anchor.download = fileName;
+                            anchor.click();
+                            setTimeout(() => URL.revokeObjectURL(url), 1000);
+                          }
+                          return result;
+                        })}>
+                          {item.retryLabel && detail.state === "failed" ? item.retryLabel : item.label}
+                        </button>
+                      </section>
+                    ))}
+                    {detailCanPublish &&
+                      !definition?.immutable?.includes(detail.state) && !definition?.detailActions?.some((item) => item.ownsTransitions && item.states.includes(detail.state) && Object.entries(item.when || {}).every(([path, expected]) => pathValue({ payload: detail.payload, state: detail.state }, path) === expected)) && (
                         <div className="space-y-3 rounded border p-3">
                           <label className="block">
                             Justificativa da ação
@@ -759,7 +892,7 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                           {link.target_revision}
                         </p>
                       ))}
-                      {canWrite && (
+                      {detailCanWrite && (
                         <form
                           className="mt-3 grid gap-3"
                           onSubmit={(event) => {
@@ -813,7 +946,7 @@ export default function ExtensionPage({ pluginId }: { pluginId: string }) {
                               }
                             />
                           </label>
-                          <button disabled={busy} className={button}>
+                          <button disabled={busy || (pluginId === "forms" && kind === "submission" && !formSchema)} className={button}>
                             Fixar referência
                           </button>
                         </form>

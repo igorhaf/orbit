@@ -9,11 +9,15 @@ import {CloudflareTunnelPanel} from "@/plugins/cloudflare-tunnel/CloudflareTunne
 import {AlexaOrbitPanel} from '@/plugins/alexa-orbit/AlexaOrbitPanel';
 import { PluginConfiguration } from "@/components/plugin-configuration";
 
+const boardViewPluginIds=["board-view","structured-view"];
+function blocksLastBoardView(plugin:PluginCatalogItem,plugins:PluginCatalogItem[]){return boardViewPluginIds.includes(plugin.id)&&plugin.enabled&&!plugins.some(other=>other.id!==plugin.id&&boardViewPluginIds.includes(other.id)&&other.enabled)}
+
 export default function PluginsPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [plugins, setPlugins] = useState<PluginCatalogItem[]>([]);
+  const [extensionIds, setExtensionIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<PluginCatalogItem | null>(null);
   const [configuring,setConfiguring]=useState<PluginCatalogItem|null>(null);
   const [oauthResult,setOauthResult]=useState<{connected:boolean;error:string}|undefined>();
@@ -27,12 +31,13 @@ export default function PluginsPage() {
       return;
     }
     let active = true;
-    Promise.all([api<User>("/auth/me"), api<Board[]>("/boards"), api<{ plugins: PluginCatalogItem[] }>("/plugins")])
-      .then(([account, allBoards, catalog]) => {
+    Promise.all([api<User>("/auth/me"), api<Board[]>("/boards"), api<{ plugins: PluginCatalogItem[] }>("/plugins"), api<{id:string}[]>("/extensions").catch(() => [])])
+      .then(([account, allBoards, catalog, extensions]) => {
         if (!active) return;
         setUser(account);
         setBoards(allBoards);
         setPlugins(catalog.plugins);
+        setExtensionIds(new Set(extensions.map(extension => extension.id)));
         const query=new URLSearchParams(window.location.search),configured=catalog.plugins.find(plugin=>plugin.id===query.get('configure'));
         if(configured){setConfiguring(configured);setOauthResult({connected:query.get('connected')==='true',error:query.get('error')||''})}
       })
@@ -43,7 +48,7 @@ export default function PluginsPage() {
 
   useEffect(()=>{
     if(!getToken())return;let active=true;let request:Promise<void>|undefined;let pending=false;
-    const refresh=()=>{if(request){pending=true;return;}request=api<{plugins:PluginCatalogItem[]}>('/plugins').then(catalog=>{if(!active)return;setPlugins(catalog.plugins);setSelected(current=>current?catalog.plugins.find(plugin=>plugin.id===current.id)||null:null);setConfiguring(current=>current?catalog.plugins.find(plugin=>plugin.id===current.id)||null:null)}).catch(()=>undefined).finally(()=>{request=undefined;if(active&&pending){pending=false;refresh()}})};
+    const refresh=()=>{if(request){pending=true;return;}request=Promise.all([api<{plugins:PluginCatalogItem[]}>('/plugins'),api<{id:string}[]>('/extensions').catch(()=>[])]).then(([catalog,extensions])=>{if(!active)return;setPlugins(catalog.plugins);setExtensionIds(new Set(extensions.map(extension=>extension.id)));setSelected(current=>current?catalog.plugins.find(plugin=>plugin.id===current.id)||null:null);setConfiguring(current=>current?catalog.plugins.find(plugin=>plugin.id===current.id)||null:null)}).catch(()=>undefined).finally(()=>{request=undefined;if(active&&pending){pending=false;refresh()}})};
     window.addEventListener('plugins:changed',refresh);window.addEventListener('focus',refresh);
     const timer=window.setInterval(refresh,15000);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('plugins:changed',refresh);window.removeEventListener('focus',refresh)};
@@ -74,7 +79,8 @@ export default function PluginsPage() {
         <h2 className="mt-5 text-lg font-bold text-[#172b4d]">{plugin.name}</h2><p className="mt-1 font-mono text-xs text-[#626f86]">{plugin.id}</p>
         <div className="mt-5 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#f1f2f4] p-3"><strong className="block text-base text-[#172b4d]">{plugin.actions.length}</strong><span className="text-[#626f86]">ações</span></div><div className="rounded-lg bg-[#f1f2f4] p-3"><strong className="block text-base text-[#172b4d]">{plugin.capabilities.length}</strong><span className="text-[#626f86]">capacidades</span></div></div>
         <div className="mt-5 flex-1 space-y-2">{plugin.description&&<p className="text-sm text-[#626f86]">{plugin.description}</p>}{plugin.status==='blocked'&&Boolean(plugin.blockedBy?.length)&&<p role="status" className="rounded-lg bg-[#fff7d6] p-2 text-xs text-[#6b5200]">Suspenso por: {plugin.blockedBy!.map(id=>plugins.find(item=>item.id===id)?.name||`${id} (não instalado)`).join(", ")}. Retorna quando as bases forem reativadas, se este plugin continuar habilitado.</p>}{Boolean(plugin.dependents?.length)&&<p className="text-xs text-[#626f86]">Ao desativar, ficam indisponíveis: {plugin.dependents!.map(id=>plugins.find(item=>item.id===id)?.name||id).join(", ")}</p>}{Boolean(plugin.dependencies?.length)&&<p className="text-xs text-[#626f86]">Depende de: {plugin.dependencies!.map(id=>plugins.find(item=>item.id===id)?.name||id).join(", ")}{!plugin.enabled&&plugin.configuredEnabled&&" · indisponível enquanto a dependência estiver desativada"}</p>}{plugin.actions.slice(0, 3).map(action => <div key={action.id} className="flex items-center gap-2 text-sm text-[#44546f]"><Check size={15} className="shrink-0 text-[#22a06b]"/><span className="truncate">{action.name}</span></div>)}{plugin.actions.length > 3 && <p className="text-xs text-[#626f86]">+ {plugin.actions.length - 3} outras ações</p>}</div>
-        <div className="mt-6 flex flex-wrap gap-2"><button onClick={() => void togglePlugin(plugin)} disabled={toggling===plugin.id} className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold disabled:opacity-50 ${plugin.enabled?'border border-[#dfe1e6] text-[#44546f] hover:bg-[#f1f2f4]':'bg-[#0c66e4] text-white hover:bg-[#0055cc]'}`}><Power size={15}/>{toggling===plugin.id?'Salvando…':(plugin.configuredEnabled??plugin.enabled)?'Desativar':'Ativar'}</button><button onClick={() => plugin.id==='workspaces'?router.push('/workspaces'):setConfiguring(plugin)} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#0c66e4] px-3 py-2.5 text-sm font-semibold text-[#0c66e4] hover:bg-[#e9f2ff]"><Settings size={15}/> Configurar</button><button onClick={() => setSelected(plugin)} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#0c66e4] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Ações <ArrowRight size={16}/></button></div>
+        <div className="mt-6 flex flex-wrap gap-2"><button onClick={() => void togglePlugin(plugin)} disabled={toggling===plugin.id||blocksLastBoardView(plugin,plugins)} title={blocksLastBoardView(plugin,plugins)?'Mantenha ativo pelo menos um modo de quadro.':''} className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold disabled:opacity-50 ${plugin.enabled?'border border-[#dfe1e6] text-[#44546f] hover:bg-[#f1f2f4]':'bg-[#0c66e4] text-white hover:bg-[#0055cc]'}`}><Power size={15}/>{toggling===plugin.id?'Salvando…':(plugin.configuredEnabled??plugin.enabled)?'Desativar':'Ativar'}</button><button onClick={() => plugin.id==='workspaces'?router.push('/workspaces'):setConfiguring(plugin)} className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#0c66e4] px-3 py-2.5 text-sm font-semibold text-[#0c66e4] hover:bg-[#e9f2ff]"><Settings size={15}/> Configurar</button><button onClick={() => setSelected(plugin)} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#0c66e4] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Ações <ArrowRight size={16}/></button></div>{blocksLastBoardView(plugin,plugins)&&<p className="mt-2 text-xs text-[#626f86]">Ao menos uma visualização de quadro precisa permanecer ativa.</p>}
+        {plugin.enabled && extensionIds.has(plugin.id) && <button type="button" onClick={() => router.push(`/extensions/${plugin.id}`)} className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-[#c1c7d0] px-3 py-2.5 text-sm font-semibold text-[#44546f] hover:bg-[#f1f2f4]">Abrir extensão <ArrowRight size={16}/></button>}
       </article>)}</div>}
       <p className="mt-8 flex items-center gap-2 text-xs text-[#626f86]"><Zap size={14} className="text-[#e2b203]"/> O estado é global nesta instalação; ações de execução ainda respeitam as permissões configuradas em cada projeto.</p>
       </main>

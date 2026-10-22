@@ -1,3 +1,4 @@
+import {vaultConstants as credentialConstants} from './credential-store';
 import {AccessRequest,AccessService} from './access/access';
 import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Optional, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
 import { Request,Response } from 'express';
@@ -19,6 +20,11 @@ const bounded = (value: unknown, label: string, max: number) => {
 
 @Injectable()
 export class FeaturesService {
+  private boardLinkProviders:Array<(board:string,user:string)=>Promise<string|null>>=[];
+  registerBoardLinkProvider(provider:(board:string,user:string)=>Promise<string|null>){this.boardLinkProviders.push(provider)}
+  private notificationProviders:Array<(user:string)=>Promise<void>>=[];
+  registerNotificationProvider(provider:(user:string)=>Promise<void>){this.notificationProviders.push(provider)}
+
   constructor(@Inject(Db) private db: Db,@Optional() @Inject(OrbitEvents) private events?:OrbitEvents,@Optional() @Inject(AccessService) public access?:AccessService) {}
 
   user(req: Request): string {
@@ -77,7 +83,7 @@ export class FeaturesService {
     for (const key of allowed) {
       if (body[key] === undefined) continue;
       if (key === 'theme') {
-        if (!['light','dark'].includes(String(body[key]))) bad('Tema inválido.');
+        if (!['light','dark','terroso'].includes(String(body[key]))) bad('Tema inválido.');
         changes.theme = body[key];
       } else {
         if (typeof body[key] !== 'boolean') bad(`Preferência ${key} inválida.`);
@@ -85,6 +91,7 @@ export class FeaturesService {
       }
     }
     if (body.vaultCategoryOrder !== undefined) {
+      if(this.access&&!this.access.resourceAvailable('vault'))bad('O Cofre não está disponível nesta instância.',409);
       const order = Array.isArray(body.vaultCategoryOrder) ? body.vaultCategoryOrder : bad('Ordem das categorias do cofre inválida.');
       if (order.some((id: unknown) => typeof id !== 'string') || new Set(order).size !== order.length) bad('Ordem das categorias do cofre inválida.');
       const builtIn = new Set(['site','api','ssh','bank_test','license','custom']);
@@ -130,7 +137,7 @@ export class FeaturesService {
   async toggleCardMember(cardId: string, actorId: string, memberId: string) {
     const boardId=await this.cardBoard(cardId,actorId);
     validId(memberId);
-    if (!await this.db.one('SELECT 1 FROM authorized_board_members WHERE board_id=$1 AND user_id=$2',[boardId,memberId])) bad('Membro não pertence ao quadro.',404);
+    if (!(this.access?await this.access.boardPermission(boardId,memberId):await this.db.one('SELECT 1 FROM authorized_board_members WHERE board_id=$1 AND user_id=$2',[boardId,memberId]))) bad('Membro não pertence ao quadro.',404);
     const existing=await this.db.one('SELECT 1 FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,memberId]);
     if (existing) await this.db.query('DELETE FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,memberId]);
     else {
@@ -156,6 +163,7 @@ export class FeaturesService {
   }
 
   async notify(userId: string, boardId: string, cardId: string | null, kind: string, title: string, body: string) {
+    if(this.access&&!await this.access.boardPermission(boardId,userId))return;
     const account=await this.account(userId);
     if (!account.preferences.notifications) return;
     await this.db.query(`INSERT INTO notifications(plugin_id,user_id,board_id,card_id,kind,title,body)
@@ -266,12 +274,44 @@ export class FeaturesService {
       ORDER BY a.created_at DESC LIMIT $2`,[userId,Math.min(limit,100)]);
   }
 
+  async credentialConstants(user:string){return credentialConstants(this.db,user)}
   async assignedCards(userId: string) {
-    return this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,b.id AS board_id,
+    if(this.access)await this.access.require(userId,'boards.read');
+    const rows=await this.db.query<{id:string;board_id:string;title:string}>(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,true AS assigned_to_me,b.id AS board_id,
       b.title AS board_title,b.background,l.title AS list_title
-      FROM card_assignees ca JOIN cards c ON c.id=ca.card_id JOIN lists l ON l.id=c.list_id
-      JOIN boards b ON b.id=l.board_id JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
-      WHERE ca.user_id=$1 AND b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.due_date ASC NULLS LAST,c.updated_at DESC`,[userId]);
+      FROM card_assignees ca JOIN cards c ON c.id=ca.card_id JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+      WHERE ca.user_id=$1 AND b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL
+      AND NOT EXISTS(SELECT 1 FROM vault_items v WHERE v.card_id=c.id)
+      ORDER BY c.due_date ASC NULLS LAST,c.updated_at DESC`,[userId]);
+    const permitted=new Set<string>();
+    for(const board of new Set(rows.map(row=>row.board_id))){
+      if(this.access){if(await this.access.boardPermission(board,userId))permitted.add(board)}
+      else if(await this.db.one('SELECT 1 FROM authorized_board_members WHERE board_id=$1 AND user_id=$2',[board,userId]))permitted.add(board);
+    }
+    return rows.filter(row=>permitted.has(row.board_id));
+  }
+
+  async assignToInbox(userId:string,body:Record<string,unknown>){
+    if(!body||Array.isArray(body)||Object.keys(body).some(key=>key!=='card_ids')||!Array.isArray(body.card_ids)||!body.card_ids.length||body.card_ids.length>20||body.card_ids.some(key=>typeof key!=='string'))bad('Selecione de 1 a 20 cartões para seu Inbox.');
+    const ids=[...new Set((body.card_ids as string[]).map(validId))];
+    if(this.access)await this.access.require(userId,'boards.write');
+    const cards=[];for(const cardId of ids){const boardId=await this.cardBoard(cardId,userId);if(this.access&&!await this.access.boardPermission(boardId,userId,'boards.write'))bad('Você não pode assumir cartões deste quadro.',403);cards.push({id:cardId,boardId})}
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      // Lock before assigning so an archive or relocation cannot race this operation.
+      for(const card of [...cards].sort((a,b)=>a.id.localeCompare(b.id))){
+        const row=(await client.query('SELECT c.list_id,l.board_id,c.archived_at,l.archived_at AS list_archived,b.closed_at FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id WHERE c.id=$1 FOR UPDATE OF c',[card.id])).rows[0];
+        if(!row||row.board_id!==card.boardId||row.archived_at||row.list_archived||row.closed_at)bad('O cartão mudou; atualize o quadro e tente novamente.',409);
+        const added=await client.query('INSERT INTO card_assignees(card_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING card_id',[card.id,userId]);
+        await client.query('INSERT INTO card_watchers(card_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[card.id,userId]);
+        if(added.rows.length)await client.query("INSERT INTO activities(actor_id,board_id,card_id,kind,body) VALUES($1,$2,$3,'assigned','assumiu o cartão pelo Inbox')",[userId,card.boardId,card.id]);
+      }
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+    for(const board of new Set(cards.map(card=>card.boardId)))this.events?.boardChanged(board,'inbox');
+    this.events?.notificationChanged(userId);
+    return{assigned:true,card_ids:ids};
   }
 
   async search(userId: string, term: string) {
@@ -332,6 +372,7 @@ export class FeaturesService {
         AND c.due_date=n.due_at AND c.reminder_minutes IS NOT NULL
         AND EXISTS (SELECT 1 FROM lists l JOIN boards b ON b.id=l.board_id WHERE l.id=c.list_id AND l.archived_at IS NULL AND b.closed_at IS NULL))`,[userId]);
     if (account.preferences.notifications) {
+      for(const provider of this.notificationProviders)await provider(userId);
       await this.db.query(`INSERT INTO notifications(plugin_id,user_id,board_id,card_id,kind,title,body,due_at)
         SELECT 'planner',$1,b.id,c.id,'due',CASE WHEN c.due_date<now() THEN 'Cartão vencido' ELSE 'Prazo próximo' END,
           c.title,c.due_date FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
@@ -340,9 +381,17 @@ export class FeaturesService {
           AND c.reminder_minutes IS NOT NULL AND c.due_date<=now()+c.reminder_minutes*interval '1 minute'
         ON CONFLICT DO NOTHING`,[userId]);
     }
-    return this.db.query(`SELECT n.id,n.plugin_id,n.target_url,n.kind,n.title,n.body,n.created_at,n.read_at,n.board_id,n.card_id,
+    const notifications=await this.db.query(`SELECT n.id,n.plugin_id,n.target_url,n.kind,n.title,n.body,n.created_at,n.read_at,n.board_id,n.card_id,
       b.title AS board_title,c.url_token AS card_url_token FROM notifications n LEFT JOIN boards b ON b.id=n.board_id LEFT JOIN cards c ON c.id=n.card_id
       WHERE n.user_id=$1 ORDER BY n.created_at DESC LIMIT 80`,[userId]);
+    if(!this.access)return notifications;
+    const allowed=new Map<string,boolean>();for(const notification of notifications)if(notification.board_id&&!allowed.has(notification.board_id))allowed.set(notification.board_id,await this.access.boardPermission(notification.board_id,userId));
+    const visible=notifications.filter(notification=>!notification.board_id||allowed.get(notification.board_id));
+    const targets=new Map<string,string|null>();for(const notification of visible)if(notification.board_id&&!notification.target_url){
+      if(!targets.has(notification.board_id)){let target:string|null=null;for(const provider of this.boardLinkProviders){target=await provider(notification.board_id,userId);if(target)break}targets.set(notification.board_id,target)}
+      notification.target_url=targets.get(notification.board_id);
+    }
+    return visible;
   }
 
   async markNotification(userId: string, id: string) {
@@ -387,7 +436,10 @@ export class FeaturesController {
   @Patch('account') updateAccount(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updateProfile(this.features.user(req),body); }
   @Patch('account/preferences') preferences(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updatePreferences(this.features.user(req),body); }
   @Get('account/activity') activity(@Req() req: Request) { return this.features.activities(this.features.user(req),60); }
+  @Get('account/credential-constants') constants(@Req()req:Request){return this.features.credentialConstants(this.features.user(req))}
   @Get('account/cards') cards(@Req() req: Request) { return this.features.assignedCards(this.features.user(req)); }
+  @Get('inbox/cards') inboxCards(@Req() req:Request){return this.features.assignedCards(this.features.user(req))}
+  @Post('inbox/cards') assignInbox(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.assignToInbox(this.features.user(req),body)}
   @Get('home') home(@Req() req: Request) { return this.features.home(this.features.user(req)); }
   @Get('trash/summary') trashSummary(@Req() req: Request) { return this.features.trashSummary(this.features.user(req)); }
   @Patch('favorites/reorder') favorites(@Req() req: Request,@Body() body: {ids: string[]}) { return this.features.reorderFavorites(this.features.user(req),body.ids); }

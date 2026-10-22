@@ -7,7 +7,7 @@ import {ProjectRegistry} from '../execution/project-registry';
 import {interpretation,interpretationPrompt,closingSpeech,oneLine,ConversationTurn,VoiceInput} from './interpretation';
 import {PluginRegistry} from '../execution/registries';
 import {CalendarService} from '../calendar/calendar.service';
-import {resolveVaultReference} from '../vault-credentials';
+import {resolveVaultReference} from '../credential-store';
 import {cardKindFromTitle} from '../card-rules';
 import {Configuration,Destination,Envelope,PLUGIN_ID,appointmentInstant,configuration,emptyConfiguration,response,listen,slot,VoiceResponse} from './model';
 export const ORBIT_VOICE_REPLY_BUDGET=Symbol('ORBIT_VOICE_REPLY_BUDGET');
