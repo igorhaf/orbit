@@ -168,6 +168,8 @@ export default function CalendarPage() {
   }
   async function openCalendarCard(item: CalendarItem) {
     if (!item.cardId) return;
+    const recordHref=item.metadata.recordHref;
+    if(typeof recordHref==='string'&&/^\/[a-z0-9/-]+\?workspace=[a-f0-9-]+&[a-z_]+=[a-f0-9-]+$/.test(recordHref)){router.push(recordHref);return;}
     const boardId = String(item.metadata.boardId || item.metadata.board_id || "");
     if (!boardId) {
       setError("Não foi possível localizar o quadro deste cartão.");
@@ -791,7 +793,7 @@ function EventDetail({
               <button
                 onClick={() =>
                   router.push(
-                    cardUrl(String(item.metadata.boardId || ""), item.cardId, item.cardUrlToken),
+                    (typeof item.metadata.recordHref==="string"&&/^\/[a-z0-9/-]+\?workspace=[a-f0-9-]+&[a-z_]+=[a-f0-9-]+$/.test(item.metadata.recordHref)?item.metadata.recordHref:cardUrl(String(item.metadata.boardId || ""), item.cardId, item.cardUrlToken)),
                   )
                 }
                 className="rounded bg-[#e9eaed] px-3 py-2 text-sm"

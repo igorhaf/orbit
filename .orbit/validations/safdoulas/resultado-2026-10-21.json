@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-21",
+  "unit": {
+    "safdoulas": 377,
+    "dev": 281,
+    "prod": 281
+  },
+  "full_builds": [
+    "safdoulas-v2",
+    "dev",
+    "prod"
+  ],
+  "isolated_integration": 2,
+  "http": 78,
+  "browser": "não executado por restrição do host",
+  "replay": "sem duplicação",
+  "private_credentials_report": "/home/meada/projetos/orbit/safdoulas-v2/data/reports/safdoulas-demonstracao-acessos.md"
+}

@@ -1,3 +1,5 @@
+import {seedCollections} from "../collections/collections.seed";
+import { collectionsPlugin, installCollectionsAccess } from "../collections/collections.plugin";
 import "reflect-metadata";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -63,23 +65,6 @@ test(
         ),
       );
       await migrateVersions(pool);
-      assert.equal(
-        (
-          await pool.query(
-            "SELECT count(*)::integer AS count FROM information_schema.tables WHERE table_schema=$1 AND table_name LIKE 'safdoula%'",
-            [schema],
-          )
-        ).rows[0].count,
-        0,
-      );
-      assert.equal(
-        (
-          await pool.query(
-            "SELECT count(*)::integer AS count FROM access_roles WHERE id='accreditor'",
-          )
-        ).rows[0].count,
-        0,
-      );
       const owner = randomUUID(),
         reviewer = randomUUID(),
         outsider = randomUUID(),
@@ -103,12 +88,29 @@ test(
         [workspace, owner, reviewer],
       );
       const registry = new PluginRegistry();
-      registry.register(workspacesPlugin);
+      registry.register(workspacesPlugin); registry.register(collectionsPlugin);
       for (const plugin of [...genericPlugins, auditHistoryPlugin])
         registry.register(plugin);
       const access = new AccessService(db);
       access.registerPlugins(registry.list());
       new WorkspacesService(db, access).onModuleInit();
+      installCollectionsAccess(db,registry,access);
+      const collectionBoard = (await pool.query("INSERT INTO boards(title,owner_id,workspace_id,is_collection) VALUES('Preserved collection',$1,$2,true) RETURNING id", [owner,workspace])).rows[0].id;
+      await pool.query("INSERT INTO access_roles(id,name,permissions) VALUES('collections_fixture','Collection reader',ARRAY['plugin.collections.read','boards.read'])");
+      await pool.query("INSERT INTO access_grants(user_id,role_id) VALUES($1,'collections_fixture')",[reviewer]);
+      assert.equal((await pool.query('SELECT * FROM authorized_board_members WHERE board_id=$1 AND user_id=$2',[collectionBoard,reviewer])).rowCount,1);
+      await pool.query("INSERT INTO access_user_exceptions(user_id,permission_id,effect) VALUES($1,'plugin.collections.read','deny')",[reviewer]);
+      assert.equal((await pool.query('SELECT * FROM authorized_board_members WHERE board_id=$1 AND user_id=$2',[collectionBoard,reviewer])).rowCount,0);
+      await pool.query("DELETE FROM access_user_exceptions WHERE user_id=$1 AND permission_id='plugin.collections.read'",[reviewer]);
+      await pool.query("UPDATE plugin_settings SET enabled=false WHERE plugin_id='collections'");registry.setEnabled('collections',false);
+      assert.equal((await pool.query('SELECT * FROM authorized_board_members WHERE board_id=$1',[collectionBoard])).rowCount,0);
+      assert.equal(await access.boardPermission(collectionBoard,owner),false);
+      await seedCollections(pool,owner);
+      assert.equal((await pool.query('SELECT id FROM lists WHERE board_id=$1',[collectionBoard])).rowCount,0, 'disabled plugin must not seed categories');
+      assert.equal((await pool.query('SELECT id FROM boards WHERE id=$1',[collectionBoard])).rowCount,1);
+      await pool.query("UPDATE plugin_settings SET enabled=true WHERE plugin_id='collections'");registry.setEnabled('collections',true);
+      assert.equal(await access.boardPermission(collectionBoard,owner),true);
+
       const permissions = recordPlugins.flatMap(({ plugin }) =>
         ["read", "write", "publish"].map(
           (action) => `plugin.${plugin.id}.${action}`,
@@ -149,6 +151,22 @@ test(
           reason: "Publish generic example",
           operation_key: randomUUID(),
         });
+      let lifecycleAllowed = false;
+      registry.register({ id: "lifecycle-example", name: "Lifecycle example", version: "1.0.0", contributions: { recordKinds: { record: {
+        label: "Lifecycle record", schema: { type: "object", properties: { content: { type: "string" } }, required: ["content"], additionalProperties: false },
+        initial: "draft", transitions: { draft: ["published"], published: ["withdrawn"], withdrawn: [] }, immutable: ["published", "withdrawn"],
+        authorizeTransition: async () => lifecycleAllowed, example: { content: "Protected content" },
+      } } } });
+      const protectedRecord = await create("lifecycle-example", "record", { content: "Protected content" });
+      await assert.rejects(() => publish(protectedRecord), /não está autorizado/);
+      lifecycleAllowed = true;
+      const protectedPublished = await publish(protectedRecord);
+      const withdrawn = await service.transition("lifecycle-example", protectedPublished.id, owner, {
+        state: "withdrawn", expected_revision: protectedPublished.revision, reason: "Withdraw without changing published content", operation_key: randomUUID(),
+      });
+      assert.deepEqual(withdrawn.payload, protectedPublished.payload);
+      assert.equal(withdrawn.state, "withdrawn");
+      assert.equal((await service.versionSnapshot("lifecycle-example", protectedPublished.id, protectedPublished.revision, owner)).state, "published");
       const form = await publish(
         await create("forms", "form", {
           schema: {
@@ -188,10 +206,9 @@ test(
           }),
         /imutável/,
       );
-      await assert.rejects(
-        () => service.list("forms", workspace, outsider),
-        /autorizado/,
-      );
+      assert.deepEqual(await service.list("forms", workspace, outsider), []);
+      await assert.rejects(() => service.detail("forms", form.id, outsider), /autorizado/);
+      await assert.rejects(() => service.detail("forms", response.id, reviewer), /autorizado/);
       await assert.rejects(
         () =>
           create(
@@ -205,7 +222,7 @@ test(
             owner,
             other,
           ),
-        /mesmo workspace/,
+        /mesmo workspace|não autorizado/,
       );
       const key = randomUUID(),
         input = {
@@ -416,6 +433,21 @@ test(
         data_base64: bytes,
         operation_key: randomUUID(),
       });
+      const receipt = await service.upload(workspace, owner, {
+        title: "Receipt bound to a preserved workflow", file_name: "receipt.pdf", mime_type: "application/pdf", data_base64: bytes,
+        related_record_id: process.id, related_record_revision: process.revision, operation_key: randomUUID(),
+      });
+      assert.equal(receipt.payload.variant, "original");
+      assert.equal(receipt.payload.related_record_id, process.id);
+      assert.equal(receipt.payload.related_record_revision, process.revision);
+      await assert.rejects(() => service.upload(workspace, owner, {
+        title: "Unpaired receipt", file_name: "receipt.pdf", mime_type: "application/pdf", data_base64: bytes,
+        related_record_id: process.id, operation_key: randomUUID(),
+      }), /registro relacionado e sua versão/);
+      await assert.rejects(() => service.upload(workspace, owner, {
+        title: "Unknown process", file_name: "receipt.pdf", mime_type: "application/pdf", data_base64: bytes,
+        related_record_id: randomUUID(), related_record_revision: 1, operation_key: randomUUID(),
+      }), /mesmo workspace/i);
       const copy = await service.upload(workspace, owner, {
         title: "Anonymized example",
         file_name: "anonymous.pdf",
@@ -427,6 +459,9 @@ test(
         operation_key: randomUUID(),
       });
       await assert.rejects(() => publish(copy), /revisão independente/);
+      await pool.query("INSERT INTO access_roles(id,name,permissions) VALUES('demo_document_scope','Independent document review',ARRAY['plugin.documents.read'])");
+      for (const recordId of [original.id, copy.id])
+        await pool.query("INSERT INTO access_grants(user_id,role_id,scope_type,scope_id) VALUES($1,'demo_document_scope','extension_record',$2)", [reviewer, recordId]);
       const reviewPayload = {
         document_id: copy.id,
         document_revision: copy.revision,

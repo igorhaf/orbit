@@ -9,7 +9,7 @@ import {Db} from './db';
 import {SecretVault} from './secrets';
 import {SINGLE_EMAIL} from './features';
 import {encryptVaultPayload} from './vault-crypto';
-import {parseVaultReference,vaultReference,resolveVaultReference} from './vault-credentials';
+import {parseVaultReference,vaultReference,resolveVaultReference} from './credential-store';
 
 type Field={key:string;label:string;configured:boolean;vaultReference?:string};
 type Group={id:string;label:string;fields:Field[]};

@@ -1,4 +1,5 @@
 "use client";
+import {useCreationAvailability} from '@/plugins/project-boards/use-creation-availability';
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -38,12 +39,14 @@ type Panel =
   "about" | "activity" | "background" | "copy" | "trello" | "ai" | null;
 export function BoardTools({
   board,
+  trelloEnabled,
   onChanged,
   onClosed,
   onDeleted,
   filters,
 }: {
   board: Board;
+  trelloEnabled: boolean;
   onChanged: () => Promise<void>;
   onClosed: () => void;
   onDeleted: () => void;
@@ -54,6 +57,7 @@ export function BoardTools({
   };
 }) {
   const router = useRouter();
+  const {canCreateBoard}=useCreationAvailability();
   const { confirm, confirmationModal } = useConfirmModal();
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -256,7 +260,7 @@ export function BoardTools({
               onClick={() => open("ai")}
             />
             )}
-            {!board.closed_at && (
+            {!board.closed_at && trelloEnabled && (
               <MenuButton
                 icon={<RefreshCw size={16} />}
                 label="Sincronização Trello"
@@ -270,11 +274,11 @@ export function BoardTools({
                 onClick={() => open("background")}
               />
             )}
-            <MenuButton
+            {canCreateBoard&&<MenuButton
               icon={<Copy size={16} />}
               label="Copiar quadro"
               onClick={() => open("copy")}
-            />
+            />}
             <MenuButton
               icon={<Link2 size={16} />}
               label="Copiar link"
@@ -673,7 +677,7 @@ export function BoardTools({
                 )}
               </div>
             )}
-            {panel === "copy" && (
+            {panel === "copy" && canCreateBoard && (
               <form
                 onSubmit={async (event) => {
                   event.preventDefault();

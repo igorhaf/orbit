@@ -38,6 +38,7 @@ export function BoardList({
   list,
   lists,
   boards,
+  trelloEnabled,
   onOpen,
   onAdd,
   onRename,
@@ -52,6 +53,7 @@ export function BoardList({
   list: List;
   lists: List[];
   boards: Board[];
+  trelloEnabled: boolean;
   onOpen: (card: Card) => void;
   onAdd: (listId: string, text: string, position: number, cardTypeId?: string) => Promise<Card>;
   onRename: (listId: string, title: string) => Promise<void>;
@@ -554,7 +556,7 @@ export function BoardList({
               {menuButton("Ações dos cartões", () => setSection("cards"))}
               {menuButton("Ordenar cartões", () => setSection("sort"))}
               {menuButton("Cartões arquivados", () => void showArchived())}
-              {menuButton("Integração Trello", () => void showTrello())}
+              {trelloEnabled && menuButton("Integração Trello", () => void showTrello())}
               <div className="mt-2 border-t border-[#dfe1e6] pt-2">
                 <p className="px-2 text-xs font-semibold">Cor da lista</p>
                 <div className="flex flex-wrap gap-1 p-2">

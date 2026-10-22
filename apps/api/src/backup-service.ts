@@ -21,6 +21,9 @@ const safeAttachment=(copy:AttachmentCopy)=>({...safe({...copy,provider:'google_
 @Injectable()
 export class BackupService implements OnModuleInit,OnModuleDestroy {
   constructor(@Inject(Db) private db:Db,@Inject(BackupDestinationRegistry) private destinations:BackupDestinationRegistry,@Inject(GoogleCredentials) private google:GoogleCredentials){}
+  private vaultAvailable=()=>true;
+  setVaultAvailability(provider:()=>boolean){this.vaultAvailable=provider}
+  private requireVault(){if(!this.vaultAvailable())throw new HttpException('O Cofre não está disponível nesta instância.',409)}
   private configTimer?:ReturnType<typeof setInterval>;
   private configJob?:Promise<{archive:string|null;deliveries:ReturnType<typeof safeConfig>[]}>;
   private attachmentJobs=new Map<string,Promise<ReturnType<typeof safeAttachment>|null>>();
@@ -57,7 +60,7 @@ export class BackupService implements OnModuleInit,OnModuleDestroy {
   }
   async options(ownerId:string){const disabled=(await this.db.one<{enabled:boolean}>('SELECT enabled FROM plugin_settings WHERE plugin_id=$1',['google_drive']))?.enabled===false;return {destinations:[{id:'local',name:'Somente local'},...disabled?[]:this.destinations.catalog()],googleConfigured:this.google.configured(),googleConnections:disabled?[]:await this.google.available(ownerId,[GOOGLE_DRIVE_FILE_SCOPE]),automatic:disabled?{connectionId:null,enabled:false,needsSelection:false}:await this.automaticConnection(ownerId)}}
   async list(ownerId:string){const backups=await listDatabaseBackups();const copies=await this.db.query<Copy>('SELECT * FROM backup_cloud_copies WHERE owner_id=$1 ORDER BY created_at DESC',[ownerId]);const local=new Set(backups.map(backup=>backup.archive));const remote=[...new Set(copies.filter(copy=>copy.status==='success'&&!local.has(copy.archive)).map(copy=>copy.archive))].map(archive=>({archive,remoteOnly:true,created_at:copies.find(copy=>copy.archive===archive)?.created_at}));return [...backups,...remote].map(backup=>({...backup,cloudCopies:copies.filter(copy=>copy.archive===backup.archive).map(safe)}))}
-  async listVault(ownerId:string){
+  async listVault(ownerId:string){this.requireVault();
     const backups=await listVaultBackups(ownerId);
     const copies=await this.db.query<VaultCopy>('SELECT * FROM vault_backup_cloud_copies WHERE owner_id=$1 ORDER BY created_at DESC',[ownerId]);
     const local=new Set(backups.map(backup=>backup.archive));
@@ -143,7 +146,7 @@ export class BackupService implements OnModuleInit,OnModuleDestroy {
     const result=await this.processGenerated(manifest,ownerId,destination==='google_drive'?String(input.connectionId):undefined);
     return {...manifest,...result[0]};
   }
-  async createVault(ownerId:string){
+  async createVault(ownerId:string){this.requireVault();
     const manifest=await createVaultBackup(this.db,ownerId);
     const automatic=await this.automaticConnection(ownerId);
     if(automatic.enabled&&automatic.connectionId)await this.rememberAutomatic(ownerId,automatic.connectionId);
@@ -156,7 +159,7 @@ export class BackupService implements OnModuleInit,OnModuleDestroy {
     const results=[];
     for(const owner of owners){
       let vault:VaultBackupManifest|null=null,vaultError:string|null=null;
-      try{vault=await createVaultBackup(this.db,owner.id)}catch(error){vaultError=(error as Error).message}
+      try{if(this.vaultAvailable())vault=await createVaultBackup(this.db,owner.id)}catch(error){vaultError=(error as Error).message}
       const automatic=await this.automaticConnection(owner.id);
       const connectionId=forceConnectionId||(automatic.enabled?automatic.connectionId:null);
       let cloud=null,vaultCloud=null,configCloud=null;
@@ -182,7 +185,7 @@ export class BackupService implements OnModuleInit,OnModuleDestroy {
     const manifest=await verifyDatabaseBackup(backupPath(archive));
     return this.uploadVerified(ownerId,manifest,String(connectionId));
   }
-  async uploadExistingVault(ownerId:string,archive:string,connectionId:unknown){
+  async uploadExistingVault(ownerId:string,archive:string,connectionId:unknown){this.requireVault();
     await this.validateConnection(ownerId,connectionId);
     const manifest=await verifyVaultBackup(vaultBackupPath(archive));
     if(manifest.owner_id!==ownerId)throw new HttpException('Este backup do cofre pertence a outra conta.',403);
@@ -199,7 +202,7 @@ export class BackupService implements OnModuleInit,OnModuleDestroy {
     if(manifest.owner_id!==ownerId)throw new HttpException('Este anexo pertence a outra conta.',403);
     return this.uploadAttachmentVerified(ownerId,manifest,String(connectionId));
   }
-  async restoreVault(ownerId:string,archive:string){
+  async restoreVault(ownerId:string,archive:string){this.requireVault();
     const path=vaultBackupPath(archive);
     const manifest=await verifyVaultBackup(path);
     if(manifest.owner_id!==ownerId)throw new HttpException('Este backup do cofre pertence a outra conta.',403);
@@ -223,7 +226,7 @@ export class BackupService implements OnModuleInit,OnModuleDestroy {
       return verified;
     }finally{await rm(work,{recursive:true,force:true})}
   }
-  async downloadVault(ownerId:string,copyId:string){
+  async downloadVault(ownerId:string,copyId:string){this.requireVault();
     if(!/^[0-9a-f-]{36}$/i.test(copyId))throw new HttpException('Cópia inválida.',400);
     const copy=await this.db.one<VaultCopy>("SELECT * FROM vault_backup_cloud_copies WHERE id=$1 AND owner_id=$2 AND status='success'",[copyId,ownerId]);
     if(!copy||!copy.archive_file_id||!copy.manifest_file_id||!copy.folder_id)throw new HttpException('Cópia do cofre não encontrada.',404);
@@ -294,7 +297,7 @@ export class BackupService implements OnModuleInit,OnModuleDestroy {
       return safe(failed!);
     }
   }
-  private async uploadVaultVerified(ownerId:string,manifest:VaultBackupManifest,connectionId:string){
+  private async uploadVaultVerified(ownerId:string,manifest:VaultBackupManifest,connectionId:string){this.requireVault();
     const existing=await this.db.one<VaultCopy>('SELECT * FROM vault_backup_cloud_copies WHERE archive=$1 AND owner_id=$2 AND connection_id=$3',[manifest.archive,ownerId,connectionId]);
     if(existing?.status==='success')return safeVault(existing);
     const row=await this.db.one<VaultCopy>("INSERT INTO vault_backup_cloud_copies(archive,owner_id,connection_id,status) VALUES($1,$2,$3,'uploading') ON CONFLICT(archive,owner_id,connection_id) DO UPDATE SET status='uploading',error=NULL,updated_at=now() WHERE vault_backup_cloud_copies.status<>'uploading' OR vault_backup_cloud_copies.updated_at<now()-interval '1 hour' RETURNING *",[manifest.archive,ownerId,connectionId]);

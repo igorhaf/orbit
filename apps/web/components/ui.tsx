@@ -1,4 +1,10 @@
 'use client';
+import {RecordBoardContext} from '@/plugins/record-cards/RecordBoardContext';
+import {RecordBoardModels,useRecordBoardScope} from '@/plugins/record-cards/RecordBoardModels';
+import {PluginNavigation} from './plugin-navigation';
+import {useCreationAvailability} from '@/plugins/project-boards/use-creation-availability';
+import { usePluginAvailability } from '@/lib/plugin-availability';
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
@@ -12,7 +18,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDroppable,
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  api, send, AppNotification, Board, Card, List, SearchResults, ToolDiagnostics, User,
+  api, send, AppNotification, Board, Card, SearchResults, ToolDiagnostics, User,
   boardColors, cardUrl, clearSession, getUser, initials, setUser,
 } from '@/lib/api';
 import { historyState, redo, remember, undo } from '@/lib/history';
@@ -20,6 +26,8 @@ import { CodexLimitsBar } from './codex-limits';
 import { CardDialog } from './card-dialog';
 import { CardActivityIndicator } from './card-execution';
 import { io } from 'socket.io-client';
+
+const CollectionPanel=dynamic(()=>import('@/plugins/collections/CollectionPanel').then(module=>module.CollectionPanel));
 
 export function Avatar({ name, url, size = 'md' }: { name: string; url?: string | null; size?: 'sm'|'md'|'lg' }) {
   const dimensions = size === 'sm' ? 'h-7 w-7 text-[10px]' : size === 'lg' ? 'h-16 w-16 text-xl' : 'h-8 w-8 text-xs';
@@ -113,8 +121,13 @@ function NotificationPanel({ items, onRead, onReadAll, onClearAll, onChoose }: {
 
 export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: User | null; boards?: Board[]; onCreate?: () => void; onSearch?: (s:string)=>void }) {
   const [limitsVisible,setLimitsVisible]=useState(false);
+  const [aiAvailable,setAiAvailable]=useState(false);
+  const {enabled:pluginEnabled,processBoards:pluginBoards,navigation} = usePluginAvailability();
+  const collectionsAvailable=pluginEnabled('collections');
+  const {canCreateBoard,canCreateProject,boardCreators}=useCreationAvailability();
   const router = useRouter();
   const [user, updateUser] = useState<User | null>(initialUser);
+  const userId=user?.id;
   const [previousUser, setPreviousUser] = useState(initialUser);
   if (initialUser !== previousUser) {
     setPreviousUser(initialUser);
@@ -137,7 +150,6 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const [pinned, setPinned] = useState(true);
   const [history, setHistory] = useState(historyState());
   const [message, setMessage] = useState('');
-  const [pluginNavigation, setPluginNavigation] = useState<Array<{id:string;label:string;href:string}>>([]);
   const [toolStatus,setToolStatus]=useState<{userId:string;status:ToolDiagnostics['status']}|null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const initializedNotifications = useRef(false);
@@ -164,6 +176,15 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     if (toastDismissTimer.current) clearTimeout(toastDismissTimer.current);
   }, []);
 
+  useEffect(()=>{
+    if(!userId)return;
+    let active=true;
+    const refresh=()=>void api<{plugins:Array<{id:string;enabled:boolean}>}>('/plugins').then(({plugins})=>{if(active)setAiAvailable(plugins.some(plugin=>plugin.id==='ai'&&plugin.enabled))}).catch(()=>{if(active)setAiAvailable(false)});
+    refresh();window.addEventListener('plugins:changed',refresh);
+    return()=>{active=false;window.removeEventListener('plugins:changed',refresh)};
+  },[userId]);
+
+
   useEffect(() => {
     const accountChanged = () => updateUser(getUser());
     const historyChanged = () => setHistory(historyState());
@@ -178,38 +199,16 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       window.removeEventListener('sidebar:changed', pinChanged);
     };
   }, []);
-  useEffect(() => {
-    if (!user) return;
-    let active = true;
-    const loadPluginNavigation = () => api<{plugins:Array<{enabled:boolean;contributions?:{navigation?:Array<{id?:unknown;label?:unknown;href?:unknown}>}}>}>('/plugins')
-      .then(({plugins}) => {
-        if (!active) return;
-        const reserved = new Set(['/','/boards','/calendar','/plugins']);
-        const seen = new Set<string>();
-        setPluginNavigation(plugins.filter(plugin=>plugin.enabled).flatMap(plugin => plugin.contributions?.navigation || [])
-          .filter((item): item is {id:string;label:string;href:string} =>
-            typeof item.id === 'string' && typeof item.label === 'string' &&
-            typeof item.href === 'string' && /^\/[a-z0-9/-]+$/.test(item.href))
-          .filter(item => {
-            if (reserved.has(item.href) || seen.has(item.href)) return false;
-            seen.add(item.href);
-            return true;
-          }));
-      })
-      .catch(() => { if (active) setPluginNavigation([]); });
-    void loadPluginNavigation();
-    window.addEventListener('plugins:changed', loadPluginNavigation);
-    return () => { active = false; window.removeEventListener('plugins:changed', loadPluginNavigation); };
-  }, [user]);
+
   useEffect(()=>{
-    if(!user)return;
+    if(!user||!aiAvailable)return;
     let active=true;
     const refresh=()=>void api<ToolDiagnostics>('/tools/diagnostics').then(result=>{if(active)setToolStatus({userId:user.id,status:result.status})}).catch(()=>undefined);
     refresh();
     const timer=window.setInterval(refresh,15_000);
     return()=>{active=false;window.clearInterval(timer)};
-  },[user]);
-  const currentToolStatus=toolStatus&&toolStatus.userId===user?.id?toolStatus.status:null;
+  },[user,aiAvailable]);
+  const currentToolStatus=aiAvailable&&toolStatus&&toolStatus.userId===user?.id?toolStatus.status:null;
   useEffect(() => {
     if (!user) return;
     let active = true;
@@ -301,22 +300,22 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   function openBoard(id: string) { setPanel(null); if(window.location.pathname!==`/board/${id}`)router.push(`/board/${id}`); }
   function openList(boardId:string,listId:string) { setPanel(null); router.push(`/board/${boardId}?list=${encodeURIComponent(listId)}`); }
   const unread = notifications.filter(item => !item.read_at).length;
+  const canUse=(permission:string)=>Boolean(user?.is_root||user?.permissions?.includes(permission));
   const mobileLinks = [
     {label:'Home',href:'/',icon:Home},
     {label:'Quadros',href:'/boards',icon:LayoutDashboard},
-    {label:'Calendário',href:'/calendar',icon:CalendarDays},
-    {label:'Planner',href:'/planner',icon:CalendarDays},
+    ...(canUse('calendar.read')?[{label:'Calendário',href:'/calendar',icon:CalendarDays}]:[]),
+    ...(pluginEnabled('planner')?[{label:'Planner',href:'/planner',icon:CalendarDays}]:[]),
     {label:'Inbox',href:'/inbox',icon:Inbox},
-    {label:'Coleções',href:'/collections',icon:FolderOpen},
-    {label:'Cadernos',href:'/notebooks',icon:NotebookPen},
-    {label:'Cofre',href:'/vault',icon:Vault},
-    {label:'Backups',href:'/backups',icon:DatabaseBackup},
-    {label:'Ferramentas',href:'/tools',icon:Wrench},
-    {label:'Plugins',href:'/plugins',icon:FolderKanban},
+    ...(collectionsAvailable?[{label:'Coleções',href:'/collections',icon:FolderOpen}]:[]),
+    ...(canUse('notebooks.read')?[{label:'Cadernos',href:'/notebooks',icon:NotebookPen}]:[]),
+    ...(pluginEnabled('vault','vault.read')?[{label:'Cofre',href:'/vault',icon:Vault}]:[]),
+    ...(canUse('backups.read')?[{label:'Backups',href:'/backups',icon:DatabaseBackup}]:[]),
+    ...(aiAvailable?[{label:'Ferramentas',href:'/tools',icon:Wrench}]:[]),
+    ...(canUse('plugins.read')?[{label:'Plugins',href:'/plugins',icon:FolderKanban}]:[]),
     ...(user?.is_root||user?.permissions?.includes('access.manage')?[{label:'Acessos · RBAC',href:'/access',icon:Settings}]:[]),
     {label:'Perfil e configurações',href:'/profile',icon:Settings},
     {label:'Lixeira',href:'/trash',icon:Archive},
-    ...pluginNavigation.map(item=>({label:item.label,href:item.href,icon:FolderKanban})),
   ];
   const boardMatches = boards.filter(board => !board.is_inbox && !board.is_collection && board.title.toLowerCase().includes(query.toLowerCase())).slice(0,8);
   useEffect(() => {
@@ -368,17 +367,17 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         {panel === 'boards' && <div className="absolute left-0 top-full z-40 w-72 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
           <div className="flex items-center justify-between px-2 py-2"><strong className="text-sm">Alternar quadro</strong><button onClick={togglePin} className="rounded p-1 text-[#626f86] hover:bg-[#f1f2f4]" title={pinned ? 'Desafixar painel lateral' : 'Fixar painel lateral'}>{pinned ? <PinOff size={16}/> : <Pin size={16}/>}</button></div>
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar quadro" className="mb-2 w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/>
-          <div className="scrollbar-thin max-h-64 overflow-y-auto">{boardMatches.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-5 w-7 shrink-0 rounded" style={{background:boardColors[board.background]}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}</div>
+          <div className="scrollbar-thin max-h-64 overflow-y-auto">{pluginBoards.filter(board=>board.name.toLowerCase().includes(query.toLowerCase())).map(board=><button key={board.id} onClick={()=>{setPanel(null);router.push(board.href)}} className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={18} className="shrink-0"/><span className="truncate">{board.name}</span></button>)}{boardMatches.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-5 w-7 shrink-0 rounded" style={{background:boardColors[board.background]}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}</div>
           <button onClick={() => { setPanel(null); router.push('/boards'); }} className="mt-2 w-full border-t border-[#dfe1e6] px-2 py-2 text-left text-sm font-semibold text-[#0c66e4]">Ver todos os quadros</button>
         </div>}
       </div>
-      <button onClick={() => router.push('/calendar')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Calendário</button>
-      <button onClick={() => router.push('/tools')} title={currentToolStatus==='error'?'O último prompt falhou por causa de uma ferramenta.':currentToolStatus==='running'?'Aguardando o fim do prompt para verificar as ferramentas.':'Ferramentas sem falha detectada no último prompt.'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Wrench size={15}/>Ferramentas<span aria-hidden="true" className={`h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>
-      {pluginNavigation.map(item => <button key={item.id} onClick={() => router.push(item.href)} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{item.label}</button>)}
-      <button onClick={() => router.push('/notebooks')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={15} className="mr-1 inline"/>Cadernos</button>
-      <button onClick={() => router.push('/vault')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={15} className="mr-1 inline"/>Cofre</button>
+      {canUse('calendar.read')&&<button onClick={() => router.push('/calendar')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Calendário</button>}
+      {aiAvailable&&<button onClick={() => router.push('/tools')} title={currentToolStatus==='error'?'O último prompt falhou por causa de uma ferramenta.':currentToolStatus==='running'?'Aguardando o fim do prompt para verificar as ferramentas.':'Ferramentas sem falha detectada no último prompt.'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Wrench size={15}/>Ferramentas<span aria-hidden="true" className={`h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>}
+      <PluginNavigation menus={navigation.menus} standalone={navigation.standalone}/>
+      {canUse('notebooks.read')&&<button onClick={() => router.push('/notebooks')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={15} className="mr-1 inline"/>Cadernos</button>}
+      {pluginEnabled('vault','vault.read')&&<button onClick={() => router.push('/vault')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={15} className="mr-1 inline"/>Cofre</button>}
       {(user?.is_root||user?.permissions?.includes('access.manage'))&&<button onClick={()=>router.push('/access')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Acessos {user?.is_root&&<span className="text-xs text-[#0c66e4]">ROOT</span>}</button>}
-      <button onClick={() => router.push('/plugins')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Plugins</button>
+      {canUse('plugins.read')&&<button onClick={() => router.push('/plugins')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Plugins</button>}
     </nav>
 <button
   onClick={() => router.push('/boards')}
@@ -388,16 +387,17 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   <LayoutDashboard size={19}/>
 </button>
 <button onClick={() => router.push('/')} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Home"><Home size={19}/></button>
-<button onClick={() => router.push('/tools')} className="relative min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Ferramentas" aria-label="Ferramentas"><Wrench size={19}/><span aria-hidden="true" className={`absolute right-1 top-1 h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>
-<div className="relative lg:hidden"><button onClick={() => setPanel(panel==='mobile'?null:'mobile')} aria-label="Abrir navegação" aria-expanded={panel==='mobile'} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4]"><Menu size={19}/></button>{panel==='mobile'&&<nav aria-label="Navegação principal" className="fixed left-2 right-2 top-[calc(3.5rem+env(safe-area-inset-top))] z-[60] grid max-h-[min(70dvh,560px)] w-auto translate-x-0 grid-cols-2 gap-1 overflow-y-auto rounded-xl border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:grid-cols-3">{mobileLinks.map(item=><button key={`${item.href}:${item.label}`} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-12 min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-[#f1f2f4]"><item.icon size={17} className="shrink-0 text-[#6554c0]"/><span className="min-w-0 break-words">{item.label}</span></button>)}</nav>}</div>
-    <div ref={createMenuRef} className="relative ml-1">
+{aiAvailable&&<button onClick={() => router.push('/tools')} className="relative min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Ferramentas" aria-label="Ferramentas"><Wrench size={19}/><span aria-hidden="true" className={`absolute right-1 top-1 h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>}
+<div className="relative lg:hidden"><button onClick={() => setPanel(panel==='mobile'?null:'mobile')} aria-label="Abrir navegação" aria-expanded={panel==='mobile'} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4]"><Menu size={19}/></button>{panel==='mobile'&&<nav aria-label="Navegação principal" className="fixed left-2 right-2 top-[calc(3.5rem+env(safe-area-inset-top))] z-[60] grid max-h-[min(70dvh,560px)] w-auto translate-x-0 grid-cols-2 gap-1 overflow-y-auto rounded-xl border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:grid-cols-3">{mobileLinks.map(item=><button key={`${item.href}:${item.label}`} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-12 min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-[#f1f2f4]"><item.icon size={17} className="shrink-0 text-[#6554c0]"/><span className="min-w-0 break-words">{item.label}</span></button>)}<PluginNavigation menus={navigation.menus} standalone={navigation.standalone} mobile onNavigate={()=>setPanel(null)}/></nav>}</div>
+    {(canCreateBoard||canCreateProject||boardCreators.length>0)&&<div ref={createMenuRef} className="relative ml-1">
       <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
       {panel === 'create' && <div className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
-        <button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>
-        <button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>
+        {boardCreators.map(item=><button key={item.id} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-11 w-full items-center gap-2 rounded px-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/>{item.name}</button>)}
+        {canCreateBoard&&<button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>}
+        {canCreateProject&&<button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>}
       </div>}
-    </div>
-    <button onClick={()=>setLimitsVisible(value=>!value)} aria-label={limitsVisible?'Recolher barra da fila':'Mostrar barra da fila'} aria-expanded={limitsVisible} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible?<Eye size={17}/>:<EyeClosed size={17}/>}{user?.is_root?'Limites':'Fila'}</button>
+    </div>}
+    {aiAvailable&&<button onClick={()=>setLimitsVisible(value=>!value)} aria-label={limitsVisible?'Recolher barra da fila':'Mostrar barra da fila'} aria-expanded={limitsVisible} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible?<Eye size={17}/>:<EyeClosed size={17}/>}{user?.is_root?'Limites':'Fila'}</button>}
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
@@ -432,59 +432,36 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
     </div>
-  </header>{<CodexLimitsBar visible={limitsVisible} isRoot={user?.is_root===true}/>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
+  </header>{aiAvailable&&<CodexLimitsBar visible={limitsVisible} isRoot={user?.is_root===true}/>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
 }
 
-function InboxPanel({boards}:{boards:Board[]}) {
-  const [inbox,setInbox]=useState<Board|null>(null);
-  const [selected,setSelected]=useState<Card|null>(null);
-  const [title,setTitle]=useState('');
-  const [error,setError]=useState('');
-  const [transfer,setTransfer]=useState<Card|null>(null);
+type AssignedInboxCard={id:string;title:string;board_id:string;board_title:string};
+function InboxPanel({boards,dropId='inbox:panel'}:{boards:Board[];dropId?:string}) {
+  const [inbox,setInbox]=useState<Board|null>(null),[assigned,setAssigned]=useState<AssignedInboxCard[]>([]);
+  const [selected,setSelected]=useState<{card:Card;board:Board}|null>(null);
+  const [title,setTitle]=useState(''),[error,setError]=useState(''),[transfer,setTransfer]=useState<Card|null>(null);
   const inboxId=boards.find(board=>board.is_inbox)?.id;
-  const {setNodeRef: setInboxDropRef,isOver: isInboxOver}=useDroppable({id:'inbox:panel',data:{type:'inbox'},disabled:!inboxId});
-  const load=useCallback(async()=>{if(!inboxId)return;try{const full=await api<Board>(`/boards/${inboxId}`);setInbox(full);setSelected(current=>current?full.lists?.flatMap(list=>list.cards).find(card=>card.id===current.id)||current:null);setError('')}catch(err){setError((err as Error).message)}},[inboxId]);
+  const {setNodeRef:setInboxDropRef,isOver:isInboxOver}=useDroppable({id:dropId,data:{type:'inbox'}});
+  const load=useCallback(async()=>{try{const [full,assigned]=await Promise.all([inboxId?api<Board>(`/boards/${inboxId}`):Promise.resolve(null),api<AssignedInboxCard[]>('/inbox/cards')]);setInbox(full);setAssigned(assigned);setError('')}catch(err){setError((err as Error).message)}},[inboxId]);
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
-  useEffect(()=>{if(!inbox?.id)return;const boardId=inbox.id;const socket=io({path:'/socket.io',auth:{token:localStorage.getItem('orbit_token')||''}});socket.on('connect',()=>socket.emit('board:join',boardId));const refresh=(event?:{boardId?:string})=>{if(!event?.boardId||event.boardId===boardId)void load()};socket.on('board:changed',refresh);socket.on('comment:changed',refresh);socket.on('prompt:progress',refresh);socket.on('notification:changed',()=>void load());return()=>{socket.emit('board:leave',boardId);socket.disconnect()}},[inbox?.id,load]);
-  useEffect(()=>{const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card'))event.preventDefault()});document.addEventListener('drop',drop);return()=>document.removeEventListener('drop',drop)},[load]);
-  const cards=inbox?.lists?.flatMap(list=>list.cards)||[];
+  useEffect(()=>{const socket=io({path:'/socket.io',auth:{token:localStorage.getItem('orbit_token')||''}});socket.on('connect',()=>{if(inboxId)socket.emit('board:join',inboxId)});const refresh=()=>void load();socket.on('board:changed',refresh);socket.on('comment:changed',refresh);socket.on('prompt:progress',refresh);socket.on('notification:changed',refresh);socket.on('plugins:changed',refresh);socket.on('connect',refresh);return()=>{socket.disconnect()}},[inboxId,load]);
+  useEffect(()=>{
+    const over=(event:DragEvent)=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card')&&event.dataTransfer?.types.includes('application/x-orbit-inbox-owned'))event.preventDefault()};
+    const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card'),owned=event.dataTransfer?.getData('application/x-orbit-inbox-owned');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||owned!=='1'||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};
+    document.addEventListener('dragover',over);document.addEventListener('drop',drop);return()=>{document.removeEventListener('dragover',over);document.removeEventListener('drop',drop)};
+  },[load]);
+  async function open(entry:AssignedInboxCard){try{const board=await api<Board>(`/boards/${entry.board_id}`);const card=board.lists?.flatMap(list=>list.cards).find(card=>card.id===entry.id);if(!card)throw new Error('Cartão não encontrado no quadro de origem.');setSelected({board,card});setError('')}catch(error){setError((error as Error).message)}}
+  async function refreshSelected(){await load();if(selected)await open({id:selected.card.id,title:selected.card.title,board_id:selected.board.id,board_title:selected.board.title})}
+  const ownCards=inbox?.lists?.flatMap(list=>list.cards)||[],ownedIds=new Set(ownCards.map(card=>card.id));
+  const entries=[...ownCards.map(card=>({id:card.id,title:card.title,board_id:inbox!.id,board_title:'Inbox',card})),...assigned.filter(card=>!ownedIds.has(card.id)).map(card=>({...card,card:undefined}))];
   const collection=boards.find(board=>board.is_collection);
-  return <><section ref={setInboxDropRef} data-orbit-inbox-drop className={`rounded-lg pt-1 ${isInboxOver?'bg-[#e9f2ff] ring-2 ring-[#0c66e4]':''}`}><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{cards.map(card=><div key={card.id} className="flex items-center gap-1 rounded bg-[#f1f2f4] px-2 py-1 shadow-sm"><button draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',card.id);event.dataTransfer.setData('application/x-orbit-inbox-title',card.title);event.dataTransfer.effectAllowed='move'}} onClick={()=>setSelected(card)} className="min-w-0 flex-1 py-1 text-left text-sm hover:bg-[#e9eaed]"><span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{card.title}</span><CardActivityIndicator card={card}/></span></button>{collection&&<button title="Enviar para Coleções" onClick={()=>setTransfer(card)} className="rounded px-1 text-xs text-[#6554c0] hover:bg-[#e2dffc]">↗</button>}</div>)}{cards.length===0&&<p className="py-3 text-xs text-[#626f86]">Sem itens</p>}</div>{error&&<p className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Arraste cartões para o Planner ou Calendário para agendá-los.</p></section>{selected&&inbox&&<CardDialog card={selected} board={inbox} onClose={()=>setSelected(null)} onChanged={async()=>{await load();const updated=await api<Board>(`/boards/${inbox.id}`);setInbox(updated);setSelected(updated.lists?.flatMap(list=>list.cards).find(card=>card.id===selected.id)||null)}} onDeleted={async()=>{setSelected(null);await load()}}/>}{transfer&&collection&&<TransferCardModal card={transfer} target={collection} label="Enviar para Coleções" onClose={()=>setTransfer(null)} onDone={async()=>{setTransfer(null);await load();window.dispatchEvent(new Event('data:changed'))}}/>}</>
+  return <><section ref={setInboxDropRef} data-orbit-inbox-drop className={`rounded-lg pt-1 ${isInboxOver?'bg-[#e9f2ff] ring-2 ring-[#0c66e4]':''}`}><p className="px-2 text-xs text-[#626f86]">Solte um cartão aqui para atribuir a você e acompanhá-lo no Inbox.</p><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input disabled={!inbox?.lists?.[0]} value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm disabled:opacity-50"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{entries.map(entry=><div key={entry.id} className="flex items-center gap-1 rounded bg-[#f1f2f4] px-2 py-1 shadow-sm"><button draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',entry.id);event.dataTransfer.setData('application/x-orbit-inbox-title',entry.title);if(entry.card)event.dataTransfer.setData('application/x-orbit-inbox-owned','1');event.dataTransfer.effectAllowed=entry.card?'move':'copyMove'}} onClick={()=>void open(entry)} className="min-h-11 min-w-0 flex-1 py-1 text-left text-sm hover:bg-[#e9eaed]"><span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{entry.title}</span>{entry.card&&<CardActivityIndicator card={entry.card}/>}</span>{!entry.card&&<span className="block truncate text-[11px] text-[#626f86]">{entry.board_title} · atribuído a você</span>}</button>{collection&&entry.card&&<button title="Enviar para Coleções" onClick={()=>setTransfer(entry.card!)} className="rounded px-1 text-xs text-[#6554c0] hover:bg-[#e2dffc]">↗</button>}</div>)}{!entries.length&&<p className="py-3 text-xs text-[#626f86]">Sem itens</p>}</div>{error&&<p role="alert" className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Os cartões atribuídos permanecem no seu quadro de origem.</p></section>{selected&&<CardDialog key={selected.card.id} card={selected.card} board={selected.board} recordContent={selected.board.record_scope&&selected.card.id===selected.board.record_scope.primary_card_id?<RecordBoardContext scope={selected.board.record_scope} onChanged={refreshSelected}/>:undefined} onClose={()=>setSelected(null)} onChanged={refreshSelected} onDeleted={async()=>{setSelected(null);await load()}}/>}{transfer&&collection&&<TransferCardModal card={transfer} target={collection} label="Enviar para Coleções" onClose={()=>setTransfer(null)} onDone={async()=>{setTransfer(null);await load();window.dispatchEvent(new Event('data:changed'))}}/>}</>;
 }
 
-function TransferCardModal({card,target,label,onClose,onDone}:{card:Card;target:Board;label:string;onClose:()=>void;onDone:()=>Promise<void>}) {
+export function TransferCardModal({card,target,label,onClose,onDone}:{card:Card;target:Board;label:string;onClose:()=>void;onDone:()=>Promise<void>}) {
   const [listId,setListId]=useState(target.lists?.[0]?.id||''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
   async function submit(){if(!listId)return;setBusy(true);try{await send('/cards/move','POST',{card_ids:[card.id],list_id:listId});await onDone()}catch(err){setError((err as Error).message)}finally{setBusy(false)}}
   return <Modal onClose={onClose}><div className="p-5"><h2 className="text-lg font-bold">{label}</h2><p className="mt-1 text-sm text-[#626f86]">Escolha a categoria de destino.</p><select value={listId} onChange={event=>setListId(event.target.value)} className="mt-4 w-full rounded border p-2 text-sm">{target.lists?.map(list=><option key={list.id} value={list.id}>{list.title}</option>)}</select>{error&&<p className="mt-2 text-xs text-[#ae2a19]">{error}</p>}<button disabled={busy||!listId} onClick={()=>void submit()} className="mt-4 rounded bg-[#6554c0] px-4 py-2 text-sm font-semibold text-white">{busy?'Enviando…':'Enviar cartão'}</button></div></Modal>;
-}
-
-function CollectionDropTarget({listId,children}:{listId:string;children:React.ReactNode}) {
-  const {setNodeRef,isOver}=useDroppable({id:`collection:${listId}`,data:{type:'collection',listId}});
-  return <div ref={setNodeRef} data-orbit-collection-drop={listId} className={`rounded ${isOver?'bg-[#f0edff] ring-2 ring-[#6554c0]':''}`}>{children}</div>;
-}
-
-function CollectionPanel({boards}:{boards:Board[]}) {
-  const [collection,setCollection]=useState<Board|null>(null);
-  const [openId,setOpenId]=useState('');
-  const [selected,setSelected]=useState<Card|null>(null);
-  const [categoryTitle,setCategoryTitle]=useState('');
-  const [cardTitle,setCardTitle]=useState('');
-  const [parentId,setParentId]=useState('');
-  const [categoryModal,setCategoryModal]=useState(false);
-  const [transfer,setTransfer]=useState<Card|null>(null);
-  const {confirm,confirmationModal}=useConfirmModal();
-  const collectionId=boards.find(board=>board.is_collection)?.id;
-  const load=useCallback(async()=>{if(!collectionId)return;try{const full=await api<Board>(`/boards/${collectionId}`);setCollection(full);setSelected(current=>current?full.lists?.flatMap(list=>list.cards).find(card=>card.id===current.id)||null:null)}catch{setCollection(null)}},[collectionId]);
-  useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
-  const lists=collection?.lists||[];
-  const toggle=(id:string)=>setOpenId(current=>current===id?'':id);
-  async function createCategory(event:React.FormEvent){event.preventDefault();if(!collection||!categoryTitle.trim())return;await send(`/boards/${collection.id}/lists`,'POST',{title:categoryTitle,parent_list_id:parentId||null});setCategoryTitle('');setParentId('');setCategoryModal(false);await load()}
-  async function createCard(event:React.FormEvent){event.preventDefault();const list=lists.find(item=>item.id===openId)||lists[0];if(!list||!cardTitle.trim())return;await send(`/lists/${list.id}/cards`,'POST',{title:cardTitle});setCardTitle('');setOpenId(list.id);await load()}
-  async function updateCategory(id:string,changes:{position?:number;parent_list_id?:string|null}){await send(`/lists/${id}`,'PATCH',changes);await load()}
-  function removeCategory(list:List){confirm({title:'Remover categoria?',description:`A categoria “${list.title}” e seus cards serão removidos.`,confirmLabel:'Remover'},async()=>{await send(`/lists/${list.id}/archive`,'POST');await send(`/lists/${list.id}`,'DELETE');if(openId===list.id)setOpenId('');await load()})}
-  const render=(list:List,depth=0):React.ReactNode=>{const siblings=lists.filter(item=>item.parent_list_id===list.parent_list_id);const index=siblings.findIndex(item=>item.id===list.id);return <div key={list.id} className="mt-1" style={{marginLeft:`${Math.min(depth,4)*10}px`}}><CollectionDropTarget listId={list.id}><div className={`flex items-center gap-1 rounded px-1 hover:bg-[#f1f2f4] ${openId===list.id?'bg-[#f0edff]':''}`}><button onClick={()=>toggle(list.id)} aria-expanded={openId===list.id} className="flex min-w-0 flex-1 items-center gap-1 py-1.5 text-left text-sm"><ChevronDown size={14} className={`shrink-0 transition-transform ${openId===list.id?'':'-rotate-90'}`}/><FolderOpen size={15} className="shrink-0"/><span className="min-w-0 flex-1 truncate">{list.title}</span><span className="text-[10px] text-[#626f86]">{list.cards.length}</span></button><button title="Adicionar subcategoria" onClick={()=>{setParentId(list.id);setCategoryModal(true)}} className="px-1 text-xs text-[#6554c0]">+</button><button title="Mover categoria para cima" disabled={index===0} onClick={()=>void updateCategory(list.id,{position:index-1})} className="px-0.5 text-xs disabled:opacity-30">↑</button><button title="Mover categoria para baixo" disabled={index===siblings.length-1} onClick={()=>void updateCategory(list.id,{position:index+1})} className="px-0.5 text-xs disabled:opacity-30">↓</button><button title="Remover categoria" onClick={()=>removeCategory(list)} className="px-1 text-xs text-[#ae2a19]">×</button></div>{openId===list.id&&<div className="ml-5 space-y-1 border-l border-[#dfe1e6] pl-2">{list.cards.map(card=><div key={card.id} className="flex items-center gap-1"><button onClick={()=>setSelected(card)} className="flex min-w-0 flex-1 items-center gap-1 rounded px-2 py-1 text-left text-xs text-[#44546f] hover:bg-[#f1f2f4]"><CardActivityIndicator card={card}/><span className="min-w-0 truncate">{card.title}</span></button><button title="Enviar para Inbox" onClick={()=>setTransfer(card)} className="rounded px-1 text-xs text-[#0c66e4] hover:bg-[#e9f2ff]">↗</button><select aria-label="Mover card" value={list.id} onChange={event=>void send('/cards/move','POST',{card_ids:[card.id],list_id:event.target.value}).then(load)} className="w-4 rounded border bg-white text-[9px]"><option value={list.id}>↔</option>{lists.filter(target=>target.id!==list.id).map(target=><option key={target.id} value={target.id}>{target.title}</option>)}</select></div>)}{list.cards.length===0&&<p className="px-2 py-1 text-[11px] text-[#626f86]">Nenhum card.</p>}</div>}</CollectionDropTarget>{lists.filter(child=>child.parent_list_id===list.id).map(child=>render(child,depth+1))}</div>};
-  const inbox=boards.find(board=>board.is_inbox);
-  return <section className="pt-1"><div className="flex items-center justify-between px-2"><strong className="flex items-center gap-2 text-sm"><FolderOpen size={17}/> Coleções</strong><button onClick={()=>{setParentId('');setCategoryModal(true)}} className="text-[11px] font-semibold text-[#6554c0]">+ Categoria</button></div><form onSubmit={createCard} className="mt-2 px-2"><input value={cardTitle} onChange={event=>setCardTitle(event.target.value)} placeholder="Adicionar card" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/></form>{collection?<div className="mt-2 max-h-[calc(100vh-230px)] overflow-y-auto px-1">{lists.filter(list=>!list.parent_list_id).map(list=>render(list))}{lists.length===0&&<p className="px-2 py-3 text-xs text-[#626f86]">Crie uma categoria para começar.</p>}</div>:<p className="px-2 py-3 text-xs text-[#626f86]">Carregando coleções…</p>}{selected&&collection&&<CardDialog card={selected} board={collection} onClose={()=>setSelected(null)} onChanged={async()=>{await load();setSelected(null)}} onDeleted={async()=>{setSelected(null);await load()}}/>}{transfer&&inbox&&<TransferCardModal card={transfer} target={inbox} label="Enviar para Inbox" onClose={()=>setTransfer(null)} onDone={async()=>{setTransfer(null);await load();window.dispatchEvent(new Event('data:changed'))}}/>}{categoryModal&&<Modal onClose={()=>setCategoryModal(false)}><form onSubmit={createCategory} className="p-5"><h2 className="pr-8 text-lg font-bold">Nova categoria</h2><input autoFocus value={categoryTitle} onChange={event=>setCategoryTitle(event.target.value)} placeholder="Nome da categoria" className="mt-4 w-full rounded border px-3 py-2 text-sm"/><label className="mt-3 block text-sm font-semibold">Categoria pai<select value={parentId} onChange={event=>setParentId(event.target.value)} className="mt-1 w-full rounded border px-3 py-2 text-sm"><option value="">Nenhuma (raiz)</option>{lists.map(list=><option key={list.id} value={list.id}>{list.title}</option>)}</select></label><button disabled={!categoryTitle.trim()} className="mt-4 w-full rounded bg-[#6554c0] px-4 py-2 text-sm font-semibold text-white">Criar</button></form></Modal>}{confirmationModal}</section>;
 }
 
 function SortableFavoriteBoard({ board, pinned, onChoose, onBackground, onToggleStar }: { board: Board; pinned: boolean; onChoose: (id: string) => void; onBackground: (id: string) => void; onToggleStar: (board: Board) => void }) {
@@ -496,7 +473,7 @@ function SortableFavoriteBoard({ board, pinned, onChoose, onBackground, onToggle
       <span className="relative h-5 w-6 shrink-0 rounded" style={{background:board.background_image?`url("${board.background_image}") center/cover`:boardColors[board.background]||boardColors.blue}}/>
       {pinned&&<><span className="hidden min-w-0 flex-1 truncate lg:block">{board.title}</span><Star size={14} fill="currentColor" className="hidden shrink-0 text-[#e2b203] lg:block"/></>}
     </button>
-    <button type="button" title={`Menu de ${board.title}`} aria-label={`Menu de ${board.title}`} aria-expanded={menu} onClick={event=>{event.stopPropagation();setMenu(!menu)}} className="pointer-events-none absolute right-1 grid h-7 w-7 place-items-center rounded bg-white/90 opacity-0 hover:bg-[#dfe1e6] focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto"><MoreHorizontal size={17}/></button>
+    <button hidden={Boolean(board.record_scope)} type="button" title={`Menu de ${board.title}`} aria-label={`Menu de ${board.title}`} aria-expanded={menu} onClick={event=>{event.stopPropagation();setMenu(!menu)}} className="pointer-events-none absolute right-1 grid h-7 w-7 place-items-center rounded bg-white/90 opacity-0 hover:bg-[#dfe1e6] focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto"><MoreHorizontal size={17}/></button>
     {menu&&<div className="absolute right-1 top-8 z-40 w-52 rounded-lg border border-[#dfe1e6] bg-white p-1.5 text-sm text-[#172b4d] shadow-dialog"><button type="button" onClick={()=>{setMenu(false);onToggleStar(board)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Star size={16} fill="currentColor" className="text-[#e2b203]"/> Remover estrela</button><button type="button" onClick={()=>{setMenu(false);onBackground(board.id)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Paintbrush size={16}/> Trocar cor de fundo</button></div>}
   </div>;
 }
@@ -522,10 +499,11 @@ function BoardBackgroundPopup({ board, onClose, onChanged }: { board: Board; onC
   return <Modal onClose={onClose}><div className="w-[min(92vw,400px)] p-6"><h2 className="mb-1 pr-8 text-lg font-bold">Plano de fundo</h2><p className="mb-4 text-sm text-[#626f86]">Escolha uma cor para “{board.title}”.</p>{error&&<p role="alert" className="mb-3 rounded bg-[#ffebe6] p-2 text-sm text-[#ae2a19]">{error}</p>}<div className="grid grid-cols-4 gap-2">{Object.entries(boardColors).map(([name,color])=><button key={name} type="button" title={name} aria-label={`Cor ${name}`} disabled={busy} onClick={()=>void choose(name)} className={`h-14 rounded disabled:opacity-60 ${board.background===name&&!board.background_image?'ring-2 ring-[#0c66e4] ring-offset-2':''}`} style={{background:color}}/>)}</div></div></Modal>;
 }
 
-export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {
+export function WorkspaceSidebar({ boards,activeId }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {
   const router = useRouter();
   const pathname = usePathname();
-  const {setNodeRef: setInboxTabDropRef,isOver: isInboxTabOver}=useDroppable({id:'inbox:tab',data:{type:'inbox'},disabled:!boards.some(board=>board.is_inbox)});
+  const {setNodeRef: setInboxTabDropRef,isOver: isInboxTabOver}=useDroppable({id:'inbox:tab',data:{type:'inbox'}});
+  const [mobileInbox,setMobileInbox]=useState(false);
   const [pinned, setPinned] = useState(true);
   const favoriteIdsJson = useSyncExternalStore(subscribeFavoriteIds, getFavoriteIdsSnapshot, getFavoriteIdsServerSnapshot);
   const [favoriteOrderError,setFavoriteOrderError] = useState('');
@@ -534,7 +512,12 @@ export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: strin
   const [backgroundBoardId, setBackgroundBoardId] = useState('');
   const [backgroundOverrides, setBackgroundOverrides] = useState<Record<string,string>>({});
   const sensors = useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}),useSensor(KeyboardSensor,{coordinateGetter:sortableKeyboardCoordinates}));
-  const [tab, setTab] = useState<'inbox'|'collections'>(pathname === '/collections' ? 'collections' : 'inbox');
+  const scope=useRecordBoardScope(activeId||pathname.match(/^\/board\/([a-f0-9-]{36})/)?.[1]);
+  const [tab, setTab] = useState<'inbox'|'collections'|'models'>(pathname === '/collections' ? 'collections' : pathname.startsWith('/board/')?'models':'inbox');
+  const {enabled:pluginEnabled,processBoards} = usePluginAvailability();
+  useEffect(()=>{const show=()=>{setTab('inbox');if(window.innerWidth<1024)setMobileInbox(true)};const open=()=>setMobileInbox(true);window.addEventListener('inbox:show',show);window.addEventListener('inbox:open',open);return()=>{window.removeEventListener('inbox:show',show);window.removeEventListener('inbox:open',open)}},[]);
+  const collectionsAvailable=pluginEnabled('collections');
+  const effectiveTab=scope?(tab==='inbox'?'inbox':'models'):(collectionsAvailable&&tab==='collections'?'collections':'inbox');
   useEffect(() => {
     const sync = () => setPinned(localStorage.getItem('orbit_sidebar_pinned') !== 'false');
     sync(); window.addEventListener('sidebar:changed', sync);
@@ -552,8 +535,8 @@ export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: strin
       <span className="relative h-5 w-6 shrink-0 rounded" style={{background:board.background_image&&!backgroundOverrides[board.id]?`url("${board.background_image}") center/cover`:boardColors[backgroundOverrides[board.id]||board.background]||boardColors.blue}}/>
       {pinned&&<><span className="hidden min-w-0 flex-1 truncate lg:block">{board.title}</span>{board.starred&&<Star size={14} fill="currentColor" className="hidden shrink-0 text-[#e2b203] lg:block"/>}</>}
     </button>
-    <button type="button" title={`Menu de ${board.title}`} aria-label={`Menu de ${board.title}`} aria-expanded={contextBoardId===board.id} onClick={event=>{event.stopPropagation();setContextBoardId(current=>current===board.id?'':board.id)}} className="pointer-events-none absolute right-1 grid h-7 w-7 place-items-center rounded opacity-0 hover:bg-[#dfe1e6] focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto"><MoreHorizontal size={17}/></button>
-    {contextBoardId===board.id&&<div className="absolute right-1 top-8 z-40 w-52 rounded-lg border border-[#dfe1e6] bg-white p-1.5 text-sm shadow-dialog"><button type="button" onClick={()=>{setContextBoardId('');void toggleBoardStar(board)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Star size={16}/> Adicionar estrela</button><button type="button" onClick={()=>{setContextBoardId('');setBackgroundBoardId(board.id)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Paintbrush size={16}/> Trocar cor de fundo</button></div>}
+    <button hidden={Boolean(board.record_scope)} type="button" title={`Menu de ${board.title}`} aria-label={`Menu de ${board.title}`} aria-expanded={contextBoardId===board.id} onClick={event=>{event.stopPropagation();setContextBoardId(current=>current===board.id?'':board.id)}} className="pointer-events-none absolute right-1 grid h-7 w-7 place-items-center rounded opacity-0 hover:bg-[#dfe1e6] focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto"><MoreHorizontal size={17}/></button>
+    {contextBoardId===board.id&&!board.record_scope&&<div className="absolute right-1 top-8 z-40 w-52 rounded-lg border border-[#dfe1e6] bg-white p-1.5 text-sm shadow-dialog"><button type="button" onClick={()=>{setContextBoardId('');void toggleBoardStar(board)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Star size={16}/> Adicionar estrela</button><button type="button" onClick={()=>{setContextBoardId('');setBackgroundBoardId(board.id)}} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-[#f1f2f4]"><Paintbrush size={16}/> Trocar cor de fundo</button></div>}
   </div>;
   async function toggleBoardStar(board: Board) {
     setSidebarActionError('');
@@ -583,10 +566,10 @@ export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: strin
     try { await Promise.all(next.map((board,index)=>send(`/boards/${board.id}`,'PATCH',{favorite_position:index}))); }
     catch { setFavoriteOrderError('Não foi possível salvar a ordem dos favoritos.'); }
   }
-  return <aside aria-label="Menu lateral" className={`scrollbar-thin hidden shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] lg:block ${pinned?'w-[64px] px-2 lg:w-[300px] lg:px-3':'w-[56px] px-2'}`}>
-    <div className="mb-3 flex gap-1"><button ref={setInboxTabDropRef} data-orbit-inbox-tab-drop onClick={()=>setTab('inbox')} aria-pressed={tab === 'inbox'} aria-label="Aba Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${isInboxTabOver?'ring-2 ring-[#0c66e4]':''} ${tab === 'inbox' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button><button onClick={()=>setTab('collections')} aria-pressed={tab === 'collections'} aria-label="Aba Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${tab === 'collections' ? 'bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button></div>
-    {pinned && <div className="hidden lg:block">{tab === 'collections' ? <CollectionPanel boards={boards}/> : <InboxPanel boards={boards}/>}</div>}
-    <section className={`${tab === 'collections' ? 'hidden' : 'mt-4 border-t border-[#dfe1e6] pt-3'}`}>
+  return <><aside aria-label="Menu lateral" className={`scrollbar-thin hidden shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] lg:block ${pinned?'w-[64px] px-2 lg:w-[300px] lg:px-3':'w-[56px] px-2'}`}>
+    <div className="mb-3 flex gap-1"><button ref={setInboxTabDropRef} data-orbit-inbox-tab-drop onClick={()=>setTab('inbox')} aria-pressed={effectiveTab === 'inbox'} aria-label="Aba Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${isInboxTabOver?'ring-2 ring-[#0c66e4]':''} ${effectiveTab === 'inbox' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button>{scope?<button onClick={()=>setTab('models')} aria-pressed={effectiveTab==='models'} className="min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold hover:bg-[#f0edff]">Modelos</button>:collectionsAvailable&&<button onClick={()=>setTab('collections')} aria-pressed={effectiveTab === 'collections'} aria-label="Aba Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${effectiveTab === 'collections' ? 'bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button>}</div>
+    {pinned && <div className="hidden lg:block">{effectiveTab==='models'&&scope?<RecordBoardModels scope={scope}/>:effectiveTab === 'collections' ? <CollectionPanel boards={boards}/> : <InboxPanel boards={collectionsAvailable?boards:boards.filter(board=>!board.is_collection)}/>}</div>}
+    <section className={`${effectiveTab === 'collections' ? 'hidden' : 'mt-4 border-t border-[#dfe1e6] pt-3'}`}>
       {favorites.length > 0 && <div className="mb-3">
         {pinned&&<h2 className="mb-1 hidden px-2 text-xs font-bold uppercase tracking-wide text-[#626f86] lg:block">Favoritos <span className="font-normal normal-case tracking-normal">· arraste para ordenar</span></h2>}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={event=>void reorderFavorites(event)}><SortableContext items={favorites.map(board=>board.id)} strategy={verticalListSortingStrategy}><nav aria-label="Favoritos" className="space-y-1">{favorites.map(board=><SortableFavoriteBoard key={board.id} board={board} pinned={pinned} onChoose={id=>router.push(`/board/${id}`)} onBackground={id=>setBackgroundBoardId(id)} onToggleStar={toggleBoardStar}/>)}</nav></SortableContext></DndContext>
@@ -595,33 +578,15 @@ export function WorkspaceSidebar({ boards }: { boards: Board[]; activeId?: strin
       {sidebarActionError&&<p role="alert" className="px-2 pb-2 text-[11px] text-[#ae2a19]">{sidebarActionError}</p>}
       {pinned&&<h2 className="mb-2 hidden px-2 text-xs font-bold uppercase tracking-wide text-[#626f86] lg:block">Seus quadros</h2>}
       <nav aria-label="Seus quadros" className="space-y-1">
-        {otherBoards.map(renderBoard)}
+  {processBoards.map(board=><button key={board.id} onClick={()=>router.push(board.href)} className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={18} className="shrink-0"/>{pinned&&<span className="truncate">{board.name}</span>}</button>)}
+      {otherBoards.map(renderBoard)}
         {pinned&&<button onClick={()=>router.push('/boards')} className="hidden w-full rounded-lg px-2 py-2 text-left text-xs font-semibold text-[#0c66e4] hover:bg-[#f1f2f4] lg:block">Ver todos os quadros</button>}
       </nav>
     </section>
     {backgroundBoardId&&(()=>{const board=regularBoards.find(item=>item.id===backgroundBoardId);return board?<BoardBackgroundPopup board={board} onClose={()=>setBackgroundBoardId('')} onChanged={background=>setBackgroundOverrides(current=>({...current,[board.id]:background}))}/>:null})()}
-  </aside>;
+  </aside>{mobileInbox&&<Modal onClose={()=>setMobileInbox(false)}><div className="max-h-[80dvh] w-[min(92vw,420px)] overflow-y-auto p-4"><h2 className="mb-4 pr-10 text-xl font-bold">Meu Inbox</h2><InboxPanel boards={collectionsAvailable?boards:boards.filter(board=>!board.is_collection)} dropId="inbox:mobile-panel"/></div></Modal>}</>;
 }
 
-export function CreateBoardModal({ onClose, onCreate }: { onClose:()=>void; onCreate:(title:string,background:string,workspaceId?:string)=>Promise<void> }) {
-  const [title,setTitle]=useState('');
-  const [background,setBackground]=useState('blue');
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
-  async function create(event: React.FormEvent) {
-    event.preventDefault(); if (!title.trim()) return;
-    setBusy(true); setError('');
-    try { await onCreate(title,background); onClose(); }
-    catch (err) { setError((err as Error).message); }
-    finally { setBusy(false); }
-  }
-  return <Modal onClose={onClose}><form onSubmit={create} className="p-6"><h2 className="mb-5 text-center text-sm font-bold">Criar quadro</h2>
-    <div className="mx-auto mb-5 flex h-28 max-w-[240px] items-center justify-center rounded text-xl font-bold text-white shadow" style={{background:boardColors[background]}}>▦</div>
-    <p className="mb-2 text-xs font-bold">Plano de fundo</p><div className="mb-5 grid grid-cols-8 gap-1.5">{Object.entries(boardColors).map(([key,color]) => <button type="button" key={key} onClick={() => setBackground(key)} aria-label={key} className={`h-8 rounded ${background===key?'ring-2 ring-[#0c66e4] ring-offset-2':''}`} style={{background:color}}/>)}</div>
-    <label className="mb-2 block text-xs font-bold" htmlFor="board-title">Título do quadro <span className="text-red-500">*</span></label><input id="board-title" autoFocus maxLength={160} value={title} onChange={e=>setTitle(e.target.value)} className="mb-4 w-full rounded border border-[#8590a2] px-3 py-2 text-sm" placeholder="Ex.: Projeto de lançamento"/>
-    {error && <p role="alert" className="mb-3 rounded bg-[#ffebe6] p-2 text-xs text-[#ae2a19]">{error}</p>}
-    <button disabled={busy || !title.trim()} className="w-full rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]">{busy ? 'Criando...' : 'Criar quadro'}</button>
-  </form></Modal>;
-}
+export const CreateBoardModal=dynamic(()=>import('@/plugins/project-boards/CreateBoardModal').then(module=>module.CreateBoardModal));
 
 export function EmptyHint({children}:{children:React.ReactNode}) { return <div className="rounded-lg border border-dashed border-[#c1c7d0] bg-white p-8 text-center text-sm text-[#626f86]">{children}</div>; }

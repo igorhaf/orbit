@@ -1,0 +1,65 @@
+import 'reflect-metadata';
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {Pool} from 'pg';
+import {Db} from '../../db';
+import {FeaturesService} from '../../features';
+import {AccessService} from '../../access/access';
+import {migrateVersions} from '../../migrations';
+import {PluginRegistry} from '../../execution/registries';
+import {WorkspacesService,workspacesPlugin} from '../../workspaces/workspaces.plugin';
+import {vaultConstants,vaultReference,resolveVaultReference} from '../../credential-store';
+import {VaultService} from './vault.service';
+import {vaultPlugin,installVaultAccess} from './vault.plugin';
+
+test('Cofre CRUD, Markdown copies and workspace sharing survive optional removal without exposing or deleting credentials',async()=>{
+ const previous=process.env.VAULT_ENCRYPTION_KEY;process.env.VAULT_ENCRYPTION_KEY='isolated-optional-vault-test-key';
+ const db=new Db(),schema='optional_vault_'+randomUUID().replaceAll('-','');
+ await db.query(`CREATE SCHEMA ${schema}`);await db.pool.end();
+ db.pool=new Pool({connectionString:process.env.DATABASE_URL,options:`-c search_path=${schema},public`});
+ try{
+  await db.query(await readFile(resolve(__dirname,'../../../sql/schema.sql'),'utf8'));
+  await db.query(await readFile(resolve(__dirname,'../../../sql/pre-022-compat.sql'),'utf8'));await migrateVersions(db.pool);
+  const owner=(await db.one("INSERT INTO users(name,email,password_hash,is_root) VALUES('Credential owner',$1,'x',true) RETURNING id",[randomUUID()+'@example.invalid']))!.id;
+  const member=(await db.one("INSERT INTO users(name,email,password_hash) VALUES('Workspace member',$1,'x') RETURNING id",[randomUUID()+'@example.invalid']))!.id;
+  const board=(await db.one("INSERT INTO boards(title,owner_id) VALUES('Notes board',$1) RETURNING id",[owner]))!.id;
+  const list=(await db.one("INSERT INTO lists(board_id,title) VALUES($1,'Notes') RETURNING id",[board]))!.id;
+  await db.query("INSERT INTO board_members(board_id,user_id,role) VALUES($1,$2,'owner')",[board,owner]);
+  const registry=new PluginRegistry();registry.register(vaultPlugin);registry.register(workspacesPlugin);
+  const access=new AccessService(db);access.registerPlugins(registry.catalog());installVaultAccess(registry,access);
+  const workspaces=new WorkspacesService(db,access);workspaces.onModuleInit();
+  const service=new VaultService(db,new FeaturesService(db,undefined,access),registry);
+  const category=(await service.createVaultCategory(owner,{name:'Service credentials',icon:'KeyRound'}))!;
+  const field=randomUUID(),secret='isolated-private-value';
+  const item=await service.createVaultItem(owner,{title:'Service notes',category:category.id,content_html:'<p>Original <strong>notes</strong></p>',credentials:[{id:field,name:'Service token',constant:'SERVICE_TOKEN',value:secret}]});
+  await service.updateVaultItem(item.id,owner,{content_html:'<p>Updated <strong>notes</strong></p>'});
+  const copy=await service.copyVaultToCard(item.id,owner,{list_id:list});
+  const card=(await db.one('SELECT title,description FROM cards WHERE id=$1',[copy.card_id]))!;
+  assert.equal(card.description,'Updated **notes**');assert.equal(card.title,'Service notes');assert.ok(!JSON.stringify(card).includes(secret));
+  const workspace=await workspaces.create(owner,{name:'Shared notes'});await workspaces.member(owner,workspace.id,member,'member');
+  await workspaces.shareResource(owner,workspace.id,{type:'vault',resource_id:item.id,can_edit:true});
+  assert.deepEqual(await workspaces.visibleResources(member,'vault'),[item.id]);assert.equal(await workspaces.resourceAccess(member,'vault',item.id,true),true);
+  assert.equal((await workspaces.sharedList(owner,workspace.id)).length,1);
+  const encrypted=await db.one('SELECT secret_data,notes,card_id FROM vault_items WHERE id=$1',[item.id]);
+  const reference=vaultReference(owner,item.id,field);
+  registry.setInstalled('vault',false);
+  assert.deepEqual(await workspaces.visibleResources(member,'vault'),[]);assert.equal(await workspaces.resourceAccess(member,'vault',item.id,true),false);
+  assert.deepEqual(await workspaces.sharedList(owner,workspace.id),[]);assert.ok(!(await workspaces.resourceOptions(owner,workspace.id)).some(option=>option.type==='vault'));
+  await assert.rejects(()=>workspaces.shareResource(owner,workspace.id,{type:'vault',resource_id:item.id,can_edit:true}),/não está disponível/);
+  await assert.rejects(()=>service.vaultItem(item.id,owner),/não está disponível/);await assert.rejects(()=>service.deleteVaultItem(item.id,owner),/não está disponível/);
+  assert.equal(await resolveVaultReference(db,reference,owner),secret);
+  const catalog=await vaultConstants(db,owner);assert.equal(catalog.length,1);assert.equal(catalog[0].reference,reference);assert.ok(!JSON.stringify(catalog).includes(secret));
+  assert.deepEqual(await db.one('SELECT secret_data,notes,card_id FROM vault_items WHERE id=$1',[item.id]),encrypted);
+  registry.setInstalled('vault',true);
+  assert.equal((await service.vaultItem(item.id,owner)).credentials[0].value,secret);
+  assert.equal((await workspaces.sharedList(owner,workspace.id)).length,1);
+  await service.deleteVaultItem(item.id,owner);assert.equal(await db.one('SELECT id FROM vault_items WHERE id=$1',[item.id]),null);
+  assert.ok(await db.one('SELECT id FROM cards WHERE id=$1',[copy.card_id]));
+ }finally{
+  await db.query(`DROP SCHEMA ${schema} CASCADE`);await db.onModuleDestroy();
+  if(previous===undefined)delete process.env.VAULT_ENCRYPTION_KEY;else process.env.VAULT_ENCRYPTION_KEY=previous;
+ }
+});

@@ -60,11 +60,12 @@ function IntegrationRow({ list, integration, side }: {
   );
 }
 
-export function BoardIntegrations({ left, right, expanded, onExpandedChange }: {
+export function BoardIntegrations({ left, right, expanded, onExpandedChange, trelloEnabled }: {
   left: List;
   right: List;
   expanded: boolean;
   onExpandedChange: (gap: string | null) => void;
+  trelloEnabled: boolean;
 }) {
   const panelId = useId();
   const rail = useRef<HTMLButtonElement>(null);
@@ -73,7 +74,7 @@ export function BoardIntegrations({ left, right, expanded, onExpandedChange }: {
   const integrations = [
     ...(left.integrations || []).map(integration => ({ list: left, integration, side: "left" as const })),
     ...(right.integrations || []).map(integration => ({ list: right, integration, side: "right" as const })),
-  ];
+  ].filter(({ integration }) => trelloEnabled || integration.service.toLocaleLowerCase() !== "trello");
 
   useLayoutEffect(() => {
     if (!expanded) return;
@@ -137,7 +138,7 @@ export function BoardIntegrations({ left, right, expanded, onExpandedChange }: {
               <div className="rounded-lg border border-dashed border-[#b3b9c4] bg-white p-5 text-center">
                 <Plug size={24} aria-hidden="true" className="mx-auto mb-3 text-[#8590a2]" />
                 <p className="text-sm font-semibold">Nenhuma integração nestas listas</p>
-                <p className="mt-2 text-xs leading-5 text-[#626f86]">Conecte um quadro pelo menu do quadro e associe uma lista em “Integração Trello”, no menu da lista.</p>
+                <p className="mt-2 text-xs leading-5 text-[#626f86]">As integrações configuradas entre estas listas aparecerão aqui.</p>
               </div>
             )}
           </div>

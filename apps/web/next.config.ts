@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 import { networkInterfaces } from 'node:os';
 
 const apiProxy = process.env.ORBIT_API_PROXY_URL || 'http://127.0.0.1:4000';
-const forcedTheme = process.env.THEME === 'dark' ? 'dark' : '';
+const forcedTheme = ['light', 'dark', 'terroso'].includes(process.env.THEME || '') ? process.env.THEME || '' : '';
 const orbitEnvironment = process.env.THEME === 'dark' ? 'development' : '';
 const localAddresses = Object.values(networkInterfaces()).flatMap(devices => devices?.filter(device => device.family === 'IPv4').map(device => device.address) || []);
 const privateNetworkOrigins = ['10.*.*.*', '192.168.*.*', ...Array.from({length: 16}, (_, index) => `172.${index + 16}.*.*`)];

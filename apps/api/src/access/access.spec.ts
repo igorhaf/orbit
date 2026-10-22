@@ -2,11 +2,12 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import jwt from 'jsonwebtoken';
-import {AccessController,AccessService,allowed,routePermission} from './access';
+import {AccessController,AccessGuard,AccessService,allowed,routePermission} from './access';
 import {evaluatePermissions} from './privileges';
 import type {Db} from '../db';
 import {workspacesPlugin} from '../workspaces/workspaces.plugin';
 import type {PluginDefinition} from '../plugins/contract';
+import {aiPlugin} from '../plugins/ai/ai.plugin';
 
 const root='00000000-0000-4000-8000-000000000001',reader='00000000-0000-4000-8000-000000000002';
 function fixture(){let disabled=false,version=0,enabled=true;const db={async one(sql:string,args:unknown[]){if(sql.includes('FROM users'))return {id:args[0],is_root:args[0]===root,disabled,session_version:version};if(sql.includes('FROM workspace_members'))return {user_id:reader};if(sql.includes('FROM boards'))return {workspace_id:'workspace-a',role:'owner'};return null},async query(sql:string,args:unknown[]=[]){if(sql.includes('FROM access_grants')&&sql.includes('scope_type=$2')){const global=[{role_id:'reader',name:'Leitor',permissions:['boards.read']}];return args[1]==='process'&&args[2]==='process-a'?[...global,{role_id:'reviewer',name:'Revisora',permissions:['sample.process.review']}]:global}return sql.includes('FROM access_grants')?[{role_id:'reader',name:'Leitor',permissions:['boards.read']}]:[]}} as unknown as Db;const access=new AccessService(db);access.registerScope('workspace',async()=>enabled);access.registerMembership('workspace',async()=>true);access.registerScope('process',async(scope)=>scope==='process-a');access.registerMembership('process',async(_user,scope)=>scope==='process-a');return {access,suspend(){disabled=true},revoke(){version++},disablePlugin(){enabled=false}}}
@@ -14,6 +15,8 @@ function fixture(){let disabled=false,version=0,enabled=true;const db={async one
 test('ROOT bypasses existing and future capabilities and absent scope providers',async()=>{const {access}=fixture();assert.ok(allowed(true,[],'future.plugin.admin'));assert.ok(await access.has(root,'future.plugin.admin','uninstalled','unknown'));assert.ok(await access.boardPermission('board',root,'boards.write'))});
 test('delegated account cannot inherit legacy board ownership after workspace permission removal',async()=>{const {access,disablePlugin}=fixture();assert.ok(await access.boardPermission('board',reader));assert.equal(await access.boardPermission('board',reader,'boards.write'),false);disablePlugin();assert.equal(await access.boardPermission('board',reader),false);assert.equal(await access.has(reader,'boards.read','missing','scope'),false)});
 test('plugin permissions register without importing plugin implementation into core',()=>{const {access}=fixture();access.registerPermissions(['sample.inspect']);assert.ok(access.catalog().includes('sample.inspect'));assert.equal(access.pluginRoute('/sample'),false);access.registerRoutes('/sample');assert.ok(access.pluginRoute('/sample/item'));assert.equal(access.pluginRoute('/sample-other'),false)});
+test('AI route ownership and permission mapping come from its plugin definition',()=>{const {access}=fixture();access.bindPlugins([aiPlugin]);assert.equal(access.pluginRoute('/codex/queues'),true);assert.equal(access.pluginRoute('/tools/diagnostics'),true);assert.equal(access.pluginPermission('/codex/queues','GET'),'queues.read');assert.equal(access.pluginPermission('/cards/card/ai','POST'),'ai.write');assert.equal(access.pluginPermission('/ai/schedule','POST'),undefined)});
+test('only plugin routes explicitly declared public bypass authentication',async()=>{const {access}=fixture();const guard=new AccessGuard(access,{} as Db);const context=(path:string)=>({switchToHttp:()=>({getRequest:()=>({path,method:'GET',headers:{}})})});access.bindPlugins([{id:'public-sample',name:'Public',version:'1.0.0',handlesRoute:path=>path==='/public/sample',routePermission:()=>null}]);assert.equal(await guard.canActivate(context('/public/sample') as never),true);access.bindPlugins([{id:'private-sample',name:'Private',version:'1.0.0',handlesRoute:path=>path==='/private/sample',routePermission:()=>'private.sample.read'}]);await assert.rejects(()=>guard.canActivate(context('/private/sample') as never),/Faça login para continuar/)});
 test('new routes fail closed and permission selection follows HTTP method',()=>{assert.equal(routePermission('/future/credentials','GET'),'root.only');assert.equal(routePermission('/cards/id','PATCH'),'boards.write');assert.equal(routePermission('/cards/id','GET'),'boards.read');assert.equal(routePermission('/plugins/item/configuration','GET'),'plugins.manage');assert.equal(routePermission('/access/users','GET'),'access.manage');assert.equal(routePermission('/access/audit','GET'),'access.audit.read')});
 test('audit records can be tagged with a validated resource scope',async()=>{const calls:Array<{sql:string;args:unknown[]}>=[];const db={async query(sql:string,args:unknown[]=[]){calls.push({sql,args});return []}} as unknown as Db;const access=new AccessService(db);await access.audit(reader,'sample.process.read.full','process-a',{type:'sample_process',id:'00000000-0000-4000-8000-000000000003'});assert.ok(calls[0].sql.includes('scope_type,scope_id'));assert.deepEqual(calls[0].args,[reader,'sample.process.read.full','process-a','sample_process','00000000-0000-4000-8000-000000000003'])});
 test('global audit requires the dedicated privilege and supports validated scope filters',async()=>{const calls:Array<{sql:string;args:unknown[]}>=[];let required='';const db={async query(sql:string,args:unknown[]=[]){calls.push({sql,args});return []}} as unknown as Db;const access={async require(_user:string,permission:string){required=permission}} as unknown as AccessService;const controller=new AccessController(access,db);await controller.audit({orbitActor:root} as never,'workspace','00000000-0000-4000-8000-000000000009');assert.equal(required,'access.audit.read');assert.match(calls[0].sql,/a\.scope_type=\$1/);assert.deepEqual(calls[0].args,['workspace','00000000-0000-4000-8000-000000000009']);await assert.rejects(()=>controller.audit({orbitActor:root} as never,'workspace',undefined),/tipo e o identificador/)});
@@ -30,4 +33,40 @@ test('workspace privileges are declared in the plugin catalogue before initializ
 
 test('scoped grants combine with global grants only inside their registered scope',async()=>{const {access}=fixture();access.registerPermissions(['sample.process.review'],'sample');assert.ok(await access.has(reader,'sample.process.review','process','process-a'));assert.equal(await access.has(reader,'sample.process.review','process','process-b'),false);assert.ok(await access.has(reader,'boards.read','process','process-a'));assert.equal(await access.has(reader,'boards.read','process','process-b'),false)});
 
+test('strict resource scopes ignore global, group and allow grants and honor exact grants, denials and disabled privileges',async()=>{
+ let exactGrant=false,denied=false,disabled=false;
+ const db={async one(sql:string,args:unknown[]){if(sql.includes('FROM users'))return {id:args[0],is_root:args[0]===root,disabled:false,session_version:0};return null},async query(sql:string,args:unknown[]=[]){
+  if(sql.includes('FROM access_grants')&&sql.includes('scope_type=$2'))return args[1]==='global'?[{role_id:'global-reader',name:'Leitora global',permissions:['documents.read']}]:exactGrant&&args[2]==='record-a'?[{role_id:'reviewer',name:'Revisora',permissions:['documents.read']}]:[];
+  if(sql.includes('FROM access_groups'))return [{permissions:['documents.read']}];
+  if(sql.includes('FROM access_user_exceptions')&&sql.includes("effect='deny'"))return denied?[{permission_id:'documents.read'}]:[];
+  if(sql.includes('FROM access_user_exceptions'))return [{permission_id:'documents.read',effect:'allow'}];
+  if(sql.includes('FROM access_permission_settings'))return disabled?[{permission_id:'documents.read'}]:[];
+  return [];
+ }} as unknown as Db;
+ const access=new AccessService(db);access.registerPermissions(['documents.read']);access.registerScope('extension_record',async scope=>scope==='record-a');access.registerMembership('extension_record',async()=>true);
+ assert.equal(await access.has(reader,'documents.read'),true);
+ assert.equal(await access.hasScoped(reader,'documents.read','extension_record','record-a'),false);
+ exactGrant=true;assert.equal(await access.hasScoped(reader,'documents.read','extension_record','record-a'),true);
+ denied=true;assert.equal(await access.hasScoped(reader,'documents.read','extension_record','record-a'),false);
+ denied=false;disabled=true;assert.equal(await access.hasScoped(reader,'documents.read','extension_record','record-a'),false);
+ assert.equal(await access.hasScoped(reader,'documents.read','extension_record','record-b'),false);
+});
+
 test('scoped role assignment records only a validated scope and revokes the target session',async()=>{const calls:Array<{sql:string;args?:unknown[]}>=[];let revoked='';const process='00000000-0000-4000-8000-000000000003';const client={async query(sql:string,args?:unknown[]){calls.push({sql,args});return {rows:[]}},release(){}};const db={async one(sql:string,args:unknown[]){if(sql.includes('FROM users'))return {id:args[0],is_root:args[0]===root,disabled:false,session_version:0};return null},async query(sql:string){if(sql.startsWith('SELECT * FROM access_roles'))return [{id:'reviewer',name:'Revisora',permissions:['sample.process.review']}];return []},pool:{async connect(){return client}}} as unknown as Db;const access=new AccessService(db);access.registerPermissions(['sample.process.review'],'sample');access.registerScope('process',async scope=>scope===process);access.onRevoke(user=>{revoked=user});const result=await access.assignScopedRoles(root,reader,'process',process,['reviewer']);assert.deepEqual(result,{ok:true,roles:['reviewer']});assert.ok(calls.some(call=>call.sql.includes('INSERT INTO access_grants(user_id,role_id,scope_type,scope_id)')&&call.args?.[2]==='process'&&call.args?.[3]===process));assert.ok(calls.some(call=>call.sql.includes('UPDATE users SET session_version=session_version+1')&&call.args?.[0]===reader));assert.equal(revoked,reader);await assert.rejects(()=>access.assignScopedRoles(root,reader,'process','00000000-0000-4000-8000-000000000004',['reviewer']),/Escopo inexistente/);await assert.rejects(()=>access.assignScopedRoles(root,root,'process',process,['reviewer']),/ROOT é protegida/)});
+
+
+test('delegated private plugin routes still authenticate and populate both actor identities', async () => {
+  const { access } = fixture();
+  access.bindPlugins([{ id: 'delegated-private', name: 'Delegated', version: '1.0.0', handlesRoute: path => path === '/extensions', routePermission: () => null }]);
+  const actor = '00000000-0000-4000-8000-000000000099';
+  access.authenticate = async () => ({ id: actor, name: 'Root', email: 'root@example.test', is_root: true, disabled: false, session_version: 0 });
+  const guard = new AccessGuard(access, {} as Db);
+  const anonymous = { path: '/extensions', method: 'GET', headers: {} };
+  await assert.rejects(() => guard.canActivate({ switchToHttp: () => ({ getRequest: () => anonymous }) } as never), /Faça login/);
+  const authenticated = { path: '/extensions', method: 'GET', headers: { authorization: 'Bearer opaque-test-token' }, orbitActor: '', orbitUser: '' };
+  assert.equal(await guard.canActivate({ switchToHttp: () => ({ getRequest: () => authenticated }) } as never), true);
+  assert.equal(authenticated.orbitActor, actor);
+  assert.equal(authenticated.orbitUser, actor);
+});
+
+test('Inbox endpoints use board privileges and do not accept arbitrary subroutes',()=>{assert.equal(routePermission('/inbox/cards','GET'),'boards.read');assert.equal(routePermission('/inbox/cards','POST'),'boards.write');assert.equal(routePermission('/inbox/private','POST'),'root.only')});

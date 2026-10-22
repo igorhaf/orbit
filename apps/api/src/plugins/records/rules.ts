@@ -6,6 +6,22 @@ export type Payload = Record<string, unknown>;
 export function invalid(message: string, status = 400): never {
   throw new HttpException({ message }, status);
 }
+export function assertSemanticValidation(issues: Array<{ severity: "error" | "warning"; code?: string; path: string; message: string }>) {
+  const blocking = issues.filter((issue) => issue.severity === "error");
+  if (blocking.length)
+    invalid(`Dados incompatíveis com as regras do plugin: ${blocking.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}`);
+}
+export function assertPayloadFieldsImmutable(
+  initialState: string,
+  previousState: string,
+  previous: Payload,
+  next: Payload,
+  fields: string[],
+) {
+  if (previousState === initialState) return;
+  const changed = fields.filter((field) => JSON.stringify(previous[field]) !== JSON.stringify(next[field]));
+  if (changed.length) invalid(`Campos congelados após o envio não podem ser alterados: ${changed.join(", ")}.`, 409);
+}
 export function only(body: Payload, keys: string[]) {
   if (
     !body ||

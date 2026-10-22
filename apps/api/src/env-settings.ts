@@ -9,7 +9,7 @@ import { PluginRegistry } from './execution/registries';
 import { googleRedirectUri } from './google/redirect-uri';
 import { BackupService } from './backup-service';
 import {Db} from './db';
-import {parseVaultReference,resolveVaultReference} from './vault-credentials';
+import {parseVaultReference,resolveVaultReference} from './credential-store';
 import type {PluginConfigurationField} from './plugins/contract';
 
 const groups = [
@@ -81,7 +81,7 @@ export class EnvironmentSettingsController {
   }
   private values(fields:Array<{key:string;label:string;secret:boolean}&Partial<PluginConfigurationField>>,stored:Record<string,string>,hideSecrets=false){return fields.map(field=>{const value=stored[field.key]??process.env[field.key]??'';return {...field,value:value.startsWith('orbit-vault://')||hideSecrets&&field.secret?'':value,vaultReference:parseVaultReference(value)?value:undefined,configured:Boolean(value)}})}
   private plugin(id:string){
-    try{return this.plugins.getById(id)}catch{throw new HttpException('Plugin não encontrado.',404)}
+    try{if(!this.plugins.isInstalled(id))throw new Error('Not installed');return this.plugins.getById(id)}catch{throw new HttpException('Plugin não encontrado.',404)}
   }
   private validate(body:Record<string,unknown>,allowed:Set<string>){
     const values=body?.values,clear=body?.clear;

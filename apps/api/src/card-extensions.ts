@@ -130,7 +130,7 @@ export class CardExtensionsService {
   async contexts(cardId:string,userId:string){
     const boardId=await this.card(cardId,userId);
     const [selected,candidates,children]=await Promise.all([
-      linkedCardContexts(this.db,cardId,userId),
+      linkedCardContexts(this.db,cardId,userId,boardId),
       this.db.query(`SELECT c.id,c.title,c.url_token FROM cards c JOIN lists l ON l.id=c.list_id
         WHERE l.board_id=$1 AND c.id<>$2 AND c.archived_at IS NULL AND l.archived_at IS NULL
           AND c.kind IN ('normal','template') ORDER BY c.title,c.id`,[boardId,cardId]),

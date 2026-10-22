@@ -11,6 +11,14 @@ const runId='11111111-1111-4111-8111-111111111111';
 const question='[[ORBIT_QUESTION]]\nPosso seguir com a implementação?\n[[/ORBIT_QUESTION]]';
 const statusIs=(status:number)=>(error:unknown)=>(error as {getStatus():number}).getStatus()===status;
 
+test('disabled AI startup keeps pending work intact and stops without database writes',async()=>{
+  const queries:string[]=[];
+  const service=new PromptSessionsService({query:async(sql:string)=>{queries.push(sql);return []}} as never,{} as never,{isAvailable:()=>false} as never,{} as never);
+  await service.onModuleInit();
+  await service.onModuleDestroy();
+  assert.deepEqual(queries,[]);
+});
+
 test('question protocol rejects incomplete, empty and non-final blocks',()=>{
   assert.equal(extractPromptQuestion(question),'Posso seguir com a implementação?');
   for(const output of ['texto normal','[[ORBIT_QUESTION]]pergunta','[[ORBIT_QUESTION]] [[/ORBIT_QUESTION]]',question+'\ncontinuação'])assert.equal(extractPromptQuestion(output),null);
@@ -90,7 +98,7 @@ test('prompt queue persists waiting, releases locks, and requeues the same run a
     if(sql.includes('SELECT 1 FROM card_ai_runs'))return [{id:runId}];
     if(sql.includes('SELECT id,user_id'))return status==='waiting_answer'?[{id:runId,user_id:'user',project_id:'project',model:'gpt-6-luna',effort:'high',codex_session_id:sessionId,output}]:[];
     if(sql.includes('SELECT codex_session_id'))return sessionId?[{codex_session_id:sessionId}]:[];
-    if(sql.includes('SELECT id,name,local_path'))return [{id:'project',name:'Test',local_path:process.cwd(),is_native:false}];
+    if(sql.includes('SELECT id,name,local_path'))return [{id:'project',name:'Test',local_path:process.cwd(),is_internal_orbit:false}];
     if(sql.includes('SELECT c.id'))return [{id:'card',title:'Card',description:'Implementar',ai_execution_mode:'question',ai_project_id:'project',ai_model:'gpt-6-luna',ai_effort:'high'}];
     return [];
   };

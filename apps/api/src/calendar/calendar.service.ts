@@ -63,8 +63,8 @@ export class CalendarService {
       [ownerId],
     );
   }
-  catalog(){return this.registry.catalog()}
-  async connect(ownerId:string,providerId:string,option?:string){const provider=this.registry.get(providerId);if(!provider.getConnectUrl)return bad('Este provider não possui conexão interativa.',409);if(option&&provider.connectOptions&&!provider.connectOptions.some(item=>item.id===option))return bad('Capability de conexão inválida.');return provider.getConnectUrl(ownerId,option)}
+  catalog(){return this.registry.catalog().filter(provider=>this.plugins.isEnabled(provider.id)).map(provider=>provider.id==='outlook_calendar'&&!this.plugins.isEnabled('microsoft_teams')?{...provider,connectOptions:(provider.connectOptions||[]).filter(option=>option.id!=='teams')}:provider)}
+  async connect(ownerId:string,providerId:string,option?:string){const provider=this.registry.get(providerId);if(!this.plugins.isEnabled(providerId))return bad('Este plugin ou uma dependência está desativado.',409);if(option==='teams'&&!this.plugins.isEnabled('microsoft_teams'))return bad('O plugin Microsoft Teams está desativado.',409);if(option==='mail'&&!this.plugins.isEnabled('outlook_mail'))return bad('O plugin Outlook Mail está desativado.',409);if(!provider.getConnectUrl)return bad('Este provider não possui conexão interativa.',409);if(option&&provider.connectOptions&&!provider.connectOptions.some(item=>item.id===option))return bad('Capability de conexão inválida.');return provider.getConnectUrl(ownerId,option)}
   async sync(ownerId:string,sourceId:string){const provider=await this.provider(ownerId,sourceId);if(!provider.syncSource)return bad('Esta fonte não possui sincronização manual.',409);await provider.syncSource(sourceId);return {ok:true}}
   async updateSource(
     ownerId: string,

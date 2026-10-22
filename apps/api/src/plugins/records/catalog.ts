@@ -1,3 +1,4 @@
+import { formAccess, submissionAccess, documentAccess } from "./ownership";
 import type { PluginDefinition, JsonSchema } from "../contract";
 
 export type RecordDefinition = {
@@ -76,6 +77,7 @@ function plugin(
       })),
       contributions: {
         navigation: [{ id, href: "/extensions", label: "Extensões" }],
+        recordKinds: kinds,
       },
     },
     kinds,
@@ -87,6 +89,8 @@ export const recordsBasePlugin: PluginDefinition = {
   name: "Registros versionados",
   version: "1.0.0",
   scope: "workspace",
+  handlesRoute: (path) => path === "/extensions" || path.startsWith("/extensions/"),
+  routePermission: () => null,
   dependencies: ["workspaces"],
   description:
     "Histórico imutável, referências a versões e operações idempotentes para extensões.",
@@ -519,6 +523,8 @@ export const recordPlugins: RecordPlugin[] = [
             variant: { enum: ["original", "anonymized"] },
             source_id: uuid,
             source_revision: { type: "integer", minimum: 1 },
+            related_record_id: uuid,
+            related_record_revision: { type: "integer", minimum: 1 },
             file_revision: { type: "integer", minimum: 1 },
             scan_status: { enum: ["clean", "not_configured"] },
           },
@@ -566,7 +572,16 @@ export const genericPlugins = [
   recordsBasePlugin,
   ...recordPlugins.map((item) => item.plugin),
 ];
+const formsPlugin = genericPlugins.find((item) => item.id === "forms")!;
+Object.assign(formsPlugin.contributions!.recordKinds!.form, formAccess);
+Object.assign(formsPlugin.contributions!.recordKinds!.submission, submissionAccess);
 const documentsPlugin = genericPlugins.find((item) => item.id === "documents")!;
+for (const definition of Object.values(documentsPlugin.contributions?.recordKinds || {}))
+  Object.assign(definition, {
+    resourceScoped: true,
+    managePermission: "plugin.documents.manage",
+    ...documentAccess,
+  });
 documentsPlugin.configuration = [
   {
     key: "ORBIT_DOCUMENT_SCANNER_BIN",

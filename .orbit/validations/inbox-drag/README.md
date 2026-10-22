@@ -1,11 +1,13 @@
-# Inbox drag validation
+# Inbox por arraste, sem navegador automatizado
 
-Run against an already running local Orbit instance:
+1. Na hierarquia e depois na lista, arrastar a alça de um cartão para a aba Inbox e para seu painel.
+2. Conferir atribuição ao usuário atual, permanência na fase e na hierarquia e ausência de cópias.
+3. Repetir o gesto e conferir que a atribuição permanece, com os demais responsáveis preservados.
+4. Repetir no Quadro visual, incluindo uma seleção de mais de um cartão.
+5. No celular, usar o alvo Meu Inbox e a atribuição por clique na alça; conferir o painel e abrir o cartão original.
+6. Em quadro de curso, conferir os mesmos resultados e a preservação das transições formais.
+7. Revogar acesso ou desativar o plugin de origem e conferir que o cartão desaparece da listagem autorizada.
 
-```sh
-node .orbit/validations/inbox-drag/inbox-drag.selenium.mjs
-```
+Testes sem navegador: `apps/web/lib/board-drag.spec.ts`, `apps/api/src/inbox.integration.spec.ts` e jornada isolada SAFDOULAS.
 
-Uses `ORBIT_SELENIUM_BASE_URL`, then `WEB_ORIGIN` from `apps/api/.env`, then `http://localhost:3000`. Requires Chrome, the configured database and `JWT_SECRET`.
-
-Uses the configured account and its Inbox, creates a temporary board and cards, and removes the fixtures after the checks. Verifies repeated drops onto the Inbox panel, its input, an existing card and the Inbox tab, including with Collections open, after horizontal scrolling and with the sidebar collapsed. Also checks movement between board lists and visual feedback during the drag.
+Não executar Selenium ou substituir por outro navegador automatizado neste host: existe restrição expressa do usuário.

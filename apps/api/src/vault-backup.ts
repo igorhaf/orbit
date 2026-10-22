@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } f
 import { chmod, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { Db } from './db';
-import {credentials, VaultCredential} from './vault-credentials';
+import {credentials, VaultCredential} from './credential-store';
 import { backupDirectory } from './database-backup';
 import { decryptVaultPayload, encryptVaultPayload, vaultItemHtml } from './vault-crypto';
 

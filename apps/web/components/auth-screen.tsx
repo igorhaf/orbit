@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, Eye, EyeOff, LayoutDashboard, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Eye, EyeOff, Sparkles, TreeDeciduous } from 'lucide-react';
 import { send, setSession, User } from '@/lib/api';
 
 export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
@@ -21,18 +21,18 @@ export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
   }
   return <div className="min-h-screen bg-[#f8f9fb]">
     <div className="flex items-center justify-center gap-2 pt-10 text-[#172b4d]">
-      <span className="flex h-9 w-9 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={24} strokeWidth={2.8}/></span>
-      <strong className="text-[30px] tracking-[-1.5px]">Orbit</strong>
+      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f9e6dc] text-[#7c2816]"><TreeDeciduous size={27} strokeWidth={2.2}/></span>
+      <strong className="text-[30px] tracking-[-1.5px]">SafDoulas</strong>
     </div>
     <div className="mx-auto mt-8 grid max-w-[1040px] items-center gap-12 px-4 pb-16 md:grid-cols-2 md:gap-16 md:px-10">
-      <div className="hidden md:block">
-        <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-[#e9f2ff] px-3 py-1 text-xs font-bold text-[#0c66e4]"><Sparkles size={14}/> TUDO EM UM SÓ LUGAR</div>
-        <h1 className="text-[43px] font-bold leading-[1.12] tracking-[-1.5px] text-[#172b4d]">Seu trabalho, com uma visão <span className="text-[#0c66e4]">mais clara.</span></h1>
-        <p className="mt-5 max-w-md text-lg leading-7 text-[#44546f]">Acompanhe o que vem pela frente, veja as novidades e organize seus projetos em quadros.</p>
-        <div className="mt-8 space-y-3 text-sm text-[#44546f]">
-          {['Tarefas e prazos em destaque','Quadros, listas e cartões','Atividade e notificações em um lugar'].map(item => <div key={item} className="flex items-center gap-3"><CheckCircle2 className="text-[#22a06b]" size={19}/>{item}</div>)}
+      <div className="mx-auto w-full max-w-[420px] md:max-w-none">
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#f9e6dc] px-3 py-1 text-xs font-bold text-[#7c2816]"><Sparkles size={14}/> CONEXÃO E APRENDIZADO</div>
+        <h1 className="text-[30px] font-bold leading-[1.12] tracking-[-1px] text-[#652719] md:text-[43px] md:tracking-[-1.5px]">Doulas conectadas, aprendendo e crescendo juntas.</h1>
+        <p className="mt-4 max-w-md text-base leading-7 text-[#51413c] md:mt-5 md:text-lg">Um espaço para aproximar doulas, compartilhar saberes e fortalecer práticas de cuidado ao longo da jornada perinatal.</p>
+        <div className="mt-5 space-y-3 text-sm text-[#51413c] md:mt-8">
+          {['Conecte-se com doulas e fortaleça sua rede de apoio','Compartilhe experiências e aprenda em comunidade','Organize formações, projetos e ações de cuidado'].map(item => <div key={item} className="flex items-center gap-3"><CheckCircle2 className="shrink-0 text-[#7c8b48]" size={19}/>{item}</div>)}
         </div>
-        <div className="mt-10 flex h-40 max-w-md gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-[#0c66e4] to-[#0747a6] p-5 shadow-xl">
+        <div className="mt-10 hidden h-40 max-w-md gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-[#9b3041] to-[#652719] p-5 shadow-xl md:flex">
           {[2,2,1].map((count,index) => <div key={index} className="w-1/3 rounded bg-[#f1f2f4] p-2">
             <div className="mb-2 h-2 w-14 rounded bg-[#8590a2]"/>
             {Array.from({length:count}).map((_,cardIndex)=><div key={cardIndex} className="mb-1 h-9 rounded bg-white shadow"/>)}

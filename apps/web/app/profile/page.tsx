@@ -1,4 +1,5 @@
 "use client";
+import {useCreationAvailability} from '@/plugins/project-boards/use-creation-availability';
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { remember } from "@/lib/history";
@@ -58,6 +59,7 @@ const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "settings", label: "Configurações", icon: Palette },
 ];
 export default function ProfilePage() {
+  const {canCreateBoard,canCreateProject}=useCreationAvailability();
   const router = useRouter();
   const { confirm, confirmationModal } = useConfirmModal();
   const [user, setCurrentUser] = useState<User | null>(null);
@@ -66,8 +68,11 @@ export default function ProfilePage() {
   const [cards, setCards] = useState<HomeCard[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [models, setModels] = useState<AiModel[]>([]);
+  const [enabledPluginIds, setEnabledPluginIds] = useState<Set<string> | null>(null);
+  const [aiAvailable, setAiAvailable] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [projectPath, setProjectPath] = useState("");
+  const [projectInternalOrbit, setProjectInternalOrbit] = useState(false);
   const [editingProjectPath, setEditingProjectPath] = useState<string | null>(null);
   const [projectPathDraft, setProjectPathDraft] = useState("");
   const [savingProjectPath, setSavingProjectPath] = useState(false);
@@ -88,16 +93,16 @@ export default function ProfilePage() {
   const [create, setCreate] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [account, all, activity, assigned, projectList, availableModels] = await Promise.all(
-        [
+      const [account, all, activity, assigned, projectList, pluginCatalog] = await Promise.all([
           api<User>("/account"),
           api<Board[]>("/boards"),
           api<Activity[]>("/account/activity"),
           api<HomeCard[]>("/account/cards"),
           api<AiProject[]>("/ai/projects"),
-          api<AiModel[]>("/ai/models"),
-        ],
-      );
+          api<{plugins:Array<{id:string;enabled:boolean}>}>("/plugins"),
+        ]);
+      const pluginEnabled = pluginCatalog.plugins.some(plugin => plugin.id === "ai" && plugin.enabled);
+      const availableModels = pluginEnabled ? await api<AiModel[]>("/ai/models") : [];
       setCurrentUser(account);
       setUser(account);
       setName(account.name);
@@ -106,6 +111,8 @@ export default function ProfilePage() {
       setCards(assigned);
       setProjects(projectList);
       setModels(availableModels);
+      setAiAvailable(pluginEnabled);
+      setEnabledPluginIds(new Set(pluginCatalog.plugins.filter(plugin => plugin.enabled).map(plugin => plugin.id)));
       setError("");
     } catch (err) {
       setError((err as Error).message);
@@ -175,7 +182,7 @@ export default function ProfilePage() {
     value: Preferences[keyof Preferences],
   ) {
     const previousTheme = user?.preferences?.theme || "light";
-    if (key === "theme") applyTheme(value as "light" | "dark");
+    if (key === "theme") applyTheme(value as "light" | "dark" | "terroso");
     try {
       const account = await send<User>("/account/preferences", "PATCH", {
         [key]: value,
@@ -198,7 +205,7 @@ export default function ProfilePage() {
       setError("");
     } catch (err) { setError((err as Error).message); }
   }
-  async function saveProjectAi(projectId: string, body: { ai_default_model?: string | null; ai_default_effort?: AiEffort | null }) {
+  async function saveProjectAi(projectId: string, body: { ai_default_model?: string | null; ai_default_effort?: AiEffort | null; is_internal_orbit?: boolean }) {
     try {
       const updated = await send<AiProject>(`/ai/projects/${projectId}`, "PATCH", body);
       setProjects((current) => current.map((project) => project.id === projectId ? updated : project));
@@ -239,6 +246,7 @@ export default function ProfilePage() {
       const payload = {
         name: projectName,
         local_path: projectPath,
+        ...(user?.is_root ? {is_internal_orbit:projectInternalOrbit} : {}),
       };
       let project: AiProject;
       try {
@@ -254,6 +262,7 @@ export default function ProfilePage() {
           setProjects(current => [...current, createdProject].sort((a, b) => a.name.localeCompare(b.name)));
           setProjectName("");
           setProjectPath("");
+          setProjectInternalOrbit(false);
           setNotice("Projeto adicionado.");
           setError("");
         });
@@ -264,6 +273,7 @@ export default function ProfilePage() {
       );
       setProjectName("");
       setProjectPath("");
+      setProjectInternalOrbit(false);
       setNotice("Projeto adicionado.");
       setError("");
     } catch (err) {
@@ -595,9 +605,9 @@ export default function ProfilePage() {
                           <strong className="block text-sm">
                             {project.name}
                           </strong>
-                          {project.is_native && (
+                          {project.is_internal_orbit && (
                             <span className="text-xs font-semibold text-[#6554c0]">
-                              Projeto nativo do Orbit
+                              Orbit interno
                             </span>
                           )}
                           <code className="block truncate text-xs text-[#626f86]">
@@ -613,32 +623,24 @@ export default function ProfilePage() {
                           ) : (
                             <button type="button" onClick={() => { setEditingProjectPath(project.id); setProjectPathDraft(project.local_path); setError(""); }} className="mt-1 text-xs font-semibold text-[#0c66e4] hover:underline">Alterar caminho</button>
                           )}
-                          <details className="mt-3 max-w-2xl rounded-lg border border-[#dfe1e6] p-3">
+                          {aiAvailable && <details className="mt-3 max-w-2xl rounded-lg border border-[#dfe1e6] p-3">
                             <summary className="cursor-pointer text-xs font-semibold">Configuração de IA do projeto</summary>
                             <div className="mt-3 space-y-3">
                               <AiModelFields value={project.ai_default_model} inheritedValue={user?.ai_default_model} models={models} onSave={(value) => saveProjectAi(project.id, { ai_default_model: value })} />
                               <AiEffortField value={project.ai_default_effort} inheritedValue={user?.ai_default_effort} onChange={(value) => saveProjectAi(project.id, { ai_default_effort: value })} />
                             </div>
-                          </details>
-                          <GitProjectSettings projectId={project.id} isNative={project.is_native} />
-                          <DeliveryProjectSettings projectId={project.id} />
+                          </details>}
+                          {user?.is_root && <label className="mt-3 flex items-start gap-2 text-xs font-semibold"><input type="checkbox" checked={Boolean(project.is_internal_orbit)} onChange={event=>void saveProjectAi(project.id,{is_internal_orbit:event.target.checked})} className="mt-0.5"/><span>Este projeto é uma instância interna do Orbit<span className="mt-0.5 block font-normal text-[#626f86]">Use para vincular quadros de desenvolvimento a outra instalação do Orbit.</span></span></label>}
+                          {enabledPluginIds?.has("git") && <GitProjectSettings projectId={project.id} isInternalOrbit={project.is_internal_orbit} />}
+                          {enabledPluginIds?.has("delivery") && <DeliveryProjectSettings projectId={project.id} gitEnabled={enabledPluginIds.has("git")} sshEnabled={enabledPluginIds.has("ssh")} />}
                         </div>
-                        {project.is_native ? (
-                          <span className="text-xs text-[#626f86]">Integrado</span>
-                        ) : (
-                          <button
-                            onClick={() => void removeProject(project.id)}
-                            className="text-xs text-[#ae2a19]"
-                          >
-                            Remover
-                          </button>
-                        )}
+                        <button onClick={() => void removeProject(project.id)} className="text-xs text-[#ae2a19]">Remover</button>
                       </div>
                     ))}
                   </div>
                 )}
               </section>
-              <form
+{canCreateProject&&              <form
                 onSubmit={createProject}
                 className="h-fit rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm"
               >
@@ -664,12 +666,13 @@ export default function ProfilePage() {
                     placeholder="/home/meada/projetos/exemplo"
                   />
                 </label>
+                {user?.is_root&&<label className="mt-3 flex items-start gap-2 text-xs font-semibold"><input type="checkbox" checked={projectInternalOrbit} onChange={event=>setProjectInternalOrbit(event.target.checked)} className="mt-0.5"/><span>Este projeto é uma instância interna do Orbit<span className="mt-0.5 block font-normal text-[#626f86]">Classifique repositórios de outras instalações do Orbit para usá-los como referência arquitetural.</span></span></label>}
                 <button type="button" onClick={() => { setDirectoryPickerOpen(true); void browseProjectDirectory(); }} className="mt-2 rounded border border-[#c1c7d0] px-3 py-2 text-xs font-semibold text-[#344563] hover:bg-[#f7f8fa]">Navegar pelas pastas</button>
                     <p className="mt-2 text-xs text-[#626f86]">Informe ou selecione um caminho absoluto acessível pela API do Orbit. Em instalações Docker, pastas do host precisam estar montadas no contêiner.</p>
                 <button disabled={savingProject || !projectName.trim() || !projectPath.trim()} className="mt-4 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   {savingProject ? "Salvando..." : "Adicionar"}
                 </button>
-              </form>
+              </form>}
               {directoryPickerOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDirectoryPickerOpen(false);}}>
                   <section role="dialog" aria-modal="true" aria-labelledby="directory-picker-title" className="flex max-h-[min(80vh,640px)] w-full max-w-xl flex-col rounded-xl bg-white shadow-xl">
@@ -737,21 +740,22 @@ export default function ProfilePage() {
           )}
           {tab === "settings" && (
             <div className="grid gap-6 md:grid-cols-2">
-              <section className="rounded-xl border border-[#c3b6f7] bg-[#f7f5ff] p-6 shadow-sm">
+              {aiAvailable && <section className="rounded-xl border border-[#c3b6f7] bg-[#f7f5ff] p-6 shadow-sm">
                 <h2 className="mb-1 text-lg font-bold text-[#403294]">IA global</h2>
                 <p className="mb-5 text-sm text-[#626f86]">Base de modelo e esforço para projetos, quadros e cartões sem configuração própria. Sem escolha, o campo continua vazio.</p>
                 <div className="space-y-4">
                   <AiModelFields value={user?.ai_default_model} models={models} onSave={(value) => saveGlobalAi({ ai_default_model: value })} />
                   <AiEffortField value={user?.ai_default_effort} onChange={(value) => saveGlobalAi({ ai_default_effort: value })} />
                 </div>
-              </section>
+              </section>}
               <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
                 <h2 className="mb-1 text-lg font-bold">Aparência</h2>
                 <p className="mb-5 text-sm text-[#626f86]">
                   Escolha o tema da interface. A alteração é aplicada imediatamente e salva na sua conta.
                 </p>
-                <div aria-label="Tema da interface" className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="group">
-                  {(["light", "dark"] as const).map((theme) => (
+                <p className="theme-forced-notice mb-5 hidden rounded-lg bg-[#f4e6d4] p-3 text-sm text-[#633b2d]">O tema desta instância é definido pela organização.</p>
+                <div aria-label="Tema da interface" className="theme-preference-options grid grid-cols-1 gap-3 sm:grid-cols-3" role="group">
+                  {(["light", "dark", "terroso"] as const).map((theme) => (
                     <button
                       type="button"
                       key={theme}
@@ -759,12 +763,8 @@ export default function ProfilePage() {
                       aria-pressed={preferences.theme === theme}
                       className={`profile-theme-option flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-sm font-semibold text-[#172b4d] transition-colors ${preferences.theme === theme ? "border-[#6554c0] bg-[#e9e5fa] ring-2 ring-[#6554c0]/30" : "border-[#dfe1e6] hover:border-[#8590a2]"}`}
                     >
-                      {theme === "light" ? (
-                        <Palette size={25} />
-                      ) : (
-                        <Moon size={25} />
-                      )}{" "}
-                      <span>{theme === "light" ? "Claro" : "Escuro"}</span>
+                      {theme === "light" ? <Palette size={25} /> : theme === "dark" ? <Moon size={25} /> : <span aria-hidden="true" className="h-6 w-6 rounded-full border border-[#7d3624] bg-[linear-gradient(135deg,#a80d4b_0_40%,#d2672b_40%_70%,#54603a_70%)]" />}{" "}
+                      <span>{theme === "light" ? "Claro" : theme === "dark" ? "Escuro" : "Terroso"}</span>
                       <span className="text-xs font-normal text-[#626f86]">{preferences.theme === theme ? "Selecionado" : "Selecionar"}</span>
                     </button>
                   ))}
@@ -852,7 +852,7 @@ export default function ProfilePage() {
           )}
         </main>
       </div>
-      {create && (
+      {create && canCreateBoard && (
         <CreateBoardModal
           onClose={() => setCreate(false)}
           onCreate={createBoard}
