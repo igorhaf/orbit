@@ -1,10 +1,12 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, Eye, EyeOff, LayoutDashboard, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { send, setSession, User } from '@/lib/api';
+import { BrandMark, useBranding } from '@/components/branding';
 
 export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
+  const brand=useBranding();
   const [email,setEmail] = useState('');
   const [password,setPassword] = useState('');
   const [showPassword,setShowPassword] = useState(false);
@@ -21,16 +23,16 @@ export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
   }
   return <div className="min-h-screen bg-[#f8f9fb]">
     <div className="flex items-center justify-center gap-2 pt-10 text-[#172b4d]">
-      <span className="flex h-9 w-9 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={24} strokeWidth={2.8}/></span>
-      <strong className="text-[30px] tracking-[-1.5px]">Orbit</strong>
+      <BrandMark className="h-9 w-9" />
+      <strong className="text-[30px] tracking-[-1.5px]">{brand.app_name}</strong>
     </div>
     <div className="mx-auto mt-8 grid max-w-[1040px] items-center gap-12 px-4 pb-16 md:grid-cols-2 md:gap-16 md:px-10">
       <div className="hidden md:block">
         <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-[#e9f2ff] px-3 py-1 text-xs font-bold text-[#0c66e4]"><Sparkles size={14}/> TUDO EM UM SÓ LUGAR</div>
-        <h1 className="text-[43px] font-bold leading-[1.12] tracking-[-1.5px] text-[#172b4d]">Seu trabalho, com uma visão <span className="text-[#0c66e4]">mais clara.</span></h1>
-        <p className="mt-5 max-w-md text-lg leading-7 text-[#44546f]">Acompanhe o que vem pela frente, veja as novidades e organize seus projetos em quadros.</p>
+        <h1 className="text-[43px] font-bold leading-[1.12] tracking-[-1.5px] text-[#172b4d]">{brand.login_tagline}</h1>
+        <p className="mt-5 max-w-md text-lg leading-7 text-[#44546f]">{brand.login_description}</p>
         <div className="mt-8 space-y-3 text-sm text-[#44546f]">
-          {['Tarefas e prazos em destaque','Quadros, listas e cartões','Atividade e notificações em um lugar'].map(item => <div key={item} className="flex items-center gap-3"><CheckCircle2 className="text-[#22a06b]" size={19}/>{item}</div>)}
+          {brand.login_benefits.map(item => <div key={item} className="flex items-center gap-3"><CheckCircle2 className="text-[#22a06b]" size={19}/>{item}</div>)}
         </div>
         <div className="mt-10 flex h-40 max-w-md gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-[#0c66e4] to-[#0747a6] p-5 shadow-xl">
           {[2,2,1].map((count,index) => <div key={index} className="w-1/3 rounded bg-[#f1f2f4] p-2">

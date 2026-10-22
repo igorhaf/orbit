@@ -9,6 +9,7 @@ import {isAiRoute} from './ai/routes';
 import {defineCardLayout,definePlugin} from './sdk';
 const samplePlugin={id:'sample',name:'Sample',version:'1.0.0',dependencies:['workspaces']};
 import {workspacesPlugin} from '../workspaces/workspaces.plugin';
+import {alexaOrbitPluginDefinition} from '../alexa-orbit/alexa-orbit.plugin';
 
 test('dependency selection, suspension and reactivation preserve independent configured state',()=>{
  const registry=new PluginRegistry();registry.register(definePlugin(aiPlugin));registry.register(definePlugin(softwareDevelopmentPlugin));
@@ -18,6 +19,11 @@ test('dependency selection, suspension and reactivation preserve independent con
  assert.throws(()=>registry.selection(['software-development']),/desativada/);
  registry.setEnabled('ai',true);assert.equal(registry.isEnabled('software-development'),true);
  registry.setEnabled('software-development',false);assert.equal(registry.isEnabled('ai'),true);
+});
+test('hidden plugins are removed from instance contributions while their routes remain guarded',()=>{
+ const previous=process.env.ORBIT_HIDDEN_PLUGINS;process.env.ORBIT_HIDDEN_PLUGINS='ai,software-development,alexa-orbit';
+ try{const registry=new PluginRegistry();registry.register(aiPlugin);registry.register(softwareDevelopmentPlugin);registry.register(alexaOrbitPluginDefinition);assert.deepEqual(registry.list().map(plugin=>plugin.id),[]);assert.deepEqual(registry.catalog(),[]);for(const id of ['ai','software-development','alexa-orbit'])assert.equal(registry.isEnabled(id),false);assert.equal(registry.routePlugin('/ai/models'),'ai');assert.equal(registry.routePlugin('/codex/queues'),'ai');assert.equal(registry.routePlugin('/plugins/alexa-orbit/configuration'),'alexa-orbit');assert.equal(registry.routePlugin('/integrations/alexa/orbit'),'alexa-orbit')}
+ finally{if(previous===undefined)delete process.env.ORBIT_HIDDEN_PLUGINS;else process.env.ORBIT_HIDDEN_PLUGINS=previous}
 });
 test('missing dependencies and cycles cannot execute; registering the missing dependency repairs availability',()=>{
  const registry=new PluginRegistry();registry.register({...softwareDevelopmentPlugin,dependencies:['ai']});assert.equal(registry.isEnabled('software-development'),false);assert.throws(()=>registry.selection(['software-development']));
@@ -50,6 +56,7 @@ test('layout fields are plugin owned, reject unknown fields and retain data when
 });
 test('disabling AI prevents provider process launch while core project routes remain available',async()=>{
  const provider=new CodexAiService();provider.setAvailability(()=>false);await assert.rejects(()=>provider.complete('Never spawn'),/desativado/);
+ const registry=new PluginRegistry();registry.register(aiPlugin);assert.equal(registry.routePlugin('/codex/queues'),'ai');assert.equal(registry.routePlugin('/tools/diagnostics'),'ai');assert.equal(registry.routePlugin('/ai/projects'),undefined);assert.equal(registry.routePlugin('/ai/schedule'),undefined);registry.setEnabled('ai',false);assert.equal(registry.isEnabled('ai'),false);assert.equal(registry.routePlugin('/codex/queues'),'ai');
  for(const route of ['/ai/models','/ai/settings','/cards/x/ai','/cards/x/comments/ai','/cards/x/prompt-runs','/cards/x/prompt-settings','/comments/x/execute','/codex/queue'])assert.equal(isAiRoute(route),true,route);
  for(const route of ['/ai/projects','/ai/projects/x','/ai/projects/directories','/ai/execution-projects','/cards/x/plugins','/cards/x/comments','/boards'])assert.equal(isAiRoute(route),false,route);
 });

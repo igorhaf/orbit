@@ -1,4 +1,3 @@
-import {isAiRoute} from '../plugins/ai/routes';
 import type {PluginDefinition} from '../plugins/contract';
 import {corePrivileges,permissionForRoute,evaluatePermissions,Privilege} from './privileges';
 import {Body,CanActivate,Controller,ExecutionContext,Get,HttpException,Inject,Injectable,Param,Patch,Post,Put,Query,Req} from '@nestjs/common';
@@ -17,6 +16,29 @@ export const routePermission=permissionForRoute;
 
 @Injectable()
 export class AccessService {
+ private resourceAvailability:Array<(type:string)=>boolean>=[];
+ registerResourceAvailability(provider:(type:string)=>boolean){this.resourceAvailability.push(provider)}
+ resourceAvailable(type:string){return this.resourceAvailability.every(provider=>provider(type))}
+
+ private boardListProviders:Array<(user:string,status:string)=>Promise<Array<Record<string,unknown>&{id:string}>>>=[];
+ private boardScopeProviders:Array<(board:string,user:string)=>Promise<Record<string,unknown>|null>>=[];
+ registerBoardListProvider(provider:(user:string,status:string)=>Promise<Array<Record<string,unknown>&{id:string}>>){this.boardListProviders.push(provider)}
+ async additionalBoards(user:string,status:string){return (await Promise.all(this.boardListProviders.map(provider=>provider(user,status)))).flat()}
+ registerBoardScopeProvider(provider:(board:string,user:string)=>Promise<Record<string,unknown>|null>){this.boardScopeProviders.push(provider)}
+ async boardScope(board:string,user:string){for(const provider of this.boardScopeProviders){const scope=await provider(board,user);if(scope)return scope}return null}
+
+ private boardMemberProviders:Array<(board:string,user:string)=>Promise<Array<Record<string,unknown>>|null>>=[];
+ registerBoardMembersProvider(provider:(board:string,user:string)=>Promise<Array<Record<string,unknown>>|null>){this.boardMemberProviders.push(provider)}
+ async boardMembers(board:string,user:string){for(const provider of this.boardMemberProviders){const members=await provider(board,user);if(members!==null)return members}return null}
+ private boardAccessProviders:Array<(board:string,user:string,permission:string)=>Promise<boolean|null>>=[];
+ private boardListingPolicies:Array<(board:string,user:string)=>Promise<boolean>>=[];
+ registerBoardAccessProvider(provider:(board:string,user:string,permission:string)=>Promise<boolean|null>){this.boardAccessProviders.push(provider)}
+ registerBoardListingPolicy(policy:(board:string,user:string)=>Promise<boolean>){this.boardListingPolicies.push(policy)}
+
+ private boardPolicies:Array<(board:string,user:string,permission:string,snapshot?:{is_collection?:boolean})=>Promise<boolean>>=[];
+ registerBoardPolicy(policy:(board:string,user:string,permission:string,snapshot?:{is_collection?:boolean})=>Promise<boolean>){this.boardPolicies.push(policy)}
+ async availableBoards<T extends {id:string;is_collection?:boolean}>(boards:T[],user:string){const allowed=await Promise.all(boards.map(async board=>(await Promise.all(this.boardPolicies.map(policy=>policy(board.id,user,'boards.read',board)))).every(Boolean)&& (await Promise.all(this.boardListingPolicies.map(policy=>policy(board.id,user)))).every(Boolean)));return boards.filter((_board,index)=>allowed[index])}
+
  private registeredPermissions=new Map<string,Privilege>(corePrivileges.map(p=>[p.id,p]));
  private routePlugins=new Map<string,string>();
  private pluginDefinitions=new Map<string,PluginDefinition>();
@@ -25,13 +47,14 @@ export class AccessService {
  catalog(){return Array.from(this.registeredPermissions.keys())}
  async privilegeCatalog(){const states=await this.db.query<{permission_id:string;enabled:boolean}>('SELECT * FROM access_permission_settings');return Array.from(this.registeredPermissions.values()).map(p=>({...p,enabled:states.find(state=>state.permission_id===p.id)?.enabled!==false}))}
  registerPlugins(plugins:PluginDefinition[]){for(const plugin of plugins){this.registerPermissions(['read','write','manage'].map(action=>`plugin.${plugin.id}.${action}`),plugin.id);for(const action of [...plugin.capabilities||[],...plugin.actions||[]])this.registerPermissions(action.permissions||[],plugin.id);for(const type of plugin.contributions?.cardTypes||[])this.registerPermissions([`cards.type.${type.id}.use`],plugin.id);for(const view of plugin.contributions?.boardViews||[]){this.registerPermissions([view.permission],plugin.id);this.registeredPermissions.set(view.permission,{id:view.permission,label:'Visualização: '+view.name,source:plugin.id})}}const prefixes:Record<string,string>={'/git':'git','/github':'github','/delivery':'delivery','/planner':'planner','/ai/schedule':'planner','/google/drive':'google_drive','/calendar/google':'google_calendar','/calendar/microsoft':'outlook_calendar','/dropbox':'dropbox','/mail/gmail':'gmail','/mail/outlook_mail':'outlook_mail','/trello':'trello'};for(const [prefix,plugin] of Object.entries(prefixes))this.routePlugins.set(prefix,plugin)}
- permission(path:string,method:string){if(/^\/boards\/[^/]+\/views(?:\/|$)/.test(path))return 'boards.read';for(const [prefix,plugin] of this.routePlugins)if(path===prefix||path.startsWith(prefix+'/'))return `plugin.${plugin}.${['GET','HEAD'].includes(method)?'read':'write'}`;const configuration=path.match(/^\/plugins\/([^/]+)\//)||path.match(/^\/settings\/environment\/plugins\/([^/]+)(?:\/|$)/);if(configuration)return `plugin.${configuration[1]}.manage`;return routePermission(path,method)}
+ permission(path:string,method:string){if(/^\/boards\/[^/]+\/views(?:\/|$)/.test(path))return 'boards.read';for(const plugin of this.pluginDefinitions.values())if(plugin.handlesRoute?.(path))return plugin.routePermission?.(path,method)||`plugin.${plugin.id}.${['GET','HEAD'].includes(method)?'read':'write'}`;for(const [prefix,plugin] of this.routePlugins)if(path===prefix||path.startsWith(prefix+'/'))return `plugin.${plugin}.${['GET','HEAD'].includes(method)?'read':'write'}`;const configuration=path.match(/^\/plugins\/([^/]+)\//)||path.match(/^\/settings\/environment\/plugins\/([^/]+)(?:\/|$)/);if(configuration)return `plugin.${configuration[1]}.manage`;return routePermission(path,method)}
+ pluginPermission(path:string,method:string){const plugin=[...this.pluginDefinitions.values()].find(item=>item.handlesRoute?.(path));return plugin?.routePermission?.(path,method)}
  bindPlugins(plugins:PluginDefinition[]){for(const plugin of plugins)this.pluginDefinitions.set(plugin.id,plugin)}
  async authorizePluginAction(user:string,pluginId:string,actionId:string){const plugin=this.pluginDefinitions.get(pluginId),action=plugin?.actions?.find(item=>item.id===actionId);if(!action)deny('Ação não registrada.',404);const required=[...new Set([...(action.permissions||[]),...(plugin?.capabilities||[]).filter(cap=>(action.requiredCapabilities||[]).includes(cap.id)).flatMap(cap=>cap.permissions||[])])];for(const permission of required)await this.require(user,permission)}
 
  async pluginRequest(user:string,pluginId:string,mode:string,path:string){if((await this.account(user)).is_root)return true;const granted=await this.effective(user);if(mode==='manage')return granted.includes(`plugin.${pluginId}.manage`);const plugin=this.pluginDefinitions.get(pluginId);const declared=[...new Set([...(plugin?.capabilities||[]).flatMap(cap=>cap.permissions||[]),...(plugin?.actions||[]).flatMap(action=>action.permissions||[])])];const kind=declared.filter(permission=>mode==='read'?permission.endsWith('.read'):!permission.endsWith('.read'));const normalize=(value:string)=>value.toLowerCase().replace(/ies$/,'y').replace(/s$/,'').replace(/[._-]/g,'');const segments=path.split('/').map(normalize);const action=plugin?.actions?.find(action=>segments.includes(normalize(action.id)));const required=action?[...action.permissions||[],...(plugin?.capabilities||[]).filter(cap=>(action.requiredCapabilities||[]).includes(cap.id)).flatMap(cap=>cap.permissions||[])]:kind.filter(permission=>segments.includes(normalize(permission.split('.')[0])));const explicitDenied=await this.db.query<{permission_id:string}>("SELECT permission_id FROM access_user_exceptions WHERE user_id=$1 AND effect='deny' UNION SELECT permission_id FROM access_permission_settings WHERE NOT enabled",[user]);if(required.some(permission=>explicitDenied.some(row=>row.permission_id===permission)))return false;if(granted.includes(`plugin.${pluginId}.${mode}`))return true;return required.length>0?required.every(permission=>granted.includes(permission)):kind.some(permission=>granted.includes(permission))}
  registerRoutes(prefix:string){this.pluginRoutes.add(prefix)}
- pluginRoute(path:string){return [...this.pluginRoutes].some(prefix=>path===prefix||path.startsWith(prefix+'/'))}
+ pluginRoute(path:string){return [...this.pluginDefinitions.values()].some(plugin=>plugin.handlesRoute?.(path))||[...this.pluginRoutes].some(prefix=>path===prefix||path.startsWith(prefix+'/'))}
  private revokeListeners:Array<(user:string)=>void>=[];
  onRevoke(listener:(user:string)=>void){this.revokeListeners.push(listener)}
  revoke(user:string){for(const listener of this.revokeListeners)listener(user)}
@@ -58,8 +81,25 @@ export class AccessService {
   const provider=this.scopes.get(type),membership=this.memberships.get(type);return Boolean(provider&&await provider(scope)&&membership&&await membership(user,scope,permission));
  }
 
+ /** Strict resource authorization: only a grant on this exact scope can authorize access. */
+ async hasScoped(user:string,permission:string,type:string,scope:string){
+  const account=await this.account(user);if(account.is_root)return true;
+  const provider=this.scopes.get(type),membership=this.memberships.get(type);if(!provider||!membership||!await provider(scope))return false;
+  const roles=await this.grants(user,type,scope);
+  const [denials,disabled]=await Promise.all([
+   this.db.query<{permission_id:string}>("SELECT permission_id FROM access_user_exceptions WHERE user_id=$1 AND permission_id=$2 AND effect='deny'",[user,permission]),
+   this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE permission_id=$1 AND NOT enabled',[permission]),
+  ]);
+  if(denials.length||disabled.length)return false;
+  if(!roles.some(role=>role.permissions.includes(permission)))return false;
+  return membership(user,scope,permission);
+ }
+
  async require(user:string,permission:string,type='global',scope='*'){if(!await this.has(user,permission,type,scope)){await this.audit(user,'access.denied',permission,type==='global'?undefined:{type,id:scope});deny()}}
+ async requireScoped(user:string,permission:string,type:string,scope:string){if(!await this.hasScoped(user,permission,type,scope)){await this.audit(user,'access.denied',permission,{type,id:scope});deny()}}
  async boardPermission(board:string,user:string,permission='boards.read'){
+  for(const provider of this.boardAccessProviders){const allowed=await provider(board,user,permission);if(allowed!==null)return allowed;}
+  for(const policy of this.boardPolicies)if(!await policy(board,user,permission))return false;
   const account=await this.account(user);if(account.is_root)return true;if(!await this.has(user,permission))return false;
   const row=await this.db.one('SELECT b.workspace_id,bm.role FROM boards b LEFT JOIN board_members bm ON bm.board_id=b.id AND bm.user_id=$2 WHERE b.id=$1',[board,user]);if(!row)return false;
   if(row.workspace_id)return this.has(user,permission,'workspace',String(row.workspace_id));
@@ -85,7 +125,8 @@ export class AccessService {
 export class AccessGuard implements CanActivate {
  constructor(@Inject(AccessService) private access:AccessService,@Inject(Db) private db:Db){}
  async canActivate(context:ExecutionContext){const req=context.switchToHttp().getRequest<AccessRequest>();const path=req.path;
-  if(path==='/health'||(req.method==='POST'&&['/auth/login','/auth/register','/auth/recovery','/auth/complete','/email/comments','/email/inbox','/integrations/alexa/orbit'].includes(path))||(/^\/(calendar\/(google|microsoft)|google\/drive|dropbox|mail\/(gmail|outlook_mail))\/oauth\/callback$/.test(path)&&req.method==='GET'))return true;
+  if(path==='/health'||(path==='/branding'&&req.method==='GET')||(req.method==='POST'&&['/auth/login','/auth/register','/auth/recovery','/auth/complete','/email/comments','/email/inbox','/integrations/alexa/orbit'].includes(path))||(/^\/(calendar\/(google|microsoft)|google\/drive|dropbox|mail\/(gmail|outlook_mail))\/oauth\/callback$/.test(path)&&req.method==='GET'))return true;
+  if(path.startsWith('/public/')&&this.access.pluginRoute(path)&&this.access.pluginPermission(path,req.method)===null)return true;
   const token=req.headers.authorization?.replace(/^Bearer /i,'');if(!token)deny('Faça login para continuar.',401);const account=await this.access.authenticate(token!);req.orbitActor=account.id;req.orbitUser=account.id;
   const as=req.headers['x-orbit-act-as'];if(as){if(!account.is_root||typeof as!=='string')deny();await this.access.account(id(as));req.orbitUser=as;await this.access.audit(account.id,'root.act-as',as)}
   const resource=path.match(/^\/(vault|notebooks)\/([0-9a-f-]{36})(?:\/|$)/i)||path.match(/^\/ai\/(projects)\/([0-9a-f-]{36})(?:\/|$)/i);
@@ -95,8 +136,7 @@ export class AccessGuard implements CanActivate {
    if(!account.is_root&&path.endsWith('/copy-to-card')){await this.access.require(account.id,'boards.write');const target=await this.db.one('SELECT board_id FROM lists WHERE id=$1',[id(req.body.list_id)]);if(!target||!await this.access.boardPermission(target.board_id,account.id,'boards.write'))deny()}
   }
   if(account.is_root){if(!['GET','HEAD'].includes(req.method))await this.access.audit(account.id,'root.request.attempt',req.method+' '+path);return true}
-  if(isAiRoute(path)&&!/^\/codex\/queues?(?:\/|$)/.test(path))await this.access.require(account.id,'ai.'+(['GET','HEAD'].includes(req.method)?'read':'write'));
-  const permission=resource&&path.endsWith('/copy-to-card')?resource[1]+'.read':this.access.pluginRoute(path)?null:this.access.permission(path,req.method);if(!permission)return true;
+  const permission=resource&&path.endsWith('/copy-to-card')?resource[1]+'.read':this.access.pluginPermission(path,req.method)||(this.access.pluginRoute(path)?null:this.access.permission(path,req.method));if(!permission)return true;
   if(permission.startsWith('boards.')){
    await this.access.require(account.id,permission);
    if(/\/(execute|execution|prompt|prompt-runs|prompts)(\/|$)/.test(path))await this.access.require(account.id,'execution.'+(['GET','HEAD'].includes(req.method)?'read':'write'));

@@ -147,8 +147,12 @@ export function CardDialog({
   onChanged,
   onDeleted,
   sidePanel = false,
+  recordContent,
+  managedRecord = Boolean(card.managed_record),
 }: {
   sidePanel?: boolean;
+  recordContent?: React.ReactNode;
+  managedRecord?: boolean;
   card: Card;
   board: Board;
   onClose: () => void;
@@ -353,12 +357,7 @@ export function CardDialog({
               />
               <p className="mt-1 text-sm text-[#626f86]">
                 na lista{" "}
-                <button
-                  onClick={() => setPanel("move")}
-                  className="underline hover:text-[#172b4d]"
-                >
-                  {list?.title}
-                </button>
+                {board.record_scope&&!managedRecord?<select aria-label="Fase da atividade" value={card.list_id} onChange={event=>void run(()=>send(`/cards/${card.id}`,'PATCH',{list_id:event.target.value}))} className="min-h-11 max-w-full rounded border px-2">{board.record_scope.phases.map(phase=><option key={phase.id} value={phase.list_id}>{phase.label}</option>)}</select>:<button disabled={managedRecord} onClick={()=>setPanel("move")} className="underline hover:text-[#172b4d]">{list?.title}</button>}
                 {card.kind === "template" && (
                   <span className="ml-2 rounded bg-[#e9d8fd] px-1.5 py-0.5 text-xs text-[#6e44a3]">
                     Modelo
@@ -481,7 +480,8 @@ export function CardDialog({
             </div>
             <div className="pl-0 sm:pl-8">
               {['normal','template'].includes(card.kind||'normal')&&<CardTypeSelector cardId={card.id} onChanged={onChanged}/>}
-              <CardPlugins model={cardPlugins}/>
+              {recordContent}
+              {!managedRecord&&<CardPlugins model={cardPlugins}/>}
               <CardPluginFields key={card.id+cardPlugins.state.selected.join()} cardId={card.id} model={cardPlugins}/>
               <div className="grid gap-4">
               {aiEnabled && <CardPluginSlot slot="ai.controls" slots={cardPlugins.state.slots}
@@ -675,6 +675,7 @@ export function CardDialog({
               board={board}
               onChanged={onChanged}
             />
+            {!managedRecord&&<>
             <div>
               <h4 className="mb-2 text-xs font-bold text-[#626f86]">Ações</h4>
               <div className="space-y-2">
@@ -717,6 +718,7 @@ export function CardDialog({
                 </button>
               </div>
             </div>
+            </>}
           </aside>
         </div>}
         {visibleTab === "prompt" && <PromptPreview card={card} board={board} />}

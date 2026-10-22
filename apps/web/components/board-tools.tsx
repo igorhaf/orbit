@@ -1,4 +1,5 @@
 "use client";
+import {useCreationAvailability} from '@/plugins/project-boards/use-creation-availability';
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -54,6 +55,7 @@ export function BoardTools({
   };
 }) {
   const router = useRouter();
+  const {canCreateBoard}=useCreationAvailability();
   const { confirm, confirmationModal } = useConfirmModal();
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -270,11 +272,11 @@ export function BoardTools({
                 onClick={() => open("background")}
               />
             )}
-            <MenuButton
+            {canCreateBoard&&<MenuButton
               icon={<Copy size={16} />}
               label="Copiar quadro"
               onClick={() => open("copy")}
-            />
+            />}
             <MenuButton
               icon={<Link2 size={16} />}
               label="Copiar link"
@@ -673,7 +675,7 @@ export function BoardTools({
                 )}
               </div>
             )}
-            {panel === "copy" && (
+            {panel === "copy" && canCreateBoard && (
               <form
                 onSubmit={async (event) => {
                   event.preventDefault();

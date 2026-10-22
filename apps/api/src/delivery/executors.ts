@@ -5,7 +5,7 @@ import {realpath} from 'node:fs/promises';
 import {isAbsolute,relative,resolve,sep} from 'node:path';
 import {Client} from 'ssh2';
 import {Db} from '../db';
-import {resolveVaultReference} from '../vault-credentials';
+import {resolveVaultReference} from '../credential-store';
 import {SecretVault} from '../secrets';
 import {redact} from '../execution/security';
 

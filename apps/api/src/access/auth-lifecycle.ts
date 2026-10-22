@@ -9,14 +9,22 @@ import { AccessService } from './access';
 const RATE_LIMIT = 5;
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
-export interface AuthMailer { send(to: string, subject: string, url: string): Promise<void> }
+export interface AuthMailer {
+  send(to: string, subject: string, url: string): Promise<void>;
+  sendMessage?(to: string[], subject: string, text: string): Promise<{ messageId?: string }>;
+}
 
 export class SmtpAuthMailer implements AuthMailer {
   async send(to: string, subject: string, url: string) {
+    await this.sendMessage([to], subject, `Use o link para continuar: ${url}\nO link expira em 30 minutos.`);
+  }
+
+  async sendMessage(to: string[], subject: string, text: string): Promise<{ messageId?: string }> {
     const { SMTP_HOST, SMTP_FROM, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASSWORD } = process.env;
     if (!SMTP_HOST || !SMTP_FROM) throw new Error('SMTP não configurado. Configure o envio de e-mail em Configurações → E-mail e e-mails.');
     const transport = nodemailer.createTransport({ host: SMTP_HOST, port: Number(SMTP_PORT || 587), secure: SMTP_SECURE === 'true', auth: SMTP_USER ? { user: SMTP_USER, pass: SMTP_PASSWORD } : undefined });
-    await transport.sendMail({ from: SMTP_FROM, to, subject, text: `Use o link para continuar: ${url}\nO link expira em 30 minutos.` });
+    const result = await transport.sendMail({ from: SMTP_FROM, to, subject, text });
+    return { messageId: result.messageId };
   }
 }
 

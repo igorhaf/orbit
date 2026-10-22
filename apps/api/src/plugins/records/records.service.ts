@@ -4,9 +4,11 @@ import type { PoolClient } from "pg";
 import { AccessService, id, text } from "../../access/access";
 import { Db } from "../../db";
 import { PluginRegistry } from "../../execution/registries";
-import { recordPlugin, recordPlugins } from "./catalog";
+import type { PluginDefinition, RecordKindContribution, RecordValidationContext, RecordValidationIssue, ResolvedRecordReference } from "../contract";
 import { decodeDocument, DocumentScanner } from "./documents";
 import {
+  assertSemanticValidation,
+  assertPayloadFieldsImmutable,
   deadlineDueAt,
   deadlineTransition,
   invalid,
@@ -45,6 +47,30 @@ export class ExtensionRecords implements OnModuleInit {
 
   onModuleInit() {
     this.access.registerRoutes("/extensions");
+    this.access.registerScope("extension_record", async (scope) => {
+      const record = await this.db.one<{ plugin_id: string; kind: string }>(
+        "SELECT plugin_id,kind FROM extension_records WHERE id=$1",
+        [id(scope)],
+      );
+      if (!record || !this.registry.isEnabled(record.plugin_id)) return false;
+      try {
+        return this.definition(record.plugin_id, record.kind).resourceScoped === true;
+      } catch {
+        return false;
+      }
+    });
+    this.access.registerMembership("extension_record", async (user, scope) => {
+      const owner = await this.db.one<{ created_by: string }>(
+        "SELECT created_by FROM extension_records WHERE id=$1",
+        [id(scope)],
+      );
+      if (!owner) return false;
+      if (owner.created_by === user) return true;
+      return Boolean(await this.db.one(
+        "SELECT user_id FROM access_grants WHERE user_id=$1 AND scope_type='extension_record' AND scope_id=$2",
+        [user, scope],
+      ));
+    });
   }
 
   async catalog(user: string) {
@@ -56,9 +82,24 @@ export class ExtensionRecords implements OnModuleInit {
           [user],
         );
     const available = [];
-    for (const { plugin, kinds } of recordPlugins) {
+    for (const plugin of this.registry.list()) {
+      const kinds = plugin.contributions?.recordKinds;
+      if (!kinds) continue;
       let authorized =
         root || (await this.access.has(user, `plugin.${plugin.id}.read`));
+      if (!authorized)
+        for (const definition of Object.values(kinds)) {
+          const permissions = [
+            definition.resourceScoped ? `plugin.${plugin.id}.write` : "",
+            definition.managePermission || "",
+          ].filter(Boolean);
+          for (const permission of permissions)
+            if (await this.access.has(user, permission)) {
+              authorized = true;
+              break;
+            }
+          if (authorized) break;
+        }
       if (!authorized)
         for (const workspace of workspaces)
           if (
@@ -72,6 +113,17 @@ export class ExtensionRecords implements OnModuleInit {
             authorized = true;
             break;
           }
+      if (!authorized && Object.values(kinds).some((definition) => definition.resourceScoped)) {
+        const records = await this.db.query<{ id: string; workspace_id: string; kind: string }>(
+          "SELECT id,workspace_id,kind FROM extension_records WHERE plugin_id=$1 AND kind=ANY($2::text[]) ORDER BY updated_at DESC LIMIT 200",
+          [plugin.id, Object.entries(kinds).filter(([, definition]) => definition.resourceScoped).map(([kind]) => kind)],
+        );
+        for (const record of records)
+          if (await this.canRecord(user, plugin.id, record.kind, record.id, "read")) {
+            authorized = true;
+            break;
+          }
+      }
       if (!authorized) continue;
       available.push({
         id: plugin.id,
@@ -98,10 +150,152 @@ export class ExtensionRecords implements OnModuleInit {
   }
 
   private definition(plugin: string, kind: string) {
-    const definition = recordPlugin(plugin)?.kinds[kind];
+    let registered: PluginDefinition;
+    try {
+      registered = this.registry.getById(plugin);
+    } catch {
+      invalid("Tipo de registro não encontrado neste plugin.", 404);
+    }
+    const definition = registered.contributions?.recordKinds?.[kind] as RecordKindContribution | undefined;
     if (!definition)
       invalid("Tipo de registro não encontrado neste plugin.", 404);
     return definition;
+  }
+
+  private async canRecord(user: string, plugin: string, kind: string, recordId: string, action: string) {
+    const definition = this.definition(plugin, kind);
+    if (!definition.resourceScoped)
+      return this.access.has(user, `plugin.${plugin}.${action}`, "workspace", (await this.db.one<{ workspace_id: string }>("SELECT workspace_id FROM extension_records WHERE id=$1", [id(recordId)]))?.workspace_id || "");
+    if (definition.managePermission && await this.access.has(user, definition.managePermission)) return true;
+    if (definition.authorizeRecord) {
+      const record = await this.db.one<{ workspace_id: string; state: string; payload: Payload }>(
+        "SELECT workspace_id,state,payload FROM extension_records WHERE id=$1 AND plugin_id=$2 AND kind=$3",
+        [id(recordId), plugin, kind],
+      );
+      if (!record) return false;
+      return definition.authorizeRecord(
+        user,
+        action,
+        record.state,
+        record.payload,
+        this.validationContext(record.workspace_id, user, undefined, recordId),
+      );
+    }
+    const record = await this.db.one<{ created_by: string }>(
+      "SELECT created_by FROM extension_records WHERE id=$1 AND plugin_id=$2 AND kind=$3",
+      [id(recordId), plugin, kind],
+    );
+    if (!record) return false;
+    if (record.created_by === user && await this.access.has(user, `plugin.${plugin}.${action}`)) return true;
+    return this.access.hasScoped(user, `plugin.${plugin}.${action}`, "extension_record", recordId);
+  }
+
+  private validationContext(workspace: string, user: string, client?: PoolClient, recordId?: string): RecordValidationContext {
+    return {
+      actorId: user,
+      recordId,
+      nextSequence: async () => {
+        if (client)
+          return (await client.query<{ value: string }>("SELECT nextval('extension_protocol_seq')::text AS value")).rows[0].value;
+        return (await this.db.query<{ value: string }>("SELECT nextval('extension_protocol_seq')::text AS value"))[0].value;
+      },
+      hasPermission: (permission) => recordId
+        ? this.access.has(user, permission, "extension_record", recordId)
+        : this.access.has(user, permission),
+      hasGlobalPermission: (permission) => this.access.has(user, permission),
+      hasWorkspacePermission: (permission) => this.access.has(user, permission, "workspace", workspace),
+      hasPermissionOnResource: (permission, targetId) => this.access.hasScoped(user, permission, "extension_record", targetId),
+      hasAcceptedTerm: async (termRecordId, revision, acceptedUserId) => {
+        if (!Number.isInteger(revision) || revision < 1) return false;
+        const sql = "SELECT 1 FROM extension_term_acceptances WHERE record_id=$1 AND revision=$2 AND user_id=$3 LIMIT 1";
+        const rows = client
+          ? (await client.query(sql, [id(termRecordId), revision, id(acceptedUserId)])).rows
+          : await this.db.query(sql, [id(termRecordId), revision, id(acceptedUserId)]);
+        return rows.length > 0;
+      },
+      resolveRecord: async (recordId, revision) => {
+        if (!Number.isInteger(revision) || revision < 1) return null;
+        const sql = `SELECT r.id,r.plugin_id AS "pluginId",r.kind,v.state,v.revision,v.payload
+          FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
+          WHERE r.id=$1 AND r.workspace_id=$2 AND v.revision=$3`;
+        const rows = client
+          ? (await client.query<ResolvedRecordReference>(sql, [id(recordId), workspace, revision])).rows
+          : await this.db.query<ResolvedRecordReference>(sql, [id(recordId), workspace, revision]);
+        const reference = rows[0];
+        if (!reference) return null;
+        try {
+          await this.authorize(reference.pluginId, workspace, user, "read", reference.kind, reference.id);
+        } catch {
+          return null;
+        }
+        return reference;
+      },
+      resolveLatestRecord: async (recordId) => {
+        const sql = `SELECT r.id,r.plugin_id AS "pluginId",r.kind,v.state,v.revision,v.payload
+          FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
+          WHERE r.id=$1 AND r.workspace_id=$2
+          ORDER BY v.revision DESC LIMIT 1`;
+        const rows = client
+          ? (await client.query<ResolvedRecordReference>(sql, [id(recordId), workspace])).rows
+          : await this.db.query<ResolvedRecordReference>(sql, [id(recordId), workspace]);
+        const reference = rows[0];
+        if (!reference) return null;
+        try {
+          await this.authorize(reference.pluginId, workspace, user, "read", reference.kind, reference.id);
+        } catch {
+          return null;
+        }
+        return reference;
+      },
+      countLatestRecordsByPayloadValue: async (pluginId, kind, state, field, value, lockScope, excludeRecordId) => {
+        if (!this.registry.isEnabled(pluginId) || !/^[a-z][a-z0-9_]{0,79}$/.test(field) || !/^[a-fA-F0-9-]{36}$/.test(value)) return null;
+        if (lockScope) {
+          const lockSql = "SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))";
+          if (client) await client.query(lockSql, [workspace, lockScope]);
+          else await this.db.query(lockSql, [workspace, lockScope]);
+        }
+        const sql = `WITH latest AS (
+          SELECT DISTINCT ON (r.id) v.state,v.payload
+          FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
+          WHERE r.workspace_id=$1 AND r.plugin_id=$2 AND r.kind=$3 AND ($7::uuid IS NULL OR r.id<>$7::uuid)
+          ORDER BY r.id,v.revision DESC
+        )
+        SELECT COUNT(*)::int AS count FROM latest
+        WHERE state=$4 AND (payload->$5=to_jsonb($6::text) OR payload->$5 @> jsonb_build_array($6::text))`;
+        const rows = client
+          ? (await client.query<{ count: number }>(sql, [workspace, pluginId, kind, state, field, id(value), excludeRecordId ? id(excludeRecordId) : null])).rows
+          : await this.db.query<{ count: number }>(sql, [workspace, pluginId, kind, state, field, id(value), excludeRecordId ? id(excludeRecordId) : null]);
+        return Number(rows[0]?.count ?? 0);
+      },
+      countLatestRecordsMatchingPayload: async (pluginId, kind, state, match, lockScope, excludeRecordId) => {
+        if (!this.registry.isEnabled(pluginId) || !Object.keys(match).length
+          || Object.keys(match).some((field) => !/^[a-z][a-z0-9_]{0,79}$/.test(field))
+          || Object.values(match).some((value) => typeof value !== "string")) return null;
+        if (lockScope) {
+          const lockSql = "SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))";
+          if (client) await client.query(lockSql, [workspace, lockScope]);
+          else await this.db.query(lockSql, [workspace, lockScope]);
+        }
+        const sql = `WITH latest AS (
+          SELECT DISTINCT ON (r.id) v.state,v.payload
+          FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
+          WHERE r.workspace_id=$1 AND r.plugin_id=$2 AND r.kind=$3 AND ($6::uuid IS NULL OR r.id<>$6::uuid)
+          ORDER BY r.id,v.revision DESC
+        ) SELECT COUNT(*)::int AS count FROM latest WHERE state=$4 AND payload @> $5::jsonb`;
+        const matchJson = JSON.stringify(match);
+        const rows = client
+          ? (await client.query<{ count: number }>(sql, [workspace, pluginId, kind, state, matchJson, excludeRecordId ? id(excludeRecordId) : null])).rows
+          : await this.db.query<{ count: number }>(sql, [workspace, pluginId, kind, state, matchJson, excludeRecordId ? id(excludeRecordId) : null]);
+        return Number(rows[0]?.count ?? 0);
+      },
+      isRecordOwner: async (targetId, ownerId) => {
+        const sql = "SELECT created_by FROM extension_records WHERE id=$1 AND workspace_id=$2 LIMIT 1";
+        const rows = client
+          ? (await client.query<{ created_by: string }>(sql, [id(targetId), workspace])).rows
+          : await this.db.query<{ created_by: string }>(sql, [id(targetId), workspace]);
+        return rows[0]?.created_by === id(ownerId);
+      },
+    };
   }
 
   private async authorize(
@@ -109,8 +303,17 @@ export class ExtensionRecords implements OnModuleInit {
     workspace: string,
     user: string,
     action = "read",
+    kind?: string,
+    recordId?: string,
+    createPayload?: Payload,
   ) {
-    if (!recordPlugin(plugin) || !this.registry.isEnabled(plugin))
+    let registered: PluginDefinition;
+    try {
+      registered = this.registry.getById(plugin);
+    } catch {
+      invalid("Plugin ou dependência desativada.", 409);
+    }
+    if (!registered.contributions?.recordKinds || !this.registry.isEnabled(plugin))
       invalid("Plugin ou dependência desativada.", 409);
     if (
       !(await this.db.one(
@@ -119,6 +322,25 @@ export class ExtensionRecords implements OnModuleInit {
       ))
     )
       invalid("Workspace não encontrado ou arquivado.", 404);
+    const definition = kind ? this.definition(plugin, kind) : undefined;
+    if (definition?.resourceScoped) {
+      if (recordId) {
+        if (await this.canRecord(user, plugin, kind!, recordId, action)) return;
+        if (definition.authorizeRecord) {
+          await this.access.audit(user, "access.denied", `plugin.${plugin}.${action}`, { type: "extension_record", id: recordId });
+          invalid("Acesso não autorizado a este registro.", 403);
+        }
+        await this.access.requireScoped(user, `plugin.${plugin}.${action}`, "extension_record", recordId);
+        return;
+      }
+      if (definition.managePermission && await this.access.has(user, definition.managePermission)) return;
+      if (createPayload && definition.authorizeCreate) {
+        if (await definition.authorizeCreate(user, createPayload, this.validationContext(workspace, user))) return;
+        invalid("Acesso não autorizado para criar este registro.", 403);
+      }
+      await this.access.require(user, `plugin.${plugin}.write`);
+      return;
+    }
     await this.access.require(
       user,
       `plugin.${plugin}.${action}`,
@@ -128,27 +350,50 @@ export class ExtensionRecords implements OnModuleInit {
   }
 
   async list(plugin: string, workspace: string, user: string) {
-    await this.authorize(plugin, workspace, user);
-    return this.db.query<ExtensionRecord>(
+    const registered = this.registry.getById(plugin);
+    if (!registered.contributions?.recordKinds || !this.registry.isEnabled(plugin))
+      invalid("Plugin ou dependência desativada.", 409);
+    if (!(await this.db.one("SELECT id FROM workspaces WHERE id=$1 AND archived_at IS NULL", [id(workspace)])))
+      invalid("Workspace não encontrado ou arquivado.", 404);
+    const records = await this.db.query<ExtensionRecord>(
       "SELECT * FROM extension_records WHERE workspace_id=$1 AND plugin_id=$2 ORDER BY updated_at DESC,id LIMIT 100",
       [workspace, plugin],
     );
+    const visible: ExtensionRecord[] = [];
+    for (const record of records) {
+      if (!(await this.canRecord(user, plugin, record.kind, record.id, "read"))) continue;
+      visible.push(record);
+      if (this.definition(plugin, record.kind).resourceScoped)
+        await this.access.audit(user, `${plugin}.record.read`, record.id, { type: "extension_record", id: record.id });
+    }
+    return visible;
   }
 
   async permissions(plugin: string, workspace: string, user: string) {
-    await this.authorize(plugin, workspace, user);
+    const registered = this.registry.getById(plugin);
+    if (!registered.contributions?.recordKinds || !this.registry.isEnabled(plugin))
+      invalid("Plugin ou dependência desativada.", 409);
+    if (!(await this.db.one("SELECT id FROM workspaces WHERE id=$1 AND archived_at IS NULL", [id(workspace)])))
+      invalid("Workspace não encontrado ou arquivado.", 404);
+    const kinds = Object.values(registered.contributions.recordKinds);
+    const recordScopedOnly = kinds.length > 0 && kinds.every((definition) => definition.resourceScoped);
+    const scopeType = recordScopedOnly ? "global" : "workspace";
+    const scopeId = recordScopedOnly ? "*" : workspace;
+    const managesRecords = recordScopedOnly && (await Promise.all(kinds.map((definition) =>
+      definition.managePermission ? this.access.has(user, definition.managePermission) : false,
+    ))).some(Boolean);
     return {
-      write: await this.access.has(
+      write: managesRecords || await this.access.has(
         user,
         `plugin.${plugin}.write`,
-        "workspace",
-        workspace,
+        scopeType,
+        scopeId,
       ),
-      publish: await this.access.has(
+      publish: managesRecords || await this.access.has(
         user,
         `plugin.${plugin}.publish`,
-        "workspace",
-        workspace,
+        scopeType,
+        scopeId,
       ),
     };
   }
@@ -164,7 +409,9 @@ export class ExtensionRecords implements OnModuleInit {
       [id(recordId), plugin],
     );
     if (!record) invalid("Registro não encontrado.", 404);
-    await this.authorize(plugin, record.workspace_id, user, action);
+    await this.authorize(plugin, record.workspace_id, user, action, record.kind, record.id);
+    if (action === "read" && this.definition(plugin, record.kind).resourceScoped)
+      await this.access.audit(user, `${plugin}.record.read`, record.id, { type: "extension_record", id: record.id });
     return record;
   }
 
@@ -186,7 +433,15 @@ export class ExtensionRecords implements OnModuleInit {
           )
         : [];
     const definition = this.definition(plugin, record.kind);
-    let nextStates = definition.transitions[record.state] || [];
+    const context = this.validationContext(record.workspace_id, user, undefined, record.id);
+    const validationIssues = await definition.validate?.(record.payload, context) || [];
+    const recordPermissions = {
+      write: await this.canRecord(user, plugin, record.kind, record.id, "write"),
+      publish: await this.canRecord(user, plugin, record.kind, record.id, "publish"),
+    };
+    let nextStates = definition.availableTransitions
+      ? await definition.availableTransitions(record.state, record.payload, context)
+      : definition.transitions[record.state] || [];
     if (plugin === "workflows" && record.kind === "process") {
       const flow = await this.db.one<{ payload: Payload }>(
         "SELECT payload FROM extension_record_versions WHERE record_id=$1 AND revision=$2",
@@ -198,7 +453,33 @@ export class ExtensionRecords implements OnModuleInit {
         .filter((edge) => edge.from === record.payload.current_state)
         .map((edge) => edge.to);
     }
-    return { ...record, versions, links, acceptances, next_states: nextStates };
+    return { ...record, versions, links, acceptances, next_states: nextStates, validation_issues: validationIssues, record_permissions: recordPermissions };
+  }
+
+  /** Reads one exact immutable snapshot after applying the current record's access policy. */
+  async versionSnapshot(plugin: string, recordId: string, revision: number, user: string) {
+    if (!Number.isInteger(revision) || revision < 1)
+      invalid("Versão de registro inválida.", 400);
+    const current = await this.record(plugin, recordId, user);
+    const version = await this.db.one<{
+      revision: number;
+      state: string;
+      payload: Payload;
+      created_at: string;
+      actor_id: string;
+    }>(
+      "SELECT revision,state,payload,created_at,actor_id FROM extension_record_versions WHERE record_id=$1 AND revision=$2",
+      [current.id, revision],
+    );
+    if (!version) invalid("Versão de registro não encontrada.", 404);
+    return {
+      id: current.id,
+      workspace_id: current.workspace_id,
+      plugin_id: current.plugin_id,
+      kind: current.kind,
+      title: current.title,
+      ...version,
+    };
   }
 
   private async mutation<T>(
@@ -253,6 +534,7 @@ export class ExtensionRecords implements OnModuleInit {
     user: string,
     reason: string,
   ) {
+    const resourceScoped = this.definition(record.plugin_id, record.kind).resourceScoped === true;
     await client.query(
       "INSERT INTO extension_record_versions(record_id,revision,title,state,payload,reason,actor_id) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)",
       [
@@ -271,8 +553,8 @@ export class ExtensionRecords implements OnModuleInit {
         user,
         record.plugin_id + ".record." + record.state,
         record.id,
-        "workspace",
-        record.workspace_id,
+        resourceScoped ? "extension_record" : "workspace",
+        resourceScoped ? record.id : record.workspace_id,
       ],
     );
     return record;
@@ -297,7 +579,7 @@ export class ExtensionRecords implements OnModuleInit {
     ).rows[0];
     if (!row || row.workspace_id !== workspace)
       invalid("A referência precisa existir no mesmo workspace.", 404);
-    await this.authorize(row.plugin_id, workspace, user);
+    await this.authorize(row.plugin_id, workspace, user, "read", row.kind, row.id);
     if (
       published &&
       !["published", "submitted", "completed", "resolved"].includes(row.state)
@@ -322,6 +604,17 @@ export class ExtensionRecords implements OnModuleInit {
     validate(definition.schema, input);
     validateDefinition(plugin, kind, input);
     const payload = JSON.parse(JSON.stringify(input)) as Payload;
+    if (prior) assertPayloadFieldsImmutable(definition.initial, prior.state, prior.payload, payload, definition.immutablePayloadFieldsAfterInitial || []);
+    const validationIssues: RecordValidationIssue[] = await definition.validate?.(payload, this.validationContext(workspace, user, client, prior?.id)) || [];
+    assertSemanticValidation(validationIssues);
+    for (const field of definition.uniqueFields || []) {
+      const value = payload[field];
+      if (value === null || value === undefined || value === "") continue;
+      const uniqueValue = String(value);
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`unique:${workspace}:${plugin}:${kind}:${field}:${uniqueValue}`]);
+      const duplicate = await client.query("SELECT id FROM extension_records WHERE workspace_id=$1 AND plugin_id=$2 AND kind=$3 AND payload->>$4=$5 AND ($6::uuid IS NULL OR id<>$6::uuid) LIMIT 1", [workspace, plugin, kind, field, uniqueValue, prior?.id || null]);
+      if (duplicate.rows.length) invalid(`Já existe um registro ${kind} com o valor ${field} informado.`, 409);
+    }
     if (plugin === "forms" && kind === "submission") {
       const form = await this.pinned(
         client,
@@ -491,11 +784,24 @@ export class ExtensionRecords implements OnModuleInit {
   }
 
   async create(plugin: string, workspace: string, user: string, body: Payload) {
+    return this.createWithOrigin(plugin, workspace, user, body, false);
+  }
+
+  async createGenerated(plugin: string, workspace: string, user: string, body: Payload) {
+    return this.createWithOrigin(plugin, workspace, user, body, true);
+  }
+
+  private async createWithOrigin(plugin: string, workspace: string, user: string, body: Payload, generated: boolean) {
     only(body, ["kind", "title", "payload", "operation_key"]);
-    await this.authorize(plugin, workspace, user, "write");
     const kind = text(body.kind, 80),
       title = text(body.title, 240),
       definition = this.definition(plugin, kind);
+    if (Boolean(definition.serverCreated) !== generated)
+      invalid(generated ? "Este tipo de registro não aceita criação pelo plugin." : "Este registro é criado por uma operação do plugin.", 403);
+    const createPayload = body.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
+      ? body.payload as Payload
+      : {};
+    await this.authorize(plugin, workspace, user, "write", kind, undefined, createPayload);
     if (plugin === "documents" && kind === "document")
       invalid("Use o envio de arquivo para criar documentos.");
     return this.mutation(
@@ -616,6 +922,54 @@ export class ExtensionRecords implements OnModuleInit {
     return this.snapshot(client, updated, user, reason);
   }
 
+  private async applyDeadlineEffects(
+    client: PoolClient,
+    workspace: string,
+    user: string,
+    effects: Array<{ recordId: string; event: "pause" | "resume"; reason: string }>,
+  ) {
+    if (!this.registry.isEnabled("deadlines")) invalid("O plugin de prazos está desativado.", 409);
+    for (const effect of effects) {
+      const deadline = (
+        await client.query<ExtensionRecord>(
+          "SELECT * FROM extension_records WHERE id=$1 FOR UPDATE",
+          [id(effect.recordId)],
+        )
+      ).rows[0];
+      if (!deadline || deadline.workspace_id !== workspace || deadline.plugin_id !== "deadlines" || deadline.kind !== "clock")
+        invalid("O relógio de prazo vinculado não existe neste workspace.", 409);
+      const targetState = effect.event === "pause" ? "paused" : "running";
+      if (deadline.state === targetState) continue;
+      if (!((effect.event === "pause" && deadline.state === "running") || (effect.event === "resume" && deadline.state === "paused")))
+        invalid("O relógio de prazo não está em um estado compatível com a transição.", 409);
+      const deadlineState = deadlineTransition(deadline.state, deadline.payload, effect.event, new Date());
+      await this.save(client, deadline, user, deadline.title, deadlineState.payload, deadlineState.state, text(effect.reason, 2000));
+    }
+  }
+
+  private async applyRecordRoleEffects(client: PoolClient, workspace: string, actor: string, effects: Array<{ userId: string; roleId: string; recordId: string; effect: "grant" | "revoke" }>) {
+    for (const effect of effects) {
+      const userId = id(effect.userId), recordId = id(effect.recordId), roleId = text(effect.roleId, 80);
+      if (!/^[a-z][a-z0-9_-]{1,79}$/.test(roleId) || !["grant", "revoke"].includes(effect.effect)) invalid("Efeito de papel de registro inválido.");
+      const [target, role, resource] = await Promise.all([
+        client.query<{ id: string; is_root: boolean }>("SELECT id,is_root FROM users WHERE id=$1 AND NOT disabled", [userId]),
+        client.query("SELECT id FROM access_roles WHERE id=$1", [roleId]),
+        client.query<{ id: string; plugin_id: string; kind: string }>(`SELECT r.id,r.plugin_id,r.kind FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
+          WHERE r.id=$1 AND r.workspace_id=$2 AND v.revision=r.revision`, [recordId, workspace]),
+      ]);
+      if (!target.rows[0] || target.rows[0].is_root || !role.rows[0] || !resource.rows[0]) invalid("O destino, o papel ou o registro do acesso não está disponível.", 409);
+      if (!this.registry.isEnabled(resource.rows[0].plugin_id) || this.definition(resource.rows[0].plugin_id, resource.rows[0].kind).resourceScoped !== true)
+        invalid("O acesso automático só pode ser aplicado a um registro com escopo individual habilitado.", 409);
+      if (effect.effect === "grant") {
+        await client.query("INSERT INTO access_grants(user_id,role_id,scope_type,scope_id) VALUES($1,$2,'extension_record',$3) ON CONFLICT DO NOTHING", [userId, roleId, recordId]);
+      } else {
+        await client.query("DELETE FROM access_grants WHERE user_id=$1 AND role_id=$2 AND scope_type='extension_record' AND scope_id=$3", [userId, roleId, recordId]);
+      }
+      await client.query("UPDATE users SET session_version=session_version+1 WHERE id=$1", [userId]);
+      await client.query("INSERT INTO access_audit(actor_id,action,target,scope_type,scope_id) VALUES($1,$2,$3,'extension_record',$4)", [actor, `role.scope.${effect.effect}`, `${roleId}:${userId}`, recordId]);
+    }
+  }
+
   async transition(
     plugin: string,
     recordId: string,
@@ -648,11 +1002,9 @@ export class ExtensionRecords implements OnModuleInit {
         let state = text(body.state ?? current.state, 80),
           payload = { ...current.payload };
         const reason = text(body.reason, 2000);
-        if (definition.immutable?.includes(current.state))
-          invalid(
-            "Registro concluído; crie uma nova versão quando permitido.",
-            409,
-          );
+        if (definition.immutable?.includes(current.state) && !definition.availableTransitions
+          && !(definition.transitions[current.state] || []).length)
+          invalid("Registro concluído; crie uma nova versão quando permitido.", 409);
         if (plugin === "deadlines")
           ({ state, payload } = deadlineTransition(
             current.state,
@@ -678,10 +1030,24 @@ export class ExtensionRecords implements OnModuleInit {
           state = edges.some((edge) => edge.from === payload.current_state)
             ? "active"
             : "completed";
-        } else if (
-          !(definition.transitions[current.state] || []).includes(state)
-        )
+        } else if (definition.availableTransitions) {
+          const context = this.validationContext(current.workspace_id, user, client, current.id);
+          const allowed = await definition.availableTransitions(current.state, current.payload, context);
+          if (!allowed.includes(state)) invalid("Transição não permitida.", 409);
+        } else if (!(definition.transitions[current.state] || []).includes(state))
           invalid("Transição não permitida.", 409);
+        if (definition.authorizeTransition && !(await definition.authorizeTransition(current.state, state, current.payload,
+          this.validationContext(current.workspace_id, user, client, current.id))))
+          invalid("Seu perfil não está autorizado a realizar esta transição.", 403);
+        if (definition.prepareTransition) {
+          const context = this.validationContext(current.workspace_id, user, client, current.id);
+          try {
+            payload = await definition.prepareTransition(current.state, state, payload, context);
+          } catch (error) {
+            invalid(error instanceof Error ? error.message : "Não foi possível preparar esta transição.", 409);
+          }
+          payload = await this.payload(client, plugin, current.kind, payload, current.workspace_id, user, current);
+        }
         if (
           plugin === "privacy" &&
           state === "completed" &&
@@ -733,7 +1099,15 @@ export class ExtensionRecords implements OnModuleInit {
               409,
             );
         }
-        return this.save(
+        if (definition.immutable?.includes(current.state) && fingerprint(current.payload) !== fingerprint(payload))
+          invalid("Uma transição de registro finalizado não pode modificar seu conteúdo.", 409);
+        assertPayloadFieldsImmutable(definition.initial, current.state, current.payload, payload, definition.immutablePayloadFieldsAfterInitial || []);
+        assertSemanticValidation(await definition.validate?.(payload, this.validationContext(current.workspace_id, user, client, current.id)) || []);
+        const roleEffects = definition.recordRoleEffects
+          ? await definition.recordRoleEffects(current.state, state, payload, this.validationContext(current.workspace_id, user, client, current.id))
+          : [];
+        if (roleEffects.length) await this.applyRecordRoleEffects(client, current.workspace_id, user, roleEffects);
+        const updated = await this.save(
           client,
           current,
           user,
@@ -742,6 +1116,12 @@ export class ExtensionRecords implements OnModuleInit {
           state,
           reason,
         );
+        if (definition.deadlineEffects) {
+          const context = this.validationContext(current.workspace_id, user, client, current.id);
+          const effects = await definition.deadlineEffects(current.state, state, current.payload, context);
+          await this.applyDeadlineEffects(client, current.workspace_id, user, effects);
+        }
+        return updated;
       },
     );
   }
@@ -849,6 +1229,8 @@ export class ExtensionRecords implements OnModuleInit {
       "variant",
       "source_id",
       "source_revision",
+      "related_record_id",
+      "related_record_revision",
       "operation_key",
       "reason",
     ]);
@@ -917,6 +1299,16 @@ export class ExtensionRecords implements OnModuleInit {
             invalid("A cópia deve ser um documento separado do original.");
           payload.source_id = source.id;
           payload.source_revision = source.revision;
+        }
+        const relatedId = body.related_record_id ?? current?.payload.related_record_id;
+        const relatedRevision = body.related_record_revision ?? current?.payload.related_record_revision;
+        if ((relatedId !== undefined) !== (relatedRevision !== undefined))
+          invalid("Informe o registro relacionado e sua versão juntos.");
+        if (relatedId !== undefined) {
+          const related = await this.pinned(client, relatedId, relatedRevision, workspace, user, false);
+          if (related.id === current?.id) invalid("Um documento não pode ser relacionado a si mesmo.");
+          payload.related_record_id = related.id;
+          payload.related_record_revision = related.revision;
         }
         validate(this.definition("documents", "document").schema, payload);
         const title = text(body.title, 240),

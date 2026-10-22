@@ -13,3 +13,6 @@ apps/api/.orbit/sessions
 .aws
 .codex
 **/*.log
+
+**/.next-*
+**/*.tsbuildinfo

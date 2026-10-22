@@ -1,5 +1,5 @@
 export type Preferences = {
-  theme: 'light' | 'dark';
+  theme: 'light' | 'dark' | 'terroso';
   notifications: boolean;
   browserNotifications: boolean;
   shortcuts: boolean;
@@ -24,7 +24,7 @@ export type CustomField = { id:string;board_id?:string;name:string;type:'text'|'
 export type CustomValue = { field_id:string;name?:string;type?:CustomField['type'];value:string|number|boolean };
 export type ChecklistGroup = { id:string;card_id:string;title:string;position:number;items:ChecklistItem[] };
 export type CardExtensions = { checklists:ChecklistGroup[];values:CustomValue[] };
-export type Card = {
+export type Card = {managed_record?:boolean;
   plugin_badges?:Array<{pluginId:string;field:string;value:string;label:string;color:string}>;
   execution_blocked?:boolean;
   id: string;
@@ -82,7 +82,10 @@ export type ListIntegration = {
   last_error: string | null;
 };
 export type List = { id: string; board_id: string; title: string; position: number; parent_list_id?: string | null; color: string | null; collapsed: boolean; archived_at?: string | null; card_count?: number; integrations?: ListIntegration[]; cards: Card[] };
+export type RecordBoardScope={board_id:string;record_id:string;plugin_id:string;workspace_id:string;primary_card_id:string;label:string;fixed_scope:true;state:string;record_href:string;can_write:boolean;phases:Array<{id:string;label:string;list_id:string}>;templates:Array<{id:string;name:string;phase:string;description:string;checklist:string[]}>};
 export type Board = {
+  record_scope?:RecordBoardScope|null;
+
   id: string;
   is_inbox?: boolean;
   is_collection?: boolean;
@@ -112,7 +115,7 @@ export type Board = {
 };
 export type AiModel = {id:string;name:string;version:string};
 export type AiEffort = 'low'|'medium'|'high'|'xhigh';
-export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_native?:boolean};
+export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_internal_orbit?:boolean};
 export type PromptFileChange={path:string;kind:'add'|'delete'|'update';additions?:number;deletions?:number;diff?:string};
 export type PromptActivity={id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
 export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
@@ -182,9 +185,9 @@ export const setUser = (user: User) => {
   document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
   window.dispatchEvent(new Event('account:changed'));
 };
-export const applyTheme = (theme: 'light' | 'dark') => {
+export const applyTheme = (theme: 'light' | 'dark' | 'terroso') => {
   if (typeof document === 'undefined') return;
-  if (process.env.NEXT_PUBLIC_ORBIT_THEME === 'dark') document.documentElement.dataset.theme = 'dark';
+  if (process.env.NEXT_PUBLIC_ORBIT_THEME) document.documentElement.dataset.theme = process.env.NEXT_PUBLIC_ORBIT_THEME;
   else document.documentElement.dataset.theme = theme;
 };
 export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {

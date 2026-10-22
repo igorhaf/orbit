@@ -1,4 +1,5 @@
 "use client";
+import {useCreationAvailability} from '@/plugins/project-boards/use-creation-availability';
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { remember } from "@/lib/history";
@@ -46,9 +47,11 @@ import { CalendarIntegrations } from "@/components/calendar-integrations";
 import { AiEffortField, AiModelFields } from "@/components/ai-model-fields";
 
 import {VaultConstantSelect} from '@/components/vault-constant-select';
+import { AppBrand } from '@/components/branding';
+import Image from 'next/image';
 
 type EnvironmentSettings = { groups: Array<{ id:string; label:string; fields:Array<{key:string;label:string;secret:boolean;value:string;configured:boolean;vaultReference?:string}> }> };
-type Tab = "profile" | "activity" | "cards" | "projects" | "integrations" | "settings";
+type Tab = "profile" | "activity" | "cards" | "projects" | "integrations" | "settings" | "branding";
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "profile", label: "Perfil", icon: UserRound },
   { id: "activity", label: "Atividade", icon: ActivityIcon },
@@ -56,8 +59,10 @@ const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "projects", label: "Projetos", icon: FolderKanban },
   { id: "integrations", label: "Integrações", icon: Link2 },
   { id: "settings", label: "Configurações", icon: Palette },
+  { id: "branding", label: "Identidade da aplicação", icon: ImagePlus },
 ];
 export default function ProfilePage() {
+  const {canCreateBoard,canCreateProject}=useCreationAvailability();
   const router = useRouter();
   const { confirm, confirmationModal } = useConfirmModal();
   const [user, setCurrentUser] = useState<User | null>(null);
@@ -66,8 +71,10 @@ export default function ProfilePage() {
   const [cards, setCards] = useState<HomeCard[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [models, setModels] = useState<AiModel[]>([]);
+  const [aiAvailable, setAiAvailable] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [projectPath, setProjectPath] = useState("");
+  const [projectInternalOrbit, setProjectInternalOrbit] = useState(false);
   const [editingProjectPath, setEditingProjectPath] = useState<string | null>(null);
   const [projectPathDraft, setProjectPathDraft] = useState("");
   const [savingProjectPath, setSavingProjectPath] = useState(false);
@@ -80,6 +87,8 @@ export default function ProfilePage() {
   const [environmentDraft, setEnvironmentDraft] = useState<Record<string,string>>({});
   const [clearEnvironment, setClearEnvironment] = useState<string[]>([]);
   const [savingEnvironment, setSavingEnvironment] = useState(false);
+  const [brandDraft,setBrandDraft]=useState<AppBrand>({app_name:'Orbit',icon_kind:'orbit',custom_icon_data:null,login_tagline:'Seu trabalho, com uma visão mais clara.',login_description:'Acompanhe o que vem pela frente, veja as novidades e organize seus projetos em quadros.',login_benefits:['Tarefas e prazos em destaque','Quadros, listas e cartões','Atividade e notificações em um lugar']});
+  const [savingBrand,setSavingBrand]=useState(false);
   const ready = useHydrated();
   const [tab, setTab] = useState<Tab>("profile");
   const [name, setName] = useState("");
@@ -88,16 +97,16 @@ export default function ProfilePage() {
   const [create, setCreate] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [account, all, activity, assigned, projectList, availableModels] = await Promise.all(
-        [
+      const [account, all, activity, assigned, projectList, pluginCatalog] = await Promise.all([
           api<User>("/account"),
           api<Board[]>("/boards"),
           api<Activity[]>("/account/activity"),
           api<HomeCard[]>("/account/cards"),
           api<AiProject[]>("/ai/projects"),
-          api<AiModel[]>("/ai/models"),
-        ],
-      );
+          api<{plugins:Array<{id:string;enabled:boolean}>}>("/plugins"),
+        ]);
+      const pluginEnabled = pluginCatalog.plugins.some(plugin => plugin.id === "ai" && plugin.enabled);
+      const availableModels = pluginEnabled ? await api<AiModel[]>("/ai/models") : [];
       setCurrentUser(account);
       setUser(account);
       setName(account.name);
@@ -106,6 +115,7 @@ export default function ProfilePage() {
       setCards(assigned);
       setProjects(projectList);
       setModels(availableModels);
+      setAiAvailable(pluginEnabled);
       setError("");
     } catch (err) {
       setError((err as Error).message);
@@ -135,6 +145,7 @@ export default function ProfilePage() {
       setEnvironmentDraft(Object.fromEntries(settings.groups.flatMap((group) => group.fields.map((field) => [field.key, field.vaultReference||field.value]))));
     }).catch((err) => setError((err as Error).message));
   }, [tab]);
+  useEffect(()=>{if(tab!=='branding'||!user?.is_root)return;api<AppBrand>('/branding').then(setBrandDraft).catch(err=>setError((err as Error).message))},[tab,user?.is_root]);
   function changeTab(value: Tab) {
     setTab(value);
     window.history.replaceState(
@@ -170,12 +181,22 @@ export default function ProfilePage() {
     reader.onload = () => updateProfile({ avatar_url: String(reader.result) });
     reader.readAsDataURL(file);
   }
+  async function uploadBrandIcon(file:File|null){
+    if(!file)return;
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>250000){setError('Escolha uma imagem PNG, JPEG ou WebP de até 250 KB.');return;}
+    const reader=new FileReader();reader.onload=()=>setBrandDraft(current=>({...current,icon_kind:'custom',custom_icon_data:String(reader.result)}));reader.readAsDataURL(file);
+  }
+  async function saveBrand(event:React.FormEvent){
+    event.preventDefault();setSavingBrand(true);setError('');
+    try{const saved=await send<AppBrand>('/branding','PATCH',brandDraft);setBrandDraft(saved);window.dispatchEvent(new Event('orbit:branding-updated'));setNotice('Identidade da aplicação atualizada em todos os pontos da interface.');}
+    catch(err){setError((err as Error).message)}finally{setSavingBrand(false)}
+  }
   async function preference(
     key: keyof Preferences,
     value: Preferences[keyof Preferences],
   ) {
     const previousTheme = user?.preferences?.theme || "light";
-    if (key === "theme") applyTheme(value as "light" | "dark");
+    if (key === "theme") applyTheme(value as "light" | "dark" | "terroso");
     try {
       const account = await send<User>("/account/preferences", "PATCH", {
         [key]: value,
@@ -198,7 +219,7 @@ export default function ProfilePage() {
       setError("");
     } catch (err) { setError((err as Error).message); }
   }
-  async function saveProjectAi(projectId: string, body: { ai_default_model?: string | null; ai_default_effort?: AiEffort | null }) {
+  async function saveProjectAi(projectId: string, body: { ai_default_model?: string | null; ai_default_effort?: AiEffort | null; is_internal_orbit?: boolean }) {
     try {
       const updated = await send<AiProject>(`/ai/projects/${projectId}`, "PATCH", body);
       setProjects((current) => current.map((project) => project.id === projectId ? updated : project));
@@ -239,6 +260,7 @@ export default function ProfilePage() {
       const payload = {
         name: projectName,
         local_path: projectPath,
+        ...(user?.is_root ? {is_internal_orbit:projectInternalOrbit} : {}),
       };
       let project: AiProject;
       try {
@@ -254,6 +276,7 @@ export default function ProfilePage() {
           setProjects(current => [...current, createdProject].sort((a, b) => a.name.localeCompare(b.name)));
           setProjectName("");
           setProjectPath("");
+          setProjectInternalOrbit(false);
           setNotice("Projeto adicionado.");
           setError("");
         });
@@ -264,6 +287,7 @@ export default function ProfilePage() {
       );
       setProjectName("");
       setProjectPath("");
+      setProjectInternalOrbit(false);
       setNotice("Projeto adicionado.");
       setError("");
     } catch (err) {
@@ -359,7 +383,7 @@ export default function ProfilePage() {
             </div>
           </div>
           <div className="mb-6 flex gap-1 overflow-x-auto border-b border-[#dfe1e6]">
-            {tabs.map((item) => (
+            {tabs.filter(item=>item.id!=='branding'||user.is_root).map((item) => (
               <button
                 key={item.id}
                 onClick={() => changeTab(item.id)}
@@ -595,9 +619,9 @@ export default function ProfilePage() {
                           <strong className="block text-sm">
                             {project.name}
                           </strong>
-                          {project.is_native && (
+                          {project.is_internal_orbit && (
                             <span className="text-xs font-semibold text-[#6554c0]">
-                              Projeto nativo do Orbit
+                              Orbit interno
                             </span>
                           )}
                           <code className="block truncate text-xs text-[#626f86]">
@@ -613,32 +637,24 @@ export default function ProfilePage() {
                           ) : (
                             <button type="button" onClick={() => { setEditingProjectPath(project.id); setProjectPathDraft(project.local_path); setError(""); }} className="mt-1 text-xs font-semibold text-[#0c66e4] hover:underline">Alterar caminho</button>
                           )}
-                          <details className="mt-3 max-w-2xl rounded-lg border border-[#dfe1e6] p-3">
+                          {aiAvailable && <details className="mt-3 max-w-2xl rounded-lg border border-[#dfe1e6] p-3">
                             <summary className="cursor-pointer text-xs font-semibold">Configuração de IA do projeto</summary>
                             <div className="mt-3 space-y-3">
                               <AiModelFields value={project.ai_default_model} inheritedValue={user?.ai_default_model} models={models} onSave={(value) => saveProjectAi(project.id, { ai_default_model: value })} />
                               <AiEffortField value={project.ai_default_effort} inheritedValue={user?.ai_default_effort} onChange={(value) => saveProjectAi(project.id, { ai_default_effort: value })} />
                             </div>
-                          </details>
-                          <GitProjectSettings projectId={project.id} isNative={project.is_native} />
+                          </details>}
+                          {user?.is_root && <label className="mt-3 flex items-start gap-2 text-xs font-semibold"><input type="checkbox" checked={Boolean(project.is_internal_orbit)} onChange={event=>void saveProjectAi(project.id,{is_internal_orbit:event.target.checked})} className="mt-0.5"/><span>Este projeto é uma instância interna do Orbit<span className="mt-0.5 block font-normal text-[#626f86]">Use para vincular quadros de desenvolvimento a outra instalação do Orbit.</span></span></label>}
+                          <GitProjectSettings projectId={project.id} isInternalOrbit={project.is_internal_orbit} />
                           <DeliveryProjectSettings projectId={project.id} />
                         </div>
-                        {project.is_native ? (
-                          <span className="text-xs text-[#626f86]">Integrado</span>
-                        ) : (
-                          <button
-                            onClick={() => void removeProject(project.id)}
-                            className="text-xs text-[#ae2a19]"
-                          >
-                            Remover
-                          </button>
-                        )}
+                        <button onClick={() => void removeProject(project.id)} className="text-xs text-[#ae2a19]">Remover</button>
                       </div>
                     ))}
                   </div>
                 )}
               </section>
-              <form
+{canCreateProject&&              <form
                 onSubmit={createProject}
                 className="h-fit rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm"
               >
@@ -664,12 +680,13 @@ export default function ProfilePage() {
                     placeholder="/home/meada/projetos/exemplo"
                   />
                 </label>
+                {user?.is_root&&<label className="mt-3 flex items-start gap-2 text-xs font-semibold"><input type="checkbox" checked={projectInternalOrbit} onChange={event=>setProjectInternalOrbit(event.target.checked)} className="mt-0.5"/><span>Este projeto é uma instância interna do Orbit<span className="mt-0.5 block font-normal text-[#626f86]">Classifique repositórios de outras instalações do Orbit para usá-los como referência arquitetural.</span></span></label>}
                 <button type="button" onClick={() => { setDirectoryPickerOpen(true); void browseProjectDirectory(); }} className="mt-2 rounded border border-[#c1c7d0] px-3 py-2 text-xs font-semibold text-[#344563] hover:bg-[#f7f8fa]">Navegar pelas pastas</button>
                     <p className="mt-2 text-xs text-[#626f86]">Informe ou selecione um caminho absoluto acessível pela API do Orbit. Em instalações Docker, pastas do host precisam estar montadas no contêiner.</p>
                 <button disabled={savingProject || !projectName.trim() || !projectPath.trim()} className="mt-4 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   {savingProject ? "Salvando..." : "Adicionar"}
                 </button>
-              </form>
+              </form>}
               {directoryPickerOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDirectoryPickerOpen(false);}}>
                   <section role="dialog" aria-modal="true" aria-labelledby="directory-picker-title" className="flex max-h-[min(80vh,640px)] w-full max-w-xl flex-col rounded-xl bg-white shadow-xl">
@@ -735,23 +752,47 @@ export default function ProfilePage() {
             </form>
             </div>
           )}
+          {tab === "branding" && user.is_root && (
+            <section className="max-w-3xl rounded-xl border border-[#dfe1e6] bg-white p-5 shadow-sm sm:p-7">
+              <div className="mb-6 flex items-center gap-4">
+                {brandDraft.icon_kind==='custom'&&brandDraft.custom_icon_data?<Image src={brandDraft.custom_icon_data} width={56} height={56} unoptimized alt="Prévia do ícone" className="h-14 w-14 rounded-xl border border-[#dfe1e1] object-contain"/>:<Image src={brandDraft.icon_kind==='tree_of_life'?'/brand-tree-of-life.svg':'/brand-orbit.svg'} width={56} height={56} alt="Prévia do ícone" className="h-14 w-14 rounded-xl border border-[#dfe1e1] object-contain"/>}
+                <div><h2 className="text-lg font-bold">Identidade desta instância</h2><p className="text-sm text-[#626f86]">Nome, título do navegador e ícone são salvos separadamente em cada banco de dados.</p></div>
+              </div>
+              <form onSubmit={saveBrand} className="space-y-5">
+                <label className="block text-sm font-semibold">Nome da aplicação<input required maxLength={80} value={brandDraft.app_name} onChange={event=>setBrandDraft(current=>({...current,app_name:event.target.value}))} className="mt-1 min-h-11 w-full rounded border border-[#8590a2] px-3 py-2 font-normal" placeholder="Ex.: Orbit Dev"/></label>
+                <div className="space-y-4 rounded-lg border border-[#dfe1e6] bg-[#f7f8fa] p-4">
+                  <div><h3 className="text-sm font-bold">Apresentação da tela de login</h3><p className="mt-1 text-xs text-[#626f86]">Este conteúdo aparece ao lado do formulário em telas maiores.</p></div>
+                  <label className="block text-sm font-semibold">Título<textarea required maxLength={180} rows={2} value={brandDraft.login_tagline} onChange={event=>setBrandDraft(current=>({...current,login_tagline:event.target.value}))} className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 font-normal"/></label>
+                  <label className="block text-sm font-semibold">Descrição<textarea required maxLength={500} rows={3} value={brandDraft.login_description} onChange={event=>setBrandDraft(current=>({...current,login_description:event.target.value}))} className="mt-1 w-full rounded border border-[#8590a2] bg-white px-3 py-2 font-normal"/></label>
+                  <fieldset><legend className="mb-2 text-sm font-semibold">Destaques</legend><div className="space-y-2">{brandDraft.login_benefits.map((item,index)=><div key={index} className="flex gap-2"><input required maxLength={120} aria-label={`Destaque ${index+1}`} value={item} onChange={event=>setBrandDraft(current=>({...current,login_benefits:current.login_benefits.map((benefit,i)=>i===index?event.target.value:benefit)}))} className="min-h-11 min-w-0 flex-1 rounded border border-[#8590a2] bg-white px-3 py-2 text-sm font-normal"/><button type="button" disabled={brandDraft.login_benefits.length<=1} onClick={()=>setBrandDraft(current=>({...current,login_benefits:current.login_benefits.filter((_,i)=>i!==index)}))} className="min-h-11 rounded border border-[#dfe1e6] px-3 text-sm text-[#ae2a19] disabled:opacity-40" aria-label={`Remover destaque ${index+1}`}>Remover</button></div>)}</div><button type="button" disabled={brandDraft.login_benefits.length>=5} onClick={()=>setBrandDraft(current=>({...current,login_benefits:[...current.login_benefits,'']}))} className="mt-2 min-h-10 rounded border border-[#c1c7d0] px-3 text-sm font-semibold disabled:opacity-40">Adicionar destaque</button></fieldset>
+                </div>
+                <fieldset><legend className="mb-2 text-sm font-semibold">Marca do ícone</legend><div className="grid gap-2 sm:grid-cols-3">
+                  <button type="button" aria-pressed={brandDraft.icon_kind==='orbit'} onClick={()=>setBrandDraft(current=>({...current,icon_kind:'orbit',custom_icon_data:null}))} className={`min-h-12 rounded-lg border px-3 text-sm font-semibold ${brandDraft.icon_kind==='orbit'?'border-[#0c66e4] bg-[#e9f2ff] text-[#0c66e4]':'border-[#dfe1e6]'}`}>Marca Orbit atual</button>
+                  <button type="button" aria-pressed={brandDraft.icon_kind==='tree_of_life'} onClick={()=>setBrandDraft(current=>({...current,icon_kind:'tree_of_life',custom_icon_data:null}))} className={`min-h-12 rounded-lg border px-3 text-sm font-semibold ${brandDraft.icon_kind==='tree_of_life'?'border-[#0c66e4] bg-[#e9f2ff] text-[#0c66e4]':'border-[#dfe1e6]'}`}>Árvore da vida</button>
+                  <label className={`flex min-h-12 cursor-pointer items-center justify-center rounded-lg border px-3 text-center text-sm font-semibold ${brandDraft.icon_kind==='custom'?'border-[#0c66e4] bg-[#e9f2ff] text-[#0c66e4]':'border-[#dfe1e6]'}`}>Enviar ícone<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={event=>{void uploadBrandIcon(event.target.files?.[0]||null);event.currentTarget.value=''}}/></label>
+                </div><p className="mt-2 text-xs text-[#626f86]">Ícone enviado: PNG, JPEG ou WebP, até 250 KB. A árvore da vida usa tons de vinho, terra e oliva.</p></fieldset>
+                <div className="flex flex-wrap items-center gap-3 border-t border-[#dfe1e6] pt-4"><button disabled={savingBrand||!brandDraft.app_name.trim()||(brandDraft.icon_kind==='custom'&&!brandDraft.custom_icon_data)} className="min-h-11 rounded bg-[#0c66e4] px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">{savingBrand?'Salvando…':'Salvar identidade'}</button><span className="text-xs text-[#626f86]">A alteração aparece imediatamente nesta instância.</span></div>
+              </form>
+            </section>
+          )}
           {tab === "settings" && (
             <div className="grid gap-6 md:grid-cols-2">
-              <section className="rounded-xl border border-[#c3b6f7] bg-[#f7f5ff] p-6 shadow-sm">
+              {aiAvailable && <section className="rounded-xl border border-[#c3b6f7] bg-[#f7f5ff] p-6 shadow-sm">
                 <h2 className="mb-1 text-lg font-bold text-[#403294]">IA global</h2>
                 <p className="mb-5 text-sm text-[#626f86]">Base de modelo e esforço para projetos, quadros e cartões sem configuração própria. Sem escolha, o campo continua vazio.</p>
                 <div className="space-y-4">
                   <AiModelFields value={user?.ai_default_model} models={models} onSave={(value) => saveGlobalAi({ ai_default_model: value })} />
                   <AiEffortField value={user?.ai_default_effort} onChange={(value) => saveGlobalAi({ ai_default_effort: value })} />
                 </div>
-              </section>
+              </section>}
               <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
                 <h2 className="mb-1 text-lg font-bold">Aparência</h2>
                 <p className="mb-5 text-sm text-[#626f86]">
                   Escolha o tema da interface. A alteração é aplicada imediatamente e salva na sua conta.
                 </p>
-                <div aria-label="Tema da interface" className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="group">
-                  {(["light", "dark"] as const).map((theme) => (
+                <p className="theme-forced-notice mb-5 hidden rounded-lg bg-[#f4e6d4] p-3 text-sm text-[#633b2d]">O tema desta instância é definido pela organização.</p>
+                <div aria-label="Tema da interface" className="theme-preference-options grid grid-cols-1 gap-3 sm:grid-cols-3" role="group">
+                  {(["light", "dark", "terroso"] as const).map((theme) => (
                     <button
                       type="button"
                       key={theme}
@@ -759,12 +800,8 @@ export default function ProfilePage() {
                       aria-pressed={preferences.theme === theme}
                       className={`profile-theme-option flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 text-sm font-semibold text-[#172b4d] transition-colors ${preferences.theme === theme ? "border-[#6554c0] bg-[#e9e5fa] ring-2 ring-[#6554c0]/30" : "border-[#dfe1e6] hover:border-[#8590a2]"}`}
                     >
-                      {theme === "light" ? (
-                        <Palette size={25} />
-                      ) : (
-                        <Moon size={25} />
-                      )}{" "}
-                      <span>{theme === "light" ? "Claro" : "Escuro"}</span>
+                      {theme === "light" ? <Palette size={25} /> : theme === "dark" ? <Moon size={25} /> : <span aria-hidden="true" className="h-6 w-6 rounded-full border border-[#7d3624] bg-[linear-gradient(135deg,#a80d4b_0_40%,#d2672b_40%_70%,#54603a_70%)]" />}{" "}
+                      <span>{theme === "light" ? "Claro" : theme === "dark" ? "Escuro" : "Terroso"}</span>
                       <span className="text-xs font-normal text-[#626f86]">{preferences.theme === theme ? "Selecionado" : "Selecionar"}</span>
                     </button>
                   ))}
@@ -852,7 +889,7 @@ export default function ProfilePage() {
           )}
         </main>
       </div>
-      {create && (
+      {create && canCreateBoard && (
         <CreateBoardModal
           onClose={() => setCreate(false)}
           onCreate={createBoard}

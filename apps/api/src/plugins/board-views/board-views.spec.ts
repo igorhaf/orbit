@@ -7,6 +7,7 @@ import {PluginRegistry} from '../../execution/registries';
 import {Db} from '../../db';
 import {FeaturesService} from '../../features';
 import {AccessService} from '../../access/access';
+import {hasBoardViewAfterChange} from './required-views';
 
 function fixture(grants=['boards.read','views.board.use'],root=false){
   const registry=new PluginRegistry();registry.register(visualBoardPlugin);registry.register(structuredViewPlugin);
@@ -18,6 +19,13 @@ function fixture(grants=['boards.read','views.board.use'],root=false){
   return {service,registry};
 }
 const denied=(error:unknown)=>error instanceof HttpException&&error.getStatus()===403;
+
+test('at least one board view must remain enabled',()=>{
+ assert.equal(hasBoardViewAfterChange(new Map([['board-view',true],['structured-view',true]]),'board-view',false),true);
+ assert.equal(hasBoardViewAfterChange(new Map([['board-view',true],['structured-view',false]]),'board-view',false),false);
+ assert.equal(hasBoardViewAfterChange(new Map([['board-view',false],['structured-view',true]]),'structured-view',false),false);
+ assert.equal(hasBoardViewAfterChange(new Map(),'unrelated-plugin',false),true);
+});
 
 test('view access requires its own privilege and board access; Root can use both',async()=>{
   const ordinary=fixture();assert.deepEqual((await ordinary.service.available('board','user')).views.map(view=>view.id),['board']);

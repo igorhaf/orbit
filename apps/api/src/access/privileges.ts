@@ -1,5 +1,5 @@
 export type Privilege={id:string;label:string;source:string};
-const families:Record<string,string>={boards:'Quadros, listas, cartões, comentários e anexos',vault:'Cofre',notebooks:'Cadernos',projects:'Projetos',backups:'Backups',search:'Pesquisa',calendar:'Calendário',tools:'Diagnóstico de ferramentas',notifications:'Notificações',trash:'Lixeira',account:'Conta e preferências',ai:'Inteligência artificial',execution:'Execuções',settings:'Configurações do sistema',monitoring:'Monitoramento operacional',queues:'Filas',architecture:'Arquitetura',exports:'Exportações',email:'Entrada de cartões por e-mail'};
+const families:Record<string,string>={boards:'Quadros, listas, cartões, comentários e anexos',notebooks:'Cadernos',projects:'Projetos',backups:'Backups',search:'Pesquisa',calendar:'Calendário',tools:'Diagnóstico de ferramentas',notifications:'Notificações',trash:'Lixeira',account:'Conta e preferências',ai:'Inteligência artificial',execution:'Execuções',settings:'Configurações do sistema',monitoring:'Monitoramento operacional',queues:'Filas',architecture:'Arquitetura',exports:'Exportações',email:'Entrada de cartões por e-mail'};
 export const corePrivileges:Privilege[]=[{id:'projects.filesystem',label:'Navegar e criar pastas do host para projetos',source:'core'},{id:'access.manage',label:'Administrar usuários, grupos, perfis e privilégios',source:'core'},{id:'access.audit.read',label:'Consultar registros de auditoria do sistema',source:'core'},{id:'plugins.read',label:'Visualizar plugins',source:'core'},{id:'plugins.manage',label:'Administrar instalação e configuração de plugins',source:'core'},...Object.entries(families).flatMap(([id,label])=>[{id:id+'.read',label:'Visualizar '+label,source:id==='ai'||id==='queues'?'ai':'core'},{id:id+'.write',label:'Alterar '+label,source:id==='ai'||id==='queues'?'ai':'core'}])];
 export function permissionForRoute(path:string,method:string){
  const read=['GET','HEAD'].includes(method),action=read?'read':'write';
@@ -8,6 +8,7 @@ export function permissionForRoute(path:string,method:string){
  if(path==='/plugins')return read?'plugins.read':'plugins.manage';
  if(path.startsWith('/plugins/'))return 'plugins.manage';
  if(/^\/(boards|cards|lists|comments|checklists|checklist-items|checklist|card-attachments|comment-attachments|card-merges|favorites)(\/|$)/.test(path))return 'boards.'+action;
+ if(path==='/inbox/cards')return 'boards.'+action;
  if(path==='/home')return 'boards.read';
  if(/^\/ai\/projects\/directories(\/|$)/.test(path))return 'projects.filesystem';
  if(/^\/ai\/projects(\/|$)/.test(path))return 'projects.'+action;
