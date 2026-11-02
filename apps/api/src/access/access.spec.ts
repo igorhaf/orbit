@@ -8,15 +8,81 @@ import type {Db} from '../db';
 import {workspacesPlugin} from '../workspaces/workspaces.plugin';
 import type {PluginDefinition} from '../plugins/contract';
 import {aiPlugin} from '../plugins/ai/ai.plugin';
+import {workspaceBrandingPlugin} from '../workspaces/workspace-branding';
 
 const root='00000000-0000-4000-8000-000000000001',reader='00000000-0000-4000-8000-000000000002';
 function fixture(){let disabled=false,version=0,enabled=true;const db={async one(sql:string,args:unknown[]){if(sql.includes('FROM users'))return {id:args[0],is_root:args[0]===root,disabled,session_version:version};if(sql.includes('FROM workspace_members'))return {user_id:reader};if(sql.includes('FROM boards'))return {workspace_id:'workspace-a',role:'owner'};return null},async query(sql:string,args:unknown[]=[]){if(sql.includes('FROM access_grants')&&sql.includes('scope_type=$2')){const global=[{role_id:'reader',name:'Leitor',permissions:['boards.read']}];return args[1]==='process'&&args[2]==='process-a'?[...global,{role_id:'reviewer',name:'Revisora',permissions:['sample.process.review']}]:global}return sql.includes('FROM access_grants')?[{role_id:'reader',name:'Leitor',permissions:['boards.read']}]:[]}} as unknown as Db;const access=new AccessService(db);access.registerScope('workspace',async()=>enabled);access.registerMembership('workspace',async()=>true);access.registerScope('process',async(scope)=>scope==='process-a');access.registerMembership('process',async(_user,scope)=>scope==='process-a');return {access,suspend(){disabled=true},revoke(){version++},disablePlugin(){enabled=false}}}
 
+test('request-scoped permission providers apply only inside the matching request context', async () => {
+ const {access}=fixture();access.registerRequestPermissionProvider(async(_user,permission,type,scope,request)=>permission==='sample.academic.manage'&&type==='workspace'&&scope==='workspace-a'&&request.path==='/extensions/suinda-learning/courses/course-a'?true:null);
+ assert.equal(await access.has(reader,'sample.academic.manage','workspace','workspace-a'),false);
+ assert.equal(await access.runWithRequestContext({path:'/extensions/suinda-learning/courses/course-a',method:'PUT'},()=>access.has(reader,'sample.academic.manage','workspace','workspace-a')),true);
+ assert.equal(await access.runWithRequestContext({path:'/extensions/suinda-learning/workspaces/workspace-a/courses',method:'GET'},()=>access.has(reader,'sample.academic.manage','workspace','workspace-a')),false);
+ const expired={path:'/extensions/suinda-learning/courses/course-a',method:'PUT',active:false};
+ assert.equal(await access.runWithRequestContext(expired,()=>access.has(reader,'sample.academic.manage','workspace','workspace-a')),false);
+});
+
+test('request-scoped grants cannot override a denied or disabled permission', async () => {
+ const db={async one(sql:string,args:unknown[]=[]){return sql.includes('FROM users')?{id:args[0],is_root:false,disabled:false,session_version:0}:null},async query(sql:string,args:unknown[]=[]){if(sql.includes('access_user_exceptions')&&args[1]==='sample.academic.manage')return [{permission_id:args[1]}];if(sql.includes('access_permission_settings')&&args[0]==='sample.academic.write')return [{permission_id:args[0]}];return []}} as unknown as Db;
+ const access=new AccessService(db);access.registerPermissions(['sample.academic.manage','sample.academic.write']);access.registerRequestPermissionProvider(async()=>true);
+ const denied={path:'/extensions/suinda-learning/courses/course-a',method:'PUT'};
+ assert.equal(await access.runWithRequestContext(denied,()=>access.has(reader,'sample.academic.manage','workspace','workspace-a')),false);
+ assert.equal(await access.runWithRequestContext(denied,()=>access.has(reader,'sample.academic.write','workspace','workspace-a')),false);
+});
+
 test('ROOT bypasses existing and future capabilities and absent scope providers',async()=>{const {access}=fixture();assert.ok(allowed(true,[],'future.plugin.admin'));assert.ok(await access.has(root,'future.plugin.admin','uninstalled','unknown'));assert.ok(await access.boardPermission('board',root,'boards.write'))});
+test('ROOT profile simulation scopes permissions to the selected role without changing actor or session',async()=>{
+ const db={async one(sql:string,args:unknown[]=[]){if(sql.includes('FROM users'))return {id:args[0],is_root:args[0]===root,disabled:false,session_version:7};if(sql.includes('FROM access_roles'))return {id:'reviewer',name:'Revisora',permissions:['boards.read']};return null},async query(sql:string){if(sql.includes('access_permission_settings'))return [];return []}} as unknown as Db;
+ const access=new AccessService(db);
+ const result=await access.runWithRequestContext({path:'/boards',method:'GET'},async()=>{
+  const selected=await access.simulateProfile(root,'reviewer');
+  assert.equal(selected.id,'reviewer');
+  assert.equal((await access.account(root)).id,root);
+  assert.equal((await access.account(root)).session_version,7);
+  assert.equal(await access.isRoot(root),false);
+  assert.equal(await access.has(root,'boards.read'),true);
+  assert.equal(await access.has(root,'access.manage'),false);
+  const me=await access.me(root);
+  assert.deepEqual(me.roles.map(role=>role.role_id),['reviewer']);
+  assert.equal(me.is_root,false);
+  assert.equal(me.is_root_actor,true);
+  assert.deepEqual(me.permissions,['boards.read']);
+  return access.currentProfileSimulation()?.actor;
+ });
+ assert.equal(result,root);
+ assert.equal(await access.isRoot(root),true);
+ assert.equal(await access.has(root,'access.manage'),true);
+});
+test('concurrent ROOT profile simulations stay isolated per request',async()=>{
+ const roles={reader:{id:'reader',name:'Leitor',permissions:['boards.read']},teacher:{id:'teacher',name:'Docente',permissions:['boards.read','boards.write','secret.read']}};
+ const db={async one(sql:string,args:unknown[]=[]){if(sql.includes('FROM users'))return{id:args[0],is_root:args[0]===root,disabled:false,session_version:7};if(sql.includes('FROM access_roles'))return roles[String(args[0]) as keyof typeof roles]||null;return null},async query(sql:string){if(sql.includes('access_permission_settings'))return[{permission_id:'secret.read'}];return []}} as unknown as Db;
+ const access=new AccessService(db);access.registerPermissions(['boards.read','boards.write','secret.read']);
+ const [readerPermissions,teacherPermissions]=await Promise.all([
+  access.runWithRequestContext({path:'/boards',method:'GET'},async()=>{await access.simulateProfile(root,'reader');await new Promise(resolve=>setTimeout(resolve,5));return access.effective(root)}),
+  access.runWithRequestContext({path:'/boards',method:'GET'},async()=>{await access.simulateProfile(root,'teacher');return access.effective(root)}),
+ ]);
+ assert.deepEqual(readerPermissions,['boards.read']);
+ assert.deepEqual(teacherPermissions,['boards.read','boards.write']);
+ assert.deepEqual(await access.effective(root),['*']);
+});
+test('ROOT profile simulation derives administrator status only from the selected profile',async()=>{
+ const db={async one(sql:string,args:unknown[]=[]){if(sql.includes('FROM users'))return {id:args[0],is_root:args[0]===root,disabled:false,session_version:7};if(sql.includes('FROM access_roles'))return {id:String(args[0]),name:String(args[0]),permissions:['access.manage']};if(sql.includes('FROM access_grants'))return {user_id:root};return null},async query(sql:string){if(sql.includes('access_permission_settings'))return [];return []}} as unknown as Db;
+ const access=new AccessService(db);
+ assert.equal(await access.isAdmin(root),true);
+ await access.runWithRequestContext({path:'/access',method:'GET'},async()=>{await access.simulateProfile(root,'reader');assert.equal(await access.isAdmin(root),false);assert.equal((await access.me(root)).is_admin,false)});
+ await access.runWithRequestContext({path:'/access',method:'GET'},async()=>{await access.simulateProfile(root,'administrator');assert.equal(await access.isAdmin(root),true);assert.equal((await access.me(root)).is_admin,true)});
+});
+test('non-root cannot activate profile simulation even with a role identifier',async()=>{
+ const db={async one(sql:string,args:unknown[]=[]){if(sql.includes('FROM users'))return {id:args[0],is_root:false,disabled:false,session_version:0};return null},async query(){return []}} as unknown as Db;
+ const access=new AccessService(db);
+ await assert.rejects(()=>access.runWithRequestContext({path:'/boards',method:'GET'},()=>access.simulateProfile(reader,'reviewer')),/Somente ROOT/);
+});
 test('delegated account cannot inherit legacy board ownership after workspace permission removal',async()=>{const {access,disablePlugin}=fixture();assert.ok(await access.boardPermission('board',reader));assert.equal(await access.boardPermission('board',reader,'boards.write'),false);disablePlugin();assert.equal(await access.boardPermission('board',reader),false);assert.equal(await access.has(reader,'boards.read','missing','scope'),false)});
 test('plugin permissions register without importing plugin implementation into core',()=>{const {access}=fixture();access.registerPermissions(['sample.inspect']);assert.ok(access.catalog().includes('sample.inspect'));assert.equal(access.pluginRoute('/sample'),false);access.registerRoutes('/sample');assert.ok(access.pluginRoute('/sample/item'));assert.equal(access.pluginRoute('/sample-other'),false)});
 test('AI route ownership and permission mapping come from its plugin definition while project records stay core',()=>{const {access}=fixture();access.bindPlugins([aiPlugin]);assert.equal(access.pluginRoute('/codex/queues'),true);assert.equal(access.pluginRoute('/tools/diagnostics'),true);assert.equal(access.pluginRoute('/ai/projects'),false);assert.equal(access.pluginPermission('/codex/queues','GET'),'queues.read');assert.equal(access.pluginPermission('/cards/card/ai','POST'),'ai.write');assert.equal(access.pluginPermission('/ai/schedule','POST'),undefined)});
-test('only plugin routes explicitly declared public bypass authentication',async()=>{const {access}=fixture();const guard=new AccessGuard(access,{} as Db);const context=(path:string)=>({switchToHttp:()=>({getRequest:()=>({path,method:'GET',headers:{}})})});access.bindPlugins([{id:'public-sample',name:'Public',version:'1.0.0',handlesRoute:path=>path==='/public/sample',routePermission:()=>null}]);assert.equal(await guard.canActivate(context('/public/sample') as never),true);access.bindPlugins([{id:'private-sample',name:'Private',version:'1.0.0',handlesRoute:path=>path==='/private/sample',routePermission:()=>'private.sample.read'}]);await assert.rejects(()=>guard.canActivate(context('/private/sample') as never),/Faça login para continuar/)});
+test('only declared public routes and the exact OAuth callback bypass authentication',async()=>{const {access}=fixture();const guard=new AccessGuard(access,{} as Db);const context=(path:string,method='GET')=>({switchToHttp:()=>({getRequest:()=>({path,method,headers:{}})})});access.bindPlugins([{id:'public-sample',name:'Public',version:'1.0.0',handlesRoute:path=>path==='/public/sample',routePermission:()=>null}]);assert.equal(await guard.canActivate(context('/public/sample') as never),true);assert.equal(await guard.canActivate(context('/suinda-google-drive/oauth/callback') as never),true);await assert.rejects(()=>guard.canActivate(context('/suinda-google-drive/oauth/callback','POST') as never),/Faça login para continuar/);access.bindPlugins([{id:'private-sample',name:'Private',version:'1.0.0',handlesRoute:path=>path==='/private/sample',routePermission:()=>'private.sample.read'}]);await assert.rejects(()=>guard.canActivate(context('/private/sample') as never),/Faça login para continuar/)});
+test('workspace branding exposes only its declared public host lookup',async()=>{const {access}=fixture();const guard=new AccessGuard(access,{} as Db);const context=(path:string,method='GET')=>({switchToHttp:()=>({getRequest:()=>({path,method,headers:{}})})});access.bindPlugins([workspaceBrandingPlugin]);assert.equal(await guard.canActivate(context('/public/workspace-branding/host') as never),true);await assert.rejects(()=>guard.canActivate(context('/public/workspace-branding/host','POST') as never),/Faça login para continuar/);await assert.rejects(()=>guard.canActivate(context('/public/workspace-branding/other') as never),/Faça login para continuar/)});
+test('only plugin-declared well-known GET routes bypass authentication',async()=>{const {access}=fixture();const guard=new AccessGuard(access,{} as Db);const context=(path:string,method='GET')=>({switchToHttp:()=>({getRequest:()=>({path,method,headers:{}})})});access.bindPlugins([{id:'metadata-sample',name:'Metadata',version:'1.0.0',handlesRoute:path=>path==='/.well-known/jwks.json',routePermission:(_path,method)=>method==='GET'?null:'metadata.manage'}]);assert.equal(await guard.canActivate(context('/.well-known/jwks.json') as never),true);await assert.rejects(()=>guard.canActivate(context('/.well-known/jwks.json','POST') as never),/Faça login para continuar/);await assert.rejects(()=>guard.canActivate(context('/.well-known/other') as never),/Faça login para continuar/)});
 test('new routes fail closed and permission selection follows HTTP method',()=>{assert.equal(routePermission('/future/credentials','GET'),'root.only');assert.equal(routePermission('/cards/id','PATCH'),'boards.write');assert.equal(routePermission('/cards/id','GET'),'boards.read');assert.equal(routePermission('/plugins/item/configuration','GET'),'plugins.manage');assert.equal(routePermission('/access/users','GET'),'access.manage');assert.equal(routePermission('/access/audit','GET'),'access.audit.read')});
 test('audit records can be tagged with a validated resource scope',async()=>{const calls:Array<{sql:string;args:unknown[]}>=[];const db={async query(sql:string,args:unknown[]=[]){calls.push({sql,args});return []}} as unknown as Db;const access=new AccessService(db);await access.audit(reader,'sample.process.read.full','process-a',{type:'sample_process',id:'00000000-0000-4000-8000-000000000003'});assert.ok(calls[0].sql.includes('scope_type,scope_id'));assert.deepEqual(calls[0].args,[reader,'sample.process.read.full','process-a','sample_process','00000000-0000-4000-8000-000000000003'])});
 test('global audit requires the dedicated privilege and supports validated scope filters',async()=>{const calls:Array<{sql:string;args:unknown[]}>=[];let required='';const db={async query(sql:string,args:unknown[]=[]){calls.push({sql,args});return []}} as unknown as Db;const access={async require(_user:string,permission:string){required=permission}} as unknown as AccessService;const controller=new AccessController(access,db);await controller.audit({orbitActor:root} as never,'workspace','00000000-0000-4000-8000-000000000009');assert.equal(required,'access.audit.read');assert.match(calls[0].sql,/a\.scope_type=\$1/);assert.deepEqual(calls[0].args,['workspace','00000000-0000-4000-8000-000000000009']);await assert.rejects(()=>controller.audit({orbitActor:root} as never,'workspace',undefined),/tipo e o identificador/)});

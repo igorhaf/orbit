@@ -12,8 +12,9 @@ test('sanitized notebook HTML stays safe after a PostgreSQL write/read round-tri
   const url = new URL(process.env.DATABASE_URL!);
   url.hostname = process.env.ORBIT_TEST_DB_HOST || process.env.ORBIT_SELENIUM_DB_HOST || url.hostname;
   const adminUrl = new URL(url);
-  adminUrl.username = execFileSync('docker', ['exec', 'orbit-db-dev', 'printenv', 'POSTGRES_USER'], { encoding: 'utf8' }).trim();
-  adminUrl.password = execFileSync('docker', ['exec', 'orbit-db-dev', 'printenv', 'POSTGRES_PASSWORD'], { encoding: 'utf8' }).trim();
+  const adminContainer = process.env.ORBIT_TEST_DB_CONTAINER || 'orbit-db-dev';
+  adminUrl.username = execFileSync('docker', ['exec', adminContainer, 'printenv', 'POSTGRES_USER'], { encoding: 'utf8' }).trim();
+  adminUrl.password = execFileSync('docker', ['exec', adminContainer, 'printenv', 'POSTGRES_PASSWORD'], { encoding: 'utf8' }).trim();
   const schema = `notebook_sanitize_test_${randomUUID().replaceAll('-', '')}`;
   const admin = new Pool({ connectionString: adminUrl.toString() });
   const db = new Pool({ connectionString: url.toString(), options: `-c search_path=${schema}` });

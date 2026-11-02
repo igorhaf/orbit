@@ -80,6 +80,7 @@ export const definePlugin = <T extends PluginDefinition>(definition: T): T => {
   if (!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(definition.version))
     throw new Error(`Versão inválida para ${definition.id}.`);
   const dependencies=definition.dependencies||[];for(const dependency of dependencies){identifier(dependency,'Dependency');if(dependency===definition.id)throw new Error('Plugin não pode depender de si mesmo.');}
+  if(definition.parentPlugin){identifier(definition.parentPlugin,'Parent plugin');if(definition.parentPlugin===definition.id)throw new Error('Plugin não pode estender a si mesmo.');if(!dependencies.includes(definition.parentPlugin))throw new Error(`Plugin filho ${definition.id} precisa declarar dependência do pai ${definition.parentPlugin}.`);}
   const layouts=(definition.contributions?.cardLayouts||[]).map(defineCardLayout);unique(layouts,'Card layout');
   const cardTypes=(definition.contributions?.cardTypes||[]).map(defineCardType);unique(cardTypes,'Card type');
   const boardViews=(definition.contributions?.boardViews||[]).map(defineBoardView);unique(boardViews,'Board view');

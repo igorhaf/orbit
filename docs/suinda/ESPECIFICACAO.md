@@ -1,0 +1,436 @@
+1. Cadastro, acesso e perfis
+- Cadastro de usuários — aluno, professor, tutor, coordenador e administrador.
+- Login por e-mail e senha — autenticação tradicional.
+- Login social — Google, Microsoft, Apple etc.
+- Recuperação de senha — redefinição por e-mail.
+- Verificação de e-mail — confirmação da conta.
+- Autenticação em dois fatores — proteção adicional.
+- Perfis e permissões — controle por tipo de usuário.
+- Perfil do aluno — dados pessoais, foto, contatos e informações acadêmicas.
+- Perfil do professor — currículo, especialidades, biografia e cursos.
+- Gestão de usuários — ativar, bloquear, editar ou excluir contas.
+- Aceite de termos e políticas — registro da versão aceita pelo usuário.
+- Histórico de acessos — registro de login, dispositivo e atividades relevantes.
+2. Gestão de cursos
+- Cadastro de cursos — nome, descrição, imagem, objetivos e informações gerais.
+- Categorias de cursos — organização por área ou temática.
+- Tags — classificação adicional para busca e recomendação.
+- Curso presencial, online ou híbrido — diferentes modalidades.
+- Curso livre ou com turma — suporte a conteúdos permanentes e turmas fechadas.
+- Carga horária — definição automática ou manual.
+- Pré-requisitos — exigências para participação.
+- Número máximo de vagas — controle de capacidade.
+- Lista de espera — gerenciamento de interessados após lotação.
+- Status do curso — rascunho, inscrições abertas, em andamento, encerrado etc.
+- Duplicação de cursos — criação rápida de novas edições.
+- Versionamento de cursos — manutenção de diferentes versões curriculares.
+- Página pública do curso — apresentação, professores, calendário e investimento.
+- Conteúdo programático — descrição completa dos módulos e competências.
+- Materiais necessários — relação de itens exigidos para participação.
+3. Turmas
+- Criação de turmas — várias turmas para o mesmo curso.
+- Período de inscrição — abertura e fechamento automáticos.
+- Data de início e término — duração da turma.
+- Limite de participantes — vagas por turma.
+- Transferência de aluno entre turmas — movimentação administrativa.
+- Cancelamento de matrícula — controle de desistências.
+- Trancamento — suspensão temporária quando aplicável.
+- Status da matrícula — inscrito, matriculado, desistente, concluinte etc.
+- Matrícula manual — inclusão administrativa.
+- Matrícula automática — após pagamento ou aprovação.
+- Importação de alunos — CSV ou planilha.
+- Lista de chamada — participantes matriculados por aula.
+4. Estrutura pedagógica
+- Módulos — divisão principal do curso.
+- Aulas — conteúdos dentro dos módulos.
+- Unidades de aprendizagem — organização mais granular.
+- Trilhas formativas — sequência de diferentes cursos.
+- Pré-requisitos entre módulos — liberação progressiva.
+- Conteúdo sequencial obrigatório — bloqueio de aulas futuras.
+- Conteúdo opcional — materiais complementares.
+- Carga horária por aula — cálculo da participação.
+- Competências e habilidades — vinculação aos conteúdos.
+- Objetivos de aprendizagem — definição por módulo ou aula.
+5. Conteúdo educacional
+- Aulas em vídeo — upload ou incorporação.
+- Aulas em áudio — podcasts e conteúdos sonoros.
+- Textos e artigos — conteúdo diretamente na plataforma.
+- PDFs e apostilas — materiais para consulta.
+- Apresentações — slides das aulas.
+- Links externos — referências e conteúdos adicionais.
+- Downloads — arquivos complementares.
+- Galerias de imagens — conteúdos visuais.
+- Conteúdo incorporado — YouTube, Vimeo, Google Drive etc.
+- Controle de download — permitir ou restringir materiais.
+- Liberação programada — conteúdo disponibilizado por data.
+- Liberação após conclusão — conteúdos condicionados ao progresso.
+6. Aulas ao vivo
+- Agendamento de aulas online — data, horário e professor.
+- Integração com Google Meet — geração ou armazenamento do link.
+- Integração com Zoom — reuniões vinculadas às turmas.
+- Integração com Microsoft Teams — suporte a aulas corporativas.
+- Registro de presença online — participação nas aulas.
+- Gravação da aula — disponibilização posterior.
+- Controle de acesso ao link — somente matriculados.
+- Avisos de início da aula — notificações automáticas.
+7. Aulas presenciais
+- Cadastro de locais — sala, endereço e capacidade.
+- Controle de salas — prevenção de conflitos de agenda.
+- Lista de presença — registro manual ou digital.
+- Check-in por QR Code — confirmação de presença.
+- Check-in pelo professor — validação individual.
+- Geolocalização opcional — confirmação presencial.
+- Registro de atraso — presença parcial.
+- Registro de saída antecipada — cálculo de frequência.
+8. Frequência
+- Controle de presença por aula — presente, ausente ou justificado.
+- Percentual de frequência — cálculo automático.
+- Carga horária frequentada — total efetivamente cumprido.
+- Limite de faltas — parametrização por curso.
+- Falta justificada — registro documental.
+- Anexo de justificativa — atestado ou documento.
+- Alertas de excesso de faltas — aluno e coordenação.
+- Bloqueio de certificação — quando frequência mínima não for atingida.
+9. Reposição e atividades práticas
+- Solicitação de reposição — aluno solicita nova oportunidade.
+- Agenda de reposições — datas disponíveis.
+- Taxa de reposição — quando prevista pelo curso.
+- Isenção de taxa — autorização administrativa.
+- Atividades práticas supervisionadas — cadastro específico.
+- Professor/preceptor responsável — acompanhamento da prática.
+- Registro de horas práticas — acompanhamento individual.
+- Validação de prática — aprovação do supervisor.
+- Campo de observações — avaliação da atividade.
+- Reposição em turma futura — aproveitamento em novas edições.
+10. Avaliações
+- Provas online — aplicação dentro da plataforma.
+- Questionários — avaliações rápidas.
+- Questões objetivas — múltipla escolha.
+- Questões discursivas — correção pelo professor.
+- Banco de questões — reutilização.
+- Sorteio de questões — provas diferentes para cada aluno.
+- Tempo limite — controle de duração.
+- Número de tentativas — configuração de repetições.
+- Nota mínima — aprovação automática.
+- Correção automática — para perguntas objetivas.
+- Correção manual — para atividades discursivas.
+- Feedback da avaliação — comentários do professor.
+- Recuperação — nova avaliação para alunos reprovados.
+- Histórico de notas — acompanhamento acadêmico.
+11. Trabalhos e atividades
+- Entrega de atividades — envio de arquivos.
+- Prazo de entrega — datas e horários.
+- Entrega atrasada — identificação automática.
+- Trabalho individual — submissão por aluno.
+- Trabalho em grupo — submissão coletiva.
+- Rubricas de avaliação — critérios padronizados.
+- Feedback do professor — observações sobre a entrega.
+- Reenvio de atividade — nova versão após correção.
+- Controle de versões — histórico dos arquivos entregues.
+12. Progresso do aluno
+- Percentual de conclusão do curso.
+- Progresso por módulo.
+- Progresso por aula.
+- Conteúdos assistidos.
+- Atividades concluídas.
+- Horas realizadas.
+- Pendências acadêmicas.
+- Painel individual do aluno.
+- Última atividade realizada.
+- Retomar de onde parou.
+13. Certificados
+- Emissão automática de certificado.
+- Requisitos para certificação — frequência, notas e atividades.
+- Modelo personalizado de certificado.
+- Assinatura digital.
+- QR Code de validação.
+- Código único de autenticidade.
+- Página pública de validação.
+- Carga horária no certificado.
+- Data de conclusão.
+- Nome dos responsáveis.
+- Download em PDF.
+- Segunda via do certificado.
+- Histórico de certificados emitidos.
+- Cancelamento de certificado.
+- Certificados de participação parcial.
+14. Inscrições
+- Formulário de inscrição personalizado.
+- Campos obrigatórios configuráveis.
+- Envio de documentos na inscrição.
+- Análise de inscrição.
+- Inscrição aprovada ou recusada.
+- Fila de espera.
+- Convocação da fila de espera.
+- Prazo para efetivação da matrícula.
+- Encerramento automático das inscrições.
+- Número de vagas restantes.
+- Cupom ou código de convite.
+- Inscrição por indicação institucional.
+15. Financeiro
+- Cursos gratuitos e pagos.
+- Preço por curso.
+- Preço por turma.
+- Parcelamento.
+- Pagamento à vista.
+- PIX.
+- Cartão de crédito.
+- Boleto bancário.
+- Integração com gateway de pagamento.
+- Baixa automática de pagamento.
+- Baixa manual.
+- Status financeiro da matrícula.
+- Controle de inadimplência.
+- Descontos.
+- Cupons promocionais.
+- Bolsas integrais.
+- Bolsas parciais.
+- Convênios institucionais.
+- Desconto para associados.
+- Negociação financeira.
+- Renegociação de parcelas.
+- Reembolso.
+- Cancelamento financeiro.
+- Relatório de receitas por curso.
+- Relatório de inadimplência.
+16. Bolsas
+- Cadastro de programas de bolsas.
+- Quantidade de bolsas disponíveis.
+- Percentual da bolsa.
+- Inscrição para bolsa.
+- Envio de documentação socioeconômica.
+- Análise de candidaturas.
+- Pontuação/classificação.
+- Lista de aprovados.
+- Lista de espera de bolsas.
+- Termo de concessão da bolsa.
+- Controle de contrapartidas.
+- Histórico de bolsistas.
+17. Comunicação
+- Mural da turma.
+- Avisos gerais.
+- Avisos por curso.
+- Avisos por turma.
+- Notificações internas.
+- Notificações por e-mail.
+- Notificações por WhatsApp.
+- Notificações push.
+- Mensagens individuais.
+- Mensagens em grupo.
+- Chat aluno-professor.
+- Comunicados com confirmação de leitura.
+- Agendamento de comunicados.
+- Modelos de mensagens.
+18. Comunidade e interação
+- Fórum por curso.
+- Fórum por aula.
+- Comentários em conteúdos.
+- Perguntas e respostas.
+- Curtidas/reação.
+- Grupos de estudo.
+- Perfil público do participante.
+- Networking entre alunos.
+- Comunidades de ex-alunos.
+19. Professores, tutores e equipe
+- Cadastro de professores.
+- Cadastro de tutores.
+- Cadastro de preceptores.
+- Cadastro de coordenadores.
+- Vínculo professor-curso.
+- Vínculo professor-aula.
+- Carga horária ministrada.
+- Agenda do professor.
+- Disponibilidade.
+- Currículo e formação.
+- Documentação profissional.
+- Avaliação do professor pelos alunos.
+- Histórico de turmas ministradas.
+- Pagamento/honorários do professor.
+20. Documentos
+- Biblioteca de documentos do curso.
+- Contratos.
+- Termos de compromisso.
+- Regulamentos.
+- Termos de consentimento.
+- Assinatura eletrônica.
+- Upload de documentos pessoais.
+- Controle de documentos obrigatórios.
+- Validade de documentos.
+- Solicitação automática de atualização.
+- Histórico de versões.
+21. Calendário
+- Calendário acadêmico.
+- Calendário por turma.
+- Aulas presenciais.
+- Aulas online.
+- Avaliações.
+- Entregas de atividades.
+- Práticas supervisionadas.
+- Eventos.
+- Reposições.
+- Feriados e recessos.
+- Integração com Google Calendar.
+- Exportação iCal.
+22. Relatórios e indicadores
+- Total de alunos.
+- Alunos ativos.
+- Alunos por turma.
+- Taxa de conclusão.
+- Taxa de evasão.
+- Taxa de reprovação.
+- Frequência média.
+- Notas médias.
+- Receita por curso.
+- Receita por turma.
+- Inadimplência.
+- Origem das inscrições.
+- Conversão inscrição → matrícula.
+- Ocupação das turmas.
+- Cursos mais procurados.
+- Desempenho dos professores.
+- Horas de aulas ministradas.
+- Horas práticas realizadas.
+- Quantidade de certificados emitidos.
+- Exportação para Excel/CSV/PDF.
+23. Dashboard administrativo
+- Matrículas recentes.
+- Próximas aulas.
+- Pagamentos pendentes.
+- Alunos em risco por faltas.
+- Alunos em risco por notas.
+- Documentos pendentes.
+- Atividades aguardando correção.
+- Turmas próximas da lotação.
+- Inscrições aguardando análise.
+- Indicadores financeiros.
+- Indicadores acadêmicos.
+24. Dashboard do aluno
+- Meus cursos.
+- Próximas aulas.
+- Atividades pendentes.
+- Notas.
+- Frequência.
+- Progresso do curso.
+- Certificados.
+- Pagamentos.
+- Documentos.
+- Avisos recentes.
+- Calendário pessoal.
+25. Dashboard do professor
+- Minhas turmas.
+- Próximas aulas.
+- Lista de alunos.
+- Registro de presença.
+- Correção de atividades.
+- Lançamento de notas.
+- Materiais das aulas.
+- Avisos para turma.
+- Agenda.
+- Indicadores da turma.
+26. Pesquisa e qualidade
+- Pesquisa de satisfação.
+- Avaliação do curso.
+- Avaliação do professor.
+- Avaliação de infraestrutura.
+- Avaliação por módulo.
+- NPS.
+- Pesquisa anônima.
+- Questionários personalizados.
+- Relatórios de satisfação.
+- Campo de sugestões e reclamações.
+27. Gamificação
+- Pontos por atividades concluídas.
+- Badges/conquistas.
+- Níveis de progresso.
+- Ranking opcional.
+- Metas de aprendizagem.
+- Sequência de dias estudando.
+- Certificados intermediários.
+- Desafios educacionais.
+28. Busca e descoberta
+- Busca por cursos.
+- Filtros por categoria.
+- Filtros por modalidade.
+- Filtros por carga horária.
+- Filtros por professor.
+- Filtros por preço.
+- Cursos relacionados.
+- Cursos recomendados.
+- Favoritos.
+- Lista de desejos.
+29. Administração e configurações
+- Configuração da instituição.
+- Logo e identidade visual.
+- Domínio próprio.
+- Customização de cores.
+- Modelos de e-mail.
+- Configuração de certificados.
+- Configuração financeira.
+- Configuração acadêmica.
+- Parâmetros de frequência.
+- Parâmetros de aprovação.
+- Perfis de acesso personalizados.
+- Logs administrativos.
+- Auditoria de alterações.
+30. LGPD e segurança
+- Consentimento para tratamento de dados.
+- Registro da finalidade do tratamento.
+- Solicitação de dados pessoais.
+- Correção de dados pessoais.
+- Solicitação de exclusão de conta.
+- Anonimização quando aplicável.
+- Política de retenção de dados.
+- Logs de auditoria.
+- Controle de permissões.
+- Criptografia de informações sensíveis.
+- Controle de sessões.
+- Bloqueio após tentativas de login.
+- Backup da plataforma.
+- Registro de alterações críticas.
+31. Acessibilidade
+- Interface responsiva.
+- Compatibilidade com leitor de tela.
+- Navegação por teclado.
+- Textos alternativos em imagens.
+- Legendas em vídeos.
+- Transcrição de aulas.
+- Controle de tamanho da fonte.
+- Contraste adequado.
+- Conteúdo seguindo padrões WCAG.
+32. Integrações
+- API REST da plataforma.
+- Webhooks.
+- Google Meet.
+- Zoom.
+- Microsoft Teams.
+- Google Calendar.
+- Google Drive.
+- YouTube/Vimeo.
+- WhatsApp.
+- Serviços de e-mail.
+- Gateways de pagamento.
+- Sistemas financeiros.
+- CRM.
+- ERP.
+- Sistemas externos de certificação.
+- SSO corporativo.
+33. Recursos mais avançados
+- Multi-instituição — várias organizações no mesmo sistema.
+- White label — identidade própria para cada instituição.
+- Multiunidade — diferentes polos ou filiais.
+- Marketplace de cursos.
+- Programa de afiliados.
+- Comissões por venda.
+- Planos de assinatura.
+- Conteúdo por assinatura.
+- Cursos corporativos.
+- Turmas fechadas para empresas.
+- Relatórios por empresa contratante.
+- Matrícula em lote corporativa.
+- Credenciais digitais/microcertificações.
+- Trilhas obrigatórias por perfil profissional.
+- Recomendação de conteúdo por IA.
+- Assistente de dúvidas com IA baseado no conteúdo do curso.
+- Geração automática de questionários.
+- Resumo automático de aulas.
+- Transcrição e indexação de vídeos.

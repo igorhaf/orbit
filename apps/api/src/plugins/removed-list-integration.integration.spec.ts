@@ -7,7 +7,7 @@ import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {Pool} from 'pg';
 test('retired list integration removal preserves linked Orbit content and other plugins',async()=>{
- const url=new URL(process.env.DATABASE_URL!);url.hostname=process.env.ORBIT_SELENIUM_DB_HOST||url.hostname;url.username=execFileSync('docker',['exec','orbit-db-dev','printenv','POSTGRES_USER'],{encoding:'utf8'}).trim();url.password=execFileSync('docker',['exec','orbit-db-dev','printenv','POSTGRES_PASSWORD'],{encoding:'utf8'}).trim();
+ const url=new URL(process.env.DATABASE_URL!);url.hostname=process.env.ORBIT_SELENIUM_DB_HOST||url.hostname;const adminContainer=process.env.ORBIT_TEST_DB_CONTAINER||'orbit-db-dev';url.username=execFileSync('docker',['exec',adminContainer,'printenv','POSTGRES_USER'],{encoding:'utf8'}).trim();url.password=execFileSync('docker',['exec',adminContainer,'printenv','POSTGRES_PASSWORD'],{encoding:'utf8'}).trim();
  const pool=new Pool({connectionString:url.toString()}),client=await pool.connect(),schema=`removed_lists_${randomUUID().replaceAll('-','')}`;
  try{
   await client.query(`CREATE SCHEMA ${schema}`);await client.query(`SET search_path TO ${schema}`);

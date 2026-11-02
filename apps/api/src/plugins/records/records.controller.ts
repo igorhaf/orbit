@@ -21,6 +21,13 @@ export class ExtensionRecordsController {
   @Get() catalog(@Req() req: AccessRequest) {
     return this.records.catalog(String(req.orbitUser));
   }
+  @Get(":plugin/me/records/:kind") mine(
+    @Req() req: AccessRequest,
+    @Param("plugin") plugin: string,
+    @Param("kind") kind: string,
+  ) {
+    return this.records.mine(plugin, kind, String(req.orbitUser));
+  }
   @Get(":plugin/workspaces/:workspace/access") permissions(
     @Req() req: AccessRequest,
     @Param("plugin") plugin: string,
@@ -34,6 +41,13 @@ export class ExtensionRecordsController {
     @Param("workspace") workspace: string,
   ) {
     return this.records.list(plugin, workspace, String(req.orbitUser));
+  }
+  @Get(":plugin/workspaces/:workspace/summary") summary(
+    @Req() req: AccessRequest,
+    @Param("plugin") plugin: string,
+    @Param("workspace") workspace: string,
+  ) {
+    return this.records.summary(plugin, workspace, String(req.orbitUser));
   }
   @Post(":plugin/workspaces/:workspace/records") create(
     @Req() req: AccessRequest,
@@ -57,6 +71,21 @@ export class ExtensionRecordsController {
     @Param("revision") revision: string,
   ) {
     return this.records.versionSnapshot(plugin, id, Number(revision), String(req.orbitUser));
+  }
+  @Get(":plugin/records/:id/attachments/:revision/:attachmentId") async attachment(
+    @Req() req: AccessRequest,
+    @Res() res: Response,
+    @Param("plugin") plugin: string,
+    @Param("id") id: string,
+    @Param("revision") revision: string,
+    @Param("attachmentId") attachmentId: string,
+  ) {
+    const file = await this.records.downloadRecordAttachment(plugin, id, Number(revision), attachmentId, String(req.orbitUser));
+    res.setHeader("Content-Type", file.mime_type);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(file.file_name)}`);
+    res.send(file.data);
   }
   @Post(":plugin/records/:id/versions") version(
     @Req() req: AccessRequest,

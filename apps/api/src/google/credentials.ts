@@ -10,6 +10,7 @@ export const GOOGLE_CALENDAR_SCOPES=[
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.freebusy',
 ];
+export const GOOGLE_MEET_ATTENDANCE_SCOPE='https://www.googleapis.com/auth/meetings.space.readonly';
 export const GOOGLE_MAIL_SCOPES=['https://www.googleapis.com/auth/gmail.modify'];
 
 type Tokens={access_token:string;refresh_token?:string;expires_at:number;scope:string;token_type?:string};

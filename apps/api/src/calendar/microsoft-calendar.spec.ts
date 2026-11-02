@@ -35,6 +35,7 @@ test("Microsoft OAuth uses state, PKCE, offline access and incremental Teams con
     assert.ok(calendarUrl.searchParams.get("scope")?.includes("Calendars.ReadWrite.Shared"));
     assert.ok(!calendarUrl.searchParams.get("scope")?.includes("OnlineMeetings.ReadWrite"));
     assert.ok(teamsUrl.searchParams.get("scope")?.includes("OnlineMeetings.ReadWrite"));
+    assert.ok(teamsUrl.searchParams.get("scope")?.includes("OnlineMeetingArtifact.Read.All"));
     assert.ok(mailUrl.searchParams.get("scope")?.includes("Mail.ReadWrite"));
     assert.ok(mailUrl.searchParams.get("scope")?.includes("Mail.Send"));
     assert.equal(calendarUrl.searchParams.get("code_challenge_method"),"S256");
@@ -87,6 +88,7 @@ test("Outlook adapter normalizes timed, all-day, Windows timezone and Teams conf
   assert.equal(plugin.conference({isOnlineMeeting:true,onlineMeeting:{joinUrl:"https://teams.microsoft.com/l/meetup-join/test"}}).provider,"microsoft_teams");
   const body=plugin.mutation({title:"Planning",start:"2026-10-01T13:00:00Z",end:"2026-10-01T14:00:00Z",conference:true},{time_zone:"America/Recife"});
   assert.equal(body.isOnlineMeeting,true);assert.equal(body.onlineMeetingProvider,"teamsForBusiness");
+  assert.equal(plugin.mutation({visibility:"private"},{time_zone:"America/Recife"}).sensitivity,"private");
 });
 
 test("calendar discovery supports multiple Microsoft calendars and accounts", async () => {
@@ -104,11 +106,15 @@ test("Outlook delta sync paginates and recovers a single invalid cursor with a c
 
 test("Outlook event CRUD uses Graph, ETags, recurrence and Teams fields", async () => {
   const source={id:"00000000-0000-4000-8000-000000000020",owner_id:connection.owner_id,connection_id:connection.id,external_id:"calendar",name:"Calendar",time_zone:"UTC",color:null,selected:true,metadata:{}},row={id:"00000000-0000-4000-8000-000000000021",source_id:source.id,external_id:"event",connection_id:connection.id,calendar_external_id:"calendar",owner_id:connection.owner_id,name:"Calendar",source_time_zone:"UTC",time_zone:"UTC",color:null,selected:true,source_metadata:{},all_day:false,etag:'W/"etag"'},requests:Array<{path:string;init:RequestInit}>=[],queries:string[]=[];
-  const db={one:async(sql:string)=>{queries.push(sql);return sql.includes("SELECT * FROM calendar_sources")?source:row},query:async(sql:string)=>{queries.push(sql);return []}},graph={connection:async()=>connection,request:async(_connection:unknown,path:string,init:RequestInit={})=>{requests.push({path,init});return{id:"event",subject:"Planning",start:{dateTime:"2026-10-01T13:00:00",timeZone:"UTC"},end:{dateTime:"2026-10-01T14:00:00",timeZone:"UTC"},isOnlineMeeting:true,onlineMeeting:{joinUrl:"https://teams.microsoft.com/join"}}}};
+  let existingOperation=false;
+  const db={one:async(sql:string)=>{queries.push(sql);return sql.includes("metadata->>'operationKey'")?(existingOperation?row:null):sql.includes("SELECT * FROM calendar_sources")?source:row},query:async(sql:string)=>{queries.push(sql);return []}},graph={connection:async()=>connection,request:async(_connection:unknown,path:string,init:RequestInit={})=>{requests.push({path,init});return{id:"event",subject:"Planning",start:{dateTime:"2026-10-01T13:00:00",timeZone:"UTC"},end:{dateTime:"2026-10-01T14:00:00",timeZone:"UTC"},isOnlineMeeting:true,onlineMeeting:{joinUrl:"https://teams.microsoft.com/join"}}}};
   const plugin=new OutlookCalendarPlugin(db as never,graph as never,{} as never);Object.defineProperty(plugin,"persist",{value:async():Promise<CalendarItem>=>({id:row.id,sourceId:source.id,resourceType:"event",title:"Planning",start:"2026-10-01T13:00:00Z",allDay:false,metadata:{}})});
-  await plugin.createItem(connection.owner_id,source.id,{title:"Planning",start:"2026-10-01T13:00:00Z",end:"2026-10-01T14:00:00Z",recurrence:[{pattern:{type:"weekly"}} as never],conference:true});
+  await plugin.createItem(connection.owner_id,source.id,{title:"Planning",start:"2026-10-01T13:00:00Z",end:"2026-10-01T14:00:00Z",recurrence:[{pattern:{type:"weekly"}} as never],conference:true,operationKey:"00000000-0000-4000-8000-000000000022"});
   await plugin.updateItem(connection.owner_id,row.id,{title:"Changed"});await plugin.deleteItem(connection.owner_id,row.id);
-  assert.equal(requests[0].init.method,"POST");assert.match(String(requests[0].init.body),/teamsForBusiness/);assert.match(String(requests[0].init.body),/weekly/);assert.equal(requests[1].init.method,"PATCH");assert.deepEqual((requests[1].init.headers as Record<string,string>)["If-Match"],'W/"etag"');assert.equal(requests[2].init.method,"DELETE");assert.ok(queries.some(sql=>sql.includes("status='cancelled'")));
+  existingOperation=true;
+  await plugin.createItem(connection.owner_id,source.id,{title:"Planning",start:"2026-10-01T13:00:00Z",end:"2026-10-01T14:00:00Z",conference:true,operationKey:"00000000-0000-4000-8000-000000000022"});
+  assert.equal(requests[0].init.method,"POST");assert.match(String(requests[0].init.body),/teamsForBusiness/);assert.match(String(requests[0].init.body),/weekly/);assert.equal(JSON.parse(String(requests[0].init.body)).transactionId,"00000000-0000-4000-8000-000000000022");assert.equal(requests[1].init.method,"PATCH");assert.deepEqual((requests[1].init.headers as Record<string,string>)["If-Match"],'W/"etag"');assert.equal(requests[2].init.method,"DELETE");assert.ok(queries.some(sql=>sql.includes("status='cancelled'")));
+  assert.equal(requests.length,4);assert.equal(requests[3].path,"me/calendars/calendar/events/event");assert.equal(requests[3].init.method,undefined);
 });
 
 test("Graph subscriptions create, validate, deduplicate, renew and delete safely", async () => {

@@ -5,7 +5,7 @@ import { Files, LoaderCircle, Terminal, XCircle } from 'lucide-react';
 import { io } from 'socket.io-client';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Board, Card, PromptActivity, PromptFileChange, PromptRun, api, getToken } from '@/lib/api';
+import { Board, Card, PromptActivity, PromptFileChange, PromptRun, api, profileSimulationSocketAuth } from '@/lib/api';
 
 type ProgressEvent={runId:string;cardId:string;status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';message:string;output?:boolean;replace?:boolean;files?:PromptFileChange[];activity?:PromptActivity;at:string};
 const withoutSummary=(value:string)=>value.replace(/\[\[ORBIT_SUMMARY\]\][\s\S]*(?:\[\[\/ORBIT_SUMMARY\]\]|$)/i,'').trimEnd();
@@ -89,7 +89,7 @@ export function PromptExecution({card,board,active}:{card:Card;board:Board;activ
   useEffect(()=>{
     let mounted=true;
     void api<PromptRun[]>(`/cards/${card.id}/prompt-runs`).then(value=>{if(mounted){setRuns(value);setRunId(value.find(item=>['queued','running','waiting_answer'].includes(item.status))?.id||null);}}).catch(()=>undefined);
-    const socket=io({path:'/socket.io',auth:{token:getToken()}});
+    const socket=io({path:'/socket.io',auth:profileSimulationSocketAuth()});
     socket.on('connect',()=>socket.emit('board:join',board.id));
     socket.on('prompt:progress',(event:ProgressEvent)=>{
       if(event.cardId!==card.id)return;
@@ -138,7 +138,7 @@ export function PromptExecution({card,board,active}:{card:Card;board:Board;activ
       <div ref={outputRef} className="min-h-48 max-h-[44vh] overflow-y-auto p-3 font-mono text-xs leading-5">
         {current.map((event,index)=><p key={`${event.at}:${index}`} className={event.status==='error'?'text-[#ff8f73]':event.status==='success'?'text-[#7ee2b8]':'text-[#d0d9e8]'}><span className="mr-2 text-[#738496]">{new Date(event.at).toLocaleTimeString('pt-BR')}</span>{event.message}</p>)}
         {displayedRun?<div className={current.length?'mt-3 border-t border-white/10 pt-3':''}>
-          <p className="flex items-center gap-2 text-[#d0d9e8]">{displayedRun.status==='success'?<span className="h-2 w-2 rounded-full bg-[#0c66e4]"/>:displayedRun.status==='error'?<XCircle size={15} className="text-[#ff8f73]"/>:displayedRun.status==='cancelled'?<XCircle size={15}/>:<LoaderCircle size={15} className="animate-spin text-[#579dff]"/>}<span>Execução: {displayedRun.status==='waiting_answer'?'aguardando resposta':displayedRun.status==='success'?'concluída':displayedRun.status==='error'?'falhou':displayedRun.status==='cancelled'?'cancelada':displayedRun.status==='queued'?'na fila':'em andamento'}.</span></p>
+          <p className="flex flex-wrap items-center gap-2 text-[#d0d9e8]">{displayedRun.status==='success'?<span className="h-2 w-2 rounded-full bg-[#0c66e4]"/>:displayedRun.status==='error'?<XCircle size={15} className="text-[#ff8f73]"/>:displayedRun.status==='cancelled'?<XCircle size={15}/>:<LoaderCircle size={15} className="animate-spin text-[#579dff]"/>}<span>Execução: {displayedRun.status==='waiting_answer'?'aguardando resposta':displayedRun.status==='success'?'concluída':displayedRun.status==='error'?'falhou':displayedRun.status==='cancelled'?'cancelada':displayedRun.status==='queued'?'na fila':'em andamento'}.</span><span className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-[#a9b8ca]">{displayedRun.multiple_agents?'Múltiplos agentes':'Agente único'}</span></p>
           {displayedRun.error&&<p className="mt-3 text-[#ff8f73]">{displayedRun.error}</p>}
         </div>:null}
         {output&&<LiveMarkdown text={output}/>}
@@ -154,6 +154,6 @@ export function PromptExecution({card,board,active}:{card:Card;board:Board;activ
       <button disabled={answerBusy||!answer.trim()} type="submit" className="rounded bg-[#0c66e4] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{answerBusy?'Enviando…':'Responder e voltar à fila'}</button>
     </form>}
     {runs.some(run=>run.status==='waiting_answer')&&<div className="mt-3"><h4 className="text-sm font-semibold">Fila de perguntas</h4>{runs.filter(run=>run.status==='waiting_answer').map(run=><button key={run.id} type="button" onClick={()=>setHistoryRunId(run.id)} className="block w-full truncate rounded border px-3 py-2 text-left text-sm">{run.output}</button>)}</div>}
-    {runs.length>0&&<div className="mt-4"><h4 className="mb-2 text-sm font-semibold">Histórico de execuções</h4><div className="space-y-1">{runs.map(run=><button key={run.id} type="button" onClick={()=>setHistoryRunId(run.id)} className={`flex w-full items-center justify-between rounded border px-3 py-2 text-left text-xs ${displayedRunId===run.id?'border-[#0c66e4] bg-[#e9f2ff]':'border-[#dfe1e6] bg-white'}`}><span className="min-w-0 truncate"><span className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${run.source==='comment'?'bg-[#e9ddff] text-[#403294]':'bg-[#dfeeff] text-[#0747a6]'}`}>{run.source==='comment'?'Comentário':'Descrição'}</span>{new Date(run.started_at).toLocaleString('pt-BR')} · {run.model} · {run.effort}</span><span className={run.status==='error'?'text-[#ae2a19]':run.status==='success'?'text-[#0c66e4]':'text-[#626f86]'}>{run.status==='waiting_answer'?'Aguardando resposta':run.status==='success'?'Concluída':run.status==='error'?'Falhou':run.status==='cancelled'?'Cancelada':run.status==='queued'?'Na fila':'Executando'}</span></button>)}</div></div>}
+    {runs.length>0&&<div className="mt-4"><h4 className="mb-2 text-sm font-semibold">Histórico de execuções</h4><div className="space-y-1">{runs.map(run=><button key={run.id} type="button" onClick={()=>setHistoryRunId(run.id)} className={`flex w-full items-center justify-between rounded border px-3 py-2 text-left text-xs ${displayedRunId===run.id?'border-[#0c66e4] bg-[#e9f2ff]':'border-[#dfe1e6] bg-white'}`}><span className="min-w-0 truncate"><span className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${run.source==='comment'?'bg-[#e9ddff] text-[#403294]':'bg-[#dfeeff] text-[#0747a6]'}`}>{run.source==='comment'?'Comentário':'Descrição'}</span>{new Date(run.started_at).toLocaleString('pt-BR')} · {run.model} · {run.effort} · {run.multiple_agents?'Múltiplos agentes':'Agente único'}</span><span className={run.status==='error'?'text-[#ae2a19]':run.status==='success'?'text-[#0c66e4]':'text-[#626f86]'}>{run.status==='waiting_answer'?'Aguardando resposta':run.status==='success'?'Concluída':run.status==='error'?'Falhou':run.status==='cancelled'?'Cancelada':run.status==='queued'?'Na fila':'Executando'}</span></button>)}</div></div>}
   </section>;
 }

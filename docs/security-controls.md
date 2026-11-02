@@ -6,6 +6,7 @@
 - API sessions are bearer JWTs in the `Authorization` header. `AccessService` reloads the account and checks the server-side `session_version` on every authenticated request. The API CORS allowlist is the configured `WEB_ORIGIN`; it does not authorize a caller or replace resource-level permission checks.
 - The limiter uses the connection-derived request IP. Do not trust forwarded headers unless a specific trusted proxy is configured.
 - Login, recovery, credential-link completion, invitations, card/comment attachment uploads, search queries, and Alexa requests use operation-specific PostgreSQL rate-limit buckets. Identity and origin scopes are independent; rejected requests return HTTP 429 and `Retry-After`, except recovery keeps its uniform success response to avoid account enumeration. Defaults can be adjusted with the `ORBIT_RATE_LIMIT_*` settings.
+- Optional account second factor sends a single-use six-digit code to the verified email after password authentication. The short-lived challenge stores only a server-keyed digest, expires after ten minutes, allows five code attempts, binds to the current session version, and is covered by identity/origin request limits. Enabling and disabling it require the current password plus a fresh email confirmation.
 - Forwarded client addresses are ignored by default. `ORBIT_TRUSTED_PROXY_CIDRS` accepts only explicitly trusted proxy networks; direct clients cannot evade an origin limit by supplying a forwarded-address header. A trusted proxy must overwrite or append its verified client address to the forwarded chain. Configure only the actual proxy CIDRs before enabling it, then restart the API through the normal deployment workflow.
 - Request buckets store HMAC digests rather than raw email addresses, user IDs, or IP addresses; old buckets are removed in small batches after 24 hours. Each operation has separate scopes, so exhausting one identity or endpoint does not block unrelated actors or operations.
 
@@ -13,6 +14,12 @@
 
 - Notebook and vault rich text is sanitized before persistence with `sanitize-html` and explicit tag, attribute, style, and URL-scheme allowlists. Active SVG/HTML, event attributes, executable URL schemes, protocol-relative URLs, and unsafe CSS are discarded.
 - Keep the allowlist narrow. Any new rich-text feature needs a regression test for both its safe format and its active-content variants.
+
+## Scoped permission extensions
+
+- `AccessService` supports registered providers for permissions scoped to a resource, without writing extension grants into Orbit's global role tables. Providers receive the authenticated user, scope type and scope ID; each provider must return only grants valid for that exact scope and must enforce current membership before returning them.
+- Scoped authorization helpers apply the Orbit permission catalog, disabled-permission settings and membership provider. `effective()` is a permission projection, not a substitute for route authorization; callers must use scoped authorization helpers for workspace/resource operations and must not treat a scoped grant as global access.
+- Suindá custom profiles use this extension for workspace-scoped academic permissions. They accept only `plugin.suinda-learning.*` catalog entries, prevent managers from delegating permissions they do not hold, and revoke affected sessions after assignments change.
 
 ## Generic document uploads
 

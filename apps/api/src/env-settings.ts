@@ -14,16 +14,20 @@ import type {PluginConfigurationField} from './plugins/contract';
 
 const groups = [
   { id: 'runtime', label: 'Aplicação', fields: [
-    ['DATABASE_URL','URL do banco de dados',true],['JWT_SECRET','Chave de sessão',true],['API_PORT','Porta da API',false],['WEB_ORIGIN','Origem web permitida',false],['NEXT_PUBLIC_API_URL','URL pública da API web',false],['API_PUBLIC_URL','URL pública da API',false],['ORBIT_SECRET_KEY','Chave ativa de criptografia de integrações',true],['ORBIT_SECRET_KEY_PREVIOUS','Chave anterior de criptografia de integrações (rotação)',true],['VAULT_ENCRYPTION_KEY','Chave ativa de criptografia do cofre',true],['VAULT_ENCRYPTION_KEY_PREVIOUS','Chave anterior de criptografia do cofre (rotação)',true],
+    ['DATABASE_URL','URL do banco de dados',true],['JWT_SECRET','Chave de sessão',true],['API_PORT','Porta da API',false],['WEB_ORIGIN','Origem web permitida',false],['NEXT_PUBLIC_API_URL','URL pública da API web',false],['API_PUBLIC_URL','URL pública da API',false],['ORBIT_SECRET_KEY','Chave ativa de criptografia de integrações',true],['ORBIT_SECRET_KEY_PREVIOUS','Chave anterior de criptografia de integrações (rotação)',true],['VAULT_ENCRYPTION_KEY','Chave ativa de criptografia do cofre',true],['VAULT_ENCRYPTION_KEY_PREVIOUS','Chave anterior de criptografia do cofre (rotação)',true],['ORBIT_DATA_ENCRYPTION_KEY','Chave ativa de criptografia de dados de registros',true],['ORBIT_DATA_ENCRYPTION_KEY_PREVIOUS','Chave anterior de criptografia de dados de registros (rotação)',true],
   ] },
   { id: 'backup', label: 'Backups', fields: [
     ['ORBIT_BACKUP_KEY','Chave de criptografia dos backups',true],['ORBIT_BACKUP_DIR','Pasta local dos backups',false],['ORBIT_BACKUP_KEEP','Quantidade de backups locais',false],['ORBIT_CONFIG_BACKUP_PATHS','Outros arquivos de configuração ignorados pelo Git (caminhos relativos, separados por vírgulas)',false],['ORBIT_RESTORE_DATABASE_URL','Banco de destino para restauração',true],
   ] },
   { id: 'google', label: 'Credenciais Google compartilhadas', fields: [
     ['GOOGLE_CLIENT_ID','Google OAuth Client ID',false],['GOOGLE_CLIENT_SECRET','Google OAuth Client Secret',true],
+    ['GOOGLE_PICKER_API_KEY','Chave pública do Google Picker (restrinja por domínio)',false],['GOOGLE_CLOUD_PROJECT_NUMBER','Número do projeto Google Cloud para o Picker',false],
   ] },
   { id: 'microsoft', label: 'Credenciais Microsoft compartilhadas', fields: [
     ['MICROSOFT_CLIENT_ID','Microsoft Application ID',false],['MICROSOFT_CLIENT_SECRET','Microsoft Client Secret',true],['MICROSOFT_TENANT','Tenant Microsoft',false],['MICROSOFT_REDIRECT_URI','URL de retorno OAuth',false],
+  ] },
+  { id: 'zoom', label: 'Credenciais Zoom compartilhadas', fields: [
+    ['ZOOM_CLIENT_ID','Zoom OAuth Client ID',false],['ZOOM_CLIENT_SECRET','Zoom OAuth Client Secret',true],['ZOOM_REDIRECT_URI','URL de retorno OAuth',false],
   ] },
   { id: 'email', label: 'E-mail e relatórios', fields: [
     ['SMTP_HOST','Servidor SMTP',false],['SMTP_PORT','Porta SMTP',false],['SMTP_SECURE','SMTP com TLS implícito',false],['SMTP_FROM','Endereço remetente',false],['SMTP_USER','Usuário SMTP',false],['SMTP_PASSWORD','Senha SMTP',true],['EMAIL_INGEST_TOKEN','Token de recebimento de e-mail',true],['COMMENT_EMAIL_DOMAIN','Domínio de comentários por e-mail',false],
@@ -136,7 +140,7 @@ export class EnvironmentSettingsController {
   @Get('plugins/:id')
   async pluginSettings(@Req() req:Request,@Param('id') id:string){
     this.features.user(req);const plugin=this.plugin(id);
-    const service = id === 'google_drive' ? 'drive' : id === 'google_calendar' ? 'calendar' : id === 'gmail' ? 'gmail' : null;
+    const service = id === 'google_drive' ? 'drive' : id === 'suinda-google-drive' ? 'suindaDrive' : id === 'google_calendar' ? 'calendar' : id === 'gmail' ? 'gmail' : null;
     return {id:plugin.id,name:plugin.name,fields:this.values(plugin.configuration||[],await this.stored(),true),oauthRedirectUri:service?googleRedirectUri(service):undefined};
   }
 
@@ -144,7 +148,7 @@ export class EnvironmentSettingsController {
   async update(@Req() req: Request, @Body() body: Record<string,unknown>) {
     const owner=this.features.user(req);
     const {changes,clear:clearKeys}=this.validate(body,new Set(byKey.keys()));
-    await this.validateReferences(changes,owner,new Set(groups.filter(group=>['google','microsoft','email'].includes(group.id)).flatMap(group=>group.fields.map(field=>field.key))));
+    await this.validateReferences(changes,owner,new Set(groups.filter(group=>['google','microsoft','zoom','email'].includes(group.id)).flatMap(group=>group.fields.map(field=>field.key))));
     const webChanges: Record<string,string> = {};
     const apiChanges = { ...changes };
     const webClear = clearKeys.includes('NEXT_PUBLIC_API_URL') ? ['NEXT_PUBLIC_API_URL'] : [];

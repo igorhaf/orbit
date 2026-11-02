@@ -185,8 +185,7 @@ export class MonitoringController {
   @Get()
   async snapshot(@Req() req: AccessRequest) {
     const actor = req.orbitActor!;
-    const account = await this.access.account(actor);
-    const profiles = account.is_root ? undefined : (await this.access.grants(actor)).map(row => row.role_id);
+    const profiles = await this.access.isRoot(actor) ? undefined : this.access.currentProfileSimulation()?.roleId ? [this.access.currentProfileSimulation()!.roleId] : (await this.access.grants(actor)).map(row => row.role_id);
     return this.monitoring.snapshot(profiles);
   }
 

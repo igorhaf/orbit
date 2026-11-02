@@ -6,6 +6,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "suinda:dev": "DATABASE_URL=\"${SUINDA_DATABASE_URL:?Configure_SUINDA_DATABASE_URL}\" ORBIT_PRODUCT=suinda API_HOST=127.0.0.1 API_PORT=4004 API_PUBLIC_URL=http://localhost:4004 WEB_ORIGIN=http://localhost:3003 ORBIT_API_PROXY_URL=http://127.0.0.1:4004 WEB_HOSTNAME=127.0.0.1 PORT=3003 THEME=dark NEXT_PUBLIC_ORBIT_THEME=dark NEXT_PUBLIC_ORBIT_PORT=3003 NEXT_PUBLIC_ORBIT_PRODUCT_NAME=Suindá npm run dev",
     "orbit:serve": "node scripts/orbit-manager.mjs",
     "orbit:dev": "node scripts/orbit-dev-manager.mjs",
     "orbit:rebuild-dev": "node scripts/orbit-rebuild-dev.mjs",
@@ -21,7 +22,25 @@
     "test:selenium:architecture": "node .orbit/validations/architecture-contract/architecture-contract.selenium.mjs",
     "test:selenium:vault-credentials": "node .orbit/validations/vault-credentials/vault-credentials.selenium.mjs",
     "test:selenium:vault": "node .orbit/validations/vault-journey/vault-journey.selenium.mjs",
+    "test:a11y:suinda": "node .orbit/validations/suinda-accessibility/accessibility.mjs",
+    "test:a11y:suinda:authenticated": "node .orbit/validations/suinda-accessibility/authenticated-routes.browser.mjs",
+    "test:a11y:suinda:runner": "node --test .orbit/validations/suinda-accessibility/authenticated-runner-result.spec.mjs",
+    "test:a11y:suinda:keyboard": "node .orbit/validations/suinda-accessibility/keyboard-routes.browser.mjs",
+    "test:a11y:suinda:modal-keyboard": "node .orbit/validations/suinda-accessibility/modal-keyboard.browser.mjs",
+    "test:a11y:suinda:subscription-content": "node .orbit/validations/suinda-accessibility/subscription-content.browser.mjs",
+    "test:a11y:suinda:context-combobox": "node .orbit/validations/suinda-accessibility/card-context-combobox.browser.mjs",
+    "test:a11y:suinda:contrast": "node .orbit/validations/suinda-accessibility/contrast-routes.browser.mjs",
+    "test:a11y:suinda:contrast:runner": "node --test .orbit/validations/suinda-accessibility/contrast-runner-result.spec.mjs",
+    "test:a11y:suinda:atspi": "node .orbit/validations/suinda-accessibility/atspi-tree.browser.mjs",
+    "test:a11y:suinda:orca": "bash .orbit/validations/suinda-accessibility/orca-atspi.sh",
+    "test:a11y:suinda:orca:authenticated": "SUINDA_ORCA_AUTHENTICATED=1 bash .orbit/validations/suinda-accessibility/orca-atspi.sh",
+    "test:suinda:media-progress": "node .orbit/validations/suinda-media-progress/media-progress.browser.mjs",
+    "test:suinda:corporate-report": "node .orbit/validations/suinda-corporate-report/report.browser.mjs",
+    "verify:suinda-requirements": "python3 scripts/verify-suinda-requirements.py",
     "test:unit": "npm test -w apps/api",
+    "test:integration:suinda": "node scripts/test-suinda-integration.mjs",
+    "test:suinda:demo": "node scripts/test-suinda-demo-integrations.mjs",
+    "test:suinda:demo:list": "node scripts/test-suinda-demo-integrations.mjs --list",
     "test:integration:dev": "node scripts/with-dev-database.mjs --isolated npm run test:integration -w apps/api",
     "db:backup": "npm run db:backup -w apps/api --",
     "test:selenium:board-views": "node .orbit/validations/board-views/board-views.selenium.mjs",
@@ -29,10 +48,18 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "axe-core": "^4.13.0",
     "concurrently": "^9.2.1",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.3.6",
+    "eslint-config-next": "16.4.3",
+    "playwright": "^1.63.0",
+    "pngjs": "^5.0.0",
     "selenium-webdriver": "^4.50.0",
     "typescript-eslint": "^8.70.1"
+  },
+  "overrides": {
+    "@nestjs/platform-express": {
+      "multer": "2.5.0"
+    }
   }
 }

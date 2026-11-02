@@ -1,11 +1,13 @@
 import 'reflect-metadata';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { Pool } from 'pg';
 import { Db } from './db';
 import { BackupDestinationRegistry } from './backup-destinations';
 import { BackupService } from './backup-service';
@@ -15,15 +17,48 @@ import { migrateVersions } from './migrations';
 import { decryptVaultPayload, encryptVaultPayload } from './vault-crypto';
 import { createVaultBackup, readVaultBackup, restoreVaultBackup, vaultBackupPath } from './vault-backup';
 
+async function createIsolatedBackupTestDatabase() {
+  if (!process.env.DATABASE_URL) throw new Error('Configure the isolated test database URL before running integration tests.');
+  const url = new URL(process.env.DATABASE_URL);
+  url.hostname = process.env.ORBIT_TEST_DB_HOST || url.hostname;
+  const adminContainer = process.env.ORBIT_TEST_DB_CONTAINER || 'orbit-db-dev';
+  const adminUrl = new URL(url);
+  adminUrl.username = execFileSync('docker', ['exec', adminContainer, 'printenv', 'POSTGRES_USER'], { encoding: 'utf8' }).trim();
+  adminUrl.password = execFileSync('docker', ['exec', adminContainer, 'printenv', 'POSTGRES_PASSWORD'], { encoding: 'utf8' }).trim();
+  const schema = `vault_backup_test_${randomUUID().replaceAll('-', '')}`;
+  const admin = new Pool({ connectionString: adminUrl.toString() });
+  const db = new Db();
+  await db.pool.end();
+  db.pool = new Pool({ connectionString: url.toString(), options: `-c search_path=${schema},public` });
+  try {
+    await admin.query(`CREATE SCHEMA ${schema} AUTHORIZATION ${url.username}`);
+    await db.query(await readFile(resolve(__dirname, '../sql/schema.sql'), 'utf8'));
+    await db.query(await readFile(resolve(__dirname, '../sql/pre-022-compat.sql'), 'utf8'));
+    await migrateVersions(db.pool);
+  } catch (error) {
+    await db.pool.end();
+    await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    await admin.end();
+    throw error;
+  }
+  return {
+    db,
+    async cleanup() {
+      await db.pool.end();
+      await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+      await admin.end();
+    },
+  };
+}
+
 test('a separate encrypted vault archive can be verified and restored without restoring the database',async()=>{
   const old={directory:process.env.ORBIT_BACKUP_DIR,backupKey:process.env.ORBIT_BACKUP_KEY,vaultKey:process.env.VAULT_ENCRYPTION_KEY};
   const directory=await mkdtemp(join(tmpdir(),'orbit-vault-recovery-'));
   process.env.ORBIT_BACKUP_DIR=directory;
   process.env.ORBIT_BACKUP_KEY='ab'.repeat(32);
   process.env.VAULT_ENCRYPTION_KEY='vault-integration-key';
-  const db=new Db(),users:string[]=[];
+  const {db,cleanup}=await createIsolatedBackupTestDatabase(),users:string[]=[];
   try{
-    await migrateVersions(db.pool);
     for(const name of ['source','destination']){
       const user=await db.one<{id:string}>('INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3) RETURNING id',[name,`${randomUUID()}@example.invalid`,'test']);
       users.push(user!.id);
@@ -47,8 +82,7 @@ test('a separate encrypted vault archive can be verified and restored without re
     const modified=Buffer.from(encrypted);modified[modified.length-1]^=1;await writeFile(path,modified);
     await assert.rejects(()=>readVaultBackup(path),/Integridade/);
   }finally{
-    for(const id of users)await db.query('DELETE FROM users WHERE id=$1',[id]);
-    await db.pool.end();await rm(directory,{recursive:true,force:true});
+    await cleanup();await rm(directory,{recursive:true,force:true});
     if(old.directory===undefined)delete process.env.ORBIT_BACKUP_DIR;else process.env.ORBIT_BACKUP_DIR=old.directory;
     if(old.backupKey===undefined)delete process.env.ORBIT_BACKUP_KEY;else process.env.ORBIT_BACKUP_KEY=old.backupKey;
     if(old.vaultKey===undefined)delete process.env.VAULT_ENCRYPTION_KEY;else process.env.VAULT_ENCRYPTION_KEY=old.vaultKey;
@@ -61,9 +95,8 @@ test('a generated backup sends the database and vault archives to the selected D
   process.env.ORBIT_BACKUP_DIR=directory;
   process.env.ORBIT_BACKUP_KEY='cd'.repeat(32);
   process.env.ORBIT_SECRET_KEY='backup-integration-credential-key';
-  const db=new Db();let userId:string|undefined;
+  const {db,cleanup}=await createIsolatedBackupTestDatabase();let userId:string|undefined;
   try{
-    await migrateVersions(db.pool);
     const user=await db.one<{id:string}>('INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3) RETURNING id',['Backup fixture',`${randomUUID()}@example.invalid`,'test']);
     userId=user!.id;
     const sealed=new SecretVault().seal({access_token:'fixture-access',refresh_token:'fixture-refresh',expires_at:Date.now()+3600_000,scope:GOOGLE_DRIVE_FILE_SCOPE});
@@ -90,8 +123,7 @@ test('a generated backup sends the database and vault archives to the selected D
     assert.equal(vaultOnly.cloud?.status,'success');
     assert.equal((await service.listVault(userId)).length,2);
   }finally{
-    if(userId)await db.query('DELETE FROM users WHERE id=$1',[userId]);
-    await db.pool.end();await rm(directory,{recursive:true,force:true});
+    await cleanup();await rm(directory,{recursive:true,force:true});
     if(old.directory===undefined)delete process.env.ORBIT_BACKUP_DIR;else process.env.ORBIT_BACKUP_DIR=old.directory;
     if(old.backupKey===undefined)delete process.env.ORBIT_BACKUP_KEY;else process.env.ORBIT_BACKUP_KEY=old.backupKey;
     if(old.secret===undefined)delete process.env.ORBIT_SECRET_KEY;else process.env.ORBIT_SECRET_KEY=old.secret;

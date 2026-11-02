@@ -49,6 +49,15 @@ html[data-compact-cards="true"] .kanban-card > div:first-child > div { height: 1
   .notebook-paper { padding: 1rem; }
   .rich-text, .notebook-editor { overflow-wrap: anywhere; }
 }
+/* Keep keyboard location visible across Orbit and Suindá controls. */
+html :is(a,button,input,select,textarea,[tabindex]):focus-visible { outline: 3px solid #67e8f9; outline-offset: 2px; }
+html[data-theme="dark"] :is(a,button,input,select,textarea,[tabindex]):focus-visible { outline-color: #a5f3fc !important; }
+/* Native date/time inputs move keyboard focus between shadow-DOM segments. */
+html :is(input[type="date"],input[type="time"],input[type="datetime-local"],input[type="month"],input[type="week"]):focus-within { outline: 3px solid #67e8f9; outline-offset: 2px; }
+html[data-theme="dark"] :is(input[type="date"],input[type="time"],input[type="datetime-local"],input[type="month"],input[type="week"]):focus-within { outline-color: #a5f3fc; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
 /* Orbit's interface accent is purple. Re-map legacy blue utilities consistently. */
 html :is([class~="bg-[#0c66e4]"],[class~="bg-[#0055cc]"]) { background-color: #6554c0 !important; }
 html :is([class~="bg-[#0747a6]"]) { background-color: #403294 !important; }
@@ -71,13 +80,20 @@ html[data-theme="dark"] {
   --orbit-surface: #22272b;
   --orbit-surface-raised: #2c333a;
   --orbit-surface-hover: #38414a;
-  --orbit-border: #3b4754;
+  --orbit-border: #80909d;
   --orbit-text: #dee4ea;
   --orbit-muted: #9fadbc;
 }
+html[data-theme="dark"] :is([class~="bg-[#0c66e4]"],[class~="bg-[#0055cc]"],[class~="bg-[#6554c0]"],[class~="bg-[#403294]"]) { background-color: #7164c7 !important; }
+html[data-theme="dark"] [class~="hover:bg-[#0055cc]"]:hover { background-color: #7164c7 !important; }
+html[data-theme="dark"] [class~="from-[#0c66e4]"] { --tw-gradient-from: #7164c7 var(--tw-gradient-from-position) !important; }
+html[data-theme="dark"] [class*="bg-[#44546f]"] { background-color: #657687 !important; color: #fff !important; }
+html[data-theme="dark"] button:hover:not(:focus-visible) { outline: 1px solid var(--orbit-border); outline-offset: 1px; }
 html[data-theme-forced="true"] .theme-preference-control { display: none; }
 html[data-theme="dark"] body { color: var(--orbit-text); background: #1d2125; }
-html[data-theme="dark"] button { color: var(--orbit-text); }
+@layer base {
+  :where(html[data-theme="dark"] button) { color: var(--orbit-text); }
+}
 html[data-theme="dark"] :is(.bg-white,[class~="bg-[#f7f8fa]"],[class~="bg-[#f8f9fb]"]) { background-color: var(--orbit-surface) !important; }
 html[data-theme="dark"] :is([class~="bg-[#f1f2f4]"]) { background-color: var(--orbit-surface-raised) !important; }
 html[data-theme="dark"] :is([class~="bg-[#cdd3db]"],[class~="bg-[#dfe1e6]"],[class~="bg-[#e9eaed]"]) { background-color: var(--orbit-surface-hover) !important; }
@@ -97,23 +113,30 @@ html[data-theme="dark"] :is([class~="hover:bg-[#baf3db]"],[class~="hover:bg-[#df
 html[data-theme="dark"] :is([class~="hover:bg-[#ffebe6]"],[class~="hover:bg-[#ffd5d2]"]):hover { background-color: #4b2828 !important; }
 html[data-theme="dark"] :is([class~="hover:bg-[#fff1b8]"],[class~="hover:bg-[#fff7d6]"]):hover { background-color: #453a1e !important; }
 html[data-theme="dark"] :is([class~="hover:bg-[#091e4214]"]):hover { background-color: rgb(255 255 255 / 8%) !important; }
-html[data-theme="dark"] :is([class~="border-[#8590a2]"],[class~="border-[#c1c7d0]"],[class~="border-[#dfe1e6]"]) { border-color: var(--orbit-border) !important; }
-html[data-theme="dark"] [class~="border-[#f1f2f4]"] { border-color: #313a43 !important; }
-html[data-theme="dark"] :is([class~="border-[#b3d4ff]"],[class~="border-[#cce0ff]"],[class~="border-[#0c66e4]"],[class~="border-[#c3b6f7]"]) { border-color: #594d7d !important; }
+html[data-theme="dark"] :is([class~="border-[#626f86]"],[class~="border-[#8590a2]"],[class~="border-[#c1c7d0]"],[class~="border-[#dfe1e6]"]) { border-color: var(--orbit-border) !important; }
+html[data-theme="dark"] [class~="border-[#ae2a19]"] { border-color: #ff9f8f !important; }
+html[data-theme="dark"] [class~="border-[#f1f2f4]"] { border-color: var(--orbit-border) !important; }
+html[data-theme="dark"] :is([class~="border-[#b3d4ff]"],[class~="border-[#cce0ff]"],[class~="border-[#0c66e4]"],[class~="border-[#c3b6f7]"]) { border-color: #9b8ceb !important; }
 html[data-theme="dark"] :is([class~="border-[#ffbdad]"]) { border-color: #75403a !important; }
 html[data-theme="dark"] :is([class~="divide-[#dfe1e6]"]) { border-color: var(--orbit-border) !important; }
-html[data-theme="dark"] :is([class~="divide-[#f1f2f4]"]) { border-color: #313a43 !important; }
+html[data-theme="dark"] :is([class~="divide-[#f1f2f4]"]) { border-color: var(--orbit-border) !important; }
 html[data-theme="dark"] :is([class~="text-[#344563]"],[class~="text-[#44546f]"]) { color: #b6c2cf !important; }
 html[data-theme="dark"] :is([class~="text-[#0c66e4]"],[class~="text-[#0055cc]"]) { color: #c4b5fd !important; }
 html[data-theme="dark"] [class~="text-[#172b4d]"] { color: var(--orbit-text) !important; }
 html[data-theme="dark"] :is([class~="text-[#626f86]"],[class~="text-[#738496]"],[class~="text-[#8590a2]"],[class~="text-[#8993a4]"]) { color: var(--orbit-muted) !important; }
 html[data-theme="dark"] :is([class~="text-[#216e4e]"],[class~="text-[#22a06b]"]) { color: #7ee2b8 !important; }
 html[data-theme="dark"] :is([class~="text-[#403294]"],[class~="text-[#5e2a96]"],[class~="text-[#5e5a87]"],[class~="text-[#6e44a3]"],[class~="text-[#6554c0]"]) { color: #c4b5fd !important; }
+html .orbit-selected-control { border-color: #6554c0 !important; }
+html[data-theme="dark"] .orbit-selected-control { border-color: #a78bfa !important; }
+html .orbit-control-boundary { border: 1px solid #718096 !important; }
+html[data-theme="dark"] .orbit-control-boundary { border-color: #9fadbc !important; }
 html[data-theme="dark"] .profile-theme-option[aria-pressed="true"] { background-color: #392f52 !important; border-color: #6554c0 !important; box-shadow: 0 0 0 2px rgb(101 84 192 / 25%) !important; }
 html[data-theme="dark"] :is([class~="text-[#7f5f01]"],[class~="text-[#e2b203]"]) { color: #f5d778 !important; }
 html[data-theme="dark"] :is([class~="text-[#ae2a19]"],[class~="text-[#e5484d]"],[class~="text-red-700"],[class~="text-red-800"]) { color: #ff9b8f !important; }
 html[data-theme="dark"] [class~="text-green-800"] { color: #7ee2b8 !important; }
-html[data-theme="dark"] :is(input,textarea,select) { color: var(--orbit-text); background-color: var(--orbit-surface-raised); border-color: #596773; }
+html[data-theme="dark"] :is(input,textarea,select) { color: var(--orbit-text); background-color: var(--orbit-surface-raised); border-color: var(--orbit-border); }
+html[data-theme="dark"] :is(input[type="checkbox"],input[type="radio"]) { border: 1px solid var(--orbit-border); }
+html[data-theme="dark"] [class~="border-[#3b4754]"] { border-color: var(--orbit-border); }
 html[data-theme="dark"] option { color: var(--orbit-text); background-color: var(--orbit-surface-raised); }
 html[data-theme="dark"] :is(input,textarea)::placeholder { color: var(--orbit-muted); }
 html[data-theme="dark"] .shadow-card { box-shadow: 0 1px 2px #0008; }
@@ -122,7 +145,7 @@ html[data-theme="dark"] .notebook-paper { background-color: var(--orbit-surface)
 html[data-theme="dark"] .notebook-editor { color: var(--orbit-text); }
 html[data-theme="dark"] .notebook-tool { color: #b6c2cf; }
 html[data-theme="dark"] .notebook-tool:hover { background: #38414a; color: #dee4ea; }
-html[data-theme="dark"] .notebook-paper { border-color: #3b4754; }
+html[data-theme="dark"] .notebook-paper { border-color: var(--orbit-border); }
 html[data-theme="dark"] .notebook-editor td, html[data-theme="dark"] .notebook-editor th { border-color: #596773; }
 
 /* Terroso brand palette: warm paper, wine, terracotta, olive and wood. */
@@ -177,3 +200,15 @@ html[data-theme="terroso"] .notebook-editor td, html[data-theme="terroso"] .note
 html[data-theme="terroso"] .theme-preference-control { color: var(--orbit-text); }
 html[data-theme-forced="true"] .theme-preference-options { display: none; }
 html[data-theme-forced="true"] .theme-forced-notice { display: block; }
+html[data-workspace-brand="true"] :is([class~="bg-[#0c66e4]"],[class~="bg-[#0055cc]"],[class~="bg-[#6554c0]"],[class~="bg-[#403294]"]) { background-color: var(--workspace-primary) !important; }
+html[data-workspace-brand="true"] :is([class~="border-[#0c66e4]"],[class~="border-[#388bff]"],[class~="border-[#c3b6f7]"],[class~="border-[#b3d4ff]"]) { border-color: var(--workspace-accent) !important; }
+html[data-workspace-brand="true"] :is([class~="text-[#0c66e4]"],[class~="text-[#0055cc]"],[class~="text-[#0747a6]"],[class~="text-[#403294]"],[class~="text-[#6554c0]"]) { color: var(--workspace-primary) !important; }
+html[data-theme="dark"][data-workspace-brand="true"] :is([class~="text-[#0c66e4]"],[class~="text-[#0055cc]"],[class~="text-[#0747a6]"],[class~="text-[#403294]"],[class~="text-[#6554c0]"]) { color: var(--workspace-accent) !important; }
+html[data-workspace-brand="true"] :is([class~="focus-visible:outline-[#0c66e4]"],[class~="focus-visible:outline-cyan-300"]):focus-visible { outline-color: var(--workspace-accent) !important; }
+@layer utilities {
+  html[data-theme="dark"] [class*="bg-[#44546f]"] { background-color: #657687 !important; color: #fff !important; }
+  html[data-theme="dark"] input[type="checkbox"]:not(.sr-only) { appearance: none !important; width: 1rem; height: 1rem; border: 1px solid var(--orbit-border) !important; border-radius: .25rem; background: var(--orbit-surface-raised); }
+  html[data-theme="dark"] input[type="checkbox"]:not(.sr-only):checked { border-color: #a5f3fc !important; background-color: #a5f3fc; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 8 3 3 7-7' fill='none' stroke='%231d2125' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  html[data-theme="dark"] input[type="radio"]:not(.sr-only) { appearance: none !important; width: 1rem; height: 1rem; border: 1px solid var(--orbit-border) !important; border-radius: 50%; background: var(--orbit-surface-raised); }
+  html[data-theme="dark"] input[type="radio"]:not(.sr-only):checked { border-color: #a5f3fc !important; background: radial-gradient(circle, #1d2125 0 3px, #a5f3fc 3.5px); }
+}

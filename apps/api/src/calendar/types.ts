@@ -50,6 +50,8 @@ export type CalendarMutation = {
   attendees?: Array<{ email: string; displayName?: string }>;
   recurrence?: string[];
   conference?: boolean;
+  operationKey?: string;
+  visibility?: "default" | "public" | "private" | "confidential";
 };
 
 export type AvailabilityRequest = {

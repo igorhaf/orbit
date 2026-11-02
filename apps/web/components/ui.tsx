@@ -5,7 +5,7 @@ import {PluginNavigation} from './plugin-navigation';
 import {useCreationAvailability} from '@/plugins/project-boards/use-creation-availability';
 import { usePluginAvailability } from '@/lib/plugin-availability';
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -19,7 +19,7 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import {
   api, send, AppNotification, Board, Card, SearchResults, ToolDiagnostics, User,
-  boardColors, cardUrl, clearSession, getUser, initials, setUser,
+  boardColors, cardUrl, clearSession, getProfileSimulation, getUser, initials, profileSimulationSocketAuth, setProfileSimulation, setUser,
 } from '@/lib/api';
 import { historyState, redo, remember, undo } from '@/lib/history';
 import { CodexLimitsBar } from './codex-limits';
@@ -29,6 +29,10 @@ import { io } from 'socket.io-client';
 import { BrandMark, useBranding } from '@/components/branding';
 
 const CollectionPanel=dynamic(()=>import('@/plugins/collections/CollectionPanel').then(module=>module.CollectionPanel));
+const subscribeAccountSnapshot=(callback:()=>void)=>{window.addEventListener('account:changed',callback);window.addEventListener('storage',callback);return()=>{window.removeEventListener('account:changed',callback);window.removeEventListener('storage',callback)}};
+const getAccountSnapshot=()=>typeof window==='undefined'?null:localStorage.getItem('orbit_user');
+const getServerAccountSnapshot=()=>null;
+const parseAccountSnapshot=(snapshot:string|null):User|null=>{try{return JSON.parse(snapshot||'null')}catch{return null}};
 
 export function Avatar({ name, url, size = 'md' }: { name: string; url?: string | null; size?: 'sm'|'md'|'lg' }) {
   const dimensions = size === 'sm' ? 'h-7 w-7 text-[10px]' : size === 'lg' ? 'h-16 w-16 text-xl' : 'h-8 w-8 text-xs';
@@ -38,6 +42,7 @@ export function Avatar({ name, url, size = 'md' }: { name: string; url?: string 
 }
 
 const modalStack: symbol[] = [];
+const modalElements = new Map<symbol, HTMLElement>();
 const subscribeToHydration = () => () => {};
 const getHydratedSnapshot = () => true;
 const getServerSnapshot = () => false;
@@ -54,27 +59,91 @@ const getFavoriteIdsSnapshot = (): string => {
 };
 const getFavoriteIdsServerSnapshot = (): string => '';
 
-export function Modal({ children, onClose, wide = false, extraWide = false, sidePanel = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; extraWide?: boolean; sidePanel?: boolean }) {
+export function Modal({ children, onClose, wide = false, extraWide = false, sidePanel = false, title, ariaLabel, restoreFocusTo, theme = process.env.NEXT_PUBLIC_ORBIT_THEME === "dark" ? "dark" : "light" }: { children: React.ReactNode; onClose: () => void; wide?: boolean; extraWide?: boolean; sidePanel?: boolean; title?: string; ariaLabel?: string; restoreFocusTo?: HTMLElement | null; theme?: "light" | "dark" }) {
   const mounted = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerSnapshot);
   const modalId = useRef(Symbol('modal'));
+  const generatedLabelId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(restoreFocusTo ?? null);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
+  useEffect(() => { restoreFocusRef.current = restoreFocusTo ?? null; }, [restoreFocusTo]);
+  useEffect(() => {
+    if (!mounted || title || ariaLabel) return;
+    const dialog = dialogRef.current;
+    const heading = dialog?.querySelector<HTMLElement>('h1, h2, h3');
+    if (!dialog || !heading) return;
+    if (!heading.id) heading.id = `modal-title-${generatedLabelId.replaceAll(':', '')}`;
+    dialog.setAttribute('aria-labelledby', heading.id);
+    dialog.removeAttribute('aria-label');
+    return () => {
+      if (dialog.getAttribute('aria-labelledby') === heading.id) dialog.removeAttribute('aria-labelledby');
+    };
+  }, [ariaLabel, generatedLabelId, mounted, title]);
   useEffect(() => {
     const id = modalId.current;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     modalStack.push(id);
-    const handler = (event: KeyboardEvent) => { if (event.key === 'Escape' && modalStack.at(-1) === id) closeRef.current(); };
+    if (dialogRef.current) modalElements.set(id, dialogRef.current);
+    const focusableElements = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    ) ?? []).filter(element => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true');
+    const focusDialog = () => {
+      const dialog = dialogRef.current;
+      if (!dialog || modalStack.at(-1) !== id) return;
+      const target = dialog.querySelector<HTMLElement>('[data-autofocus], [autofocus]') ?? focusableElements()[0] ?? dialog;
+      target.focus();
+    };
+    const handler = (event: KeyboardEvent) => {
+      if (modalStack.at(-1) !== id) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const dialog = dialogRef.current;
+      const focusable = focusableElements();
+      if (!dialog || focusable.length === 0) {
+        event.preventDefault();
+        dialog?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener('keydown', handler);
+    const frame = window.requestAnimationFrame(focusDialog);
     return () => {
+      window.cancelAnimationFrame(frame);
       window.removeEventListener('keydown', handler);
       const index = modalStack.lastIndexOf(id);
       if (index >= 0) modalStack.splice(index, 1);
+      modalElements.delete(id);
+      const requestedTarget = restoreFocusRef.current;
+      const previous = requestedTarget?.isConnected ? requestedTarget : previousFocusRef.current;
+      window.requestAnimationFrame(() => {
+        const topId = modalStack.at(-1);
+        const topDialog = topId ? modalElements.get(topId) ?? null : null;
+        if (previous?.isConnected && (!topDialog || topDialog.contains(previous))) previous.focus();
+        else if (topDialog) (topDialog.querySelector<HTMLElement>('[data-autofocus], [autofocus]') ?? topDialog.querySelector<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])') ?? topDialog).focus();
+      });
     };
   }, []);
   if (!mounted) return null;
-  return createPortal(<div className={sidePanel?"fixed inset-0 z-50 overflow-hidden bg-[#091e4240]":"fixed inset-0 z-50 flex min-h-full items-center justify-center overflow-y-auto bg-[#091e42b8] p-2 backdrop-blur-[3px] sm:p-6"} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div onMouseDown={e => e.stopPropagation()} data-side-panel={sidePanel||undefined} className={sidePanel?'side-panel-in fixed inset-y-0 right-0 flex h-dvh w-full min-w-0 max-w-[900px] flex-col overflow-hidden border-l border-[#dfe1e6] bg-white shadow-dialog':`fade-in relative max-h-[calc(100dvh-1rem)] w-full overflow-y-auto ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[820px]' : 'max-w-[560px]'} rounded-xl border border-[#dfe1e6] bg-white shadow-dialog sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl`} role="dialog" aria-modal="true">
+  return createPortal(<div className={sidePanel?"fixed inset-0 z-50 overflow-hidden bg-[#091e4240]":"fixed inset-0 z-50 flex min-h-full items-center justify-center overflow-y-auto bg-[#091e42b8] p-2 backdrop-blur-[3px] sm:p-6"} onMouseDown={e => { if (e.target === e.currentTarget && modalStack.at(-1) === modalId.current) onClose(); }}>
+    <div ref={dialogRef} tabIndex={-1} onMouseDown={e => e.stopPropagation()} data-side-panel={sidePanel||undefined} className={sidePanel?`side-panel-in fixed inset-y-0 right-0 flex h-dvh w-full min-w-0 max-w-[900px] flex-col overflow-hidden border-l ${theme === 'dark' ? 'border-[#3b4754] bg-[#1d2125] text-[#dee4ea]' : 'border-[#dfe1e6] bg-white'} shadow-dialog`:`fade-in relative max-h-[calc(100dvh-1rem)] w-full overflow-y-auto ${extraWide ? 'max-w-[1350px]' : wide ? 'max-w-[820px]' : 'max-w-[560px]'} rounded-xl border ${theme === 'dark' ? 'border-[#3b4754] bg-[#1d2125] text-[#dee4ea] shadow-2xl' : 'border-[#dfe1e6] bg-white shadow-dialog'} sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl`} role="dialog" aria-modal="true" aria-label={ariaLabel || title || 'Janela de diálogo'}>
       {sidePanel?<div data-side-panel-content className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">{children}</div>:children}
-      <button aria-label="Fechar" onClick={onClose} className={`absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-lg text-[#626f86] transition-colors hover:bg-[#f1f2f4] hover:text-[#172b4d] ${sidePanel?'z-10 border border-[#dfe1e6] bg-white shadow-sm':''}`}><X size={20}/></button>
+      <button aria-label="Fechar" onClick={onClose} className={`absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${theme === 'dark' ? 'text-[#9fadbc] hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300' : 'text-[#626f86] hover:bg-[#f1f2f4] hover:text-[#172b4d]'} ${sidePanel?`z-10 border ${theme === 'dark' ? 'border-[#46515c] bg-[#252b31]' : 'border-[#dfe1e6] bg-white'} shadow-sm`:''}`}><X size={20}/></button>
     </div>
   </div>, document.body);
 }
@@ -82,10 +151,12 @@ export function Modal({ children, onClose, wide = false, extraWide = false, side
 export function useConfirmModal() {
   type Options={title:string;description:string;confirmLabel?:string;destructive?:boolean};
   const [request,setRequest]=useState<{options:Options;action:()=>Promise<void>}|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const confirm=useCallback((options:Options,action:()=>Promise<void>)=>{setError('');setRequest({options,action})},[]);
+  const [restoreFocusTarget,setRestoreFocusTarget]=useState<HTMLElement|null>(null);
+  const confirm=useCallback((options:Options,action:()=>Promise<void>)=>{const active=document.activeElement;setRestoreFocusTarget(active instanceof HTMLElement?active:null);setError('');setRequest({options,action})},[]);
   const close=useCallback(()=>{if(!busy)setRequest(null)},[busy]);
   const run=useCallback(async()=>{if(!request)return;setBusy(true);setError('');try{await request.action();setRequest(null)}catch(value){setError((value as Error).message)}finally{setBusy(false)}},[request]);
-  const confirmationModal=request?<Modal onClose={close}><div className="p-6"><h2 className="pr-8 text-lg font-bold">{request.options.title}</h2><p className="mt-3 whitespace-pre-wrap text-sm text-[#44546f]">{request.options.description}</p>{error&&<p role="alert" className="mt-3 text-sm text-[#ae2a19]">{error}</p>}<div className="mt-6 flex justify-end gap-2"><button disabled={busy} onClick={close} className="rounded bg-[#e9eaed] px-4 py-2 text-sm font-semibold disabled:opacity-50">Cancelar</button><button disabled={busy} onClick={()=>void run()} className={`rounded px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${request.options.destructive===false?'bg-[#0c66e4]':'bg-[#c9372c]'}`}>{busy?'Aguarde…':request.options.confirmLabel||'Confirmar'}</button></div></div></Modal>:null;
+  const dark = process.env.NEXT_PUBLIC_ORBIT_THEME === "dark";
+  const confirmationModal=request?<Modal onClose={close} title={request.options.title} restoreFocusTo={restoreFocusTarget}><div className="p-6"><h2 className="pr-8 text-lg font-bold">{request.options.title}</h2><p className={`mt-3 whitespace-pre-wrap text-sm ${dark ? 'text-[#b6c2cf]' : 'text-[#44546f]'}`}>{request.options.description}</p>{error&&<p role="alert" className={`mt-3 text-sm ${dark ? 'text-rose-300' : 'text-[#ae2a19]'}`}>{error}</p>}<div className="mt-6 flex justify-end gap-2"><button disabled={busy} onClick={close} className={`rounded px-4 py-2 text-sm font-semibold disabled:opacity-50 ${dark ? 'bg-[#80909d] text-[#11161d] hover:bg-[#a1acb5]' : 'bg-[#e9eaed] text-[#172b4d]'}`}>Cancelar</button><button disabled={busy} onClick={()=>void run()} className={`rounded px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${request.options.destructive===false?(dark?'bg-blue-600 hover:bg-blue-500':'bg-[#0c66e4]'):'bg-[#c9372c] hover:bg-[#ae2a19]'}`}>{busy?'Aguarde…':request.options.confirmLabel||'Confirmar'}</button></div></div></Modal>:null;
   return {confirm,confirmationModal};
 }
 
@@ -102,25 +173,32 @@ export function BoardTile({ board, onClick }: { board: Board; onClick: () => voi
 
 function NotificationPanel({ items, onRead, onReadAll, onClearAll, onChoose }: {
   items: AppNotification[];
-  onRead: (id: string) => void;
+  onRead: (id: string) => void | Promise<void>;
   onReadAll: () => void;
   onClearAll: () => void;
   onChoose: (item: AppNotification) => void;
 }) {
-  return <div className="absolute right-0 top-full z-40 w-[min(390px,calc(100vw-16px))] overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog">
-    <div className="flex items-center justify-between gap-2 border-b border-[#dfe1e6] px-4 py-3"><h3 className="font-bold">Notificações</h3><div className="flex items-center gap-3"><button onClick={onReadAll} disabled={!items.some(item => !item.read_at)} className="text-xs font-semibold text-[#0c66e4] hover:underline disabled:cursor-default disabled:opacity-50">Marcar todas como lidas</button><button onClick={onClearAll} disabled={items.length === 0} className="text-xs font-semibold text-[#c9372c] hover:underline disabled:cursor-default disabled:opacity-50">Limpar todas</button></div></div>
+  return <div id="notification-panel" role="region" aria-label="Notificações" className="absolute right-0 top-full z-40 w-[min(390px,calc(100vw-16px))] overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog">
+    <div className="flex items-center justify-between gap-2 border-b border-[#dfe1e6] px-4 py-3"><h3 className="font-bold">Notificações</h3><div className="flex items-center gap-3"><button onClick={onReadAll} disabled={!items.some(item => !item.read_at)} className="text-xs font-semibold text-[#0c66e4] hover:underline disabled:cursor-default disabled:opacity-50">Marcar todas como lidas</button><button onClick={onClearAll} disabled={items.length === 0} className="text-xs font-semibold text-[#ae2a19] hover:underline disabled:cursor-default disabled:opacity-50">Limpar todas</button></div></div>
     <div className="scrollbar-thin max-h-[440px] overflow-y-auto">
       {items.length === 0 ? <div className="p-8 text-center text-sm text-[#626f86]"><Bell className="mx-auto mb-3" size={26}/> Nenhuma notificação por enquanto.</div> : items.map(item =>
-        <button key={item.id} onClick={() => onChoose(item)} className={`flex w-full gap-3 border-b border-[#f1f2f4] px-4 py-3 text-left hover:bg-[#f1f2f4] ${!item.read_at ? 'bg-[#e9f2ff]' : ''}`}>
-          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.read_at ? 'bg-transparent' : 'bg-[#0c66e4]'}`}/>
-          <span className="min-w-0 flex-1"><span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#626f86]">{item.plugin_id.replaceAll('_', ' ')}</span><strong className="block text-sm">{item.title}</strong><span className="mt-0.5 block truncate text-xs text-[#44546f]">{item.body}</span><span className="mt-1 block text-[11px] text-[#626f86]">{item.board_title ? `${item.board_title} · ` : ''}{new Date(item.created_at).toLocaleString('pt-BR')}</span></span>
-          {!item.read_at && <span onClick={e => { e.stopPropagation(); onRead(item.id); }} title="Marcar como lida" className="self-start rounded p-1 hover:bg-[#dfe1e6]"><Check size={15}/></span>}
-        </button>)}
+        <div key={item.id} className="flex w-full items-start border-b border-[#f1f2f4]">
+          <button type="button" data-notification-open onClick={() => onChoose(item)} className={`flex min-w-0 flex-1 gap-3 px-4 py-3 text-left hover:bg-[#f1f2f4] ${!item.read_at ? 'bg-[#e9f2ff]' : ''}`}>
+            <span aria-hidden="true" className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.read_at ? 'bg-transparent' : 'bg-[#0c66e4]'}`}/>
+            <span className="min-w-0 flex-1"><span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#626f86]">{item.plugin_id.replaceAll('_', ' ')}</span><strong className="block text-sm">{item.title}</strong><span className="mt-0.5 block truncate text-xs text-[#44546f]">{item.body}</span><span className="mt-1 block text-[11px] text-[#626f86]">{item.board_title ? `${item.board_title} · ` : ''}{new Date(item.created_at).toLocaleString('pt-BR')}</span></span>
+          </button>
+          {!item.read_at && <button type="button" aria-label={`Marcar notificação ${item.title} como lida`} title="Marcar como lida" onClick={event => {
+            const row = event.currentTarget.parentElement;
+            void Promise.resolve(onRead(item.id)).then(() => row?.querySelector<HTMLButtonElement>('[data-notification-open]')?.focus());
+          }} className="mr-3 mt-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded hover:bg-[#dfe1e6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+            <Check size={15} aria-hidden="true"/>
+          </button>}
+        </div>)}
     </div>
   </div>;
 }
 
-export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: User | null; boards?: Board[]; onCreate?: () => void; onSearch?: (s:string)=>void }) {
+export function AppHeader({ user: initialUser, boards = [], onCreate, appName, homeHref = '/', signInHref = '/', publicActions = [] }: { user: User | null; boards?: Board[]; onCreate?: (restoreFocusTo?: HTMLElement) => void; onSearch?: (s:string)=>void; appName?: string; homeHref?: string; signInHref?: string; publicActions?: Array<{ id: string; label: string; href: string }> }) {
   const brand=useBranding();
   const [limitsVisible,setLimitsVisible]=useState(false);
   const [aiAvailable,setAiAvailable]=useState(false);
@@ -128,7 +206,9 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const collectionsAvailable=pluginEnabled('collections');
   const {canCreateBoard,canCreateProject,boardCreators}=useCreationAvailability();
   const router = useRouter();
-  const [user, updateUser] = useState<User | null>(initialUser);
+  const accountSnapshot=useSyncExternalStore(subscribeAccountSnapshot,getAccountSnapshot,getServerAccountSnapshot);
+  const [userState, updateUser] = useState<User | null>(initialUser);
+  const user=useMemo(()=>userState??parseAccountSnapshot(accountSnapshot),[accountSnapshot,userState]);
   const userId=user?.id;
   const [previousUser, setPreviousUser] = useState(initialUser);
   if (initialUser !== previousUser) {
@@ -137,9 +217,14 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   }
   const [panel, setPanel] = useState<'search'|'boards'|'create'|'notifications'|'account'|'mobile'|null>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  const accountTriggerRef = useRef<HTMLButtonElement>(null);
   const boardsMenuRef = useRef<HTMLDivElement>(null);
+  const boardsTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobileNavigationTriggerRef = useRef<HTMLButtonElement>(null);
+  const createTriggerRef = useRef<HTMLButtonElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
+  const notificationsTriggerRef = useRef<HTMLButtonElement>(null);
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<{query:string; data:SearchResults}>({query:'',data:{boards:[],lists:[],cards:[]}});
   const results = panel === 'search' && query.trim().length >= 2 && searchResponse.query === query
@@ -152,8 +237,33 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const [pinned, setPinned] = useState(true);
   const [history, setHistory] = useState(historyState());
   const [message, setMessage] = useState('');
+  const [simulationRoles,setSimulationRoles]=useState<Array<{id:string;name:string}>>([]);
+  const [simulationSelection,setSimulationSelection]=useState('');
+  const [simulationActive,setSimulationActive]=useState<string|null>(null);
+  const [simulationBusy,setSimulationBusy]=useState(false);
+  useEffect(()=>{
+    if(!(user?.is_root_actor||user?.is_root))return;
+    let active=true;
+    void api<Array<{id:string;name:string}>>('/access/simulation/roles').then(roles=>{if(active){setSimulationRoles(roles);setSimulationActive(getProfileSimulation());setSimulationSelection(getProfileSimulation()||'')}}).catch(()=>{if(active){const stored=getProfileSimulation();setSimulationActive(stored);setSimulationSelection(stored||'')}});
+    return()=>{active=false};
+  },[user?.id,user?.is_root,user?.is_root_actor]);
+  const enterProfileSimulation=async()=>{
+    if(!simulationSelection||simulationBusy)return;
+    const previous=getProfileSimulation();setSimulationBusy(true);setProfileSimulation(simulationSelection);setSimulationActive(simulationSelection);
+    try{await api('/access/simulation/roles');window.location.reload()}
+    catch(error){setProfileSimulation(previous);setSimulationActive(previous);setMessage((error as Error).message)}
+    finally{setSimulationBusy(false)}
+  };
+  const returnToRootProfile=async()=>{
+    if(simulationBusy)return;
+    const previous=getProfileSimulation();setSimulationBusy(true);setProfileSimulation(null);setSimulationActive(null);setSimulationSelection('');
+    try{await api('/access/simulation/roles');window.location.reload()}
+    catch(error){setProfileSimulation(previous);setSimulationActive(previous);setMessage((error as Error).message)}
+    finally{setSimulationBusy(false)}
+  };
   const [toolStatus,setToolStatus]=useState<{userId:string;status:ToolDiagnostics['status']}|null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const searchReturnFocusRef = useRef<HTMLElement | null>(null);
   const initializedNotifications = useRef(false);
   const knownNotifications = useRef(new Set<string>());
   const syncNotifications = useCallback((items: AppNotification[]) => {
@@ -218,7 +328,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         if (active) syncNotifications(items);
       }).catch(() => undefined);
     };
-    const socket = io({ path: '/socket.io', auth: { token: localStorage.getItem('orbit_token') || '' } });
+    const socket = io({ path: '/socket.io', auth: profileSimulationSocketAuth() });
     socket.on('notification:changed', refresh);
     const pluginsChanged=()=>window.dispatchEvent(new Event('plugins:changed'));
     socket.on('plugins:changed',pluginsChanged);
@@ -252,6 +362,16 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   }, [user, syncNotifications]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (panel === 'notifications') notificationsTriggerRef.current?.focus();
+        if (panel === 'account') accountTriggerRef.current?.focus();
+        if (panel === 'boards') boardsTriggerRef.current?.focus();
+        if (panel === 'create') createTriggerRef.current?.focus();
+        if (panel === 'search') searchReturnFocusRef.current?.focus();
+        if (panel === 'mobile') mobileNavigationTriggerRef.current?.focus();
+        setPanel(null);
+        return;
+      }
       if (user?.preferences?.shortcuts === false) return;
       const target = event.target as HTMLElement;
       if (target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
@@ -261,12 +381,15 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
         event.preventDefault(); redo().catch(error => setMessage((error as Error).message));
       } else if (event.key === '/') {
-        event.preventDefault(); setPanel('search');
-      } else if (event.key === 'Escape') setPanel(null);
+        event.preventDefault();
+        const activeElement = document.activeElement;
+        searchReturnFocusRef.current = activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null;
+        setPanel('search');
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [user?.preferences?.shortcuts]);
+  }, [panel, user?.preferences?.shortcuts]);
 
   async function markRead(id: string) {
     await send(`/notifications/${id}/read`, 'PATCH');
@@ -303,7 +426,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const unread = notifications.filter(item => !item.read_at).length;
   const canUse=(permission:string)=>Boolean(user?.is_root||user?.permissions?.includes(permission));
   const mobileLinks = [
-    {label:'Home',href:'/',icon:Home},
+    {label:'Home',href:homeHref,icon:Home},
     {label:'Quadros',href:'/boards',icon:LayoutDashboard},
     ...(canUse('calendar.read')?[{label:'Calendário',href:'/calendar',icon:CalendarDays}]:[]),
     ...(pluginEnabled('planner')?[{label:'Planner',href:'/planner',icon:CalendarDays}]:[]),
@@ -356,18 +479,23 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     return () => document.removeEventListener('mousedown', closeOutside);
   }, [panel]);
 
+  if (!user) return <header className="relative z-30 flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[#dfe1e6] bg-white px-3 py-1 sm:px-4">
+    <button onClick={() => router.push(homeHref)} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home"><BrandMark className="h-7 w-7"/><span className="text-[21px] font-extrabold tracking-[-1px]">{brand.workspace?.public_name || appName || brand.app_name}</span></button>
+    <div className="flex items-center gap-2">{publicActions.map(action => <button key={action.id} onClick={() => router.push(action.href)} className="min-h-10 rounded px-3 text-sm font-semibold text-[#44546f] hover:bg-[#f1f2f4]">{action.label}</button>)}<button onClick={() => router.push(signInHref)} className="min-h-10 rounded bg-[#0c66e4] px-4 text-sm font-semibold text-white hover:bg-[#0055cc]">Entrar</button></div>
+  </header>;
+
   return <>{notificationToast && <div role="status" aria-live="polite" className={`fixed right-4 top-4 z-[60] w-[min(360px,calc(100vw-32px))] rounded-lg border border-[#dfe1e6] bg-white p-3 shadow-dialog transition-all duration-500 ${toastFading ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100'}`}><div className="flex items-start gap-2"><Bell size={17} className="mt-0.5 shrink-0 text-[#0c66e4]"/><span className="min-w-0"><strong className="block truncate text-sm">{notificationToast.title}</strong>{notificationToast.body && <span className="mt-0.5 block truncate text-xs text-[#626f86]">{notificationToast.body}</span>}</span></div></div>}<header className="relative z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 py-1 sm:gap-2 sm:px-4">
-    <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
+    <button onClick={() => router.push(homeHref)} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
       <BrandMark className="h-7 w-7" />
-      <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">{brand.app_name}</span>
+      <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">{brand.workspace?.public_name || appName || brand.app_name}</span>
     </button>
     <nav className="ml-1 hidden items-center gap-1 lg:flex">
-      <button onClick={() => router.push('/')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
+      <button onClick={() => router.push(homeHref)} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
       <div ref={boardsMenuRef} className="relative" onMouseLeave={() => { if (panel === 'boards') setPanel(null); }}>
-        <button onClick={() => setPanel(panel === 'boards' ? null : 'boards')} aria-expanded={panel === 'boards'} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
-        {panel === 'boards' && <div className="absolute left-0 top-full z-40 w-72 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
+        <button ref={boardsTriggerRef} onClick={() => setPanel(panel === 'boards' ? null : 'boards')} aria-expanded={panel === 'boards'} aria-controls="orbit-boards-menu" className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Quadros <ChevronDown size={13} className="inline"/></button>
+        {panel === 'boards' && <div id="orbit-boards-menu" role="region" aria-label="Alternar quadro" className="absolute left-0 top-full z-40 w-72 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
           <div className="flex items-center justify-between px-2 py-2"><strong className="text-sm">Alternar quadro</strong><button onClick={togglePin} className="rounded p-1 text-[#626f86] hover:bg-[#f1f2f4]" title={pinned ? 'Desafixar painel lateral' : 'Fixar painel lateral'}>{pinned ? <PinOff size={16}/> : <Pin size={16}/>}</button></div>
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar quadro" className="mb-2 w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/>
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar quadro" aria-label="Buscar quadro" className="mb-2 w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm"/>
           <div className="scrollbar-thin max-h-64 overflow-y-auto">{pluginBoards.filter(board=>board.name.toLowerCase().includes(query.toLowerCase())).map(board=><button key={board.id} onClick={()=>{setPanel(null);router.push(board.href)}} className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={18} className="shrink-0"/><span className="truncate">{board.name}</span></button>)}{boardMatches.map(board => <button key={board.id} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-5 w-7 shrink-0 rounded" style={{background:boardColors[board.background]}}/><span className="min-w-0 flex-1 truncate">{board.title}</span>{board.starred && <Star size={13} fill="currentColor" className="text-[#e2b203]"/>}</button>)}</div>
           <button onClick={() => { setPanel(null); router.push('/boards'); }} className="mt-2 w-full border-t border-[#dfe1e6] px-2 py-2 text-left text-sm font-semibold text-[#0c66e4]">Ver todos os quadros</button>
         </div>}
@@ -387,31 +515,32 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
 >
   <LayoutDashboard size={19}/>
 </button>
-<button onClick={() => router.push('/')} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Home"><Home size={19}/></button>
+<button onClick={() => router.push(homeHref)} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Home"><Home size={19}/></button>
 {aiAvailable&&<button onClick={() => router.push('/tools')} className="relative min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Ferramentas" aria-label="Ferramentas"><Wrench size={19}/><span aria-hidden="true" className={`absolute right-1 top-1 h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>}
-<div className="relative lg:hidden"><button onClick={() => setPanel(panel==='mobile'?null:'mobile')} aria-label="Abrir navegação" aria-expanded={panel==='mobile'} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4]"><Menu size={19}/></button>{panel==='mobile'&&<nav aria-label="Navegação principal" className="fixed left-2 right-2 top-[calc(3.5rem+env(safe-area-inset-top))] z-[60] grid max-h-[min(70dvh,560px)] w-auto translate-x-0 grid-cols-2 gap-1 overflow-y-auto rounded-xl border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:grid-cols-3">{mobileLinks.map(item=><button key={`${item.href}:${item.label}`} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-12 min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-[#f1f2f4]"><item.icon size={17} className="shrink-0 text-[#6554c0]"/><span className="min-w-0 break-words">{item.label}</span></button>)}<PluginNavigation menus={navigation.menus} standalone={navigation.standalone} mobile onNavigate={()=>setPanel(null)}/></nav>}</div>
+<div className="relative lg:hidden"><button ref={mobileNavigationTriggerRef} onClick={() => setPanel(panel==='mobile'?null:'mobile')} aria-label="Abrir navegação" aria-expanded={panel==='mobile'} aria-controls="orbit-mobile-navigation" className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4]"><Menu size={19}/></button>{panel==='mobile'&&<nav id="orbit-mobile-navigation" aria-label="Navegação principal" className="fixed left-2 right-2 top-[calc(3.5rem+env(safe-area-inset-top))] z-[60] grid max-h-[min(70dvh,560px)] w-auto translate-x-0 grid-cols-2 gap-1 overflow-y-auto rounded-xl border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:grid-cols-3">{mobileLinks.map(item=><button key={`${item.href}:${item.label}`} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-12 min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-[#f1f2f4]"><item.icon size={17} className="shrink-0 text-[#6554c0]"/><span className="min-w-0 break-words">{item.label}</span></button>)}<PluginNavigation menus={navigation.menus} standalone={navigation.standalone} mobile onNavigate={()=>setPanel(null)}/></nav>}</div>
     {(canCreateBoard||canCreateProject||boardCreators.length>0)&&<div ref={createMenuRef} className="relative ml-1">
-      <button onClick={() => setPanel(panel === 'create' ? null : 'create')} className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
-      {panel === 'create' && <div className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
+      <button ref={createTriggerRef} onClick={() => setPanel(panel === 'create' ? null : 'create')} aria-expanded={panel === 'create'} aria-controls="orbit-create-menu" className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
+      {panel === 'create' && <div id="orbit-create-menu" role="region" aria-label="Ações de criação" className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
         {boardCreators.map(item=><button key={item.id} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-11 w-full items-center gap-2 rounded px-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/>{item.name}</button>)}
-        {canCreateBoard&&<button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>}
+        {canCreateBoard&&<button onClick={() => { const restoreFocusTo = createTriggerRef.current || undefined; setPanel(null); if (onCreate) { onCreate(restoreFocusTo); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>}
         {canCreateProject&&<button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>}
       </div>}
     </div>}
     {aiAvailable&&<button onClick={()=>setLimitsVisible(value=>!value)} aria-label={limitsVisible?'Recolher barra da fila':'Mostrar barra da fila'} aria-expanded={limitsVisible} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible?<Eye size={17}/>:<EyeClosed size={17}/>}{user?.is_root?'Limites':'Fila'}</button>}
+    {(user?.is_root_actor||user?.is_root)&&<div className="flex max-w-[min(52vw,28rem)] flex-wrap items-center gap-1.5 rounded-lg border border-[#6554c0]/40 bg-[#6554c0]/10 px-2 py-1"><label htmlFor="orbit-profile-simulation" className="sr-only">Simular perfil do sistema</label><select id="orbit-profile-simulation" aria-label="Perfil a simular" value={simulationSelection} onChange={event=>setSimulationSelection(event.target.value)} disabled={simulationBusy} className="min-w-0 max-w-[32vw] rounded border border-[#dfe1e6] bg-white px-2 py-1.5 text-xs text-[#172b4d] sm:max-w-52"><option value="">{simulationActive?'Escolha outro perfil…':'Simular perfil…'}</option>{simulationRoles.map(role=><option key={role.id} value={role.id}>{role.name}</option>)}</select>{simulationActive?<><span className="hidden max-w-28 truncate text-[11px] font-semibold text-[#6554c0] lg:inline" title={simulationRoles.find(role=>role.id===simulationActive)?.name}>Simulando</span><button onClick={()=>void enterProfileSimulation()} disabled={!simulationSelection||simulationSelection===simulationActive||simulationBusy} className="rounded bg-[#6554c0] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Trocar</button><button onClick={()=>void returnToRootProfile()} disabled={simulationBusy} className="whitespace-nowrap rounded border border-[#6554c0] px-2 py-1.5 text-xs font-semibold text-[#403294] disabled:opacity-50">Voltar a ROOT</button></>:<button onClick={()=>void enterProfileSimulation()} disabled={!simulationSelection||simulationBusy} className="whitespace-nowrap rounded bg-[#6554c0] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Entrar</button>}</div>}
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
-    <button onClick={() => setPanel('search')} className="flex items-center gap-2 rounded border border-transparent p-2 text-[#44546f] hover:bg-[#f1f2f4] sm:w-44 sm:border-[#8590a2] sm:px-3 sm:py-1.5" aria-label="Pesquisar em todos os quadros"><Search size={17}/><span className="hidden text-sm text-[#626f86] sm:inline">Pesquisar</span></button>
+    <button onClick={event => { searchReturnFocusRef.current = event.currentTarget; setPanel('search'); }} className="flex items-center gap-2 rounded border border-transparent p-2 text-[#44546f] hover:bg-[#f1f2f4] sm:w-44 sm:border-[#8590a2] sm:px-3 sm:py-1.5" aria-label="Pesquisar em todos os quadros" aria-expanded={panel === 'search'} aria-controls="global-search-panel"><Search size={17}/><span className="hidden text-sm text-[#626f86] sm:inline">Pesquisar</span></button>
     <div ref={notificationsMenuRef} className="relative" onMouseLeave={() => { if (panel === 'notifications') setPanel(null); }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPanel(null); }}>
-    <button onClick={() => setPanel(panel === 'notifications' ? null : 'notifications')} aria-expanded={panel === 'notifications'} className="relative rounded-full p-2 text-[#44546f] hover:bg-[#f1f2f4]" title="Notificações"><Bell size={19}/>{unread > 0 && <span className="absolute right-0 top-0 min-w-4 rounded-full bg-[#e5484d] px-0.5 text-[10px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}</button>
+    <button ref={notificationsTriggerRef} onClick={() => setPanel(panel === 'notifications' ? null : 'notifications')} aria-label={unread > 0 ? `Notificações, ${unread} ${unread === 1 ? "não lida" : "não lidas"}` : "Notificações"} aria-expanded={panel === 'notifications'} aria-controls="notification-panel" className="relative rounded-full p-2 text-[#44546f] hover:bg-[#f1f2f4]" title="Notificações"><Bell size={19}/>{unread > 0 && <span aria-hidden="true" className="absolute right-0 top-0 min-w-4 rounded-full bg-[#d32f2f] px-0.5 text-[10px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}</button>
     {panel === 'notifications' && <NotificationPanel items={notifications} onRead={id => markRead(id).catch(() => {})} onReadAll={() => markAll().catch(() => {})} onClearAll={() => clearAllNotifications().catch(() => {})} onChoose={chooseNotification}/>}
     </div>
     <div ref={accountMenuRef} className="relative" onMouseLeave={() => { if (panel === 'account') setPanel(null); }}>
-    <button onClick={() => setPanel(panel === 'account' ? null : 'account')} title="Conta" aria-expanded={panel === 'account'} className="rounded-full"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/></button>
+    <button ref={accountTriggerRef} onClick={() => setPanel(panel === 'account' ? null : 'account')} title="Conta" aria-label="Conta" aria-expanded={panel === 'account'} aria-controls="orbit-account-menu" className="rounded-full"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/></button>
 
-    {panel === 'search' && <div className="absolute left-2 right-2 top-12 z-40 overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog sm:left-auto sm:right-28 sm:w-[430px]">
-      <div className="flex items-center gap-2 border-b border-[#dfe1e6] px-3 py-2"><Search size={17} className="text-[#626f86]"/><input ref={searchRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Pesquisar cartões e quadros..." className="min-w-0 flex-1 border-0 bg-transparent py-1 text-sm outline-none"/><button onClick={() => setPanel(null)}><X size={17}/></button></div>
+    {panel === 'search' && <div id="global-search-panel" role="search" aria-label="Pesquisar em todos os quadros" className="fixed left-2 right-2 top-14 z-40 overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog sm:left-auto sm:right-28 sm:top-16 sm:w-[430px]">
+      <div className="flex items-center gap-2 border-b border-[#dfe1e6] px-3 py-2"><Search size={17} className="text-[#626f86]"/><input ref={searchRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Pesquisar cartões e quadros..." aria-label="Pesquisar cartões e quadros" className="orbit-control-boundary min-w-0 flex-1 rounded bg-transparent px-2 py-1 text-sm focus-visible:ring-2 focus-visible:ring-[#6554c0]"/><button onClick={() => setPanel(null)} aria-label="Fechar pesquisa"><X size={17}/></button></div>
       <div className="scrollbar-thin max-h-[380px] overflow-y-auto p-2">{query.trim().length < 2 ? <p className="p-4 text-center text-xs text-[#626f86]">Digite pelo menos 2 caracteres para buscar em todos os quadros.</p> : <>
         {results.boards.length > 0 && <p className="px-2 py-1 text-[11px] font-bold uppercase text-[#626f86]">Quadros</p>}
         {results.boards.map(board => <button key={board.id} aria-label={`Abrir quadro ${board.title}`} onClick={() => openBoard(board.id)} className="flex w-full items-center gap-2 rounded p-2 text-left text-sm hover:bg-[#f1f2f4]"><span className="h-6 w-8 rounded" style={{background:boardColors[board.background]}}/><span className="flex-1 truncate">{board.title}</span></button>)}
@@ -423,7 +552,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         <button onClick={() => { setPanel(null); router.push(`/search?q=${encodeURIComponent(query)}`); }} className="mt-2 w-full border-t border-[#dfe1e6] px-3 py-2 text-left text-xs font-semibold text-[#0c66e4]">Abrir busca avançada</button>
       </>}</div>
     </div>}
-    {panel === 'account' && <div className="absolute right-0 top-full z-40 w-64 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
+    {panel === 'account' && <div id="orbit-account-menu" role="region" aria-label="Menu da conta" className="absolute right-0 top-full z-40 w-64 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
       <div className="border-b border-[#dfe1e6] px-3 py-2"><p className="text-[11px] font-bold uppercase tracking-wide text-[#626f86]">Conta</p><div className="mt-2 flex items-center gap-2"><Avatar name={user?.name || 'Igor'} url={user?.avatar_url}/><div className="min-w-0"><p className="truncate text-sm font-semibold">{user?.name}</p><p className="truncate text-xs text-[#626f86]">{user?.email}</p></div></div></div>
       {(user?.is_root||user?.permissions?.includes('access.manage'))&&<button onClick={()=>{setPanel(null);router.push('/access')}} className="min-h-11 w-full rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]">Acessos e perfis {user?.is_root?'· ROOT':''}</button>}
       <button onClick={() => {setPanel(null);router.push('/profile')}} className="mt-1 flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><UserRound size={16}/> Perfil e atividade</button>
@@ -445,7 +574,7 @@ function InboxPanel({boards,dropId='inbox:panel'}:{boards:Board[];dropId?:string
   const {setNodeRef:setInboxDropRef,isOver:isInboxOver}=useDroppable({id:dropId,data:{type:'inbox'}});
   const load=useCallback(async()=>{try{const [full,assigned]=await Promise.all([inboxId?api<Board>(`/boards/${inboxId}`):Promise.resolve(null),api<AssignedInboxCard[]>('/inbox/cards')]);setInbox(full);setAssigned(assigned);setError('')}catch(err){setError((err as Error).message)}},[inboxId]);
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
-  useEffect(()=>{const socket=io({path:'/socket.io',auth:{token:localStorage.getItem('orbit_token')||''}});socket.on('connect',()=>{if(inboxId)socket.emit('board:join',inboxId)});const refresh=()=>void load();socket.on('board:changed',refresh);socket.on('comment:changed',refresh);socket.on('prompt:progress',refresh);socket.on('notification:changed',refresh);socket.on('plugins:changed',refresh);socket.on('connect',refresh);return()=>{socket.disconnect()}},[inboxId,load]);
+ useEffect(()=>{const socket=io({path:'/socket.io',auth:profileSimulationSocketAuth()});socket.on('connect',()=>{if(inboxId)socket.emit('board:join',inboxId)});const refresh=()=>void load();socket.on('board:changed',refresh);socket.on('comment:changed',refresh);socket.on('prompt:progress',refresh);socket.on('notification:changed',refresh);socket.on('plugins:changed',refresh);socket.on('connect',refresh);return()=>{socket.disconnect()}},[inboxId,load]);
   useEffect(()=>{
     const over=(event:DragEvent)=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card')&&event.dataTransfer?.types.includes('application/x-orbit-inbox-owned'))event.preventDefault()};
     const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card'),owned=event.dataTransfer?.getData('application/x-orbit-inbox-owned');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||owned!=='1'||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};
@@ -456,7 +585,7 @@ function InboxPanel({boards,dropId='inbox:panel'}:{boards:Board[];dropId?:string
   const ownCards=inbox?.lists?.flatMap(list=>list.cards)||[],ownedIds=new Set(ownCards.map(card=>card.id));
   const entries=[...ownCards.map(card=>({id:card.id,title:card.title,board_id:inbox!.id,board_title:'Inbox',card})),...assigned.filter(card=>!ownedIds.has(card.id)).map(card=>({...card,card:undefined}))];
   const collection=boards.find(board=>board.is_collection);
-  return <><section ref={setInboxDropRef} data-orbit-inbox-drop className={`rounded-lg pt-1 ${isInboxOver?'bg-[#e9f2ff] ring-2 ring-[#0c66e4]':''}`}><p className="px-2 text-xs text-[#626f86]">Solte um cartão aqui para atribuir a você e acompanhá-lo no Inbox.</p><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input disabled={!inbox?.lists?.[0]} value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm disabled:opacity-50"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{entries.map(entry=><div key={entry.id} className="flex items-center gap-1 rounded bg-[#f1f2f4] px-2 py-1 shadow-sm"><button draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',entry.id);event.dataTransfer.setData('application/x-orbit-inbox-title',entry.title);if(entry.card)event.dataTransfer.setData('application/x-orbit-inbox-owned','1');event.dataTransfer.effectAllowed=entry.card?'move':'copyMove'}} onClick={()=>void open(entry)} className="min-h-11 min-w-0 flex-1 py-1 text-left text-sm hover:bg-[#e9eaed]"><span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{entry.title}</span>{entry.card&&<CardActivityIndicator card={entry.card}/>}</span>{!entry.card&&<span className="block truncate text-[11px] text-[#626f86]">{entry.board_title} · atribuído a você</span>}</button>{collection&&entry.card&&<button title="Enviar para Coleções" onClick={()=>setTransfer(entry.card!)} className="rounded px-1 text-xs text-[#6554c0] hover:bg-[#e2dffc]">↗</button>}</div>)}{!entries.length&&<p className="py-3 text-xs text-[#626f86]">Sem itens</p>}</div>{error&&<p role="alert" className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Os cartões atribuídos permanecem no seu quadro de origem.</p></section>{selected&&<CardDialog key={selected.card.id} card={selected.card} board={selected.board} recordContent={selected.board.record_scope&&selected.card.id===selected.board.record_scope.primary_card_id?<RecordBoardContext scope={selected.board.record_scope} onChanged={refreshSelected}/>:undefined} onClose={()=>setSelected(null)} onChanged={refreshSelected} onDeleted={async()=>{setSelected(null);await load()}}/>}{transfer&&collection&&<TransferCardModal card={transfer} target={collection} label="Enviar para Coleções" onClose={()=>setTransfer(null)} onDone={async()=>{setTransfer(null);await load();window.dispatchEvent(new Event('data:changed'))}}/>}</>;
+  return <><section ref={setInboxDropRef} data-orbit-inbox-drop className={`rounded-lg pt-1 ${isInboxOver?'bg-[#e9f2ff] ring-2 ring-[#0c66e4]':''}`}><p className="px-2 text-xs text-[#626f86]">Solte um cartão aqui para atribuir a você e acompanhá-lo no Inbox.</p><form onSubmit={async event=>{event.preventDefault();const list=inbox?.lists?.[0];if(!title.trim()||!list)return;try{await send(`/lists/${list.id}/cards`,'POST',{title});setTitle('');await load()}catch(err){setError((err as Error).message)}}} className="mt-2 px-2"><input aria-label="Adicionar cartão ao Inbox" disabled={!inbox?.lists?.[0]} value={title} onChange={event=>setTitle(event.target.value)} placeholder="Adicionar um cartão" className="w-full rounded border border-[#8590a2] px-2 py-1.5 text-sm disabled:opacity-50"/></form><div className="mt-2 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto px-2">{entries.map(entry=><div key={entry.id} className="flex items-center gap-1 rounded bg-[#f1f2f4] px-2 py-1 shadow-sm"><button draggable onDragStart={event=>{event.dataTransfer.setData('application/x-orbit-inbox-card',entry.id);event.dataTransfer.setData('application/x-orbit-inbox-title',entry.title);if(entry.card)event.dataTransfer.setData('application/x-orbit-inbox-owned','1');event.dataTransfer.effectAllowed=entry.card?'move':'copyMove'}} onClick={()=>void open(entry)} className="min-h-11 min-w-0 flex-1 py-1 text-left text-sm hover:bg-[#e9eaed]"><span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{entry.title}</span>{entry.card&&<CardActivityIndicator card={entry.card}/>}</span>{!entry.card&&<span className="block truncate text-[11px] text-[#626f86]">{entry.board_title} · atribuído a você</span>}</button>{collection&&entry.card&&<button title="Enviar para Coleções" onClick={()=>setTransfer(entry.card!)} className="rounded px-1 text-xs text-[#6554c0] hover:bg-[#e2dffc]">↗</button>}</div>)}{!entries.length&&<p className="py-3 text-xs text-[#626f86]">Sem itens</p>}</div>{error&&<p role="alert" className="px-2 pt-2 text-xs text-[#ae2a19]">{error}</p>}<p className="px-2 pt-2 text-[11px] text-[#626f86]">Os cartões atribuídos permanecem no seu quadro de origem.</p></section>{selected&&<CardDialog key={selected.card.id} card={selected.card} board={selected.board} recordContent={selected.board.record_scope&&selected.card.id===selected.board.record_scope.primary_card_id?<RecordBoardContext scope={selected.board.record_scope} onChanged={refreshSelected}/>:undefined} onClose={()=>setSelected(null)} onChanged={refreshSelected} onDeleted={async()=>{setSelected(null);await load()}}/>}{transfer&&collection&&<TransferCardModal card={transfer} target={collection} label="Enviar para Coleções" onClose={()=>setTransfer(null)} onDone={async()=>{setTransfer(null);await load();window.dispatchEvent(new Event('data:changed'))}}/>}</>;
 }
 
 export function TransferCardModal({card,target,label,onClose,onDone}:{card:Card;target:Board;label:string;onClose:()=>void;onDone:()=>Promise<void>}) {
@@ -479,6 +608,11 @@ function SortableFavoriteBoard({ board, pinned, onChoose, onBackground, onToggle
   </div>;
 }
 
+export const boardColorLabels: Record<string, string> = {
+  blue: "Azul", teal: "Turquesa", purple: "Roxo", pink: "Rosa", orange: "Laranja",
+  green: "Verde", sunset: "Pôr do sol", ocean: "Oceano",
+};
+
 function BoardBackgroundPopup({ board, onClose, onChanged }: { board: Board; onClose: () => void; onChanged: (background: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -497,7 +631,7 @@ function BoardBackgroundPopup({ board, onClose, onChanged }: { board: Board; onC
       setBusy(false);
     }
   }
-  return <Modal onClose={onClose}><div className="w-[min(92vw,400px)] p-6"><h2 className="mb-1 pr-8 text-lg font-bold">Plano de fundo</h2><p className="mb-4 text-sm text-[#626f86]">Escolha uma cor para “{board.title}”.</p>{error&&<p role="alert" className="mb-3 rounded bg-[#ffebe6] p-2 text-sm text-[#ae2a19]">{error}</p>}<div className="grid grid-cols-4 gap-2">{Object.entries(boardColors).map(([name,color])=><button key={name} type="button" title={name} aria-label={`Cor ${name}`} disabled={busy} onClick={()=>void choose(name)} className={`h-14 rounded disabled:opacity-60 ${board.background===name&&!board.background_image?'ring-2 ring-[#0c66e4] ring-offset-2':''}`} style={{background:color}}/>)}</div></div></Modal>;
+  return <Modal onClose={onClose}><div className="w-[min(92vw,400px)] p-6"><h2 className="mb-1 pr-8 text-lg font-bold">Plano de fundo</h2><p className="mb-4 text-sm text-[#626f86]">Escolha uma cor para “{board.title}”.</p>{error&&<p role="alert" className="mb-3 rounded bg-[#ffebe6] p-2 text-sm text-[#ae2a19]">{error}</p>}<div className="grid grid-cols-4 gap-2">{Object.entries(boardColors).map(([name,color])=>{const selected=board.background===name&&!board.background_image;return <button key={name} type="button" title={boardColorLabels[name]||name} aria-label={`Cor ${boardColorLabels[name]||name}`} aria-pressed={selected} disabled={busy} onClick={()=>void choose(name)} className={`h-14 rounded disabled:opacity-60 ${selected?'ring-2 ring-[#0c66e4] ring-offset-2':''}`} style={{background:color}}/>})}</div></div></Modal>;
 }
 
 export function WorkspaceSidebar({ boards,activeId }: { boards: Board[]; activeId?: string; onCreate: ()=>void; onChoose: (id:string)=>void }) {
@@ -568,7 +702,7 @@ export function WorkspaceSidebar({ boards,activeId }: { boards: Board[]; activeI
     catch { setFavoriteOrderError('Não foi possível salvar a ordem dos favoritos.'); }
   }
   return <><aside aria-label="Menu lateral" className={`scrollbar-thin hidden shrink-0 overflow-y-auto border-r border-[#dfe1e6] bg-white py-4 transition-[width] lg:block ${pinned?'w-[64px] px-2 lg:w-[300px] lg:px-3':'w-[56px] px-2'}`}>
-    <div className="mb-3 flex gap-1"><button ref={setInboxTabDropRef} data-orbit-inbox-tab-drop onClick={()=>setTab('inbox')} aria-pressed={effectiveTab === 'inbox'} aria-label="Aba Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${isInboxTabOver?'ring-2 ring-[#0c66e4]':''} ${effectiveTab === 'inbox' ? 'bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button>{scope?<button onClick={()=>setTab('models')} aria-pressed={effectiveTab==='models'} className="min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold hover:bg-[#f0edff]">Modelos</button>:collectionsAvailable&&<button onClick={()=>setTab('collections')} aria-pressed={effectiveTab === 'collections'} aria-label="Aba Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${effectiveTab === 'collections' ? 'bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button>}</div>
+    <div className="mb-3 flex gap-1"><button ref={setInboxTabDropRef} data-orbit-inbox-tab-drop onClick={()=>setTab('inbox')} aria-pressed={effectiveTab === 'inbox'} aria-label="Aba Inbox" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${isInboxTabOver?'ring-2 ring-[#0c66e4]':''} ${effectiveTab === 'inbox' ? 'orbit-selected-control border bg-[#e9f2ff] text-[#0c66e4]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><Inbox size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Inbox</span></button>{scope?<button onClick={()=>setTab('models')} aria-pressed={effectiveTab==='models'} className="min-h-11 flex-1 rounded-lg px-2 text-sm font-semibold hover:bg-[#f0edff]">Modelos</button>:collectionsAvailable&&<button onClick={()=>setTab('collections')} aria-pressed={effectiveTab === 'collections'} aria-label="Aba Coleções" className={`flex h-9 flex-1 items-center justify-center rounded-lg ${effectiveTab === 'collections' ? 'orbit-selected-control border bg-[#f0edff] text-[#6554c0]' : 'text-[#44546f] hover:bg-[#f1f2f4]'}`}><FolderOpen size={18}/><span className="ml-2 hidden text-sm font-semibold lg:inline">Coleções</span></button>}</div>
     {pinned && <div className="hidden lg:block">{effectiveTab==='models'&&scope?<RecordBoardModels scope={scope}/>:effectiveTab === 'collections' ? <CollectionPanel boards={boards}/> : <InboxPanel boards={collectionsAvailable?boards:boards.filter(board=>!board.is_collection)}/>}</div>}
     <section className={`${effectiveTab === 'collections' ? 'hidden' : 'mt-4 border-t border-[#dfe1e6] pt-3'}`}>
       {favorites.length > 0 && <div className="mb-3">

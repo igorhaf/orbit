@@ -14,7 +14,13 @@ export async function applyVersionedMigrations(client:PoolClient) {
     const checksum=createHash('sha256').update(sql).digest('hex');
     const existing=(await client.query('SELECT checksum FROM schema_migrations WHERE version=$1',[version])).rows[0];
     if(existing){if(existing.checksum!==checksum)throw new Error(`Migration changed after application: ${version}`);continue;}
+    // pgcrypto is installed in public in isolated test schemas. Migration 145
+    // calls its crypt/gen_salt functions; expose public only for that statement,
+    // while keeping the active schema first so its users table remains isolated.
+    const pgcryptoMigration=version==='145_orbit_system_actor.sql';
+    if(pgcryptoMigration)await client.query("SELECT set_config('search_path', quote_ident(current_schema()) || ',public', true)");
     await client.query(sql);
+    if(pgcryptoMigration)await client.query("SELECT set_config('search_path', quote_ident(current_schema()), true)");
     await client.query('INSERT INTO schema_migrations(version,checksum) VALUES($1,$2)',[version,checksum]);
   }
 }

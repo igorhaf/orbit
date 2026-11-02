@@ -171,3 +171,24 @@ O executor sinaliza perguntas com um bloco final não vazio
 `[[ORBIT_QUESTION]] ... [[/ORBIT_QUESTION]]`. Verificações de conclusão rodam
 quando a implementação conclui; escopo de escrita permanece validado em cada turno.
 A migração `060_prompt_questions.sql` habilita os novos valores persistidos.
+
+### Múltiplos agentes em cartões
+
+O controle **Múltiplos agentes** da IA do cartão inicia marcado e envia
+`multiple_agents` junto ao `POST /cards/:id/prompt-runs`. A API valida o campo
+como booleano e grava a opção em cada execução; o histórico identifica se ela
+foi usada. O padrão de uma nova execução sem campo explícito é `true`, enquanto
+respostas a comentários mantêm o modo de agente único. Ao responder uma pergunta
+ou reexecutar um cartão, o modo salvo para aquela execução é preservado. Quando
+ativado, o Codex CLI recebe `--enable multi_agent`; a chave habilita uma
+avaliação, mas não exige que subagentes sejam criados. O Codex deve encontrar pelo
+menos duas frentes independentes, com interfaces e arquivos delimitados, capazes
+de avançar em paralelo sem decisões serializadas ou edição concorrente. Ele só
+deve delegar se o ganho provável de tempo superar transferência de contexto,
+coordenação, integração e revisão, e houver forte expectativa de reduzir também
+o total de tokens. Em tarefa pequena, sequencial, concentrada nos mesmos arquivos
+ou com economia incerta, usa agente único. A estimativa não garante economia;
+subagentes fazem chamadas de modelo e ferramentas próprias e podem aumentar o
+consumo. A delegação usa a menor quantidade necessária e não abre novos níveis
+recursivos. Ela mantém o mesmo escopo de escrita e as verificações obrigatórias
+do projeto; o agente integrador revisa os resultados.

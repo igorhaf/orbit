@@ -5,3 +5,7 @@ export function allowLocalOnlyMigrationBackup(argv: string[], env: NodeJS.Proces
   }
   return requested;
 }
+
+export function shouldDispatchMigrationBackup(localOnlyBackup: boolean) {
+  return !localOnlyBackup;
+}

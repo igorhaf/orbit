@@ -69,19 +69,33 @@ export type CardTypeContribution = { id: string; name: string; description?: str
 export type BoardViewContribution = { id:string; name:string; description?:string; renderer:string; permission:string };
 export type RecordValidationIssue = { severity: "error" | "warning"; code: string; path: string; message: string };
 export type ResolvedRecordReference = { id: string; pluginId: string; kind: string; state: string; revision: number; payload: Record<string, unknown> };
+export type RecordTransitionEffect = { recordId: string; expectedRevision: number; expectedState: string; nextState: string; payload?: Record<string, unknown>; reason: string };
 export type RecordValidationContext = {
   resolveRecord: (recordId: string, revision: number) => Promise<ResolvedRecordReference | null>;
   /** Resolves the current version of a record in the same workspace, for live entity relationships. */
   resolveLatestRecord?: (recordId: string) => Promise<ResolvedRecordReference | null>;
+  /** Lists MIME types for attachments on the current record revision, without exposing file contents or uploader identity. */
+  listCurrentRecordAttachments?: () => Promise<Array<{ mime_type: string }> | null>;
   /** Returns an aggregate count over latest versions in this workspace without returning record contents. */
   countLatestRecordsByPayloadValue?: (pluginId: string, kind: string, state: string, field: string, value: string, lockScope?: string, excludeRecordId?: string) => Promise<number | null>;
   /** Counts latest versions whose JSON payload contains all supplied scalar values. */
   countLatestRecordsMatchingPayload?: (pluginId: string, kind: string, state: string, match: Record<string, string>, lockScope?: string, excludeRecordId?: string) => Promise<number | null>;
+  /** Returns only group counts and means from a numeric field inside a JSON array; source records/answers are never projected. */
+  aggregateLatestNumericArrayValues?: (pluginId: string, kind: string, state: string, parentField: string, parentId: string,
+    arrayField: string, keyField: string, valueField: string) => Promise<{ recordCount: number; groups: Array<{ key: string; count: number; average: number }> } | null>;
+  /** Lists a bounded set of current records from this workspace for plugin-owned validation rules. */
+  listLatestRecords?: (pluginId: string, kind: string, match: Record<string, string>, state?: string, limit?: number, lockScope?: string) => Promise<ResolvedRecordReference[] | null>;
+  /** Policy-only lookup for declared same-workspace targets while their plugin is suspended. */
+  listPolicyLinkedRecords?: (pluginId: string, kind: string, match: Record<string, string>, state?: string, limit?: number, lockScope?: string) => Promise<ResolvedRecordReference[] | null>;
+  /** Returns the next positive integer after the highest ordinal among matching latest versions. */
+  nextLatestRecordOrdinal?: (pluginId: string, kind: string, state: string, field: string, match: Record<string, string>, lockScope?: string, excludeRecordId?: string) => Promise<number | null>;
   /** Checks authorship without exposing the linked record payload. */
   isRecordOwner?: (recordId: string, userId: string) => Promise<boolean>;
   nextSequence?: () => Promise<string>;
   actorId?: string;
   recordId?: string;
+  /** The pending record-state transition, available to plugin validation without changing the persisted payload. */
+  transition?: { from: string; to: string };
   hasPermission?: (permission: string) => Promise<boolean>;
   /** Checks a global capability independently from access to this record's exact scope. */
   hasGlobalPermission?: (permission: string) => Promise<boolean>;
@@ -97,22 +111,42 @@ export type RecordKindContribution = {
   schema: JsonSchema;
   initial: string;
   transitions: Record<string, string[]>;
+  /** Localized labels for this kind's states, supplied by its owning plugin. */
+  stateLabels?: Record<string, string>;
   immutable?: string[];
   example: Record<string, unknown>;
   /** Payload properties that must remain unique within a workspace for this plugin and kind. */
   uniqueFields?: string[];
+  /** Payload paths encrypted at rest by the shared record store; owner, state, references and query keys must remain unencrypted. */
+  sensitiveFields?: string[];
+  /** Encrypts uploaded attachment bytes at rest using the shared data-encryption key. */
+  sensitiveAttachments?: boolean;
   /** Payload fields that become immutable after the record leaves its initial state. */
   immutablePayloadFieldsAfterInitial?: string[];
   /** When enabled, each record requires an `extension_record` scoped grant or its creator's membership. */
   resourceScoped?: boolean;
   /** Optional global capability for staff who administer every record of this kind. */
   managePermission?: string;
+  /** Identifies the actor-owned payload field that can be listed in a personal dashboard. */
+  personalOwnerField?: string;
+  /** Allows the shared record editor to offer a self-service create action; server authorization remains authoritative. */
+  selfServiceCreate?: boolean;
+  /** Supplies plugin-owned defaults for new records; caller values always take precedence. */
+  defaultsForCreate?: (payload: Record<string, unknown>, context: RecordValidationContext) => Record<string, unknown> | Promise<Record<string, unknown>>;
+  /** Whitelisted anonymous read projection for published records, used by public catalog pages. */
+  publicRead?: { states: string[]; fields: string[] };
+  /** Computes the number of unoccupied capacity slots for a public listing. */
+  seatAvailability?: { capacityField: string; reservationKind: string; relationField: string; reservedStates: string[]; outputField: string };
   /** Optional authoritative record policy for assignments that must override broad plugin grants. */
   authorizeRecord?: (actorId: string, action: string, state: string, payload: Record<string, unknown>, context: RecordValidationContext) => boolean | Promise<boolean>;
   /** Optional resource-aware authorization for creating a record without granting workspace-wide write access. */
   authorizeCreate?: (actorId: string, payload: Record<string, unknown>, context: RecordValidationContext) => boolean | Promise<boolean>;
+  /** Optional record-scoped policy for uploading or reading generic files attached to a specific immutable revision. */
+  authorizeAttachment?: (actorId: string, action: "upload" | "read" | "preview", state: string, payload: Record<string, unknown>, context: RecordValidationContext) => boolean | Promise<boolean>;
   /** Marks records created only by plugin-owned operations, not by the generic record form. */
   serverCreated?: boolean;
+  /** Copies immutable file attachments into each new record revision, retaining the same files across state and payload edits. */
+  carryAttachmentsOnVersion?: boolean;
   /** Declarative plugin-owned operations shown in the shared record detail view. */
   detailActions?: Array<{
     id: string;
@@ -132,12 +166,34 @@ export type RecordKindContribution = {
   authorizeTransition?: (from: string, to: string, payload: Record<string, unknown>, context: RecordValidationContext) => boolean | Promise<boolean>;
   /** Lets a plugin prepare its own payload when a validated state transition occurs. */
   prepareTransition?: (from: string, to: string, payload: Record<string, unknown>, context: RecordValidationContext) => Record<string, unknown> | Promise<Record<string, unknown>>;
+  /** Returns bounded, same-kind related state transitions to apply atomically after this transition. */
+  transitionEffects?: (from: string, to: string, payload: Record<string, unknown>, context: RecordValidationContext) => RecordTransitionEffect[] | Promise<RecordTransitionEffect[]>;
   /** Lets a plugin pause or resume linked generic deadline clocks as part of the same atomic transition. */
   deadlineEffects?: (from: string, to: string, payload: Record<string, unknown>, context: RecordValidationContext) => Array<{ recordId: string; event: "pause" | "resume"; reason: string }> | Promise<Array<{ recordId: string; event: "pause" | "resume"; reason: string }>>;
   /** Applies exact resource-role grants atomically with a validated state transition. */
   recordRoleEffects?: (from: string, to: string, payload: Record<string, unknown>, context: RecordValidationContext) => Array<{ userId: string; roleId: string; recordId: string; effect: "grant" | "revoke" }> | Promise<Array<{ userId: string; roleId: string; recordId: string; effect: "grant" | "revoke" }>>;
   /** Optional semantic checks owned by the plugin; warnings remain reviewable, errors prevent persistence. */
   validate?: (payload: Record<string, unknown>, context: RecordValidationContext) => RecordValidationIssue[] | Promise<RecordValidationIssue[]>;
+};
+
+export type RecordAccessPolicy = {
+  targetPluginId: string;
+  targetKind: string;
+  /** Keeps this policy active when its owning child plugin is suspended. */
+  enforceWhenDisabled?: boolean;
+  /** Same-workspace record kinds this policy may inspect while a plugin is suspended. */
+  policyReadTargets?: Array<{ pluginId: string; kind: string }>;
+  validateSelfServiceCreate?: (payload: Record<string, unknown>, context: RecordValidationContext) => RecordValidationIssue[] | Promise<RecordValidationIssue[]>;
+  validateSelfServiceSubmit?: (payload: Record<string, unknown>, context: RecordValidationContext) => RecordValidationIssue[] | Promise<RecordValidationIssue[]>;
+  isPubliclyAvailable?: (record: ResolvedRecordReference, context: RecordValidationContext) => boolean | Promise<boolean>;
+};
+
+export type RecordWebhookEvent = { type: string; label: string; version: number };
+export type RecordWebhookResource = { workspace_id: string; id: string; plugin_id: string; kind: string; state: string; revision: number; payload: Record<string, unknown> };
+export type RecordWebhookContribution = {
+  sourcePluginId: string;
+  events: RecordWebhookEvent[];
+  onSnapshot: (record: RecordWebhookResource, previousState?: string) => string[];
 };
 
 export type RecordBoardDefinition={
@@ -170,6 +226,8 @@ export type PluginDefinition = {
   name: string;
   version: string;
   description?: string;
+  /** Explicit parent for product-owned child plugins that extend a reusable Orbit capability. */
+  parentPlugin?: string;
   dependencies?: string[];
   /** Plugin-owned API route matcher; the host uses it for routing and access control. */
   handlesRoute?: (path: string) => boolean;
@@ -181,6 +239,10 @@ export type PluginDefinition = {
   capabilities?: CapabilityDefinition[];
   actions?: ActionDefinition[];
   connectionProvider?: ConnectionProviderDefinition;
+  /** Optional child-plugin policies for public visibility and self-service creation in another record domain. */
+  recordAccessPolicies?: RecordAccessPolicy[];
+  /** Plugin-owned domain events over the reusable Orbit webhook outbox. */
+  recordEvents?: RecordWebhookContribution;
   contributions?: PluginContribution;
 };
 

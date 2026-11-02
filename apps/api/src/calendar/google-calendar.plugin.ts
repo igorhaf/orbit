@@ -24,7 +24,7 @@ import { Db } from "../db";
 import { FeaturesService } from "../features";
 import { PluginActionContext, PluginDefinition } from "../plugins/contract";
 import { SecretVault } from "../secrets";
-import {GoogleCredentials,GOOGLE_CALENDAR_SCOPES} from '../google/credentials';
+import {GoogleCredentials,GOOGLE_CALENDAR_SCOPES,GOOGLE_MEET_ATTENDANCE_SCOPE} from '../google/credentials';
 import {googleRedirectUri} from '../google/redirect-uri';
 import {
   Availability,
@@ -78,6 +78,7 @@ type GoogleEvent = {
   originalStartTime?: GoogleDate;
   attendees?: unknown[];
   conferenceData?: unknown;
+  extendedProperties?: { private?: Record<string, string> };
   eventType?: string;
   [key: string]: unknown;
 };
@@ -260,8 +261,11 @@ export class GoogleCalendarPlugin
   private redirectUri() {
     return googleRedirectUri('calendar');
   }
-  async oauthUrl(ownerId: string) {
-    return (this.google??new GoogleCredentials(this.db,this.vault)).start(ownerId,'calendar',GOOGLE_CALENDAR_SCOPES,this.redirectUri());
+  async oauthUrl(ownerId: string, capability: "calendar" | "meet_attendance" = "calendar") {
+    const scopes = capability === "meet_attendance"
+      ? [...GOOGLE_CALENDAR_SCOPES, GOOGLE_MEET_ATTENDANCE_SCOPE]
+      : GOOGLE_CALENDAR_SCOPES;
+    return (this.google??new GoogleCredentials(this.db,this.vault)).start(ownerId,'calendar',scopes,this.redirectUri());
   }
   getConnectUrl(ownerId:string){return this.oauthUrl(ownerId)}
   async oauthCallback(code: string, state: string) {
@@ -508,6 +512,10 @@ export class GoogleCalendarPlugin
       "SELECT id,etag,card_id FROM calendar_items WHERE source_id=$1 AND external_id=$2",
       [source.id, event.id],
     );
+    const externalOperationKey = event.extendedProperties?.private?.orbitOperationKey;
+    const operationKey = typeof externalOperationKey === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(externalOperationKey)
+      ? externalOperationKey : undefined;
     const row = await this.db.one<Record<string, unknown>>(
       `INSERT INTO calendar_items(owner_id,source_id,resource_type,external_resource_id,external_id,title,description,start_at,end_at,all_day,time_zone,location,recurrence,attendees,conference,status,external_url,etag,series_external_id,occurrence_external_id,provider_updated_at,operation_id,metadata)
       VALUES($1,$2,'event',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
@@ -536,7 +544,7 @@ export class GoogleCalendarPlugin
           null,
         event.updated ? new Date(event.updated) : null,
         operationId || null,
-        JSON.stringify({ eventType: event.eventType || "default" }),
+        JSON.stringify({ eventType: event.eventType || "default", ...(operationKey ? { operationKey } : {}) }),
       ],
     );
     if (!old || old.etag !== event.etag)
@@ -610,6 +618,7 @@ export class GoogleCalendarPlugin
     }
   }
   private toItem(row: Record<string, unknown>): CalendarItem {
+    const conference = this.normalizeConference(row.conference);
     return {
       id: String(row.id),
       sourceId: String(row.source_id),
@@ -628,9 +637,38 @@ export class GoogleCalendarPlugin
       status: String(row.status || "confirmed"),
       recurrence: row.recurrence as unknown[],
       attendees: row.attendees as unknown[],
-      conference: row.conference,
+      conference,
       metadata: (row.metadata || {}) as Record<string, unknown>,
     };
+  }
+  private normalizeConference(value: unknown) {
+    if (!value) return value;
+    let data: unknown = value;
+    if (typeof data === "string") {
+      try { data = JSON.parse(data) as unknown; } catch { return value; }
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return value;
+    const conference = data as Record<string, unknown>;
+    const entryPoints = Array.isArray(conference.entryPoints) ? conference.entryPoints : [];
+    const video = entryPoints.find((entry): entry is Record<string, unknown> =>
+      Boolean(entry) && typeof entry === "object" && !Array.isArray(entry)
+      && (entry as Record<string, unknown>).entryPointType === "video"
+      && typeof (entry as Record<string, unknown>).uri === "string",
+    );
+    const candidate = typeof conference.joinUrl === "string"
+      ? conference.joinUrl
+      : typeof video?.uri === "string" ? video.uri : undefined;
+    let joinUrl: string | undefined;
+    if (candidate) {
+      try {
+        const parsed = new URL(candidate);
+        if (parsed.protocol === "https:" && parsed.hostname === "meet.google.com"
+          && !parsed.username && !parsed.password && !parsed.port) joinUrl = parsed.toString();
+      } catch { /* Ignore malformed provider URLs. */ }
+    }
+    const safeConference = { ...conference };
+    delete safeConference.joinUrl;
+    return { ...safeConference, provider: "google_meet", ...(joinUrl ? { joinUrl } : {}) };
   }
   async syncSource(sourceId: string) {
     if (this.syncing.has(sourceId)) return;
@@ -756,8 +794,22 @@ export class GoogleCalendarPlugin
       [sourceId, ownerId, this.id],
     );
     if (!source) return fail("Calendário não encontrado.", 404);
-    const connection = await this.connection(source.connection_id, ownerId),
-      operationId = randomUUID();
+    const connection = await this.connection(source.connection_id, ownerId);
+    if (input.operationKey) {
+      const prior = await this.db.one<Record<string, unknown>>(
+        "SELECT * FROM calendar_items WHERE owner_id=$1 AND source_id=$2 AND metadata->>'operationKey'=$3",
+        [ownerId, source.id, input.operationKey],
+      );
+      if (prior) return this.getItem(ownerId, String(prior.id));
+      const query = new URLSearchParams({ privateExtendedProperty: `orbitOperationKey=${input.operationKey}`, maxResults: "2" });
+      const recovered = await this.request<{ items?: GoogleEvent[] }>(
+        connection,
+        `calendars/${encodeURIComponent(source.external_id)}/events?${query.toString()}`,
+      );
+      const recoveredEvent = recovered.items?.find((event) => event.extendedProperties?.private?.orbitOperationKey === input.operationKey);
+      if (recoveredEvent) return (await this.persist(source, recoveredEvent))!;
+    }
+    const operationId = randomUUID();
     const body: Record<string, unknown> = {
       summary: input.title,
       description: input.description || "",
@@ -774,6 +826,8 @@ export class GoogleCalendarPlugin
       location: input.location || undefined,
       attendees: input.attendees,
       recurrence: input.recurrence,
+      visibility: input.visibility,
+      ...(input.operationKey ? { extendedProperties: { private: { orbitOperationKey: input.operationKey } } } : {}),
     };
     if (input.conference)
       body.conferenceData = {
@@ -1159,8 +1213,8 @@ export class GoogleCalendarController {
       Promise.resolve(this.google.configured()),
     ]).then(([connections, configured]) => ({ configured, connections }));
   }
-  @Get("oauth/start") start(@Req() req: Request) {
-    return this.google.oauthUrl(this.features.user(req));
+  @Get("oauth/start") start(@Req() req: Request, @Query("capability") capability?: string) {
+    return this.google.oauthUrl(this.features.user(req), capability === "meet_attendance" ? "meet_attendance" : "calendar");
   }
   @Get("oauth/callback") async callback(
     @Query("code") code: string,

@@ -7,6 +7,7 @@ export type RecordDefinition = {
   initial: string;
   transitions: Record<string, string[]>;
   immutable?: string[];
+  sensitiveAttachments?: boolean;
   example: Record<string, unknown>;
 };
 export type RecordPlugin = {
@@ -541,6 +542,7 @@ export const recordPlugins: RecordPlugin[] = [
         initial: "draft",
         transitions: { draft: ["published"] },
         immutable: ["published"],
+        sensitiveAttachments: true,
         example: {},
       },
       review: published(

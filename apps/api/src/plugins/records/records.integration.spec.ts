@@ -20,6 +20,9 @@ import { genericPlugins, recordPlugins } from "./catalog";
 import { ExtensionRecords, ExtensionRecord } from "./records.service";
 import { DocumentScanner } from "./documents";
 import { AuditHistoryController, auditHistoryPlugin } from "./audit";
+import { suindaPlugin } from "../suinda/suinda.plugin";
+import { SuindaLearningService } from "../suinda/suinda.service";
+import { suindaCorporatePlugin } from "../suinda-corporate";
 
 test(
   "fresh migrations and independent plugin journeys preserve authorization, history and transactional idempotency",
@@ -27,19 +30,20 @@ test(
   async () => {
     if (!process.env.DATABASE_URL)
       throw new Error(
-        "Configure the DEV database URL before running integration tests.",
+        "Configure the isolated test database URL before running integration tests.",
       );
     const target = new URL(process.env.DATABASE_URL);
     target.hostname = process.env.ORBIT_TEST_DB_HOST || target.hostname;
     const adminUrl = new URL(target);
+    const adminContainer = process.env.ORBIT_TEST_DB_CONTAINER || "orbit-db-dev";
     adminUrl.username = execFileSync(
       "docker",
-      ["exec", "orbit-db-dev", "printenv", "POSTGRES_USER"],
+      ["exec", adminContainer, "printenv", "POSTGRES_USER"],
       { encoding: "utf8" },
     ).trim();
     adminUrl.password = execFileSync(
       "docker",
-      ["exec", "orbit-db-dev", "printenv", "POSTGRES_PASSWORD"],
+      ["exec", adminContainer, "printenv", "POSTGRES_PASSWORD"],
       { encoding: "utf8" },
     ).trim();
     const schema = "extensions_test_" + randomUUID().replaceAll("-", ""),
@@ -67,12 +71,14 @@ test(
       await migrateVersions(pool);
       const owner = randomUUID(),
         reviewer = randomUUID(),
+        learner = randomUUID(),
         outsider = randomUUID(),
         workspace = randomUUID(),
         other = randomUUID();
       for (const [key, root] of [
         [owner, true],
         [reviewer, false],
+        [learner, false],
         [outsider, false],
       ] as const)
         await pool.query(
@@ -84,13 +90,16 @@ test(
         [workspace, "Generic demo", owner, other, "Other workspace"],
       );
       await pool.query(
-        "INSERT INTO workspace_members(workspace_id,user_id) VALUES($1,$2),($1,$3)",
-        [workspace, owner, reviewer],
+        "INSERT INTO workspace_members(workspace_id,user_id) VALUES($1,$2),($1,$3),($1,$4)",
+        [workspace, owner, reviewer, learner],
       );
+      await pool.query("INSERT INTO access_grants(user_id,role_id) VALUES($1,'suinda_student')", [learner]);
       const registry = new PluginRegistry();
       registry.register(workspacesPlugin); registry.register(collectionsPlugin);
       for (const plugin of [...genericPlugins, auditHistoryPlugin])
         registry.register(plugin);
+      registry.register(suindaPlugin);
+      registry.register(suindaCorporatePlugin);
       const access = new AccessService(db);
       access.registerPlugins(registry.list());
       new WorkspacesService(db, access).onModuleInit();
@@ -116,6 +125,7 @@ test(
           (action) => `plugin.${plugin.id}.${action}`,
         ),
       );
+      permissions.push("plugin.suinda-learning.read");
       await pool.query(
         "INSERT INTO access_roles(id,name,permissions) VALUES($1,$2,$3)",
         ["demo_reviewer", "Generic reviewer", permissions],
@@ -151,6 +161,140 @@ test(
           reason: "Publish generic example",
           operation_key: randomUUID(),
         });
+      const suindaCourse = await create("suinda-learning", "course", {
+        code: "SUINDA-INTEGRATION-001",
+        description: "Jornada acadêmica PostgreSQL de integração",
+        modality: "online",
+        format: "cohort",
+        workload_mode: "manual",
+        workload_hours: 8,
+        version: 1,
+        currency: "BRL",
+      });
+      assert.equal(suindaCourse.state, "draft");
+      const publishedSuindaCourse = await publish(suindaCourse);
+      assert.equal(publishedSuindaCourse.state, "published");
+      assert.equal(publishedSuindaCourse.revision, 2);
+      assert.equal(
+        (await service.publicList("suinda-learning", "course")).some(
+          (record) => record.id === suindaCourse.id && record.state === "published"
+            && record.payload.code === "SUINDA-INTEGRATION-001",
+        ),
+        true,
+      );
+      const openSuindaCourse = await service.transition(
+        "suinda-learning",
+        suindaCourse.id,
+        owner,
+        {
+          state: "enrollment_open",
+          expected_revision: publishedSuindaCourse.revision,
+          reason: "Abrir inscrições da jornada de integração",
+          operation_key: randomUUID(),
+        },
+      );
+      const suindaCohort = await create("suinda-learning", "cohort", {
+        course_record_id: openSuindaCourse.id,
+        course_revision: openSuindaCourse.revision,
+        code: "TURMA-INTEGRATION-001",
+        starts_at: "2030-01-10T12:00:00.000Z",
+        ends_at: "2030-02-10T12:00:00.000Z",
+        enrollment_opens_at: new Date(Date.now() - 60_000).toISOString(),
+        enrollment_closes_at: "2030-01-09T23:59:59.000Z",
+        capacity: 12,
+      });
+      const enrollingSuindaCohort = await service.transition(
+        "suinda-learning",
+        suindaCohort.id,
+        owner,
+        {
+          state: "enrolling",
+          expected_revision: suindaCohort.revision,
+          reason: "Abrir turma de integração",
+          operation_key: randomUUID(),
+        },
+      );
+      assert.equal(enrollingSuindaCohort.state, "enrolling");
+      const publicSuindaCohorts = await service.publicRelatedList(
+        "suinda-learning",
+        "course",
+        suindaCourse.id,
+        "cohort",
+        "course_record_id",
+      );
+      assert.equal(publicSuindaCohorts.length, 1);
+      assert.equal(publicSuindaCohorts[0].id, suindaCohort.id);
+      assert.equal(publicSuindaCohorts[0].payload.course_revision, openSuindaCourse.revision);
+      assert.equal(publicSuindaCohorts[0].payload.seats_remaining, 12);
+      const suindaModule = await create("suinda-learning", "module", {
+        course_record_id: openSuindaCourse.id,
+        course_revision: openSuindaCourse.revision,
+        course_version: openSuindaCourse.payload.version,
+        position: 1,
+        objectives: ["Reconhecer os conceitos fundamentais"],
+        workload_hours: 1,
+      });
+      const publishedSuindaModule = await publish(suindaModule);
+      const suindaUnit = await create("suinda-learning", "learning_unit", {
+        module_record_id: publishedSuindaModule.id,
+        position: 1,
+        objectives: ["Aplicar o conceito em um exemplo"],
+      });
+      const publishedSuindaUnit = await publish(suindaUnit);
+      const suindaLesson = await create("suinda-learning", "lesson", {
+        module_record_id: publishedSuindaModule.id,
+        unit_record_id: publishedSuindaUnit.id,
+        position: 1,
+        content_type: "article",
+        body_markdown: "# Introdução\n\nEste material explica os conceitos fundamentais.\n\nConsulte o [guia de referência](https://example.test/guia) para continuar.",
+        workload_minutes: 45,
+        required: true,
+        downloadable: false,
+        objectives: ["Identificar os conceitos fundamentais"],
+      });
+      const publishedSuindaLesson = await publish(suindaLesson);
+      assert.equal(publishedSuindaLesson.state, "published");
+      assert.equal(publishedSuindaLesson.revision, 2);
+      assert.equal(publishedSuindaLesson.payload.unit_record_id, publishedSuindaUnit.id);
+      assert.equal(publishedSuindaLesson.payload.module_record_id, publishedSuindaModule.id);
+      const suindaLearning = new SuindaLearningService(db, access, registry, new DocumentScanner());
+      Object.assign(suindaLearning, { assertAvailable() {} });
+      assert.equal(await access.has(learner, "plugin.suinda-learning.read"), true);
+      assert.equal(await access.has(learner, "plugin.suinda-learning.write", "workspace", workspace), false);
+      assert.equal(await access.has(learner, "plugin.suinda-learning.manage", "workspace", workspace), false);
+      const draftEnrollment = await suindaLearning.create("suinda-learning", workspace, learner, {
+        kind: "enrollment",
+        title: "Inscrição de integração",
+        payload: {
+          course_record_id: openSuindaCourse.id,
+          course_revision: openSuindaCourse.revision,
+          cohort_record_id: suindaCohort.id,
+          cohort_revision: enrollingSuindaCohort.revision,
+          learner_user_id: learner,
+        },
+        operation_key: randomUUID(),
+      });
+      assert.equal(draftEnrollment.state, "application_draft");
+      await assert.rejects(
+        () => suindaLearning.submitOwnEnrollment(draftEnrollment.id, outsider, {
+          operation_key: randomUUID(),
+          expected_revision: draftEnrollment.revision,
+        }),
+        /Inscrição não encontrada/,
+      );
+      const submittedEnrollment = await suindaLearning.submitOwnEnrollment(draftEnrollment.id, learner, {
+        operation_key: randomUUID(),
+        expected_revision: draftEnrollment.revision,
+      });
+      assert.equal(submittedEnrollment.state, "submitted");
+      assert.equal(submittedEnrollment.amount_due, 0);
+      assert.equal(
+        (await pool.query(
+          "SELECT revision,state FROM extension_record_versions WHERE record_id=$1 ORDER BY revision",
+          [suindaCourse.id],
+        )).rowCount,
+        3,
+      );
       let lifecycleAllowed = false;
       registry.register({ id: "lifecycle-example", name: "Lifecycle example", version: "1.0.0", contributions: { recordKinds: { record: {
         label: "Lifecycle record", schema: { type: "object", properties: { content: { type: "string" } }, required: ["content"], additionalProperties: false },

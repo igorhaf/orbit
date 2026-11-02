@@ -20,6 +20,20 @@ openssl rand -hex 32
 
 Set the result as `ORBIT_BACKUP_KEY` in `apps/api/.env`. Do not commit the value. If the key is lost, the encrypted archives cannot be decrypted.
 
+## Approved-erasure ledger
+
+Approved Suindá erasures are recorded in an append-only HMAC-authenticated ledger outside PostgreSQL dumps. This prevents restoring older snapshots from bringing erased data back. Before enabling erasure execution, configure `ORBIT_ERASURE_LEDGER_KEY` with an independent 32-byte random key (`openssl rand -hex 32`); never reuse `ORBIT_BACKUP_KEY`. Preserve this key in a recovery secret store that is separate from the ledger and database backups. The ledger contains only opaque HMAC subject references and approved record/revision/path or attachment locators; it contains no removed values or plaintext account identifiers.
+
+For a new installation, initialize the genesis ledger explicitly after setting the key and mounting the persistent backup volume:
+
+```bash
+npm run db:backup -- init-erasure-ledger
+```
+
+The default ledger is `approved-erasures.v1.jsonl` and its signed `.head` file inside `ORBIT_BACKUP_DIR` (default `backups/`). Set `ORBIT_ERASURE_LEDGER_PATH` only when the ledger is on a separately mounted, durable volume. Back up the ledger and head together and preserve the key independently. Do not initialize over an existing ledger; the command refuses to overwrite. Erasure entries are first written as `prepared` before the database transaction and transition to `committed` only after its commit; confirmed rollbacks become `cancelled`. Restore applies committed entries, ignores cancelled entries, and fails closed while any prepared entry is unresolved. If the process crashes between ledger fsync and signed-head update, restore and subsequent appends fail closed. An operator can explicitly validate and advance a signed head to a complete authenticated tail with `npm run db:backup -- recover-erasure-ledger-head`; this never repeats or changes a database erasure. Reconcile prepared entries against the active database with `npm run db:backup -- reconcile-erasure-ledger`; it promotes only operations whose persisted state is completed and leaves all others unresolved. Truncated, tampered, or mismatched chains are rejected and require restoring ledger continuity from a trusted copy. A missing ledger or head blocks restore; never run the genesis command to silence this failure. A freshly restored database remains isolated until migration and ledger application both succeed.
+
+Promoting this mechanism from the Suindá branch to Orbit core requires moving the generic ledger, restore migration/scrub executor, CLI, tests and this documentation together. Do not copy Suindá-specific APIs or schema migration into the generic core.
+
 ## Configure Google Drive
 
 Create a Google OAuth web client, enable the Google Drive API, configure the shared `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and connect the Drive account in Orbit. The plugin requests the `https://www.googleapis.com/auth/drive.file` scope and creates separate **Orbit Backups**, **Orbit Vault Backups**, **Orbit Config Backups**, and **Orbit Card Attachments** folders. Choose the automatic account in the Backups page; if exactly one Drive account is connected, it is selected automatically. Keep `ORBIT_BACKUP_KEY` private and separate from the OAuth credentials.
@@ -55,6 +69,8 @@ npm run db:backup -- restore /path/to/orbit-backup.backup.enc
 ```
 
 The command checks the encrypted file and manifest, rejects the source database as a target, confirms that the target is empty, restores transactionally, and checks that the critical Orbit tables exist. It prints counts for users, boards, cards and attachments. Start a separate Orbit instance against this restored database and inspect the application before changing the production connection string.
+
+Do not treat a manual `pg_restore` or a successful archive verification as a completed recovery. A manually populated target must remain isolated and unavailable to application traffic until the current schema migrations and the same authenticated erasure-ledger application and verification have completed. Use the Orbit `restore` command for this guarded path; never point a live application at a raw restored dump.
 
 Keep the previous database and backups until the restored instance has been checked. A successful `pg_restore` proves the archive can be read; a restore rehearsal proves the application can use the recovered data. Rehearse recovery regularly and record how long it takes.
 

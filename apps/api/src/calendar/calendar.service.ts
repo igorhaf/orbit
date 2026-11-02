@@ -258,6 +258,13 @@ export class CalendarService {
     }
     if (body.conference !== undefined)
       result.conference = Boolean(body.conference);
+    if (body.visibility !== undefined) {
+      if (!["default", "public", "private", "confidential"].includes(String(body.visibility)))
+        return bad("Visibilidade inválida.");
+      result.visibility = body.visibility;
+    }
+    if (body.operation_key !== undefined)
+      result.operationKey = uid(body.operation_key);
     return result;
   }
   async create(

@@ -2,6 +2,7 @@ export type Preferences = {
   theme: 'light' | 'dark' | 'terroso';
   notifications: boolean;
   browserNotifications: boolean;
+  emailNotifications?: boolean;
   shortcuts: boolean;
   compactCards: boolean;
   vaultCategoryOrder?: string[];
@@ -17,6 +18,7 @@ export type User = {
   created_at?: string;
   role?: string;
   is_root?: boolean;
+  is_root_actor?: boolean;
   permissions?: string[];
 };
 export type Label = { id: string; name: string; color: string };
@@ -118,7 +120,7 @@ export type AiEffort = 'low'|'medium'|'high'|'xhigh';
 export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_internal_orbit?:boolean};
 export type PromptFileChange={path:string;kind:'add'|'delete'|'update';additions?:number;deletions?:number;diff?:string};
 export type PromptActivity={id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
-export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
+export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';multiple_agents?:boolean;summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
 export type ToolDiagnostic={run_id:string;card_id:string;board_id:string;card_title:string;board_title:string;created_at:string;kind:'missing'|'permission'|'command'|'authentication'|'version';tool:string;title:string;details:string;installCommands:string[];failedCommand:string|null};
 export type ToolDiagnostics={status:'error'|'success'|'running';issues:ToolDiagnostic[]};
 export type TrelloConnection = { id:string; trello_board_id:string; trello_board_name:string; enabled:boolean; last_synced_at:string|null; last_error:string|null; created_at:string };
@@ -154,13 +156,22 @@ export type AppNotification = { id: string; plugin_id: string; target_url?: stri
 export type CalendarSource = {id:string;provider_id:string;connection_id:string|null;connection_name?:string|null;external_id:string;name:string;time_zone:string|null;color:string|null;access_role:string|null;is_primary:boolean;selected:boolean;visible:boolean;is_default:boolean;capabilities:Record<string,boolean>;metadata:Record<string,unknown>;settings:Record<string,unknown>};
 export type CalendarItem = {id:string;sourceId:string;resourceType:'event'|'card';title:string;description?:string|null;start:string;end?:string|null;allDay:boolean;timeZone?:string|null;location?:string|null;externalResourceId?:string|null;cardId?:string|null;cardUrlToken?:string|null;externalUrl?:string|null;status?:string;recurrence?:unknown[];attendees?:unknown[];conference?:unknown;metadata:Record<string,unknown>};
 export type PluginCatalogAction = {id:string;name:string;permissions?:string[];requiredCapabilities?:string[];inputSchema?:Record<string,unknown>;outputSchema?:Record<string,unknown>};
-export type PluginCatalogItem = {id:string;name:string;version:string;enabled:boolean;configuredEnabled?:boolean;dependencies?:string[];description?:string;status?:"active"|"disabled"|"blocked";blockedBy?:string[];dependents?:string[];configurable?:boolean;capabilities:{id:string;name:string;permissions?:string[]}[];actions:PluginCatalogAction[];triggers?:unknown[];connectionProvider?:unknown;contributions?:Record<string,unknown>};
+export type PluginCatalogItem = {id:string;name:string;version:string;enabled:boolean;configuredEnabled?:boolean;dependencies?:string[];parentPlugin?:string;children?:string[];description?:string;status?:"active"|"disabled"|"blocked";blockedBy?:string[];dependents?:string[];configurable?:boolean;capabilities:{id:string;name:string;permissions?:string[]}[];actions:PluginCatalogAction[];triggers?:unknown[];connectionProvider?:unknown;contributions?:Record<string,unknown>};
 
 // Keep API calls on the same origin by default. Next.js proxies /api to Nest,
 // which also makes the app work from another device on the local network.
 const BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 export const getToken = () => typeof window === 'undefined' ? null : localStorage.getItem('orbit_token');
+export const getProfileSimulation = () => typeof window === 'undefined' ? null : localStorage.getItem('orbit_profile_simulation');
+export const profileSimulationHeaders = ():Record<string,string> => getProfileSimulation() ? { 'X-Orbit-Profile-Simulation': getProfileSimulation()! } : {};
+export const profileSimulationSocketAuth = () => ({ ...(getToken() ? { token:getToken()! } : {}), ...(getProfileSimulation() ? { profileSimulation:getProfileSimulation()! } : {}) });
+export const setProfileSimulation = (roleId:string|null) => {
+  if(typeof window==='undefined')return;
+  if(roleId)localStorage.setItem('orbit_profile_simulation',roleId);else localStorage.removeItem('orbit_profile_simulation');
+  window.dispatchEvent(new Event('orbit:profile-simulation-changed'));
+};
 export const setSession = (token: string, user: User) => {
+  setProfileSimulation(null);
   localStorage.setItem('orbit_token', token);
   localStorage.setItem('orbit_user', JSON.stringify(user));
   applyTheme(user.preferences?.theme || 'light');
@@ -168,6 +179,7 @@ export const setSession = (token: string, user: User) => {
   window.dispatchEvent(new Event('account:changed'));
 };
 export const clearSession = () => {
+  setProfileSimulation(null);
   localStorage.removeItem('orbit_token');
   localStorage.removeItem('orbit_user');
   applyTheme('light');
@@ -198,6 +210,7 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
       headers: {
         'Content-Type': 'application/json',
         ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        ...profileSimulationHeaders(),
         ...options.headers,
       },
       cache: 'no-store',
@@ -222,15 +235,37 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
   }
   return data as T;
 }
+export async function apiBlob(path: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      headers: {...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),...profileSimulationHeaders()},
+      cache: 'no-store',
+    });
+  } catch (reason) {
+    const detail = reason instanceof Error && reason.message ? ` (${reason.message})` : '';
+    throw new Error(`Não foi possível conectar à API. Verifique se o servidor está rodando.${detail}`);
+  }
+  if (!response.ok) {
+    const raw = await response.text();
+    let message = `A API respondeu ${response.status}${response.statusText ? ` (${response.statusText})` : ''}.`;
+    try {
+      const data = JSON.parse(raw) as { message?: unknown };
+      if (typeof data.message === 'string') message = data.message;
+    } catch { /* mantém a mensagem de status */ }
+    throw new Error(message);
+  }
+  return response.blob();
+}
 export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body?: unknown) =>
   api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 export async function commentAttachmentBlob(id:string):Promise<Blob>{
-  const response=await fetch(`${BASE}/comment-attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`}});
+  const response=await fetch(`${BASE}/comment-attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`,...profileSimulationHeaders()}});
   if(!response.ok)throw new Error('Não foi possível abrir o anexo.');
   return response.blob();
 }
 export async function authenticatedBlob(path:string):Promise<Blob>{
-  const response=await fetch(`${BASE}${path}`,{headers:{Authorization:`Bearer ${getToken()||''}`},cache:'no-store'});
+  const response=await fetch(`${BASE}${path}`,{headers:{Authorization:`Bearer ${getToken()||''}`,...profileSimulationHeaders()},cache:'no-store'});
   if(!response.ok)throw new Error('Não foi possível baixar o arquivo autorizado.');
   return response.blob();
 }

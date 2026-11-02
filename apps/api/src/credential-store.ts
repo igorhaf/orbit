@@ -50,7 +50,7 @@ export async function assertVaultReferencesRetained(db:Db,owner:string,item:stri
 }
 export async function loadVaultEnvironment(db:Db){
   for(const [key,value] of Object.entries(process.env))if(value?.startsWith('orbit-vault://')){
-    if(['DATABASE_URL','JWT_SECRET','VAULT_ENCRYPTION_KEY','VAULT_ENCRYPTION_KEY_PREVIOUS','ORBIT_SECRET_KEY','ORBIT_SECRET_KEY_PREVIOUS','ORBIT_BACKUP_KEY'].includes(key))throw new Error(`Referência do cofre não permitida em ${key}.`);
+    if(['DATABASE_URL','JWT_SECRET','VAULT_ENCRYPTION_KEY','VAULT_ENCRYPTION_KEY_PREVIOUS','ORBIT_SECRET_KEY','ORBIT_SECRET_KEY_PREVIOUS','ORBIT_DATA_ENCRYPTION_KEY','ORBIT_DATA_ENCRYPTION_KEY_PREVIOUS','ORBIT_BACKUP_KEY'].includes(key))throw new Error(`Referência do cofre não permitida em ${key}.`);
     try{process.env[key]=await resolveVaultReference(db,value)}catch{delete process.env[key];console.error(`Constante do cofre indisponível para ${key}. Configure novamente esta integração.`)}
   }
 }

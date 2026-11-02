@@ -59,6 +59,7 @@ const teamsScopes = [
   "offline_access",
   "User.Read",
   "OnlineMeetings.ReadWrite",
+  "OnlineMeetingArtifact.Read.All",
 ];
 const mailScopes = [
   "openid",

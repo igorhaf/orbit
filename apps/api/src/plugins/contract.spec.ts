@@ -50,6 +50,51 @@ test("plugin registry discovers definitions, actions, capabilities and connectio
   assert.deepEqual(registry.catalog()[0].contributions.settings, [{ id: "example-settings" }]);
 });
 
+test("explicit child plugins inherit lifecycle from their parent and appear in the catalog", () => {
+  const registry = new PluginRegistry();
+  registry.register({ id: "records-host", name: "Records host", version: "1.0.0" });
+  registry.register({ id: "learning-child", name: "Learning", version: "1.0.0", parentPlugin: "records-host", dependencies: ["records-host"] });
+  assert.equal(registry.catalog().find(plugin => plugin.id === "learning-child")?.parentPlugin, "records-host");
+  assert.deepEqual(registry.catalog().find(plugin => plugin.id === "records-host")?.children, ["learning-child"]);
+  assert.deepEqual(registry.dependents("records-host"), ["learning-child"]);
+  registry.setEnabled("records-host", false);
+  assert.equal(registry.isEnabled("learning-child"), false);
+  assert.throws(() => new PluginRegistry().register({ id: "orphan", name: "Orphan", version: "1.0.0", parentPlugin: "records-host" }), /declarar dependência do pai/);
+});
+
+test("record webhook contributions require valid namespaced events and a snapshot handler", () => {
+  const makeRegistry = () => {
+    const registry = new PluginRegistry();
+    registry.register({ id: "records-host", name: "Records host", version: "1.0.0" });
+    return registry;
+  };
+  const contribution: PluginDefinition = {
+    id: "event-child", name: "Event child", version: "1.0.0", dependencies: ["records-host"],
+    recordEvents: {
+      sourcePluginId: "records-host",
+      events: [{ type: "records-host.application.created", label: "Created", version: 1 }],
+      onSnapshot: () => [],
+    },
+  };
+  makeRegistry().register(contribution);
+  assert.throws(() => makeRegistry().register({ ...contribution, recordEvents: { ...contribution.recordEvents!, onSnapshot: undefined } as unknown as NonNullable<PluginDefinition["recordEvents"]> }), /Eventos de registro inválidos/);
+  assert.throws(() => makeRegistry().register({ ...contribution, recordEvents: { ...contribution.recordEvents!, events: [{ type: "record.created", label: "Created", version: 1 }] } }), /Eventos de registro inválidos/);
+  assert.throws(() => makeRegistry().register({ ...contribution, recordEvents: { ...contribution.recordEvents!, events: [{ type: "records-host.application.created", label: "  ", version: 1 }] } }), /Eventos de registro inválidos/);
+});
+
+test("record access policies can remain enforced after their child plugin is disabled", () => {
+  const registry = new PluginRegistry();
+  registry.register({ id: "policy-host", name: "Policy host", version: "1.0.0" });
+  registry.register({ id: "policy-child", name: "Policy child", version: "1.0.0", parentPlugin: "policy-host",
+    dependencies: ["policy-host"], recordAccessPolicies: [
+      { targetPluginId: "policy-host", targetKind: "application", enforceWhenDisabled: true },
+      { targetPluginId: "policy-host", targetKind: "cohort" },
+    ] });
+  registry.setEnabled("policy-child", false);
+  assert.deepEqual(registry.recordAccessPolicies("policy-host", "application").map((policy) => policy.targetKind), ["application"]);
+  assert.deepEqual(registry.recordAccessPolicies("policy-host", "cohort"), []);
+});
+
 test('plugin configuration fields validate their declared control and option schema',()=>{
   const registry=new PluginRegistry();
   registry.register({...example(),configuration:[

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, send, authenticatedBlob, User } from "@/lib/api";
 import {
   AccessShell,
@@ -9,6 +10,8 @@ import {
   accessPanel as panel,
 } from "@/components/access-shell";
 import SchemaFields, { Schema, fieldLabel } from "./SchemaFields";
+import SuindaLessonMaterials from "../suinda/SuindaLessonMaterials";
+import SuindaLessonAuthoringAI from "../suinda/SuindaLessonAuthoringAI";
 
 type Kind = {
   id: string;
@@ -16,6 +19,9 @@ type Kind = {
   schema: Schema;
   initial: string;
   serverCreated?: boolean;
+  stateLabels?: Record<string, string>;
+  personalOwnerField?: string;
+  selfServiceCreate?: boolean;
   detailActions?: Array<{
     id: string;
     label: string;
@@ -48,6 +54,7 @@ type Plugin = {
   enabled: boolean;
   kinds: Kind[];
 };
+export type ExtensionSummaryCard = { kind: string; label: string; states?: string[]; audience?: "staff" | "member" };
 type Workspace = { id: string; name: string };
 type RecordRow = {
   id: string;
@@ -57,6 +64,7 @@ type RecordRow = {
   revision: number;
   payload: Record<string, unknown>;
 };
+type RecordCount = { kind: string; state: string; count: number };
 type Detail = RecordRow & {
   next_states: string[];
   validation_issues?: Array<{ severity: "error" | "warning"; code: string; path: string; message: string }>;
@@ -92,7 +100,8 @@ function operationKey() {
   const hex = Array.from(data, (b) => b.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-const stateLabel = (state: string) =>
+const stateLabel = (state: string, labels?: Record<string, string>) =>
+  labels?.[state] ||
   ({
     draft: "Rascunho",
     published: "Publicado",
@@ -113,8 +122,10 @@ const stateLabel = (state: string) =>
     running: "Em contagem",
     paused: "Pausado",
   })[state] || state;
-
-export default function ExtensionPage({ pluginId, workspaceId, recordId, embedded=false, onChanged }: { pluginId: string; workspaceId?:string;recordId?:string;embedded?:boolean;onChanged?:()=>Promise<void> }) {
+export default function ExtensionPage({ pluginId, workspaceId, recordId, embedded=false, onChanged, summaryCards=[] }: { pluginId: string; workspaceId?:string;recordId?:string;embedded?:boolean;onChanged?:()=>Promise<void>;summaryCards?:ExtensionSummaryCard[] }) {
+  const searchParams = useSearchParams();
+  const queryWorkspace = searchParams.get("workspace") || "";
+  const queryRecord = searchParams.get("record") || "";
   const [user, setUser] = useState<User | null>(null),
     [plugin, setPlugin] = useState<Plugin | null>(null),
     [spaces, setSpaces] = useState<Workspace[]>([]),
@@ -124,9 +135,12 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     publish: false,
   });
   const [rows, setRows] = useState<RecordRow[]>([]),
+    [recordCounts, setRecordCounts] = useState<RecordCount[]>([]),
     [detail, setDetail] = useState<Detail | null>(null),
     [kind, setKind] = useState(""),
     [editing, setEditing] = useState(false);
+  const requestedKind = searchParams.get("kind") || "";
+  const kindFilter = plugin?.kinds.some((item) => item.id === requestedKind) ? requestedKind : "";
   const [templateVersion, setTemplateVersion] = useState(0);
   const [title, setTitle] = useState(""),
     [payload, setPayload] = useState<Record<string, unknown>>({}),
@@ -145,6 +159,13 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     [sourceRevision, setSourceRevision] = useState(1);
   const [relatedRecord, setRelatedRecord] = useState("");
   const [relatedRevision, setRelatedRevision] = useState(1);
+  const [questionBankFile, setQuestionBankFile] = useState("");
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateCode, setDuplicateCode] = useState("");
+  const [duplicateTitle, setDuplicateTitle] = useState("");
+  const [duplicateCopySchedule, setDuplicateCopySchedule] = useState(false);
+  const [duplicateStartDate, setDuplicateStartDate] = useState("");
+  const [duplicateNotice, setDuplicateNotice] = useState("");
   const selection = useRef(0);
   const formSelection = useRef(0);
   const [formSchema, setFormSchema] = useState<Schema | null>(null);
@@ -162,11 +183,18 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     } catch (error) { if (generation === formSelection.current) setError((error as Error).message); }
   }
   const editableKinds = (plugin?.kinds || []).filter((item) => !item.serverCreated);
+  const visibleRows = kindFilter ? rows.filter((row) => row.kind === kindFilter) : rows;
   const definition = plugin?.kinds.find(
-    (item) => item.id === (editing ? kind : detail?.kind || kind),
+    (item) => item.id === (editing ? kind : detail?.kind || kind || kindFilter),
   );
-  const canWrite = Boolean(user?.is_root || workspaceAccess.write),
+  const selfCreateKind = Boolean(definition?.selfServiceCreate && definition.personalOwnerField && user);
+  const editableKindsForForm = selfCreateKind ? editableKinds.filter((item) => item.id === kindFilter) : editableKinds;
+  const canWrite = Boolean(user?.is_root || workspaceAccess.write || selfCreateKind),
     canPublish = Boolean(user?.is_root || workspaceAccess.publish);
+  const countRecords = (kindId: string, states?: string[]) => recordCounts.filter((row) => row.kind === kindId && (!states || states.includes(row.state))).reduce((total, row) => total + row.count, 0);
+  const staffSummary = Boolean(user?.is_root || workspaceAccess.write || workspaceAccess.publish);
+  const dashboardMetrics = summaryCards.filter((card) => !card.audience || card.audience === (staffSummary ? "staff" : "member"))
+    .map((card) => [card.label, countRecords(card.kind, card.states)] as [string, number]);
   const detailCanWrite = Boolean(user?.is_root || (detail?.record_permissions ? detail.record_permissions.write : canWrite)),
     detailCanPublish = Boolean(user?.is_root || (detail?.record_permissions ? detail.record_permissions.publish : canPublish));
   const refreshCatalog = useCallback(async () => {
@@ -180,20 +208,24 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
         if (active) {
           setUser(account);
           setSpaces(workspaces);
-          const query = new URLSearchParams(window.location.search);
-          const requestedWorkspace = workspaceId || query.get("workspace");
-          const requestedRecord = recordId || query.get("record");
+          const requestedWorkspace = workspaceId || queryWorkspace;
+          const requestedRecord = recordId || queryRecord;
           if (requestedWorkspace && workspaces.some((space) => space.id === requestedWorkspace)) {
             void Promise.all([
               api<RecordRow[]>(`/extensions/${pluginId}/workspaces/${encodeURIComponent(requestedWorkspace)}/records`),
               api<{ write: boolean; publish: boolean }>(`/extensions/${pluginId}/workspaces/${encodeURIComponent(requestedWorkspace)}/access`),
               requestedRecord ? api<Detail>(`/extensions/${pluginId}/records/${encodeURIComponent(requestedRecord)}`) : Promise.resolve(null),
-            ]).then(([records, permissions, selected]) => {
+              api<{ counts: RecordCount[] }>(`/extensions/${pluginId}/workspaces/${encodeURIComponent(requestedWorkspace)}/summary`),
+            ]).then(([records, permissions, selected, summary]) => {
               if (!active) return;
               setWorkspace(requestedWorkspace);
               setRows(records);
+              setRecordCounts(summary.counts);
               setWorkspaceAccess(permissions);
-              if (selected && (selected as Detail & { workspace_id: string }).workspace_id === requestedWorkspace) setDetail(selected);
+              if (selected && (selected as Detail & { workspace_id: string }).workspace_id === requestedWorkspace) {
+                setDetail(selected);
+                if (requestedRecord) requestAnimationFrame(() => document.getElementById("extension-record-detail-title")?.focus());
+              }
             }).catch((error) => { if (active) setError(error.message); });
           }
         }
@@ -221,7 +253,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
       active = false;
       window.removeEventListener("plugins:changed", refresh);
     };
-  }, [pluginId, refreshCatalog, workspaceId, recordId]);
+  }, [pluginId, refreshCatalog, workspaceId, recordId, queryWorkspace, queryRecord]);
 
   async function chooseWorkspace(id: string) {
     const request = ++selection.current;
@@ -230,17 +262,20 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     setDetail(null);
     setEditing(false);
     setRows([]);
+    setRecordCounts([]);
     setError("");
     if (!id) return;
     try {
-      const [records, permissions] = await Promise.all([
+      const [records, permissions, summary] = await Promise.all([
         api<RecordRow[]>(`/extensions/${pluginId}/workspaces/${id}/records`),
         api<{ write: boolean; publish: boolean }>(
           `/extensions/${pluginId}/workspaces/${id}/access`,
         ),
+        api<{ counts: RecordCount[] }>(`/extensions/${pluginId}/workspaces/${id}/summary`),
       ]);
       if (selection.current === request) {
         setRows(records);
+        setRecordCounts(summary.counts);
         setWorkspaceAccess(permissions);
       }
     } catch (error) {
@@ -258,6 +293,38 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
       if (selection.current === request) setError((error as Error).message);
     }
   }
+  function exportQuestionBank(record: Detail) {
+    const data = JSON.stringify({ format: "orbit.suinda.question-bank", version: 1, title: record.title,
+      payload: { category: record.payload.category ?? null, tags: record.payload.tags || [], questions: record.payload.questions || [] } }, null, 2);
+    const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${record.title.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-|-$/g, "") || "banco-de-questoes"}.json`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  async function importQuestionBank(selected: File | undefined) {
+    setQuestionBankFile(selected?.name || "");
+    if (!selected) return;
+    setError("");
+    try {
+      if (selected.size > 2_000_000) throw new Error("O arquivo JSON excede 2 MB.");
+      const data: unknown = JSON.parse(await selected.text());
+      if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Arquivo de banco de questões inválido.");
+      const bundle = data as { format?: unknown; version?: unknown; title?: unknown; payload?: unknown };
+      if (bundle.format !== "orbit.suinda.question-bank" || bundle.version !== 1
+        || typeof bundle.payload !== "object" || !bundle.payload || Array.isArray(bundle.payload))
+        throw new Error("O arquivo não é uma exportação compatível de banco de questões do Suindá.");
+      const source = bundle.payload as Record<string, unknown>;
+      if (!Array.isArray(source.questions) || source.questions.length < 1 || source.questions.length > 500)
+        throw new Error("O arquivo precisa conter entre 1 e 500 questões.");
+      setTitle(typeof bundle.title === "string" ? `${bundle.title} (importado)` : "Banco de questões importado");
+      setPayload({ category: source.category ?? null, tags: Array.isArray(source.tags) ? source.tags : [], questions: source.questions });
+      setMessage("Banco carregado como novo rascunho. Revise o conteúdo antes de salvar e publicar.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível importar o banco de questões.");
+    }
+  }
   async function action(callback: () => Promise<unknown>) {
     setBusy(true);
     setError("");
@@ -269,6 +336,8 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
           `/extensions/${pluginId}/workspaces/${workspace}/records`,
         ),
       );
+      const summary = await api<{ counts: RecordCount[] }>(`/extensions/${pluginId}/workspaces/${workspace}/summary`);
+      setRecordCounts(summary.counts);
       if (result?.id) await open(result.id);
       else if (detail) await open(detail.id);
       setMessage("Operação concluída.");
@@ -283,9 +352,9 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     formSelection.current++;
     setFormSchema(null);
     if (pluginId === "forms" && row?.kind === "submission") void chooseForm(String(row.payload.form_id), Number(row.payload.form_revision), true);
-    setKind(row?.kind || editableKinds[0]?.id || "");
+    setKind(row?.kind || kindFilter || editableKinds[0]?.id || "");
     setTitle(row?.title || "");
-    setPayload(row?.payload || {});
+    setPayload(row?.payload || (selfCreateKind && user && definition?.personalOwnerField ? { [definition.personalOwnerField]: user.id } : {}));
     setDetail(row ? detail : null);
     setReason("");
     setEditing(true);
@@ -445,6 +514,10 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
             </select>
           </label>
           {workspace && plugin?.enabled && (
+            <>
+            {summaryCards.length > 0 && !kindFilter && <section aria-label="Resumo da extensão" className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {dashboardMetrics.map(([label, value]) => <article key={label} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4"><p className="text-sm text-[#9aa7b5]">{label}</p><p className="mt-2 text-2xl font-semibold text-white">{value}</p></article>)}
+            </section>}
             <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(220px,1fr)_minmax(0,2fr)]">
               <section className={panel}>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -461,7 +534,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                 </div>
                 <p className="mb-3 text-xs">Até 100 registros recentes.</p>
                 <div className="space-y-2">
-                  {rows.map((row) => (
+                  {visibleRows.map((row) => (
                     <button
                       type="button"
                       key={row.id}
@@ -470,13 +543,14 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                       className="block min-h-11 w-full min-w-0 rounded border p-3 text-left"
                     >
                       <strong className="break-words">{row.title}</strong>
+                      <span className="block text-xs text-[#8d99a8]">{plugin?.kinds.find((item) => item.id === row.kind)?.label || row.kind}</span>
                       <span className="block text-sm">
-                        {stateLabel(row.state)} · v{row.revision}
+                        {stateLabel(row.state, plugin?.kinds.find((item) => item.id === row.kind)?.stateLabels)} · v{row.revision}
                       </span>
                     </button>
                   ))}
                 </div>
-                {!rows.length && <p>Nenhum registro neste workspace.</p>}
+                {!visibleRows.length && <p>{kindFilter ? "Nenhum registro desta área neste workspace." : "Nenhum registro neste workspace."}</p>}
               </section>
               <section className={`${panel} min-w-0`}>
                 {editing ? (
@@ -503,7 +577,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                           setPayload({});
                         }}
                       >
-                        {editableKinds.map((kind) => (
+                        {editableKindsForForm.map((kind) => (
                           <option key={kind.id} value={kind.id}>
                             {kind.label}
                           </option>
@@ -528,6 +602,11 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                         onChange={(event) => setTitle(event.target.value)}
                       />
                     </label>
+                    {pluginId === "suinda-learning" && kind === "question_bank" && !detail && <label className="block">
+                      Importar banco exportado pelo Suindá (JSON, até 2 MB)
+                      <input className={input} type="file" accept=".json,application/json" onChange={(event) => void importQuestionBank(event.target.files?.[0])} />
+                      {questionBankFile && <span className="mt-1 block text-xs text-slate-400">{questionBankFile}</span>}
+                    </label>}
                     {pluginId === "documents" && kind === "document" ? (
                       <>
                         <label className="block">
@@ -600,6 +679,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                             schema={pluginId === "forms" && kind === "submission" && formSchema ? { ...definition.schema, properties: { ...definition.schema.properties, answers: { ...formSchema, title: "Respostas" } } } : definition.schema}
                             value={payload}
                             onChange={setPayload}
+                            records={rows}
                             skip={
                               pluginId === "workflows" && kind === "process"
                                 ? ["current_state", "protocol"]
@@ -651,16 +731,18 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                   </form>
                 ) : detail ? (
                   <div className="space-y-5">
+                    {pluginId === "suinda-learning" && detail.kind === "lesson" && detailCanWrite && <><SuindaLessonAuthoringAI lessonId={detail.id} revision={detail.revision} /><SuindaLessonMaterials key={detail.id} lessonId={detail.id} revision={detail.revision} state={detail.state} payload={detail.payload} canUpload={detailCanWrite} onRevisionSaved={() => open(detail.id)} /></>}
                     <div className="flex flex-wrap justify-between gap-3">
                       <div className="min-w-0">
-                        <h2 className="break-words text-xl font-semibold">
+                        <h2 id="extension-record-detail-title" tabIndex={-1} className="break-words text-xl font-semibold focus:outline focus:outline-2 focus:outline-offset-4 focus:outline-cyan-200">
                           {detail.title}
                         </h2>
                         <p>
-                          {stateLabel(detail.state)} · versão {detail.revision}
+                          {stateLabel(detail.state, definition?.stateLabels)} · versão {detail.revision}
                         </p>
                         <p className="break-all text-xs">ID: {detail.id}</p>
                       </div>
+                      {pluginId === "suinda-learning" && detail.kind === "question_bank" && <button type="button" className={button} onClick={() => exportQuestionBank(detail)}>Exportar JSON</button>}
                       {detailCanWrite &&
                         (!definition?.immutable?.includes(detail.state) ||
                           detail.state === "published") &&
@@ -674,6 +756,30 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                           </button>
                         )}
                     </div>
+                    {pluginId === "suinda-learning" && detail.kind === "course" && detailCanWrite && <section className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.04] p-4">
+                      {!duplicateOpen ? <><button type="button" className={button} onClick={() => { setDuplicateCode(`${String(detail.payload.code || "CURSO")}-NOVA`); setDuplicateTitle(`${detail.title} — Nova edição`); setDuplicateNotice(""); setDuplicateOpen(true); }}>Duplicar como nova edição</button>{duplicateNotice && <p role="status" className="mt-2 text-sm text-emerald-200">{duplicateNotice}</p>}</> : <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void action(async () => {
+                        const result = await send<RecordRow & { cohorts_copied?: number; sessions_copied?: number }>(`/extensions/suinda-learning/courses/${encodeURIComponent(detail.id)}/duplicate`, "POST", {
+                          expected_revision: detail.revision,
+                          new_code: duplicateCode,
+                          new_title: duplicateTitle,
+                          copy_schedule: duplicateCopySchedule,
+                          schedule_start_date: duplicateCopySchedule ? duplicateStartDate : undefined,
+                          operation_key: operationKey(),
+                        });
+                        setDuplicateOpen(false);
+                        setDuplicateNotice(duplicateCopySchedule
+                          ? `Edição criada com ${result.cohorts_copied || 0} turma(s) e ${result.sessions_copied || 0} encontro(s) replanejados. Configure novos links das salas online.`
+                          : "Edição criada com currículo e materiais copiados; nenhuma agenda foi duplicada.");
+                        return result;
+                      }); }}>
+                        <label className="block text-sm font-medium">Código da nova edição<input className={`${input} mt-1`} required maxLength={80} value={duplicateCode} onChange={(event) => setDuplicateCode(event.target.value)} /></label>
+                        <label className="block text-sm font-medium">Nome da nova edição<input className={`${input} mt-1`} required maxLength={240} value={duplicateTitle} onChange={(event) => setDuplicateTitle(event.target.value)} /></label>
+                        <label className="flex min-h-10 items-center gap-3 text-sm text-slate-200 sm:col-span-2"><input type="checkbox" checked={duplicateCopySchedule} onChange={(event) => { const checked = event.target.checked; setDuplicateCopySchedule(checked); if (checked && !duplicateStartDate) { const date = new Date(); date.setDate(date.getDate() + 30); setDuplicateStartDate(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`); } }} className="size-4 accent-cyan-300" /> Copiar turmas e agenda para esta edição</label>
+                        {duplicateCopySchedule && <label className="block text-sm font-medium sm:col-span-2">Data de início da primeira turma<input type="date" min={new Date().toISOString().slice(0, 10)} className={`${input} mt-1`} required value={duplicateStartDate} onChange={(event) => setDuplicateStartDate(event.target.value)} /><span className="mt-1 block text-xs font-normal text-slate-400">Os dias relativos e horários das turmas/encontros serão deslocados a partir desta data. Links de reunião e gravações não são reutilizados.</span></label>}
+                        <p className="text-sm text-slate-400 sm:col-span-2">Cria um curso em rascunho e copia módulos, aulas, pré-requisitos e anexos. Matrículas e avaliações não são copiadas. A agenda é opcional e passa pelas validações de sala e capacidade.</p>
+                        <div className="flex flex-wrap gap-2 sm:col-span-2"><button type="submit" className={button} disabled={busy}>Criar edição</button><button type="button" className={`${button} !bg-[#44546f]`} disabled={busy} onClick={() => setDuplicateOpen(false)}>Cancelar</button></div>
+                      </form>}
+                    </section>}
                     {detail.validation_issues !== undefined && detail.validation_issues.length > 0 && (
                       <section
                         aria-label="Validação do registro"
@@ -828,7 +934,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                                     )
                                   }
                                 >
-                                  {stateLabel(state)}
+                                  {stateLabel(state, definition?.stateLabels)}
                                 </button>
                               ))
                             )}
@@ -963,7 +1069,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                             className="min-w-0 rounded border p-3"
                           >
                             <strong>
-                              v{version.revision} · {stateLabel(version.state)}
+                              v{version.revision} · {stateLabel(version.state, definition?.stateLabels)}
                             </strong>
                             <p className="break-words text-sm">
                               {version.reason}
@@ -989,6 +1095,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                 )}
               </section>
             </div>
+            </>
           )}
         </>
       )}

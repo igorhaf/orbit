@@ -39,6 +39,7 @@ import {
   AppHeader,
   Avatar,
   CreateBoardModal,
+  Modal,
   useConfirmModal,
   WorkspaceSidebar,
 } from "@/components/ui";
@@ -51,6 +52,9 @@ import { AppBrand } from '@/components/branding';
 import Image from 'next/image';
 
 type EnvironmentSettings = { groups: Array<{ id:string; label:string; fields:Array<{key:string;label:string;secret:boolean;value:string;configured:boolean;vaultReference?:string}> }> };
+type LoginHistoryItem = { id:string; logged_at:string; device_label:string };
+type SecurityActivityItem = { id:string; label:string; created_at:string };
+type PushConfig = { enabled: boolean; public_key: string | null; subscribed: boolean };
 type Tab = "profile" | "activity" | "cards" | "projects" | "integrations" | "settings" | "branding";
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "profile", label: "Perfil", icon: UserRound },
@@ -68,6 +72,8 @@ export default function ProfilePage() {
   const [user, setCurrentUser] = useState<User | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [loginHistory, setLoginHistory] = useState<LoginHistoryItem[]>([]);
+  const [securityActivity, setSecurityActivity] = useState<SecurityActivityItem[]>([]);
   const [cards, setCards] = useState<HomeCard[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [models, setModels] = useState<AiModel[]>([]);
@@ -92,30 +98,52 @@ export default function ProfilePage() {
   const ready = useHydrated();
   const [tab, setTab] = useState<Tab>("profile");
   const [name, setName] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailChangePassword, setEmailChangePassword] = useState("");
+  const [emailChangeMessage, setEmailChangeMessage] = useState("");
+  const [emailChangeError, setEmailChangeError] = useState("");
+  const [emailChangeBusy, setEmailChangeBusy] = useState(false);
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaPassword, setMfaPassword] = useState("");
+  const [mfaChallengeId, setMfaChallengeId] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaMessage, setMfaMessage] = useState("");
+  const [mfaError, setMfaError] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [create, setCreate] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [account, all, activity, assigned, projectList, pluginCatalog] = await Promise.all([
+      const [account, all, activity, logins, securityEvents, assigned, projectList, pluginCatalog, mfa] = await Promise.all([
           api<User>("/account"),
           api<Board[]>("/boards"),
           api<Activity[]>("/account/activity"),
+          api<LoginHistoryItem[]>("/account/login-history"),
+          api<SecurityActivityItem[]>("/account/security-activity"),
           api<HomeCard[]>("/account/cards"),
           api<AiProject[]>("/ai/projects"),
           api<{plugins:Array<{id:string;enabled:boolean}>}>("/plugins"),
+          api<{enabled:boolean}>("/account/mfa"),
         ]);
       const pluginEnabled = pluginCatalog.plugins.some(plugin => plugin.id === "ai" && plugin.enabled);
       const availableModels = pluginEnabled ? await api<AiModel[]>("/ai/models") : [];
       setCurrentUser(account);
       setUser(account);
       setName(account.name);
+      setEmailDraft(account.email);
       setBoards(all);
       setActivities(activity);
+      setLoginHistory(logins);
+      setSecurityActivity(securityEvents);
       setCards(assigned);
       setProjects(projectList);
       setModels(availableModels);
       setAiAvailable(pluginEnabled);
+      setMfaEnabled(mfa.enabled);
       setError("");
     } catch (err) {
       setError((err as Error).message);
@@ -145,6 +173,24 @@ export default function ProfilePage() {
       setEnvironmentDraft(Object.fromEntries(settings.groups.flatMap((group) => group.fields.map((field) => [field.key, field.vaultReference||field.value]))));
     }).catch((err) => setError((err as Error).message));
   }, [tab]);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    api<PushConfig>("/notifications/push/config").then(async (config) => {
+      if (!active) return;
+      setPushEnabled(config.enabled && Boolean(config.public_key));
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setPushSubscribed(false);
+        return;
+      }
+      const registration = await navigator.serviceWorker.getRegistration("/");
+      const subscription = await registration?.pushManager.getSubscription();
+      if (active) setPushSubscribed(Boolean(subscription));
+    }).catch(() => {
+      if (active) { setPushEnabled(false); setPushSubscribed(false); }
+    });
+    return () => { active = false; };
+  }, [user]);
   useEffect(()=>{if(tab!=='branding'||!user?.is_root)return;api<AppBrand>('/branding').then(setBrandDraft).catch(err=>setError((err as Error).message))},[tab,user?.is_root]);
   function changeTab(value: Tab) {
     setTab(value);
@@ -167,6 +213,39 @@ export default function ProfilePage() {
     } catch (err) {
       setError((err as Error).message);
     }
+  }
+  async function requestEmailChange(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setEmailChangeBusy(true);
+    setEmailChangeError("");
+    setEmailChangeMessage("");
+    try {
+      await send("/auth/email-change", "POST", { email: emailDraft, current_password: emailChangePassword });
+      setEmailChangePassword("");
+      setEmailChangeMessage("Enviamos um link de confirmação para o novo endereço. O e-mail da conta só muda depois da confirmação.");
+    } catch (err) {
+      setEmailChangeError((err as Error).message);
+    } finally {
+      setEmailChangeBusy(false);
+    }
+  }
+  async function requestMfaChange(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setMfaBusy(true); setMfaError(""); setMfaMessage("");
+    try {
+      const result = await send<{challenge_id:string;email_hint:string}>("/account/mfa/challenge","POST",{action:mfaEnabled?"disable":"enable",current_password:mfaPassword});
+      setMfaPassword(""); setMfaChallengeId(result.challenge_id);
+      setMfaMessage(`Enviamos um código de confirmação para ${result.email_hint}.`);
+    } catch (err) { setMfaError((err as Error).message); }
+    finally { setMfaBusy(false); }
+  }
+  async function confirmMfaChange(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setMfaBusy(true); setMfaError("");
+    try {
+      const result=await send<{enabled:boolean}>("/account/mfa/confirm","POST",{challenge_id:mfaChallengeId,code:mfaCode});
+      setMfaEnabled(result.enabled); setMfaChallengeId(""); setMfaCode("");
+      setMfaMessage(result.enabled?"Verificação em duas etapas ativada. A cada login, enviaremos um código para seu e-mail.":"Verificação em duas etapas desativada.");
+    } catch (err) { setMfaError((err as Error).message); }
+    finally { setMfaBusy(false); }
   }
   async function uploadAvatar(file: File | null) {
     if (!file) return;
@@ -251,6 +330,45 @@ export default function ProfilePage() {
     if (permission === "granted")
       await preference("browserNotifications", true);
     else setError("Permissão de notificações não concedida pelo navegador.");
+  }
+  function vapidKeyBytes(value: string): ArrayBuffer {
+    const padding = "=".repeat((4 - value.length % 4) % 4);
+    const decoded = atob(value.replace(/-/g, "+").replace(/_/g, "/") + padding);
+    const bytes = new Uint8Array(decoded.length);
+    for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
+    return bytes.buffer;
+  }
+  async function togglePushNotifications(enabled: boolean) {
+    setPushBusy(true);
+    setError("");
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined")
+        throw new Error("Este navegador não oferece notificações push.");
+      if (!window.isSecureContext) throw new Error("Notificações push exigem HTTPS ou localhost.");
+      if (enabled) {
+        const config = await api<PushConfig>("/notifications/push/config");
+        if (!config.enabled || !config.public_key) throw new Error("O serviço push ainda não está configurado neste ambiente.");
+        const registration = await navigator.serviceWorker.register("/push-worker.js", { scope: "/" });
+        const existing = await registration.pushManager.getSubscription();
+        const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+        if (permission !== "granted") throw new Error("Permissão de notificações não concedida pelo navegador.");
+        const subscription = existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKeyBytes(config.public_key) });
+        await send("/notifications/push/subscription", "PUT", subscription.toJSON());
+        setPushSubscribed(true);
+        setNotice("Notificações push ativadas neste navegador.");
+      } else {
+        const registration = await navigator.serviceWorker.getRegistration("/");
+        const existing = await registration?.pushManager.getSubscription();
+        if (existing) {
+          await send("/notifications/push/subscription", "DELETE", { endpoint: existing.endpoint });
+          await existing.unsubscribe();
+        }
+        setPushSubscribed(false);
+        setNotice("Notificações push desativadas neste navegador.");
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally { setPushBusy(false); }
   }
   async function createProject(event: React.FormEvent) {
     event.preventDefault();
@@ -353,12 +471,13 @@ export default function ProfilePage() {
     remember({label:'criar quadro',undo:[{path:`/boards/${board.id}/close`,method:'PATCH'}],redo:[{path:`/boards/${board.id}/reopen`,method:'PATCH'}]});
     router.push(`/board/${board.id}`);
   }
-  if (!ready) return <div className="min-h-screen bg-[#f7f8fa]" />;
-  if (!user) return null;
+  if (!ready) return <main className="min-h-screen bg-[#f7f8fa]"><p role="status" aria-live="polite" className="sr-only">Carregando perfil…</p></main>;
+  if (!user) return <main className="min-h-screen bg-[#f7f8fa]"><p role="status" aria-live="polite" className="sr-only">Redirecionando para a entrada…</p></main>;
   const preferences = user.preferences || {
     theme: "light",
     notifications: true,
     browserNotifications: false,
+    emailNotifications: false,
     shortcuts: true,
     compactCards: false,
   };
@@ -463,14 +582,6 @@ export default function ProfilePage() {
                     onChange={(e) => setName(e.target.value)}
                     className="mb-4 w-full rounded border border-[#8590a2] px-3 py-2 text-sm"
                   />
-                  <label className="mb-1 block text-xs font-bold">
-                    E-mail da conta
-                  </label>
-                  <input
-                    readOnly
-                    value={user.email}
-                    className="mb-5 w-full rounded border border-[#dfe1e6] bg-[#f1f2f4] px-3 py-2 text-sm text-[#626f86]"
-                  />
                   <button
                     disabled={!name.trim() || name === user.name}
                     className="rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white"
@@ -478,6 +589,23 @@ export default function ProfilePage() {
                     Salvar alterações
                   </button>
                 </form>
+              </section>
+              <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold">Alterar e-mail da conta</h2>
+                <p className="mt-1 text-sm text-[#626f86]">Confirme a alteração pelo link enviado ao novo endereço. Sua senha atual será solicitada antes do envio.</p>
+                <form onSubmit={requestEmailChange} className="mt-4 grid max-w-lg gap-3">
+                  <label className="text-xs font-bold">Novo e-mail<input required type="email" maxLength={320} autoComplete="email" value={emailDraft} onChange={(event) => setEmailDraft(event.target.value)} className="mt-1 min-h-10 w-full rounded border border-[#8590a2] px-3 text-sm font-normal" /></label>
+                  <label className="text-xs font-bold">Senha atual<input required type="password" maxLength={200} autoComplete="current-password" value={emailChangePassword} onChange={(event) => setEmailChangePassword(event.target.value)} className="mt-1 min-h-10 w-full rounded border border-[#8590a2] px-3 text-sm font-normal" /></label>
+                  {emailChangeError && <p role="alert" className="text-sm text-[#ae2a19]">{emailChangeError}</p>}
+                  {emailChangeMessage && <p role="status" className="text-sm text-[#216e4e]">{emailChangeMessage}</p>}
+                  <button disabled={emailChangeBusy || !emailDraft.trim() || emailDraft.trim().toLowerCase() === user.email.toLowerCase() || !emailChangePassword} className="min-h-10 justify-self-start rounded bg-[#0c66e4] px-4 text-sm font-semibold text-white disabled:opacity-60">{emailChangeBusy ? "Enviando…" : "Enviar confirmação"}</button>
+                </form>
+              </section>
+              <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold">Verificação em duas etapas</h2>
+                <p className="mt-1 text-sm text-[#626f86]">{mfaEnabled?"No login, um código de uso único será enviado ao e-mail verificado da conta.":"Adicione uma confirmação por e-mail depois da senha. Confirme seu endereço antes de ativar."}</p>
+                {mfaMessage&&<p role="status" className="mt-3 text-sm text-[#216e4e]">{mfaMessage}</p>}{mfaError&&<p role="alert" className="mt-3 text-sm text-[#ae2a19]">{mfaError}</p>}
+                {mfaChallengeId?<form onSubmit={confirmMfaChange} className="mt-4 grid max-w-lg gap-3"><label className="text-xs font-bold">Código de seis dígitos<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={event=>setMfaCode(event.target.value.replace(/\D/g,"").slice(0,6))} className="mt-1 min-h-10 w-full rounded border border-[#8590a2] px-3 text-sm font-normal tracking-[.3em]" /></label><div className="flex flex-wrap gap-2"><button disabled={mfaBusy||mfaCode.length!==6} className="min-h-10 rounded bg-[#0c66e4] px-4 text-sm font-semibold text-white disabled:opacity-60">{mfaBusy?"Aguarde…":"Confirmar código"}</button><button type="button" disabled={mfaBusy} onClick={()=>{setMfaChallengeId("");setMfaCode("");setMfaMessage("");}} className="min-h-10 rounded border border-[#dfe1e6] px-4 text-sm">Cancelar</button></div></form>:<form onSubmit={requestMfaChange} className="mt-4 grid max-w-lg gap-3"><label className="text-xs font-bold">Senha atual<input required type="password" maxLength={200} autoComplete="current-password" value={mfaPassword} onChange={event=>setMfaPassword(event.target.value)} className="mt-1 min-h-10 w-full rounded border border-[#8590a2] px-3 text-sm font-normal" /></label><button disabled={mfaBusy||!mfaPassword} className="min-h-10 justify-self-start rounded bg-[#0c66e4] px-4 text-sm font-semibold text-white disabled:opacity-60">{mfaBusy?"Enviando…":mfaEnabled?"Desativar verificação em duas etapas":"Ativar verificação em duas etapas"}</button></form>}
               </section>
               <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
                 <h2 className="mb-4 text-lg font-bold">Seu trabalho</h2>
@@ -546,6 +674,16 @@ export default function ProfilePage() {
                   ))}
                 </div>
               )}
+              <div className="border-t border-[#dfe1e6] px-5 py-4">
+                <h2 className="text-lg font-bold">Acessos recentes</h2>
+                <p className="mt-1 text-xs text-[#626f86]">Entradas confirmadas na sua conta nos últimos 180 dias. O Orbit guarda apenas o tipo de navegador e dispositivo, sem armazenar o endereço IP.</p>
+                {loginHistory.length === 0 ? <p className="mt-4 text-sm text-[#626f86]">Os próximos acessos aparecerão aqui.</p> : <ul className="mt-3 divide-y divide-[#f1f2f4]">{loginHistory.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"><span className="font-medium">{item.device_label}</span><time dateTime={item.logged_at} className="text-xs text-[#626f86]">{new Date(item.logged_at).toLocaleString("pt-BR")}</time></li>)}</ul>}
+              </div>
+              <div className="border-t border-[#dfe1e6] px-5 py-4">
+                <h2 className="text-lg font-bold">Atividades relevantes da conta</h2>
+                <p className="mt-1 text-xs text-[#626f86]">Alterações de perfil, senha, e-mail, verificação em duas etapas e login social nos últimos 180 dias.</p>
+                {securityActivity.length===0?<p className="mt-4 text-sm text-[#626f86]">As alterações relevantes da conta aparecerão aqui.</p>:<ul className="mt-3 divide-y divide-[#f1f2f4]">{securityActivity.map(item=><li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"><span className="font-medium">{item.label}</span><time dateTime={item.created_at} className="text-xs text-[#626f86]">{new Date(item.created_at).toLocaleString("pt-BR")}</time></li>)}</ul>}
+              </div>
             </section>
           )}
           {tab === "cards" && (
@@ -688,17 +826,17 @@ export default function ProfilePage() {
                 </button>
               </form>}
               {directoryPickerOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDirectoryPickerOpen(false);}}>
-                  <section role="dialog" aria-modal="true" aria-labelledby="directory-picker-title" className="flex max-h-[min(80vh,640px)] w-full max-w-xl flex-col rounded-xl bg-white shadow-xl">
-                    <header className="border-b border-[#dfe1e6] px-5 py-4"><h2 id="directory-picker-title" className="text-lg font-bold">Selecionar pasta do projeto</h2><p className="mt-1 break-all text-xs text-[#626f86]">{directoryPicker?.path || "Carregando caminho…"}</p></header>
+                <Modal onClose={() => setDirectoryPickerOpen(false)} title="Selecionar pasta do projeto" wide>
+                  <div className="flex max-h-[min(80vh,640px)] w-full flex-col">
+                    <header className="border-b border-[#dfe1e6] px-5 py-4"><h2 className="text-lg font-bold">Selecionar pasta do projeto</h2><p className="mt-1 break-all text-xs text-[#626f86]">{directoryPicker?.path || "Carregando caminho…"}</p></header>
                     {directoryPicker?.parent && <button type="button" disabled={directoryPickerLoading} onClick={()=>void browseProjectDirectory(directoryPicker.parent!)} className="flex items-center gap-2 border-b border-[#f1f2f4] px-5 py-3 text-left text-sm font-semibold text-[#344563] hover:bg-[#f7f8fa]"><ChevronUp size={16}/> Pasta anterior</button>}
                     {directoryPickerError && <p role="alert" className="px-5 py-3 text-sm text-[#ae2a19]">{directoryPickerError}</p>}
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       {directoryPickerLoading ? <p className="p-5 text-sm text-[#626f86]">Carregando pastas…</p> : directoryPicker?.folders.length ? directoryPicker.folders.map(folder=><button key={folder.path} type="button" onClick={()=>void browseProjectDirectory(folder.path)} className="flex w-full items-center gap-3 border-b border-[#f1f2f4] px-5 py-3 text-left text-sm hover:bg-[#f7f8fa]"><Folder size={17} className="shrink-0 text-[#6554c0]"/><span className="truncate">{folder.name}</span></button>) : !directoryPickerError && <p className="p-5 text-sm text-[#626f86]">Nenhuma subpasta acessível.</p>}
                     </div>
                     <footer className="flex flex-wrap justify-end gap-2 border-t border-[#dfe1e6] p-4"><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>void createProjectDirectory()} className="mr-auto rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold text-[#344563] disabled:opacity-50">Criar nova pasta</button><button type="button" onClick={()=>setDirectoryPickerOpen(false)} className="rounded border border-[#c1c7d0] px-4 py-2 text-sm font-semibold">Cancelar</button><button type="button" disabled={!directoryPicker || directoryPickerLoading} onClick={()=>{if(directoryPicker){if(editingProjectPath)setProjectPathDraft(directoryPicker.path);else setProjectPath(directoryPicker.path);}setDirectoryPickerOpen(false);}} className="rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Selecionar esta pasta</button></footer>
-                  </section>
-                </div>
+                  </div>
+                </Modal>
               )}
             </div>
           )}
@@ -847,12 +985,26 @@ export default function ProfilePage() {
                       className="h-4 w-4"
                     />
                   </label>
+                  <label className="flex items-center justify-between gap-3 border-t border-[#dfe1e6] pt-4 text-sm">
+                    <span>
+                      <strong>Notificações por e-mail</strong>
+                      <small className="mt-1 block text-[#626f86]">
+                        Receba por e-mail as notificações que chegarem à central. Requer e-mail confirmado e SMTP configurado.
+                      </small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={preferences.emailNotifications === true}
+                      onChange={(e) => preference("emailNotifications", e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                  </label>
                   <div className="border-t border-[#dfe1e6] pt-4">
                     <label className="flex items-center justify-between gap-3 text-sm">
                       <span>
-                        <strong>Notificações do navegador</strong>
+                        <strong>Notificações enquanto o Orbit está aberto</strong>
                         <small className="mt-1 block text-[#626f86]">
-                          Avisos fora da aba, quando permitidos.
+                          Avisos locais para atividades recebidas enquanto a aplicação está aberta.
                         </small>
                       </span>
                       <input
@@ -863,10 +1015,26 @@ export default function ProfilePage() {
                       />
                     </label>
                     <p className="mt-2 text-xs text-[#626f86]">
-                      Disponível em localhost ou HTTPS com permissão do
-                      navegador.
+                      Requer permissão do navegador.
                     </p>
                   </div>
+                  <label className="flex items-center justify-between gap-3 border-t border-[#dfe1e6] pt-4 text-sm">
+                    <span>
+                      <strong>Notificações push</strong>
+                      <small className="mt-1 block text-[#626f86]">
+                        Receba avisos neste dispositivo mesmo com o Orbit fechado. O conteúdo pode aparecer na tela bloqueada.
+                      </small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={pushSubscribed}
+                      disabled={pushBusy || (!pushEnabled && !pushSubscribed)}
+                      onChange={(event) => void togglePushNotifications(event.target.checked)}
+                      aria-label="Ativar notificações push neste navegador"
+                      className="h-4 w-4"
+                    />
+                  </label>
+                  {!pushEnabled && <p className="mt-2 text-xs text-[#626f86]">O serviço push não está configurado neste ambiente.</p>}
                   <label className="flex items-center justify-between gap-3 border-t border-[#dfe1e6] pt-4 text-sm">
                     <span>
                       <strong>Atalhos de teclado</strong>

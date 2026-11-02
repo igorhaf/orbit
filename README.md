@@ -163,6 +163,14 @@ Abra **Calendário** para combinar Cards agendados e qualquer quantidade de cont
 
 Consulte [arquitetura, OAuth, sync incremental, watch channels, ExternalResources e automações](docs/calendar-workspace.md). Configure as variáveis Google somente no backend e execute `npm run db:migrate`.
 
+## Suindá
+
+Esta branch também contém o perfil de produto Suindá, uma plataforma de cursos sobre o Orbit. A visão geral, a arquitetura reutilizada, as configurações e a matriz do que está implementado ou pendente estão em [SUINDA.md](SUINDA.md) e [docs/suinda](docs/suinda/).
+
+O plugin filho `suinda-transcription` pode gerar rascunhos WebVTT temporizados para aulas publicadas a partir dos segmentos reconhecidos. Docentes revisam texto, tempos e idioma antes de salvar a nova revisão; o fluxo requer a configuração da chave do provedor na API.
+
+O Orbit core também ganhou nomes acessíveis nos controles de busca e Inbox e landmarks para a entrada e os estados iniciais de carregamento. A documentação registra a varredura estática de 26 rotas e seus limites em [docs/suinda/REQUISITOS.md](docs/suinda/REQUISITOS.md).
+
 ## Comandos
 
 | Comando | Função |
@@ -173,6 +181,7 @@ Consulte [arquitetura, OAuth, sync incremental, watch channels, ExternalResource
 | `npm run build` | Executa o lint e compila a API e o front |
 | `npm run test -w apps/api` | Executa os testes unitários da API |
 | `npm run test:integration -w apps/api` | Testa recursos integrados da API com PostgreSQL temporário |
+| `npm run test:suinda:corporate-report` | Valida a paginação do relatório corporativo em duas páginas no navegador |
 | `npm run db:migrate` | Aplica o esquema SQL e prepara a conta inicial |
 | `npm run db:backup -- create` | Cria e verifica um backup PostgreSQL criptografado |
 | `npm run db:backup -- list` | Lista os backups locais |

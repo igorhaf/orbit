@@ -21,18 +21,21 @@ test('OAuth base URL follows the API port and honors a public override',()=>{
 });
 
 test('Google plugins expose the same redirect URIs sent during OAuth',()=>{
-  const previous={url:process.env.API_PUBLIC_URL,port:process.env.API_PORT,drive:process.env.GOOGLE_DRIVE_REDIRECT_URI};
+  const previous={url:process.env.API_PUBLIC_URL,port:process.env.API_PORT,drive:process.env.GOOGLE_DRIVE_REDIRECT_URI,suindaDrive:process.env.SUINDA_GOOGLE_DRIVE_REDIRECT_URI};
   try{
     delete process.env.API_PUBLIC_URL;
     delete process.env.GOOGLE_DRIVE_REDIRECT_URI;
     process.env.API_PORT='4001';
     assert.equal(googleRedirectUri('drive'),'http://localhost:4001/google/drive/oauth/callback');
+    delete process.env.SUINDA_GOOGLE_DRIVE_REDIRECT_URI;
+    assert.equal(googleRedirectUri('suindaDrive'),'http://localhost:4001/suinda-google-drive/oauth/callback');
     process.env.GOOGLE_DRIVE_REDIRECT_URI='https://orbit.example.test/google/drive/oauth/callback';
     assert.equal(googleRedirectUri('drive'),'https://orbit.example.test/google/drive/oauth/callback');
   }finally{
     if(previous.url===undefined)delete process.env.API_PUBLIC_URL;else process.env.API_PUBLIC_URL=previous.url;
     if(previous.port===undefined)delete process.env.API_PORT;else process.env.API_PORT=previous.port;
     if(previous.drive===undefined)delete process.env.GOOGLE_DRIVE_REDIRECT_URI;else process.env.GOOGLE_DRIVE_REDIRECT_URI=previous.drive;
+    if(previous.suindaDrive===undefined)delete process.env.SUINDA_GOOGLE_DRIVE_REDIRECT_URI;else process.env.SUINDA_GOOGLE_DRIVE_REDIRECT_URI=previous.suindaDrive;
   }
 });
 
@@ -46,11 +49,13 @@ test('core and plugin environment settings have separate ownership',async()=>{
     const core=await controller.list({} as never);
     assert(core.groups.some(group=>group.fields.some(field=>field.key==='GOOGLE_CLIENT_ID')));
     const coreFields=core.groups.flatMap(group=>group.fields);
-    for(const key of ['ORBIT_SECRET_KEY_PREVIOUS','VAULT_ENCRYPTION_KEY_PREVIOUS']){
+    for(const key of ['ORBIT_SECRET_KEY_PREVIOUS','VAULT_ENCRYPTION_KEY_PREVIOUS','ORBIT_DATA_ENCRYPTION_KEY','ORBIT_DATA_ENCRYPTION_KEY_PREVIOUS']){
       const field=coreFields.find(item=>item.key===key);
       assert(field);assert.equal(field.secret,true);assert.equal(field.value,'');
     }
     assert.equal(core.groups.flatMap(group=>group.fields).find(field=>field.key==='GOOGLE_CLIENT_SECRET')?.value,'');
+    assert.equal(core.groups.flatMap(group=>group.fields).find(field=>field.key==='GOOGLE_PICKER_API_KEY')?.secret,false);
+    assert.equal(core.groups.flatMap(group=>group.fields).find(field=>field.key==='GOOGLE_CLOUD_PROJECT_NUMBER')?.secret,false);
     assert(core.groups.every(group=>group.fields.every(field=>field.key!=='ORBIT_TEST_PLUGIN_ONLY_TOKEN'&&field.key!=='DROPBOX_CLIENT_SECRET')));
     const plugin=await controller.pluginSettings({} as never,'fixture_plugin');
     assert.deepEqual(plugin.fields.map(field=>field.key),['ORBIT_TEST_PLUGIN_ONLY_TOKEN']);

@@ -21,9 +21,9 @@ export async function loginPasswordMatches(storedHash:string|undefined,password:
   return Boolean(storedHash)&&matches;
 }
 
-export type LoginAccount={id:string;name:string;email:string;avatar_url:string|null;preferences:unknown;is_root:boolean;disabled:boolean;email_verified:boolean;session_version:number};
+export type LoginAccount={id:string;name:string;email:string;avatar_url:string|null;preferences:unknown;is_root:boolean;disabled:boolean;email_verified:boolean;session_version:number;mfa_enabled:boolean};
 export async function authenticateLoginAccount(db:Pick<Db,'one'>,email:string,password:string){
-  const row=await db.one<LoginAccount&{password_hash:string}>('SELECT id,name,email,avatar_url,preferences,password_hash,is_root,disabled,email_verified,session_version FROM users WHERE email=$1',[email]);
+  const row=await db.one<LoginAccount&{password_hash:string}>('SELECT id,name,email,avatar_url,preferences,password_hash,is_root,disabled,email_verified,session_version,mfa_enabled FROM users WHERE email=$1',[email]);
   const passwordMatches=await loginPasswordMatches(row?.password_hash,password);
   return row&&!row.disabled&&row.email_verified!==false&&passwordMatches?row:null;
 }

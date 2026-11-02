@@ -16,7 +16,7 @@ export class BrandingController {
   async update(@Req() req:Request,@Body() body:Record<string,unknown>){
     const actor=this.features.user(req);
     const account=await this.db.one<{is_root:boolean}>('SELECT is_root FROM users WHERE id=$1',[actor]);
-    if(!account?.is_root)throw new HttpException('Somente o usuário ROOT pode alterar a identidade da aplicação.',403);
+    if(!account?.is_root||!(await this.features.access?.isRoot(actor)))throw new HttpException('Somente o usuário ROOT pode alterar a identidade da aplicação.',403);
     const appName=typeof body.app_name==='string'?body.app_name.trim():'';
     const kind=body.icon_kind;
     const custom=body.custom_icon_data;

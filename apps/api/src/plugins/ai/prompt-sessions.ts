@@ -106,7 +106,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const rawName=body.name;const name=rawName===undefined?existing.name:typeof rawName==='string'&&rawName.trim()&&rawName.trim().length<=120?rawName.trim():fail('Nome inválido.');
     const localPath=body.local_path===undefined?existing.local_path:await this.localPath(body.local_path);
     if(body.local_path!==undefined&&localPath!==existing.local_path&&await this.db.one('SELECT id FROM ai_projects WHERE owner_id=$1 AND local_path=$2 AND id<>$3',[userId,localPath,projectId]))fail('Esta pasta já está cadastrada como projeto.',409);
-    const isRoot=Boolean((await this.db.one<{is_root:boolean}>('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);
+    const isRoot=Boolean(await this.features.access?.isRoot(userId));
     if(has(body,'is_internal_orbit')&&!isRoot)fail('Somente o usuário root pode classificar um projeto como Orbit interno.',403);
     const isInternalOrbit=has(body,'is_internal_orbit')?body.is_internal_orbit===true:existing.is_internal_orbit;
     const model=!has(body,'ai_default_model')?existing.ai_default_model:body.ai_default_model===null||body.ai_default_model===''?null:selectedModel(body.ai_default_model);
@@ -133,7 +133,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     return pathIsWithin(roots.container,supplied)?resolve(roots.host,relative(roots.container,supplied)):supplied;
   }
   async projects(userId:string){
-    const root=Boolean((await this.db.one('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);const shared=await this.features.access?.sharedResources(userId,'projects')||[];
+    const root=Boolean(await this.features.access?.isRoot(userId));const shared=await this.features.access?.sharedResources(userId,'projects')||[];
     const projects=await this.db.query<{local_path:string}>('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_internal_orbit FROM ai_projects WHERE (owner_id=$1 OR id=ANY($2::uuid[]) OR $3) ORDER BY is_internal_orbit DESC,name',[userId,shared,root]);
     return projects.map(project=>this.exposeProjectPath(project));
   }
@@ -199,7 +199,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const localPath=await this.localPath(body.local_path,body.create_directory===true);
     const isInternalOrbit=body.is_internal_orbit===true;
     if(body.is_internal_orbit!==undefined&&typeof body.is_internal_orbit!=='boolean')fail('A classificação de projeto interno é inválida.');
-    if(isInternalOrbit&&(await this.db.one<{is_root:boolean}>('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root!==true)fail('Somente o usuário root pode classificar um projeto como Orbit interno.',403);
+    if(isInternalOrbit&&!await this.features.access?.isRoot(userId))fail('Somente o usuário root pode classificar um projeto como Orbit interno.',403);
     const project=await this.db.one<{local_path:string}>('INSERT INTO ai_projects(owner_id,name,local_path,is_internal_orbit) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_internal_orbit',[userId,name.trim(),localPath,isInternalOrbit]);
     if(!project)throw new HttpException({message:'Esta pasta já está cadastrada como projeto.'},409);
     return this.exposeProjectPath(project);
@@ -371,7 +371,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     await this.features.record(userId,context.boardId,cardId,'prompt_session','configurou a sessão de prompt');return updated;
   }
-  async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,project_id,model,effort,source,summary,file_changes,activities,status,prompt,output,error,codex_session_id,COALESCE(started_at,created_at) AS started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);}
+  async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,project_id,model,effort,source,multiple_agents,summary,file_changes,activities,status,prompt,output,error,codex_session_id,COALESCE(started_at,created_at) AS started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);}
   async toolDiagnostics(userId:string){
     const [latest,failures]=await Promise.all([
       this.db.one<{status:string;error:string|null;activities:ToolCommandActivity[]|null}>('SELECT status,error,activities FROM card_ai_runs WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[userId]),
@@ -395,7 +395,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     assertOrbitFields(body,orbitArchitecture.promptRunAnswer);
     const id=uuid(runId,'Execução');
     if(typeof body.answer!=='string'||!body.answer.trim()||body.answer.trim().length>4000)return fail('Informe uma resposta de até 4000 caracteres.');
-    const run=await this.db.one<{id:string;user_id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string}>("SELECT id,user_id,project_id,model,effort,codex_session_id,output FROM card_ai_runs WHERE id=$1 AND card_id=$2 AND status='waiting_answer'",[id,cardId]);
+    const run=await this.db.one<{id:string;user_id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents:boolean}>("SELECT id,user_id,project_id,model,effort,codex_session_id,output,multiple_agents FROM card_ai_runs WHERE id=$1 AND card_id=$2 AND status='waiting_answer'",[id,cardId]);
     if(!run)return fail('A execução não está aguardando resposta.',409);
     if(run.user_id!==userId)fail('Somente o autor da execução pode responder.',403);
     return this.execute(cardId,userId,{instruction:body.answer.trim()},undefined,run);
@@ -406,8 +406,11 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       JOIN board_members bm ON bm.board_id=l.board_id AND bm.user_id=$1
       WHERE r.user_id=$1 AND r.status='waiting_answer' ORDER BY r.created_at,r.id`,[userId]);
   }
-  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string}){
+  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents:boolean}){
     if(!this.codex.isAvailable())fail('O plugin de IA está desativado.',409);
+    if(!commentReply&&!resume)assertOrbitFields(body,orbitArchitecture.promptRunExecute);
+    if(body.multiple_agents!==undefined&&typeof body.multiple_agents!=='boolean')fail('A opção de múltiplos agentes precisa ser booleana.');
+    const multipleAgents=resume?.multiple_agents??(commentReply?false:body.multiple_agents!==false);
     await this.layouts?.assertExecutionAllowed(cardId,userId);
     const context=await this.card(cardId,userId);const card=context.card;const model=resume?.model||commentReply?.model||card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model;const effort=resume?.effort||commentReply?.effort||card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort;const projectId=resume?.project_id||commentReply?.project_id||card.ai_project_id||card.ai_default_project_id;
     if(!model)fail('Escolha um modelo no cartão, quadro, projeto ou configuração global.',409);if(!effort)fail('Escolha um esforço no cartão, quadro, projeto ou configuração global.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
@@ -452,14 +455,15 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       promptImages.push(...commentImages.map(row=>({name:row.name,mimeType:row.mime_type,data:row.data})));
     }
     const imagePrompt=promptImages.length?`\n\nIMAGENS ANEXADAS AO CARTÃO: ${promptImages.length} arquivo(s) de imagem foram anexados ao cartão e estão disponíveis visualmente nesta solicitação. Analise seu conteúdo junto com o texto e identifique os elementos visuais solicitados.`:'';
+    const delegationGuidance=multipleAgents?`\n\nDELEGAÇÃO PARA MÚLTIPLOS AGENTES: o Codex está habilitado para delegar nesta execução, mas isso não exige subagentes. Antes de criar qualquer um, faça uma avaliação explícita: (1) existem pelo menos duas entregas realmente independentes, com interfaces e arquivos bem delimitados? (2) elas podem avançar ao mesmo tempo sem decisões serializadas, edição dos mesmos arquivos ou dependência mútua? (3) o tempo poupado deve superar transferência de contexto, coordenação, integração e revisão? (4) mesmo com o trabalho adicional de cada subagente, há forte expectativa de reduzir o total de tokens? Delegue somente se todas as respostas forem claramente positivas; se houver dúvida, o trabalho for pequeno, serial ou concentrado nos mesmos arquivos, siga com agente único. Nunca prometa nem presuma economia de tokens sem base concreta. Se delegar, use a menor quantidade necessária, não crie níveis recursivos de agentes, atribua escopos de arquivos sem sobreposição e critérios de aceite claros. Este agente permanece integrador, revisa todo resultado e conclui as verificações obrigatórias. Preserve integralmente context.write_scope e as verificações do projeto; delegação nunca amplia permissões, escopo, verificações ou autorização.`:'';
     const summaryLineLimit=card.ai_execution_mode==='planning'?null:10;
     const summaryInstruction=`\n\nFORMATO FINAL OBRIGATÓRIO:\nDepois da implementação, responda em português com no máximo 5 tópicos curtos, sem repetir o prompt, o histórico, arquivos inteiros ou logs. Em seguida, encerre com um resumo objetivo e didático${summaryLineLimit===null?'':' em até 10 linhas físicas (use menos quando bastar)'}, exatamente neste bloco:\n${summaryStart}\n${summaryLineLimit===null?'[resumo objetivo e didático, sem limite de linhas]':'[resumo em até 10 linhas]'}\n[[ORBIT_COMMIT_TYPE]]\n[um tipo Conventional Commit em minúsculas, como feat, fix, chore, docs, refactor, test ou outro tipo apropriado]\n[[ORBIT_COMMIT_SUMMARY]]\n[descrição simples e objetiva do que foi feito, em uma única linha, sem prefixo de tipo]\n${summaryEnd}\nNão escreva nada depois do marcador final. Relate o que foi feito e o resultado das verificações; não invente resultados.`;
     const questionMode=Boolean(resume)||card.ai_execution_mode==='question';
     const initialQuestion=questionMode&&!resume;
     const modeGuidance=questionMode?`\n\n${questionGuidance(Boolean(resume))}${resume?`\n\nPERGUNTA ANTERIOR:\n${resume.output}`:''}`:'';
     const makePrompt=()=>(continuing
-      ? `${executionGuidance}\n\nContinue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir. ${commentReply?'A conversa completa já está nesta sessão; use-a como contexto e processe somente o comentário novo abaixo. ':''}Esta orientação substitui instruções anteriores da sessão que impeçam a implementação ou a validação local.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nDESCRIÇÃO ATUAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${commentReply?'':conversationPrompt}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}${summaryInstruction}`
-      : `${executionGuidance}\n\nVocê está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${conversationPrompt}${additional&&!initialCommentIsAlreadyInHistory?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}${summaryInstruction}`)+modeGuidance;
+      ? `${executionGuidance}${delegationGuidance}\n\nContinue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir. ${commentReply?'A conversa completa já está nesta sessão; use-a como contexto e processe somente o comentário novo abaixo. ':''}Esta orientação substitui instruções anteriores da sessão que impeçam a implementação ou a validação local.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nDESCRIÇÃO ATUAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${commentReply?'':conversationPrompt}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}${summaryInstruction}`
+      : `${executionGuidance}${delegationGuidance}\n\nVocê está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${conversationPrompt}${additional&&!initialCommentIsAlreadyInHistory?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}${summaryInstruction}`)+modeGuidance;
     let prompt=redact(makePrompt());
     const client=await this.db.pool.connect();let run:{id:string};
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[cardId]);
@@ -470,7 +474,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       }else{
         const waiting=(await client.query("SELECT id FROM card_ai_runs WHERE card_id=$1 AND status='waiting_answer' LIMIT 1",[cardId])).rows[0];
         if(waiting)fail('Responda ou cancele a pergunta pendente na aba Execução.',409);
-        run=(await client.query<{id:string}>("INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source,worker_id,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued') RETURNING id",[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description',this.workerId])).rows[0];
+        run=(await client.query<{id:string}>("INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source,worker_id,status,multiple_agents) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9) RETURNING id",[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description',this.workerId,multipleAgents])).rows[0];
       }
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
@@ -520,7 +524,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined),async()=>{
           const active=await this.db.query<{id:string}>("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running' RETURNING id",[run!.id,this.workerId]);
           return active.length>0;
-        },initialQuestion?'planning':questionMode?'bypass':card.ai_execution_mode==='planning'?'planning':'bypass',promptImages,initialQuestion?[]:writeScope,initialQuestion?[]:projectChecks,questionMode);
+        },initialQuestion?'planning':questionMode?'bypass':card.ai_execution_mode==='planning'?'planning':'bypass',promptImages,initialQuestion?[]:writeScope,initialQuestion?[]:projectChecks,questionMode,multipleAgents);
         await enforceCodexQuota(this.db,true);
         for(const change of redactFileChanges(result.fileChanges))fileChanges.set(change.path,change);
         for(const activity of result.activities)activities.set(activity.id,{...activity,command:redact(activity.command),output:redact(activity.output)});
@@ -578,6 +582,6 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         }
       }
     })().catch(error=>console.error('Não foi possível finalizar a execução de prompt.',error));
-    return {id:run!.id,project_id:currentProject.id,model,effort,status:'queued' as const};
+    return {id:run!.id,project_id:currentProject.id,model,effort,multiple_agents:multipleAgents,status:'queued' as const};
   }
 }

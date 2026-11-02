@@ -319,10 +319,11 @@ export class OutlookCalendarPlugin
         }),
       ],
     );
-    const old = await this.db.one<{ etag: string | null }>(
-      "SELECT etag FROM calendar_items WHERE source_id=$1 AND external_id=$2",
+    const old = await this.db.one<{ etag: string | null; metadata?: Record<string, unknown> }>(
+      "SELECT etag,metadata FROM calendar_items WHERE source_id=$1 AND external_id=$2",
       [source.id, event.id],
     );
+    const operationKey = event.transactionId || (typeof old?.metadata?.operationKey === "string" ? old.metadata.operationKey : operationId);
     const recurrence = event.recurrence ? [event.recurrence] : [];
     const attendees = (event.attendees || []).map((attendee) => ({
       email: attendee.emailAddress?.address,
@@ -368,6 +369,7 @@ export class OutlookCalendarPlugin
           showAs: event.showAs,
           locations: event.locations || [],
           transactionId: event.transactionId,
+          ...(operationKey ? { operationKey } : {}),
         }),
       ],
     );
@@ -585,6 +587,10 @@ export class OutlookCalendarPlugin
         ? { dateTime: `${input.end.slice(0, 10)}T00:00:00`, timeZone: "UTC" }
         : graphDateTime(input.end, zone);
     if (allDay !== undefined) body.isAllDay = allDay;
+    if (input.visibility !== undefined) {
+      body.sensitivity = input.visibility === "private" ? "private"
+        : input.visibility === "confidential" ? "confidential" : "normal";
+    }
     if (input.location !== undefined)
       body.location = { displayName: input.location || "" };
     if (input.attendees !== undefined)
@@ -607,7 +613,14 @@ export class OutlookCalendarPlugin
     );
     if (!source) return bad("Calendário não encontrado.", 404);
     const connection = await this.graph.connection(source.connection_id, ownerId);
-    const operationId = randomUUID();
+    const operationId = input.operationKey || randomUUID();
+    if (input.operationKey) {
+      const existing = await this.db.one<{ id: string }>(
+        "SELECT id FROM calendar_items WHERE owner_id=$1 AND source_id=$2 AND metadata->>'operationKey'=$3",
+        [ownerId, sourceId, input.operationKey],
+      );
+      if (existing) return (await this.getItem(ownerId, existing.id))!;
+    }
     const event = await this.graph.request<GraphEvent>(
       connection,
       `me/calendars/${encodeURIComponent(source.external_id)}/events`,

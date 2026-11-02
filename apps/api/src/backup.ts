@@ -5,9 +5,44 @@ import {Db} from './db';
 import {restoreVaultBackup,verifyVaultBackup} from './vault-backup';
 import {restoreConfigBackup,verifyConfigBackup} from './config-backup';
 import {extractAttachmentBackup,verifyAttachmentBackup} from './attachment-backup';
+import {Pool} from 'pg';
+import {erasureSubjectRef, initializeErasureLedger, markErasureLedgerCommitted, readErasureLedger, recoverErasureLedgerHead} from './erasure-ledger';
 
 async function main() {
   const [action, ...args] = process.argv.slice(2);
+  if (action === 'init-erasure-ledger') {
+    console.log(JSON.stringify(await initializeErasureLedger(), null, 2));
+    return;
+  }
+  if (action === 'recover-erasure-ledger-head') {
+    console.log(JSON.stringify(await recoverErasureLedgerHead(), null, 2));
+    return;
+  }
+  if (action === 'reconcile-erasure-ledger') {
+    const ledger = await readErasureLedger();
+    const pending = ledger.filter(entry => entry.state === 'prepared');
+    if (!pending.length) {
+      console.log(JSON.stringify({ reconciled: 0, unresolved: [] }, null, 2));
+      return;
+    }
+    if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required to reconcile pending erasures against the active database.');
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const unresolved: string[] = [];
+    try {
+      for (const entry of pending) {
+        const result = await pool.query<{ external_ledger_state: string; subject_user_id: string }>(
+          "SELECT external_ledger_state,subject_user_id::text AS subject_user_id FROM suinda_privacy_erasures WHERE id=$1 AND state='completed' AND external_ledger_state IN ('prepared','committed')",
+          [entry.operationId],
+        );
+        if (!result.rows.length || erasureSubjectRef(result.rows[0].subject_user_id) !== entry.subjectRef) { unresolved.push(entry.operationId); continue; }
+        await markErasureLedgerCommitted(entry.operationId);
+        await pool.query("UPDATE suinda_privacy_erasures SET external_ledger_state='committed' WHERE id=$1 AND state='completed' AND external_ledger_state='prepared'", [entry.operationId]);
+      }
+    } finally { await pool.end(); }
+    console.log(JSON.stringify({ reconciled: pending.length - unresolved.length, unresolved }, null, 2));
+    if (unresolved.length) throw new Error('Some prepared erasures have no completed-operation proof in the active database; the restore ledger remains unresolved.');
+    return;
+  }
   if (action === 'create') {
     const backup = await createDatabaseBackup(args.join(' ') || 'manual');
     const deliveries=await processGeneratedBackup(backup);
@@ -66,7 +101,7 @@ async function main() {
     }finally{await db.pool.end()}
     return;
   }
-  throw new Error('Usage: npm run db:backup -- <create|list|verify|restore|verify-vault|restore-vault|verify-config|restore-config|verify-attachment|extract-attachment>');
+  throw new Error('Usage: npm run db:backup -- <create|list|verify|restore|init-erasure-ledger|recover-erasure-ledger-head|reconcile-erasure-ledger|verify-vault|restore-vault|verify-config|restore-config|verify-attachment|extract-attachment>');
 }
 
 main().catch(error => {

@@ -30,7 +30,7 @@ import {
   TrelloConnection,
 } from "@/lib/api";
 import { remember } from "@/lib/history";
-import { Modal, useConfirmModal } from "./ui";
+import { boardColorLabels, Modal, useConfirmModal } from "./ui";
 import { RichText } from "./rich-text";
 import { AiEffortField, AiModelFields } from "./ai-model-fields";
 export { RichText } from "./rich-text";
@@ -61,6 +61,7 @@ export function BoardTools({
   const menuRef = useRef<HTMLDivElement>(null);
   const [advancedFilters, setAdvancedFilters] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
+  const [panelRestoreFocusTo, setPanelRestoreFocusTo] = useState<HTMLElement | null>(null);
   const [description, setDescription] = useState(board.description || "");
   const [copyTitle, setCopyTitle] = useState(`${board.title} (cópia)`);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -132,6 +133,11 @@ export function BoardTools({
     }
   }
   function open(next: Panel) {
+    const active = document.activeElement;
+    const menuTrigger = menuRef.current?.querySelector<HTMLElement>('button[title="Menu do quadro"]') ?? null;
+    setPanelRestoreFocusTo(menuRef.current?.contains(active) && menuTrigger
+      ? menuTrigger
+      : active instanceof HTMLElement ? active : null);
     setMenu(false);
     setError("");
     setPanel(next);
@@ -336,7 +342,7 @@ export function BoardTools({
         </span>
       )}
       {panel && (
-        <Modal onClose={() => setPanel(null)}>
+        <Modal restoreFocusTo={panelRestoreFocusTo} onClose={() => setPanel(null)}>
           <div className="max-h-[80vh] overflow-y-auto p-6 text-[#172b4d]">
             <h2 className="mb-4 pr-8 text-lg font-bold">
               {panel === "about"
@@ -620,11 +626,15 @@ export function BoardTools({
               <div>
                 <h3 className="mb-2 text-sm font-bold">Cores</h3>
                 <div className="mb-5 grid grid-cols-4 gap-2">
-                  {Object.entries(boardColors).map(([name, gradient]) => (
-                    <button
+                  {Object.entries(boardColors).map(([name, gradient]) => {
+                    const selected = board.background === name && !board.background_image;
+                    const colorLabel = boardColorLabels[name] || name;
+                    return <button
                       key={name}
-                      title={name}
-                      aria-label={`Cor ${name}`}
+                      type="button"
+                      title={colorLabel}
+                      aria-label={`Cor ${colorLabel}`}
+                      aria-pressed={selected}
                       onClick={async () => {
                         await run(async () => {
                           await send(`/boards/${board.id}`, "PATCH", {
@@ -637,10 +647,10 @@ export function BoardTools({
                             );
                         });
                       }}
-                      className={`h-16 rounded ${board.background === name && !board.background_image ? "ring-2 ring-[#0c66e4] ring-offset-2" : ""}`}
+                      className={`h-16 rounded ${selected ? "ring-2 ring-[#0c66e4] ring-offset-2" : ""}`}
                       style={{ background: gradient }}
-                    />
-                  ))}
+                    />;
+                  })}
                 </div>
                 <h3 className="mb-2 text-sm font-bold">
                   Imagem do dispositivo

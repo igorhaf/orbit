@@ -276,7 +276,7 @@ export function CardLabelsPanel({
   const filteredLabels = (board.labels || []).filter((label) => label.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return (
     <>
-    <Modal onClose={onClose}>
+    <Modal ariaLabel="Etiquetas do cartão" onClose={onClose}>
     <div className="space-y-5 p-6 text-sm sm:p-8">
       <div className="border-b border-[#dfe1e6] pb-4"><h2 className="pr-12 text-xl font-bold">Etiquetas</h2><p className="mt-2 text-sm text-[#626f86]">Selecione, renomeie ou crie etiquetas.</p></div>
       {!editorOpen ? <>

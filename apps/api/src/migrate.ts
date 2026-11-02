@@ -5,7 +5,7 @@ import { Pool } from 'pg';
 import { backupPath, createDatabaseBackup, hasExistingOrbitSchema, verifyDatabaseBackup } from './database-backup';
 import {processGeneratedBackup} from './managed-backup';
 import { migrateVersions } from './migrations';
-import { allowLocalOnlyMigrationBackup } from './migration-backup-policy';
+import { allowLocalOnlyMigrationBackup, shouldDispatchMigrationBackup } from './migration-backup-policy';
 import { seedDatabase } from './seed';
 
 function deliveryFailed(deliveries: Awaited<ReturnType<typeof processGeneratedBackup>>) {
@@ -20,7 +20,10 @@ async function main() {
     if (backup && localOnlyBackup) await verifyDatabaseBackup(backupPath(backup.archive));
     const cloudTables=backup?(await pool.query<{vault:string|null;config:string|null;attachments:string|null;folders:boolean}>("SELECT to_regclass('vault_backup_cloud_copies') AS vault, to_regclass('config_backup_cloud_copies') AS config, to_regclass('attachment_backup_cloud_copies') AS attachments, EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='attachment_backup_cloud_copies' AND column_name='organized_at' AND table_schema=current_schema()) AS folders")).rows[0]:null;
     const cloudSchemaReady=Boolean(cloudTables?.vault&&cloudTables?.config&&cloudTables?.attachments&&cloudTables?.folders);
-    if(backup&&cloudSchemaReady){const deliveries=await processGeneratedBackup(backup);if(deliveryFailed(deliveries)&&!localOnlyBackup)throw new Error('Backup pré-migração salvo localmente, mas o envio automático falhou. Consulte o status em Backups.');if(deliveryFailed(deliveries))console.warn('DEMO DEV: envio ao Drive falhou; backup local criptografado foi verificado e a migração continuará pela flag explícita. A cópia em nuvem permanece pendente.');}
+    if(backup&&cloudSchemaReady&&shouldDispatchMigrationBackup(localOnlyBackup)){
+      const deliveries=await processGeneratedBackup(backup);
+      if(deliveryFailed(deliveries))throw new Error('Backup pré-migração salvo localmente, mas o envio automático falhou. Consulte o status em Backups.');
+    }
     await pool.query(readFileSync(resolve(__dirname, '../sql/schema.sql'), 'utf8'));
     const migrationTable=await pool.query("SELECT to_regclass('schema_migrations') AS name");
     const hasRemovedAutomations=migrationTable.rows[0]?.name
@@ -29,8 +32,11 @@ async function main() {
     if(!hasRemovedAutomations)await pool.query(readFileSync(resolve(__dirname, '../sql/pre-022-compat.sql'), 'utf8'));
     await migrateVersions(pool);
     await seedDatabase(pool);
-    if(backup&&!cloudSchemaReady&&!localOnlyBackup){const deliveries=await processGeneratedBackup(backup);if(deliveryFailed(deliveries))throw new Error('Migração aplicada, mas um envio automático de backup falhou. Consulte o status em Backups.');}
-    if(backup&&!cloudSchemaReady&&localOnlyBackup)console.warn('DEMO DEV: schema de destinos cloud ainda não existe; backup local verificado, migração concluída sem cópia Drive.');
+    if(backup&&!cloudSchemaReady&&shouldDispatchMigrationBackup(localOnlyBackup)){
+      const deliveries=await processGeneratedBackup(backup);
+      if(deliveryFailed(deliveries))throw new Error('Migração aplicada, mas um envio automático de backup falhou. Consulte o status em Backups.');
+    }
+    if(backup&&localOnlyBackup)console.warn('DEMO DEV: backup local criptografado verificado; a migração foi aplicada sem envio para serviços externos pela flag explícita.');
     console.log('Database schema is ready.');
   } finally { await pool.end(); }
 }

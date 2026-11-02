@@ -17,7 +17,11 @@ export type Schema = {
   minimum?: number;
   maximum?: number;
   maxLength?: number;
+  recordKind?: string;
+  recordRevisionField?: string;
+  enumLabels?: Record<string, string>;
 };
+export type RecordOption = { id: string; kind: string; title: string; revision: number };
 const labels: Record<string, string> = {
   content: "Conteúdo",
   source_reference: "Referência da fonte",
@@ -52,6 +56,55 @@ const labels: Record<string, string> = {
   reason: "Justificativa",
   resolution: "Resolução",
   decision_reference: "Referência da decisão",
+  criterion_id: "ID do critério",
+  label: "Rótulo",
+  weight: "Peso (%)",
+  scale_min: "Nota mínima",
+  scale_max: "Nota máxima",
+  evidence_basis: "Bases de evidência",
+  eligible_evaluators: "Público avaliador",
+  nonresponse_policy: "Tratamento da não resposta",
+  minimum_anonymous_responses: "Mínimo de respostas anônimas",
+  validation_method: "Método de validação",
+  appeal_window_days: "Prazo para recurso (dias)",
+  appeal_reviewer_role: "Perfil de quem revisa o recurso",
+  retention_days: "Retenção prevista (dias)",
+  retention_notice_record_id: "Aviso de privacidade que rege a retenção",
+  visibility_policy: "Política de visibilidade",
+  consequence_policy: "Política de consequências",
+  approval_reference: "Referência da aprovação institucional",
+  approved_by_user_id: "Aprovado por",
+  approved_at: "Aprovado em",
+  policy_record_id: "Política institucional",
+  teacher_user_id: "Pessoa docente avaliada",
+  course_record_id: "Curso",
+  course_revision: "Versão curricular",
+  cohort_record_id: "Turma",
+  survey_record_id: "Pesquisa anônima",
+  opens_at: "Início do ciclo",
+  closes_at: "Encerramento do ciclo",
+  published_criteria: "Critérios publicados no ciclo",
+  validation_summary: "Síntese da validação institucional",
+  validation_reference: "Referência da ata/parecer institucional",
+  validated_by_user_id: "Validado por",
+  validated_at: "Validado em",
+  cycle_record_id: "Ciclo de avaliação",
+  decision_reason: "Fundamentação da decisão",
+  reviewer_user_id: "Pessoa revisora",
+  decided_at: "Decidido em",
+  id: "Identificador",
+  category: "Categoria",
+  tags: "Etiquetas",
+  questions: "Questões",
+  question_id: "ID da questão",
+  type: "Tipo",
+  prompt: "Enunciado",
+  options: "Alternativas",
+  correct_option_ids: "Alternativas corretas",
+  points: "Pontuação",
+  max_length: "Limite de caracteres",
+  record_id: "Registro",
+  revision: "Versão",
   disclosure_id: "ID da declaração",
   description: "Descrição",
   schema: "Definição dos campos em JSON Schema",
@@ -116,15 +169,31 @@ function Field({
   value,
   onChange,
   label,
+  records,
 }: {
   schema: Schema;
   value: unknown;
   onChange: (value: unknown) => void;
   label: string;
+  records?: RecordOption[];
 }) {
   const type = Array.isArray(schema.type)
     ? schema.type.find((item) => item !== "null")
     : schema.type;
+  if (schema.recordKind)
+    return (
+      <select
+        aria-label={label}
+        className={input}
+        value={String(value ?? "")}
+        onChange={(event) => onChange(event.target.value || undefined)}
+      >
+        <option value="">Selecione um registro</option>
+        {(records || []).filter((record) => record.kind === schema.recordKind).map((record) => (
+          <option key={record.id} value={record.id}>{record.title} · v{record.revision}</option>
+        ))}
+      </select>
+    );
   if (schema.enum)
     return (
       <select
@@ -135,7 +204,7 @@ function Field({
       >
         <option value="">Selecione</option>
         {schema.enum.map((item) => (
-          <option key={item}>{item}</option>
+          <option key={item} value={item}>{schema.enumLabels?.[item] || item}</option>
         ))}
       </select>
     );
@@ -156,6 +225,7 @@ function Field({
         schema={schema}
         value={(value || {}) as Record<string, unknown>}
         onChange={onChange}
+          records={records}
       />
     );
   if (type === "array" && schema.items) {
@@ -171,6 +241,7 @@ function Field({
               label={`${label} ${index + 1}`}
               schema={schema.items!}
               value={item}
+              records={records}
               onChange={(next) =>
                 onChange(items.map((value, i) => (i === index ? next : value)))
               }
@@ -251,17 +322,20 @@ export default function SchemaFields({
   schema,
   value,
   onChange,
+  records,
   skip = [],
 }: {
   schema: Schema;
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
+  records?: RecordOption[];
   skip?: string[];
 }) {
+  const revisionFields = new Set(Object.values(schema.properties || {}).flatMap((field) => field.recordRevisionField ? [field.recordRevisionField] : []));
   return (
     <div className="grid min-w-0 gap-4">
       {Object.entries(schema.properties || {})
-        .filter(([key]) => !skip.includes(key))
+        .filter(([key]) => !skip.includes(key) && !revisionFields.has(key))
         .map(([key, field]) => (
           <div key={key} className="min-w-0">
             <p className="mb-1 text-sm font-semibold">
@@ -273,13 +347,20 @@ export default function SchemaFields({
               schema={field}
               label={field.title || fieldLabel(key)}
               value={value[key]}
+        records={records}
               onChange={(next) => {
                 const updated = { ...value };
                 if (next === undefined) delete updated[key];
                 else updated[key] = next;
+          if (field.recordRevisionField) {
+            const selected = records?.find((record) => record.id === next);
+            if (selected) updated[field.recordRevisionField] = selected.revision;
+            else delete updated[field.recordRevisionField];
+          }
                 onChange(updated);
               }}
             />
+            {field.recordRevisionField && typeof value[key] === "string" && value[key] && typeof value[field.recordRevisionField] === "number" && <p className="mt-1 text-xs text-slate-400">Versão fixada: v{String(value[field.recordRevisionField])}</p>}
           </div>
         ))}
     </div>

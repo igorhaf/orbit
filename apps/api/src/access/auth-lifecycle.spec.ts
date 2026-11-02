@@ -52,6 +52,43 @@ test('per-account abuse limit does not prevent another account from requesting r
   assert.notEqual(sha('one@example.test'),sha('two@example.test'));
 });
 
+test('wrong MFA code commits its failed attempt without rolling back the completed transaction',async()=>{
+  let challengeId='',codeHash='',emailCode='',failedAttempts=0,commits=0,rollbacks=0;
+  const client={async query(sql:string,args?:unknown[]){
+    if(sql.includes('SELECT email,email_verified,mfa_enabled,session_version'))return {rows:[{email:'person@example.test',email_verified:true,mfa_enabled:true,session_version:1}]};
+    if(sql.includes('INSERT INTO auth_mfa_challenges')){challengeId=String(args?.[0]);codeHash=String(args?.[3]);return {rows:[]}}
+    if(sql.includes('SELECT c.id,c.user_id,c.purpose'))return {rows:[{id:challengeId,user_id:'user-1',purpose:'login',code_hash:codeHash,attempts:0,expires_at:new Date(Date.now()+60_000),consumed_at:null,challenge_session_version:1,name:'Person',email:'person@example.test',avatar_url:null,preferences:{},is_root:false,disabled:false,session_version:1,mfa_enabled:true}]};
+    if(sql.includes('SET attempts=attempts+1'))failedAttempts++;
+    if(sql==='COMMIT')commits++;
+    if(sql==='ROLLBACK')rollbacks++;
+    return {rows:[]};
+  },release(){}};
+  const db={pool:{async connect(){return client}},async query(){return []}} as unknown as Db;
+  const auth=new AuthLifecycle(db,{async send(){},async sendMessage(_to,_subject,text){emailCode=text.match(/é ([0-9]{6})\./)?.[1]||'';return {}}} as AuthMailer,{} as never);
+  const challenge=await auth.requestMfaLogin('user-1');
+  assert.ok(emailCode.length===6);
+  await assert.rejects(()=>auth.completeMfaChallenge(challenge.challenge_id,String((Number(emailCode)+1)%1_000_000).padStart(6,'0'),'login'),/Código inválido ou expirado/);
+  assert.equal(failedAttempts,1);
+  assert.equal(commits,2);
+  assert.equal(rollbacks,0);
+});
+
+test('MFA challenge issuance is capped per account and purpose before sending another code',async()=>{
+  let inserted=false,sent=0,rolledBack=false;
+  const client={async query(sql:string){
+    if(sql.includes('SELECT email,email_verified,mfa_enabled,session_version'))return {rows:[{email:'person@example.test',email_verified:true,mfa_enabled:true,session_version:1}]};
+    if(sql.includes('SELECT count(*)::int AS count FROM auth_mfa_challenges'))return {rows:[{count:5}]};
+    if(sql.includes('INSERT INTO auth_mfa_challenges'))inserted=true;
+    if(sql==='ROLLBACK')rolledBack=true;
+    return {rows:[]};
+  },release(){}};
+  const auth=new AuthLifecycle({pool:{async connect(){return client}}} as unknown as Db,{async send(){},async sendMessage(){sent++;return {}}} as AuthMailer,{} as never);
+  await assert.rejects(()=>auth.requestMfaLogin('user-1'),(error:unknown)=>error instanceof Error&&'getStatus' in error&&(error as {getStatus:()=>number}).getStatus()===429);
+  assert.equal(inserted,false);
+  assert.equal(sent,0);
+  assert.equal(rolledBack,true);
+});
+
 test('completion consumes a token once, hashes password, verifies account, and revokes sessions',async()=>{
   let active=true;const statements:string[]=[];let commits=0;
   const client={async query(sql:string){statements.push(sql);if(sql.includes('SELECT t.id'))return {rows:active?[{id:'token-row',user_id:'user-1',purpose:'verify'}]:[]};if(sql.includes('consumed_at IS NULL'))active=false;if(sql==='COMMIT')commits++;return {rows:[]}},release(){}};
@@ -60,6 +97,7 @@ test('completion consumes a token once, hashes password, verifies account, and r
   const token='a'.repeat(43);
   assert.deepEqual(await auth.complete(token,'a sufficiently long password'),{ok:true});
   assert.equal(commits,1);assert.ok(statements.some(sql=>sql.includes('session_version=session_version+1')));assert.ok(statements.some(sql=>sql.includes('email_verified=true')));
+  assert.ok(statements.some(sql=>sql.includes("INSERT INTO access_audit(actor_id,action) VALUES($1,$2)")));
   await assert.rejects(()=>auth.complete(token,'another sufficiently long password'),/Token inválido ou expirado/);
 });
 
@@ -114,4 +152,48 @@ test('invitation refuses the protected ROOT account without opening a transactio
   const auth=new AuthLifecycle(db,{async send(){}} as AuthMailer,access as never);
   await assert.rejects(()=>auth.invite('admin',{name:'Root',email:'root@example.test'}),/ROOT/);
   assert.equal(connected,false);
+});
+
+test('Suindá self-registration verifies the email and grants only the student role',async()=>{
+  const previous=process.env.ORBIT_PRODUCT;process.env.ORBIT_PRODUCT='suinda';
+  const statements:Array<{sql:string;args:unknown[]|undefined}>=[];let mailed='';
+  const client={async query(sql:string,args?:unknown[]){statements.push({sql,args});if(sql.startsWith('INSERT INTO users'))return {rows:[{id:'student-1'}]};return {rows:[]}},release(){}};
+  const db={async one(){return null},async query(sql:string){return sql.includes('account_auth_limits')?[{requests:1}]:[]},pool:{async connect(){return client}}} as unknown as Db;
+  try {
+    const auth=new AuthLifecycle(db,{async send(_to:string,_subject:string,url:string){mailed=url}} as AuthMailer,{} as never);
+    assert.deepEqual(await auth.register({name:'  Ana Aluna ',email:' ANA@EXAMPLE.TEST ',terms_accepted:true,terms_version:'suinda-terms-v1'}),{ok:true});
+    assert.match(mailed,/\/auth\/verify\?token=/);
+    assert.ok(statements.some(call=>call.sql.includes("VALUES($1,'suinda_student')")));
+    const acceptance=statements.find(call=>call.sql.includes('account_terms_acceptances'));
+    assert.deepEqual(acceptance?.args,['student-1','suinda-terms-v1']);
+    const userInsert=statements.find(call=>call.sql.startsWith('INSERT INTO users'));
+    assert.equal(userInsert?.args?.[0],'Ana Aluna');assert.equal(userInsert?.args?.[1],'ana@example.test');
+    assert.ok(statements.some(call=>call.sql.includes("'verify'")));
+    assert.ok(statements.some(call=>call.sql==='COMMIT'));
+    assert.ok(!statements.some(call=>call.sql.includes("'user')")));
+  } finally { if(previous===undefined)delete process.env.ORBIT_PRODUCT;else process.env.ORBIT_PRODUCT=previous; }
+});
+
+test('self-registration does not disclose an already active account',async()=>{
+  const previous=process.env.ORBIT_PRODUCT;process.env.ORBIT_PRODUCT='suinda';
+  let mailCount=0;
+  const make=(existing:unknown)=>{
+    const db={async one(){return existing},async query(sql:string){return sql.includes('account_auth_limits')?[{requests:1}]:[]},pool:{async connect(){throw new Error('no transaction expected')}}} as unknown as Db;
+    return new AuthLifecycle(db,{async send(){mailCount++}} as AuthMailer,{} as never);
+  };
+  try {
+    const body={name:'Ana',email:'ana@example.test',terms_accepted:true,terms_version:'suinda-terms-v1'};
+    assert.deepEqual(await make({id:'existing',email_verified:true,is_root:false,disabled:false}).register(body),{ok:true});
+    assert.equal(mailCount,0);
+  } finally { if(previous===undefined)delete process.env.ORBIT_PRODUCT;else process.env.ORBIT_PRODUCT=previous; }
+});
+
+test('self-registration rejects outdated or absent terms acceptance and stays off outside Suindá',async()=>{
+  const previous=process.env.ORBIT_PRODUCT;process.env.ORBIT_PRODUCT='suinda';
+  const auth=new AuthLifecycle({} as Db,{async send(){}} as AuthMailer,{} as never);
+  try {
+    await assert.rejects(()=>auth.register({name:'Ana',email:'ana@example.test',terms_accepted:true,terms_version:'old'}),/termos atuais/);
+    process.env.ORBIT_PRODUCT='orbit';
+    await assert.rejects(()=>auth.register({name:'Ana',email:'ana@example.test',terms_accepted:true,terms_version:'suinda-terms-v1'}),/indisponível/);
+  } finally { if(previous===undefined)delete process.env.ORBIT_PRODUCT;else process.env.ORBIT_PRODUCT=previous; }
 });

@@ -1,8 +1,9 @@
 "use client";
 
 import {useEffect,useState} from 'react';
-import {Play,Square,RotateCw,ShieldCheck,RefreshCw,X} from 'lucide-react';
+import {Play,Square,RotateCw,ShieldCheck,RefreshCw} from 'lucide-react';
 import {api,send} from '@/lib/api';
+import {Modal} from '@/components/ui';
 
 type Configuration={tunnelName:string;tunnelId:string;publicHostname:string;mode:'remote'|'local'|'quick';executablePath:string;configPath:string;quickUrl:string;managedBy:'orbit'|'system';autoStart:boolean;restartOnFailure:boolean;restartDelaySeconds:number;maxRestartAttempts:number;restartWindowSeconds:number;logLimit:number};
 type Status={state:string;enabled:boolean;installed:boolean;version:string|null;pid:number|null;startedAt:string|null;uptimeSeconds:number|null;restartCount:number;lastError:string|null;temporaryUrl:string|null;recovered:boolean;running:boolean;logs:Array<{at:string;stream:string;message:string}>};
@@ -49,9 +50,10 @@ export function CloudflareTunnelPanel({onClose,onEnabledChanged}:{onClose:()=>vo
   const owned=draft?.managedBy==='orbit';
   const running=Boolean(status?.running&&owned);
   const blocked=Boolean(busy);
-  return <div className="fixed inset-0 z-50 overflow-y-auto bg-[#091e42a6] p-2 sm:p-6" onMouseDown={event=>{if(event.target===event.currentTarget)onClose();}}>
-    <section role="dialog" aria-modal="true" aria-label="Configurar Cloudflare Tunnel" className="mx-auto my-3 w-full max-w-4xl min-w-0 rounded-xl bg-white p-4 text-[#172b4d] shadow-dialog sm:my-6 sm:p-6">
-      <header className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase text-[#0c66e4]">Configuração do plugin</p><h2 className="mt-1 text-xl font-bold">Cloudflare Tunnel</h2><p className="mt-2 text-sm text-[#626f86]">1. Detecte o binário · 2. Escolha o modo · 3. Salve · 4. Valide · 5. Inicie</p></div><button aria-label="Fechar Cloudflare Tunnel" className={buttonClass} onClick={onClose}><X size={18}/></button></header>
+  const dark=process.env.NEXT_PUBLIC_ORBIT_THEME==='dark';
+  return <Modal onClose={onClose} title="Configurar Cloudflare Tunnel" wide theme={dark?'dark':'light'}>
+    <div className="p-4 text-[#172b4d] sm:p-6">
+      <header><p className="text-xs font-bold uppercase text-[#0c66e4]">Configuração do plugin</p><h2 className="mt-1 text-xl font-bold">Cloudflare Tunnel</h2><p className="mt-2 text-sm text-[#626f86]">1. Detecte o binário · 2. Escolha o modo · 3. Salve · 4. Valide · 5. Inicie</p></header>
       {error&&<p role="alert" className="mt-4 break-words rounded bg-[#ffebe6] p-3 text-sm text-[#ae2a19]">{error}</p>}
       {notice&&<p role="status" className="mt-4 break-words rounded bg-[#e9f2ff] p-3 text-sm">{notice}</p>}
       {status&&<div className="mt-5 rounded-xl border border-[#dfe1e6] p-4"><div className="flex flex-wrap items-center justify-between gap-3"><strong data-testid="tunnel-state" className={status.state==='CONNECTED'?'text-[#216e4e]':'text-[#344563]'}>{labels[status.state]||status.state}</strong><button className={buttonClass} disabled={blocked} onClick={()=>void toggle()}>{status.enabled?'Desativar plugin':'Ativar plugin'}</button></div><dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">{[['cloudflared',status.installed?'Instalado':'Não detectado'],['Versão',status.version||'—'],['PID',status.pid?.toString()||'—'],['Iniciado',status.startedAt?new Date(status.startedAt).toLocaleString('pt-BR'):'—'],['Tempo ativo',status.uptimeSeconds===null?'—':`${status.uptimeSeconds}s`],['Reinícios',String(status.restartCount)]].map(([name,value])=><div key={name} className="min-w-0"><dt className="text-xs text-[#626f86]">{name}</dt><dd className="mt-1 break-words font-semibold">{value}</dd></div>)}</dl>{status.lastError&&<p className="mt-4 break-words text-sm text-[#ae2a19]">{status.lastError}</p>}{status.temporaryUrl&&<p className="mt-4 break-words text-sm">URL temporária: <a className="text-[#0c66e4] underline" href={status.temporaryUrl} target="_blank" rel="noreferrer">{status.temporaryUrl}</a></p>}{status.recovered&&<p className="mt-3 text-xs text-[#626f86]">Processo recuperado com identidade verificada; apenas novos eventos de monitoramento ficam disponíveis.</p>}</div>}
@@ -71,6 +73,6 @@ export function CloudflareTunnelPanel({onClose,onEnabledChanged}:{onClose:()=>vo
       </fieldset><button className={`${buttonClass} mt-4 bg-[#0c66e4] text-white`} disabled={running||blocked}>{busy==='save'?'Salvando…':'Salvar configuração'}</button><p className="mt-2 text-xs text-[#626f86]">Alterações são aplicadas pelo próprio plugin. Autostart habilitado também se aplica ao salvar uma configuração válida.</p></form>}
       <details className="mt-6 rounded-lg border border-[#dfe1e6] p-4"><summary className="min-h-11 cursor-pointer font-bold">Logs · {status?.logs.length||0} linhas</summary><div role="log" aria-label="Logs do Cloudflare Tunnel" className="mt-3 max-h-80 min-w-0 overflow-y-auto rounded bg-[#f1f2f4] p-3 font-mono text-xs">{status?.logs.length?status.logs.map((entry,index)=><p className="mb-2 whitespace-pre-wrap break-all" key={`${entry.at}-${index}`}>{entry.at} [{entry.stream}] {entry.message}</p>):<p>Sem logs. Processos externos não fornecem logs ao Orbit.</p>}</div></details>
       <p className="mt-5 text-xs leading-5 text-[#626f86]">Em Docker, o executável e os arquivos precisam estar acessíveis no contêiner da API. A instalação do binário, volumes, serviços do sistema e DNS são configurados explicitamente pelo administrador.</p>
-    </section>
-  </div>;
+    </div>
+  </Modal>;
 }

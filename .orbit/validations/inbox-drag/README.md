@@ -8,6 +8,6 @@
 6. Em quadro de curso, conferir os mesmos resultados e a preservação das transições formais.
 7. Revogar acesso ou desativar o plugin de origem e conferir que o cartão desaparece da listagem autorizada.
 
-Testes sem navegador: `apps/web/lib/board-drag.spec.ts`, `apps/api/src/inbox.integration.spec.ts` e jornada isolada SAFDOULAS.
+Testes sem navegador: `apps/web/lib/board-drag.spec.ts`, `apps/api/src/inbox.integration.spec.ts` e jornada de integração isolada do produto.
 
 Não executar Selenium ou substituir por outro navegador automatizado neste host: existe restrição expressa do usuário.

@@ -7,7 +7,42 @@ CREATE TABLE IF NOT EXISTS users (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{"theme":"light","notifications":true,"browserNotifications":false,"shortcuts":true,"compactCards":false}'::jsonb;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS auth_mfa_challenges (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose text NOT NULL CHECK (purpose IN ('login','enable','disable')),
+  code_hash text NOT NULL,
+  session_version integer NOT NULL DEFAULT 0,
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_mfa_challenges_user_active_idx
+  ON auth_mfa_challenges(user_id,purpose,created_at DESC) WHERE consumed_at IS NULL;
+CREATE TABLE IF NOT EXISTS auth_social_states (
+  state_hash text PRIMARY KEY,
+  provider varchar(80) NOT NULL,
+  nonce text NOT NULL,
+  code_verifier text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS auth_social_states_expiry_idx ON auth_social_states(expires_at);
+CREATE TABLE IF NOT EXISTS auth_social_identities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  issuer text NOT NULL,
+  subject text NOT NULL,
+  email varchar(255) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(issuer,subject),
+  UNIQUE(user_id,issuer)
+);
+CREATE INDEX IF NOT EXISTS auth_social_identities_user_idx ON auth_social_identities(user_id);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{"theme":"light","notifications":true,"browserNotifications":false,"emailNotifications":false,"shortcuts":true,"compactCards":false}'::jsonb;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_model varchar(100);
 ALTER TABLE users ALTER COLUMN ai_default_model SET DEFAULT 'gpt-6-luna';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_default_effort varchar(16) DEFAULT 'high' CHECK(ai_default_effort IN ('low','medium','high','xhigh'));
@@ -56,6 +91,115 @@ CREATE TABLE IF NOT EXISTS workspaces (
   name varchar(120) NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS suinda_survey_reminder_policies (
+  workspace_id uuid PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+  interval_hours integer NOT NULL DEFAULT 24 CHECK (interval_hours IN (1, 6, 12, 24, 48)),
+  updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS suinda_practice_credit_policies (
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  version integer NOT NULL CHECK (version > 0),
+  enabled boolean NOT NULL DEFAULT false,
+  eligible_course_pairs jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(eligible_course_pairs)='array'),
+  max_hours_per_target numeric(8,2) NOT NULL CHECK (max_hours_per_target > 0 AND max_hours_per_target <= 10000),
+  validity_days integer NOT NULL CHECK (validity_days BETWEEN 1 AND 3650),
+  created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id,version)
+);
+CREATE INDEX IF NOT EXISTS suinda_practice_credit_policy_latest
+  ON suinda_practice_credit_policies(workspace_id,version DESC);
+
+CREATE TABLE IF NOT EXISTS suinda_practice_credit_requests (
+  id uuid PRIMARY KEY,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  learner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source_enrollment_id uuid NOT NULL,
+  source_course_revision integer NOT NULL CHECK (source_course_revision > 0),
+  target_enrollment_id uuid NOT NULL,
+  target_course_revision integer NOT NULL CHECK (target_course_revision > 0),
+  requested_hours numeric(8,2) NOT NULL CHECK (requested_hours > 0),
+  policy_version integer NOT NULL CHECK (policy_version > 0),
+  status text NOT NULL CHECK (status IN ('pending','approved','rejected')) DEFAULT 'pending',
+  reviewed_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at timestamptz,
+  decision_note text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (source_enrollment_id <> target_enrollment_id),
+  FOREIGN KEY (workspace_id,policy_version) REFERENCES suinda_practice_credit_policies(workspace_id,version)
+);
+CREATE INDEX IF NOT EXISTS suinda_practice_credit_requests_learner
+  ON suinda_practice_credit_requests(learner_user_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS suinda_practice_credit_requests_pending
+  ON suinda_practice_credit_requests(workspace_id,created_at) WHERE status='pending';
+
+CREATE TABLE IF NOT EXISTS suinda_practice_credit_ledger (
+  id uuid PRIMARY KEY,
+  request_id uuid NOT NULL REFERENCES suinda_practice_credit_requests(id) ON DELETE RESTRICT,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  learner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  practice_record_id uuid NOT NULL,
+  source_enrollment_id uuid NOT NULL,
+  source_course_revision integer NOT NULL CHECK (source_course_revision > 0),
+  target_enrollment_id uuid NOT NULL,
+  target_course_revision integer NOT NULL CHECK (target_course_revision > 0),
+  policy_version integer NOT NULL CHECK (policy_version > 0),
+  hours_credited numeric(8,2) NOT NULL CHECK (hours_credited > 0),
+  credited_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  credited_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(request_id,practice_record_id),
+  FOREIGN KEY (workspace_id,policy_version) REFERENCES suinda_practice_credit_policies(workspace_id,version)
+);
+CREATE INDEX IF NOT EXISTS suinda_practice_credit_ledger_source
+  ON suinda_practice_credit_ledger(practice_record_id);
+CREATE INDEX IF NOT EXISTS suinda_practice_credit_ledger_target
+  ON suinda_practice_credit_ledger(target_enrollment_id);
+
+CREATE TABLE IF NOT EXISTS suinda_practice_credit_events (
+  id uuid PRIMARY KEY,
+  request_id uuid NOT NULL REFERENCES suinda_practice_credit_requests(id) ON DELETE RESTRICT,
+  actor_user_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  event_type text NOT NULL CHECK (event_type IN ('requested','approved','rejected')),
+  details jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE FUNCTION suinda_practice_credit_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'Suindá practice credit audit data is immutable';
+END;
+$$;
+DROP TRIGGER IF EXISTS suinda_practice_credit_policy_immutable ON suinda_practice_credit_policies;
+CREATE TRIGGER suinda_practice_credit_policy_immutable BEFORE UPDATE OR DELETE ON suinda_practice_credit_policies
+  FOR EACH ROW EXECUTE FUNCTION suinda_practice_credit_immutable();
+DROP TRIGGER IF EXISTS suinda_practice_credit_ledger_immutable ON suinda_practice_credit_ledger;
+CREATE TRIGGER suinda_practice_credit_ledger_immutable BEFORE UPDATE OR DELETE ON suinda_practice_credit_ledger
+  FOR EACH ROW EXECUTE FUNCTION suinda_practice_credit_immutable();
+DROP TRIGGER IF EXISTS suinda_practice_credit_event_immutable ON suinda_practice_credit_events;
+CREATE TRIGGER suinda_practice_credit_event_immutable BEFORE UPDATE OR DELETE ON suinda_practice_credit_events
+  FOR EACH ROW EXECUTE FUNCTION suinda_practice_credit_immutable();
+
+CREATE OR REPLACE FUNCTION suinda_practice_credit_request_transition() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP='DELETE' OR OLD.status<>'pending' OR NEW.status NOT IN ('approved','rejected')
+    OR NEW.id IS DISTINCT FROM OLD.id OR NEW.workspace_id IS DISTINCT FROM OLD.workspace_id
+    OR NEW.learner_user_id IS DISTINCT FROM OLD.learner_user_id
+    OR NEW.source_enrollment_id IS DISTINCT FROM OLD.source_enrollment_id
+    OR NEW.source_course_revision IS DISTINCT FROM OLD.source_course_revision
+    OR NEW.target_enrollment_id IS DISTINCT FROM OLD.target_enrollment_id
+    OR NEW.target_course_revision IS DISTINCT FROM OLD.target_course_revision
+    OR NEW.requested_hours IS DISTINCT FROM OLD.requested_hours OR NEW.policy_version IS DISTINCT FROM OLD.policy_version
+    OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'Suindá practice credit request audit data is immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS suinda_practice_credit_request_transition ON suinda_practice_credit_requests;
+CREATE TRIGGER suinda_practice_credit_request_transition BEFORE UPDATE OR DELETE ON suinda_practice_credit_requests
+  FOR EACH ROW EXECUTE FUNCTION suinda_practice_credit_request_transition();
+
 CREATE TABLE IF NOT EXISTS boards (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title varchar(160) NOT NULL,
@@ -276,14 +420,105 @@ CREATE TABLE IF NOT EXISTS notifications (
   title varchar(300) NOT NULL,
   body text NOT NULL DEFAULT '',
   target_url text,
+  workspace_id uuid REFERENCES workspaces(id) ON DELETE SET NULL,
   read_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notifications_workspace_email_idx
+  ON notifications(workspace_id,plugin_id,kind,created_at DESC) WHERE workspace_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS workspace_email_templates (
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  plugin_id varchar(80) NOT NULL,
+  kind varchar(80) NOT NULL,
+  subject_template varchar(250) NOT NULL,
+  body_template text NOT NULL,
+  enabled boolean NOT NULL DEFAULT false,
+  updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(workspace_id,plugin_id,kind),
+  CHECK (length(btrim(subject_template)) BETWEEN 1 AND 250),
+  CHECK (length(btrim(body_template)) BETWEEN 1 AND 10000)
 );
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS due_at timestamptz;
 DELETE FROM notifications WHERE kind='due' AND due_at IS NULL;
 DROP INDEX IF EXISTS notifications_due_once_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_due_occurrence_idx ON notifications(user_id, card_id, kind, due_at) WHERE kind = 'due';
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_academic_reminder_once_idx ON notifications(user_id,target_url,due_at)
+  WHERE plugin_id='suinda-learning' AND kind='academic_reminder';
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_suinda_survey_reminder_once_idx ON notifications(user_id,target_url,due_at)
+  WHERE plugin_id='suinda-learning' AND kind='survey_reminder';
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_attendance_risk_once_idx ON notifications(user_id,target_url)
+  WHERE plugin_id='suinda-learning' AND kind='attendance_risk';
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_suinda_announcement_once_idx ON notifications(user_id,target_url)
+  WHERE plugin_id='suinda-learning' AND kind='announcement';
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_suinda_study_group_message_once_idx ON notifications(user_id,target_url)
+  WHERE plugin_id='suinda-learning' AND kind='study_group_message';
 CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS notification_email_deliveries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  notification_id uuid NOT NULL UNIQUE REFERENCES notifications(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sending','sent','failed','cancelled')),
+  attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
+  available_at timestamptz NOT NULL DEFAULT now(),
+  sent_at timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notification_email_deliveries_pending_idx
+  ON notification_email_deliveries(available_at,created_at)
+  WHERE status IN ('pending','sending');
+CREATE OR REPLACE FUNCTION queue_notification_email_delivery() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO notification_email_deliveries(notification_id,user_id)
+  SELECT NEW.id,u.id FROM users u
+  WHERE u.id=NEW.user_id AND u.disabled=false AND u.email_verified=true
+    AND COALESCE((u.preferences->>'notifications')::boolean,true)
+    AND COALESCE((u.preferences->>'emailNotifications')::boolean,false)
+  ON CONFLICT(notification_id) DO NOTHING;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS queue_notification_email_delivery_trigger ON notifications;
+CREATE TRIGGER queue_notification_email_delivery_trigger
+  AFTER INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION queue_notification_email_delivery();
+CREATE TABLE IF NOT EXISTS notification_push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint text NOT NULL UNIQUE CHECK (length(endpoint) <= 2048 AND endpoint ~ '^https://'),
+  p256dh varchar(200) NOT NULL CHECK (p256dh ~ '^[A-Za-z0-9_-]+$'),
+  auth varchar(100) NOT NULL CHECK (auth ~ '^[A-Za-z0-9_-]+$'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notification_push_subscriptions_user_idx ON notification_push_subscriptions(user_id);
+CREATE TABLE IF NOT EXISTS notification_push_deliveries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  notification_id uuid NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+  subscription_id uuid NOT NULL REFERENCES notification_push_subscriptions(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sending','sent','failed','cancelled')),
+  attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  available_at timestamptz NOT NULL DEFAULT now(),
+  sent_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(notification_id,subscription_id)
+);
+CREATE INDEX IF NOT EXISTS notification_push_deliveries_pending_idx
+  ON notification_push_deliveries(available_at,created_at) WHERE status IN ('pending','sending');
+CREATE OR REPLACE FUNCTION queue_notification_push_delivery() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO notification_push_deliveries(notification_id,subscription_id,user_id)
+  SELECT NEW.id,s.id,s.user_id FROM notification_push_subscriptions s JOIN users u ON u.id=s.user_id
+  WHERE s.user_id=NEW.user_id AND u.disabled=false
+    AND COALESCE((u.preferences->>'notifications')::boolean,true)
+  ON CONFLICT(notification_id,subscription_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS queue_notification_push_delivery_trigger ON notifications;
+CREATE TRIGGER queue_notification_push_delivery_trigger
+  AFTER INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION queue_notification_push_delivery();
 CREATE TABLE IF NOT EXISTS focus_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title varchar(160) NOT NULL DEFAULT 'Focus time', starts_at timestamptz NOT NULL, ends_at timestamptz NOT NULL,
@@ -372,6 +607,7 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   model varchar(100) NOT NULL,
   effort varchar(16) NOT NULL DEFAULT 'medium',
+  multiple_agents boolean NOT NULL DEFAULT false,
   prompt text NOT NULL,
   source varchar(16) NOT NULL DEFAULT 'description' CHECK(source IN ('description','comment')),
   codex_session_id text,
@@ -391,6 +627,7 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   finished_at timestamptz
 );
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';
+ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS multiple_agents boolean NOT NULL DEFAULT false;
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS codex_session_id text;
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_type varchar(30);
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_name varchar(100);
@@ -824,3 +1061,77 @@ CREATE TABLE IF NOT EXISTS vault_backup_restores (
   restored_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY(owner_id,sha256)
 );
+
+-- Suindá manual honorarium history. Corrections are separate entries; ledger rows cannot be edited.
+CREATE TABLE IF NOT EXISTS suinda_staff_honorarium_ledger (
+  id uuid PRIMARY KEY,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  institution_unit_record_id uuid,
+  staff_user_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  period_start date NOT NULL,
+  period_end date NOT NULL,
+  amount numeric(12,2) NOT NULL CHECK (amount > 0),
+  currency char(3) NOT NULL DEFAULT 'BRL' CHECK (currency ~ '^[A-Z]{3}$'),
+  description text NOT NULL CHECK (length(description) BETWEEN 1 AND 1000),
+  operation_key uuid NOT NULL,
+  created_by uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (period_start <= period_end), UNIQUE(workspace_id,operation_key), UNIQUE(workspace_id,id,staff_user_id,currency)
+);
+CREATE INDEX IF NOT EXISTS suinda_staff_honorarium_staff_period ON suinda_staff_honorarium_ledger(workspace_id,staff_user_id,period_end DESC,created_at DESC);
+CREATE OR REPLACE FUNCTION suinda_staff_honorarium_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION 'Suindá honorarium ledger is immutable; record a separate adjustment'; END;
+$$;
+DROP TRIGGER IF EXISTS suinda_staff_honorarium_immutable ON suinda_staff_honorarium_ledger;
+CREATE TRIGGER suinda_staff_honorarium_immutable BEFORE UPDATE OR DELETE ON suinda_staff_honorarium_ledger FOR EACH ROW EXECUTE FUNCTION suinda_staff_honorarium_immutable();
+
+CREATE TABLE IF NOT EXISTS suinda_staff_honorarium_payments (
+  id uuid PRIMARY KEY,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  honorarium_id uuid NOT NULL,
+  staff_user_id uuid NOT NULL,
+  paid_on date NOT NULL,
+  amount numeric(12,2) NOT NULL CHECK (amount > 0),
+  currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+  reference text CHECK (reference IS NULL OR length(reference) <= 200),
+  notes text CHECK (notes IS NULL OR length(notes) <= 1000),
+  operation_key uuid NOT NULL,
+  created_by uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(workspace_id,operation_key),
+  FOREIGN KEY (workspace_id,honorarium_id,staff_user_id,currency)
+    REFERENCES suinda_staff_honorarium_ledger(workspace_id,id,staff_user_id,currency) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS suinda_staff_honorarium_payments_history_idx
+  ON suinda_staff_honorarium_payments(workspace_id,honorarium_id,paid_on,created_at,id);
+CREATE OR REPLACE FUNCTION suinda_staff_honorarium_payment_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION 'Suindá honorarium payment ledger is immutable; record a separate correction'; END;
+$$;
+DROP TRIGGER IF EXISTS suinda_staff_honorarium_payment_immutable ON suinda_staff_honorarium_payments;
+CREATE TRIGGER suinda_staff_honorarium_payment_immutable BEFORE UPDATE OR DELETE ON suinda_staff_honorarium_payments FOR EACH ROW EXECUTE FUNCTION suinda_staff_honorarium_payment_immutable();
+
+CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  endpoint text NOT NULL CHECK(length(endpoint) BETWEEN 1 AND 2048),
+  event_types text[] NOT NULL CHECK(cardinality(event_types)>0 AND array_position(event_types,NULL) IS NULL AND array_to_string(event_types,',') ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+(,[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+)*$'),
+  secret_ciphertext text NOT NULL, active boolean NOT NULL DEFAULT true,
+  created_by uuid REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS webhook_subscriptions_workspace_idx ON webhook_subscriptions(workspace_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  record_id uuid NOT NULL, plugin_id varchar(100) NOT NULL, kind varchar(100) NOT NULL, state varchar(100) NOT NULL,
+  revision integer NOT NULL CHECK(revision>0), event_type text NOT NULL CHECK(event_type ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$'),
+  event_version integer NOT NULL DEFAULT 1 CHECK(event_version>0),
+  occurred_at timestamptz NOT NULL DEFAULT now(), UNIQUE(workspace_id,record_id,revision,event_type)
+);
+CREATE INDEX IF NOT EXISTS webhook_events_workspace_idx ON webhook_events(workspace_id,occurred_at DESC);
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), subscription_id uuid NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+  event_id uuid NOT NULL REFERENCES webhook_events(id) ON DELETE CASCADE,
+  status varchar(16) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sending','delivered','dead_letter')),
+  attempt_count integer NOT NULL DEFAULT 0 CHECK(attempt_count BETWEEN 0 AND 8), available_at timestamptz NOT NULL DEFAULT now(),
+  last_error varchar(40), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(subscription_id,event_id)
+);
+CREATE INDEX IF NOT EXISTS webhook_deliveries_pending_idx ON webhook_deliveries(available_at,created_at) WHERE status IN ('pending','sending');

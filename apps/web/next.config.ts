@@ -11,9 +11,9 @@ const nextDistDir = process.env.ORBIT_NEXT_DIST_DIR || (process.env.NODE_ENV ===
 const nextConfig: NextConfig = {
   distDir: nextDistDir,
   allowedDevOrigins: ['localhost', '127.0.0.1', 'orbit.meadadigital.com', ...localAddresses, ...privateNetworkOrigins],
-  env: { NEXT_PUBLIC_ORBIT_THEME: forcedTheme, NEXT_PUBLIC_ORBIT_ENV: orbitEnvironment },
+  env: { NEXT_PUBLIC_ORBIT_THEME: forcedTheme, NEXT_PUBLIC_ORBIT_ENV: orbitEnvironment, NEXT_PUBLIC_ORBIT_PRODUCT: process.env.ORBIT_PRODUCT === 'suinda' ? 'suinda' : '' },
   skipTrailingSlashRedirect: true,
-  experimental: { useTypeScriptCli: false },
+  experimental: { useTypeScriptCli: false, agentUpgrade: 'security' },
   async headers() {
     return [{
       source: '/:path*',

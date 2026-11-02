@@ -11,7 +11,8 @@ import {LoginAttemptLimiter,loginBucketDigest} from './login-attempts';
 
 test('login limiter persists concurrent account and origin buckets without storing identifiers',async()=>{
   const url=new URL(process.env.DATABASE_URL!);url.hostname=process.env.ORBIT_TEST_DB_HOST||process.env.ORBIT_SELENIUM_DB_HOST||url.hostname;
-  const adminUrl=new URL(url);adminUrl.username=execFileSync('docker',['exec','orbit-db-dev','printenv','POSTGRES_USER'],{encoding:'utf8'}).trim();adminUrl.password=execFileSync('docker',['exec','orbit-db-dev','printenv','POSTGRES_PASSWORD'],{encoding:'utf8'}).trim();
+  const adminContainer=process.env.ORBIT_TEST_DB_CONTAINER||'orbit-db-dev';
+  const adminUrl=new URL(url);adminUrl.username=execFileSync('docker',['exec',adminContainer,'printenv','POSTGRES_USER'],{encoding:'utf8'}).trim();adminUrl.password=execFileSync('docker',['exec',adminContainer,'printenv','POSTGRES_PASSWORD'],{encoding:'utf8'}).trim();
   const schema=`login_limit_test_${randomUUID().replaceAll('-','')}`,admin=new Pool({connectionString:adminUrl.toString()});
   const db=new Db();await db.pool.end();db.pool=new Pool({connectionString:url.toString(),options:`-c search_path=${schema}`});
   try{

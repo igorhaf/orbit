@@ -35,7 +35,7 @@ function fixture({root=false,grants=['cards.type.type-a.use'],enabled=['plugin-a
  };
  const features={async member(){},async cardBoard(){return board}};
  const registry={list(){return declarations},isEnabled(id:string){return enabled.includes(id)}};
- const access={async account(){return{id:'actor',is_root:root}},async has(_user:string,permission:string){return root||grants.includes(permission)},async audit(...args:unknown[]){audits.push(args)}};
+ const access={async isRoot(){return root},async has(_user:string,permission:string){return root||grants.includes(permission)},async audit(...args:unknown[]){audits.push(args)}};
  const service=new CardTypesService(db as never,features as never,registry as never,access as never);
  return{service,audits,getStoredType:()=>storedType,storedSettings};
 }
