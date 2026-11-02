@@ -7,6 +7,7 @@ export const orbitArchitecture = {
   checklistPerCard: 1,
   cardInterface: {
     execution: 'prompt-runs',
+    promptRunFields: ['instruction', 'multiple_agents'],
     contexts: 'card-contexts',
     contextHierarchy: 'primary-parent-tree-with-independent-contexts',
     obsoletePanels: ['Execução opcional', 'Contexto', 'Limites de alteração', 'Integrações'],
@@ -14,6 +15,7 @@ export const orbitArchitecture = {
   },
   cardAiModes: { bypass: 'Permissivo', planning: 'Planejamento', question: 'Questionar' },
   promptRunAnswer: ['answer'],
+  promptRunExecute: ['instruction', 'multiple_agents'],
   promptWaitingStatus: 'waiting_answer',
   cardPlugins: {endpoint:'/cards/:id/plugins',selection:['plugins'],fieldsEndpoint:'/cards/:id/plugins/:pluginId/fields',default:'basic',contribution:'cardLayouts',dependencies:true},
   cardCreate: ['title', 'position', 'card_type_id'],

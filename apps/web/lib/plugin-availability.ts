@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
-import { api, getToken, type User } from './api';
+import { api, getToken, orbitSocketAuth, type User } from './api';
 import {pluginNavigation,type NavigationCatalogPlugin} from './plugin-navigation';
 
 type BoardLink = { id: string; name: string; href: string; permission: string };
@@ -17,7 +17,8 @@ export function usePluginAvailability() {
       const current = ++generation;
       const token=getToken();
       if (!token) { socket.disconnect();socketToken=null;setState({ ready: true, plugins: [], user: null }); return; }
-      if(token!==socketToken){socket.disconnect();socket.auth={token};socketToken=token;socket.connect();}
+      const signature=JSON.stringify(orbitSocketAuth());
+      if(signature!==socketToken){socket.disconnect();socket.auth=orbitSocketAuth();socketToken=signature;socket.connect();}
       try {
         const [catalog, user] = await Promise.all([api<{ plugins: Plugin[] }>('/plugins'), api<User>('/auth/me')]);
         if (active && current === generation) setState({ ready: true, plugins: catalog.plugins, user });
@@ -26,8 +27,8 @@ export function usePluginAvailability() {
     socket.on('plugins:changed',refresh);
     socket.on('connect',refresh);
     void refresh();
-    window.addEventListener('plugins:changed', refresh); window.addEventListener('account:changed', refresh);
-    return () => { active = false; generation++; socket.disconnect(); window.removeEventListener('plugins:changed', refresh); window.removeEventListener('account:changed', refresh); };
+    window.addEventListener('plugins:changed', refresh); window.addEventListener('account:changed', refresh);window.addEventListener('profile-simulation:changed',refresh);
+    return () => { active = false; generation++; socket.disconnect(); window.removeEventListener('plugins:changed', refresh); window.removeEventListener('account:changed', refresh);window.removeEventListener('profile-simulation:changed',refresh); };
   }, []);
   const permitted = (permission: string) => Boolean(state.user?.is_root || state.user?.permissions?.includes(permission));
   const enabled = (id: string, permission = `plugin.${id}.read`) => state.plugins.some(plugin => plugin.id === id && plugin.enabled) && permitted(permission);

@@ -5,6 +5,7 @@ export function permissionForRoute(path:string,method:string){
  const read=['GET','HEAD'].includes(method),action=read?'read':'write';
  if(path.startsWith('/access'))return path==='/access/me'?null:path==='/access/audit'&&read?'access.audit.read':'access.manage';
  if(path==='/auth/me')return null;
+ if(/^\/account\/mfa(?:\/|$)/.test(path))return null;
  if(path==='/plugins')return read?'plugins.read':'plugins.manage';
  if(path.startsWith('/plugins/'))return 'plugins.manage';
  if(/^\/(boards|cards|lists|comments|checklists|checklist-items|checklist|card-attachments|comment-attachments|card-merges|favorites)(\/|$)/.test(path))return 'boards.'+action;

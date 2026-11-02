@@ -50,6 +50,18 @@ test("plugin registry discovers definitions, actions, capabilities and connectio
   assert.deepEqual(registry.catalog()[0].contributions.settings, [{ id: "example-settings" }]);
 });
 
+test("explicit child plugins inherit lifecycle from their parent and appear in the catalog", () => {
+  const registry = new PluginRegistry();
+  registry.register({ id: "records-host", name: "Records host", version: "1.0.0" });
+  registry.register({ id: "learning-child", name: "Learning", version: "1.0.0", parentPlugin: "records-host", dependencies: ["records-host"] });
+  assert.equal(registry.catalog().find(plugin => plugin.id === "learning-child")?.parentPlugin, "records-host");
+  assert.deepEqual(registry.catalog().find(plugin => plugin.id === "records-host")?.children, ["learning-child"]);
+  assert.deepEqual(registry.dependents("records-host"), ["learning-child"]);
+  registry.setEnabled("records-host", false);
+  assert.equal(registry.isEnabled("learning-child"), false);
+  assert.throws(() => new PluginRegistry().register({ id: "orphan", name: "Orphan", version: "1.0.0", parentPlugin: "records-host" }), /declarar dependência do pai/);
+});
+
 test('plugin configuration fields validate their declared control and option schema',()=>{
   const registry=new PluginRegistry();
   registry.register({...example(),configuration:[

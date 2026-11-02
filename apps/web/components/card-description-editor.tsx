@@ -10,7 +10,7 @@ import TiptapImage from '@tiptap/extension-image';
 import { TableKit } from '@tiptap/extension-table';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
-import { getToken } from '@/lib/api';
+import { orbitApiHeaders } from '@/lib/api';
 import { clipboardFiles } from '@/lib/clipboard-files';
 
 function EditableImage({ node }: ReactNodeViewProps) {
@@ -20,7 +20,7 @@ function EditableImage({ node }: ReactNodeViewProps) {
     if (!src.startsWith('/api/card-attachments/')) return;
     let active = true;
     let objectUrl = '';
-    void fetch(src, { headers: { Authorization: `Bearer ${getToken() || ''}` } })
+    void fetch(src, { headers: orbitApiHeaders() })
       .then(async response => {
         if (!response.ok) throw new Error('Imagem indisponível.');
         objectUrl = URL.createObjectURL(await response.blob());

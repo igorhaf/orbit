@@ -18,7 +18,8 @@ import {
   Comment,
   commentAttachmentBlob,
   cardUrl,
-  getToken,
+  orbitSocketAuth,
+  watchOrbitProfileSimulation,
   send,
   withExpansion,
 } from "@/lib/api";
@@ -118,12 +119,12 @@ export function CardComments({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiAction, setAiAction] = useState<CommentAiAction>("elaborate");
   useEffect(() => {
-    const socket=io({path:"/socket.io",auth:{token:getToken()}});
+    const socket=io({path:"/socket.io",auth:orbitSocketAuth()});const unwatchProfileSimulation=watchOrbitProfileSimulation(socket);
     socket.on("connect",()=>socket.emit("board:join",board.id));
     socket.on("comment:changed",(event:{boardId:string;cardId:string})=>{
       if(event.boardId===board.id&&event.cardId===card.id)void refreshDetails();
     });
-    return()=>{socket.emit("board:leave",board.id);socket.disconnect();};
+    return()=>{socket.emit("board:leave",board.id);unwatchProfileSimulation();socket.disconnect();};
   },[board.id,card.id,refreshDetails]);
   const hasPendingReply = hasPendingCommentReply(details.comments);
   useEffect(() => {

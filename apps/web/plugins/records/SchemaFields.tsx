@@ -17,7 +17,11 @@ export type Schema = {
   minimum?: number;
   maximum?: number;
   maxLength?: number;
+  recordKind?: string;
+  recordRevisionField?: string;
+  enumLabels?: Record<string, string>;
 };
+export type RecordOption = { id: string; kind: string; title: string; revision: number };
 const labels: Record<string, string> = {
   content: "Conteúdo",
   source_reference: "Referência da fonte",
@@ -116,15 +120,31 @@ function Field({
   value,
   onChange,
   label,
+  records,
 }: {
   schema: Schema;
   value: unknown;
   onChange: (value: unknown) => void;
   label: string;
+  records?: RecordOption[];
 }) {
   const type = Array.isArray(schema.type)
     ? schema.type.find((item) => item !== "null")
     : schema.type;
+  if (schema.recordKind)
+    return (
+      <select
+        aria-label={label}
+        className={input}
+        value={String(value ?? "")}
+        onChange={(event) => onChange(event.target.value || undefined)}
+      >
+        <option value="">Selecione um registro</option>
+        {(records || []).filter((record) => record.kind === schema.recordKind).map((record) => (
+          <option key={record.id} value={record.id}>{record.title} · v{record.revision}</option>
+        ))}
+      </select>
+    );
   if (schema.enum)
     return (
       <select
@@ -135,7 +155,7 @@ function Field({
       >
         <option value="">Selecione</option>
         {schema.enum.map((item) => (
-          <option key={item}>{item}</option>
+          <option key={item} value={item}>{schema.enumLabels?.[item] || item}</option>
         ))}
       </select>
     );
@@ -156,6 +176,7 @@ function Field({
         schema={schema}
         value={(value || {}) as Record<string, unknown>}
         onChange={onChange}
+          records={records}
       />
     );
   if (type === "array" && schema.items) {
@@ -171,6 +192,7 @@ function Field({
               label={`${label} ${index + 1}`}
               schema={schema.items!}
               value={item}
+              records={records}
               onChange={(next) =>
                 onChange(items.map((value, i) => (i === index ? next : value)))
               }
@@ -251,11 +273,13 @@ export default function SchemaFields({
   schema,
   value,
   onChange,
+  records,
   skip = [],
 }: {
   schema: Schema;
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
+  records?: RecordOption[];
   skip?: string[];
 }) {
   return (
@@ -273,10 +297,16 @@ export default function SchemaFields({
               schema={field}
               label={field.title || fieldLabel(key)}
               value={value[key]}
+        records={records}
               onChange={(next) => {
                 const updated = { ...value };
                 if (next === undefined) delete updated[key];
                 else updated[key] = next;
+          if (field.recordRevisionField) {
+            const selected = records?.find((record) => record.id === next);
+            if (selected) updated[field.recordRevisionField] = selected.revision;
+            else delete updated[field.recordRevisionField];
+          }
                 onChange(updated);
               }}
             />

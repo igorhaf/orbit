@@ -129,7 +129,7 @@ function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecu
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" disabled={busy} onClick={() => void perform(() => send<Card>(`/cards/${card.id}`, "PATCH", { description: summary }))} className="rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50">Sobrescrever como descrição</button>
         <button type="button" disabled={busy} onClick={() => void perform(() => send(`/cards/${card.id}/comments`, "POST", { body: summary }))} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><MessageSquare size={14} /> Adicionar como comentário</button>
-        <button type="button" disabled={busy || aiLocked} onClick={() => { onOpenExecution(); void perform(() => send(`/cards/${card.id}/prompt-runs`, "POST", {}), true); }} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><RotateCcw size={14} /> Reexecutar</button>
+        <button type="button" disabled={busy || aiLocked} onClick={() => { onOpenExecution(); void perform(() => send(`/cards/${card.id}/prompt-runs`, "POST", {multiple_agents:run.multiple_agents===true}), true); }} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><RotateCcw size={14} /> Reexecutar</button>
       </div>
       {error && <p role="alert" className="mt-2 text-xs text-[#ae2a19]">{error}</p>}
     </>
@@ -327,13 +327,14 @@ export function CardDialog({
 
   return (
     <>
-    <Modal onClose={onClose} extraWide sidePanel={sidePanel}>
+    <Modal ariaLabel={`Cartão: ${card.title}`} onClose={onClose} extraWide sidePanel={sidePanel}>
       <div className={sidePanel?"min-h-full min-w-0 max-w-full bg-[#f7f8fa] p-4 text-[#172b4d] sm:p-6":"max-h-[84vh] overflow-y-auto rounded-xl bg-[#f7f8fa] p-4 text-[#172b4d] sm:p-6"}>
         <div className="pr-9">
           <div className="flex items-start gap-3">
             <CreditCard size={22} className="mt-1 shrink-0" />
             <div className="min-w-0 flex-1"><CardBadges badges={cardPlugins.state.badges}/>
               <input
+                data-autofocus
                 value={title}
                 maxLength={300}
                 onChange={(e) => {
@@ -352,7 +353,7 @@ export function CardDialog({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") e.currentTarget.blur();
                 }}
-                className="w-full rounded bg-transparent px-1 py-0.5 text-xl font-semibold outline-none hover:bg-[#e9eaed] focus:bg-white"
+                className="w-full rounded border border-[#626f86] bg-transparent px-1 py-0.5 text-xl font-semibold outline-none hover:bg-[#e9eaed] focus:bg-white"
                 aria-label="Título do cartão"
               />
               <p className="mt-1 text-sm text-[#626f86]">
@@ -703,7 +704,7 @@ export function CardDialog({
                     { title: "Arquivar cartão", description: `Arquivar o cartão “${card.title}”?`, confirmLabel: "Arquivar" },
                     async () => { await send(`/cards/${card.id}/archive`, "POST"); remember({label:'arquivar cartão',undo:[{path:`/cards/${card.id}/restore`,method:'POST'}],redo:[{path:`/cards/${card.id}/archive`,method:'POST'}]}); await onDeleted(); },
                   )}
-                  className="flex w-full items-center gap-2 rounded bg-[#e9eaed] px-3 py-2 text-left text-sm text-[#ae2a19] hover:bg-[#ffebe6]"
+                  className="flex w-full items-center gap-2 rounded border border-[#ae2a19] bg-[#e9eaed] px-3 py-2 text-left text-sm text-[#ae2a19] hover:bg-[#ffebe6]"
                 >
                   <Trash2 size={16} /> Arquivar
                 </button>
@@ -712,7 +713,7 @@ export function CardDialog({
                     { title: "Excluir cartão definitivamente", description: `O cartão “${card.title}” será apagado permanentemente. Essa ação não pode ser desfeita. Continuar?`, confirmLabel: "Excluir definitivamente" },
                     async () => { await send(`/cards/${card.id}/archive`, "POST"); await send(`/cards/${card.id}`, "DELETE"); await onDeleted(); },
                   )}
-                  className="flex w-full items-center gap-2 rounded bg-[#ffebe6] px-3 py-2 text-left text-sm font-semibold text-[#ae2a19] hover:bg-[#ffd9d2]"
+                  className="flex w-full items-center gap-2 rounded border border-[#ae2a19] bg-[#ffebe6] px-3 py-2 text-left text-sm font-semibold text-[#ae2a19] hover:bg-[#ffd9d2]"
                 >
                   <Trash2 size={16} /> Excluir definitivamente
                 </button>
@@ -737,7 +738,7 @@ export function CardDialog({
         />
       )}
       {panel === "date" && (
-        <Modal onClose={() => setPanel(null)}>
+        <Modal ariaLabel="Datas do cartão" onClose={() => setPanel(null)}>
           <div className="space-y-5 p-6 text-sm sm:p-8">
             <div className="border-b border-[#dfe1e6] pb-4">
               <h2 className="pr-12 text-xl font-bold">Datas</h2>
@@ -759,7 +760,7 @@ export function CardDialog({
         </Modal>
       )}
       {panel === "move" && (
-        <Modal onClose={() => setPanel(null)}>
+        <Modal ariaLabel="Mover cartão" onClose={() => setPanel(null)}>
           <div className="space-y-5 p-6 text-sm sm:p-8">
             <div className="border-b border-[#dfe1e6] pb-4">
               <h2 className="pr-12 text-xl font-bold">Mover cartão</h2>

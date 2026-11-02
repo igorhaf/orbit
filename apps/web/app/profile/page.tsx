@@ -45,11 +45,14 @@ import {
 import { useHydrated } from "@/lib/use-hydrated";
 import { CalendarIntegrations } from "@/components/calendar-integrations";
 import { AiEffortField, AiModelFields } from "@/components/ai-model-fields";
+import { MfaSettings } from "@/components/mfa-settings";
 
 import {VaultConstantSelect} from '@/components/vault-constant-select';
 
 type EnvironmentSettings = { groups: Array<{ id:string; label:string; fields:Array<{key:string;label:string;secret:boolean;value:string;configured:boolean;vaultReference?:string}> }> };
 type Tab = "profile" | "activity" | "cards" | "projects" | "integrations" | "settings";
+type LoginHistoryItem={id:number;logged_at:string;device_label:string};
+type SecurityActivityItem={id:string;label:string;created_at:string};
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "profile", label: "Perfil", icon: UserRound },
   { id: "activity", label: "Atividade", icon: ActivityIcon },
@@ -65,6 +68,8 @@ export default function ProfilePage() {
   const [user, setCurrentUser] = useState<User | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [loginHistory,setLoginHistory]=useState<LoginHistoryItem[]>([]);
+  const [securityActivity,setSecurityActivity]=useState<SecurityActivityItem[]>([]);
   const [cards, setCards] = useState<HomeCard[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [models, setModels] = useState<AiModel[]>([]);
@@ -87,26 +92,36 @@ export default function ProfilePage() {
   const ready = useHydrated();
   const [tab, setTab] = useState<Tab>("profile");
   const [name, setName] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailChangePassword, setEmailChangePassword] = useState("");
+  const [emailChangeMessage, setEmailChangeMessage] = useState("");
+  const [emailChangeError, setEmailChangeError] = useState("");
+  const [emailChangeBusy, setEmailChangeBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [create, setCreate] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [account, all, activity, assigned, projectList, pluginCatalog] = await Promise.all([
+      const [account, all, activity, assigned, projectList, pluginCatalog, logins, security] = await Promise.all([
           api<User>("/account"),
           api<Board[]>("/boards"),
           api<Activity[]>("/account/activity"),
           api<HomeCard[]>("/account/cards"),
           api<AiProject[]>("/ai/projects"),
           api<{plugins:Array<{id:string;enabled:boolean}>}>("/plugins"),
+          api<LoginHistoryItem[]>("/account/login-history"),
+          api<SecurityActivityItem[]>("/account/security-activity"),
         ]);
       const pluginEnabled = pluginCatalog.plugins.some(plugin => plugin.id === "ai" && plugin.enabled);
       const availableModels = pluginEnabled ? await api<AiModel[]>("/ai/models") : [];
       setCurrentUser(account);
       setUser(account);
       setName(account.name);
+      setEmailDraft(account.email);
       setBoards(all);
       setActivities(activity);
+      setLoginHistory(logins);
+      setSecurityActivity(security);
       setCards(assigned);
       setProjects(projectList);
       setModels(availableModels);
@@ -160,6 +175,21 @@ export default function ProfilePage() {
       setError("");
     } catch (err) {
       setError((err as Error).message);
+    }
+  }
+  async function requestEmailChange(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setEmailChangeBusy(true);
+    setEmailChangeError("");
+    setEmailChangeMessage("");
+    try {
+      await send("/auth/email-change", "POST", { email: emailDraft, current_password: emailChangePassword });
+      setEmailChangePassword("");
+      setEmailChangeMessage("Enviamos um link de confirmação para o novo endereço. O e-mail da conta só muda depois da confirmação.");
+    } catch (err) {
+      setEmailChangeError((err as Error).message);
+    } finally {
+      setEmailChangeBusy(false);
     }
   }
   async function uploadAvatar(file: File | null) {
@@ -447,14 +477,6 @@ export default function ProfilePage() {
                     onChange={(e) => setName(e.target.value)}
                     className="mb-4 w-full rounded border border-[#8590a2] px-3 py-2 text-sm"
                   />
-                  <label className="mb-1 block text-xs font-bold">
-                    E-mail da conta
-                  </label>
-                  <input
-                    readOnly
-                    value={user.email}
-                    className="mb-5 w-full rounded border border-[#dfe1e6] bg-[#f1f2f4] px-3 py-2 text-sm text-[#626f86]"
-                  />
                   <button
                     disabled={!name.trim() || name === user.name}
                     className="rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white"
@@ -463,6 +485,18 @@ export default function ProfilePage() {
                   </button>
                 </form>
               </section>
+              <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold">Alterar e-mail da conta</h2>
+                <p className="mt-1 text-sm text-[#626f86]">Confirme a alteração pelo link enviado ao novo endereço. Sua senha atual será solicitada antes do envio.</p>
+                <form onSubmit={requestEmailChange} className="mt-4 grid max-w-lg gap-3">
+                  <label className="text-xs font-bold">Novo e-mail<input required type="email" maxLength={320} autoComplete="email" value={emailDraft} onChange={(event) => setEmailDraft(event.target.value)} className="mt-1 min-h-10 w-full rounded border border-[#8590a2] px-3 text-sm font-normal" /></label>
+                  <label className="text-xs font-bold">Senha atual<input required type="password" maxLength={200} autoComplete="current-password" value={emailChangePassword} onChange={(event) => setEmailChangePassword(event.target.value)} className="mt-1 min-h-10 w-full rounded border border-[#8590a2] px-3 text-sm font-normal" /></label>
+                  {emailChangeError && <p role="alert" className="text-sm text-[#ae2a19]">{emailChangeError}</p>}
+                  {emailChangeMessage && <p role="status" className="text-sm text-[#216e4e]">{emailChangeMessage}</p>}
+                  <button disabled={emailChangeBusy || !emailDraft.trim() || emailDraft.trim().toLowerCase() === user.email.toLowerCase() || !emailChangePassword} className="min-h-10 justify-self-start rounded bg-[#0c66e4] px-4 text-sm font-semibold text-white disabled:opacity-60">{emailChangeBusy ? "Enviando…" : "Enviar confirmação"}</button>
+                </form>
+              </section>
+              <MfaSettings />
               <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
                 <h2 className="mb-4 text-lg font-bold">Seu trabalho</h2>
                 <div className="space-y-3">
@@ -489,6 +523,15 @@ export default function ProfilePage() {
             </div>
           )}
           {tab === "activity" && (
+            <div className="space-y-5">
+            <section className="overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm">
+              <div className="border-b border-[#dfe1e6] px-5 py-4"><h2 className="text-lg font-bold">Segurança da conta</h2><p className="text-xs text-[#626f86]">Eventos relevantes da sua conta nos últimos 180 dias</p></div>
+              {securityActivity.length===0?<p className="p-5 text-sm text-[#626f86]">Nenhuma alteração de segurança recente.</p>:<ul className="divide-y divide-[#f1f2f4]">{securityActivity.map(item=><li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm"><span>{item.label}</span><time dateTime={item.created_at} className="text-xs text-[#626f86]">{new Date(item.created_at).toLocaleString("pt-BR")}</time></li>)}</ul>}
+            </section>
+            <section className="overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm">
+              <div className="border-b border-[#dfe1e6] px-5 py-4"><h2 className="text-lg font-bold">Acessos recentes</h2><p className="text-xs text-[#626f86]">Dispositivo aproximado e horário dos últimos 180 dias</p></div>
+              {loginHistory.length===0?<p className="p-5 text-sm text-[#626f86]">Os próximos acessos aparecerão aqui.</p>:<ul className="divide-y divide-[#f1f2f4]">{loginHistory.map(item=><li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm"><span>{item.device_label}</span><time dateTime={item.logged_at} className="text-xs text-[#626f86]">{new Date(item.logged_at).toLocaleString("pt-BR")}</time></li>)}</ul>}
+            </section>
             <section className="overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm">
               <div className="border-b border-[#dfe1e6] px-5 py-4">
                 <h2 className="text-lg font-bold">Atividade recente</h2>
@@ -531,6 +574,7 @@ export default function ProfilePage() {
                 </div>
               )}
             </section>
+            </div>
           )}
           {tab === "cards" && (
             <section className="overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm">

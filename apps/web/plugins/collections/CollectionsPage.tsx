@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, FolderOpen, MoreHorizontal, MoveRight, Plus, Search, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { api, Board, Card, getToken, List, send, User } from '@/lib/api';
+import { api, Board, Card, getToken, orbitSocketAuth, watchOrbitProfileSimulation, List, send, User } from '@/lib/api';
 import { AppHeader, Modal, WorkspaceSidebar, useConfirmModal } from '@/components/ui';
 import { CardDialog } from '@/components/card-dialog';
 import { CardActivityIndicator } from '@/components/card-execution';
@@ -53,11 +53,11 @@ export default function CollectionsPage() {
   useEffect(() => {
     if (!collection?.id || !available) return;
     const boardId = collection.id;
-    const socket = io({ path: '/socket.io', auth: { token: getToken() } });
+    const socket = io({ path: '/socket.io', auth: orbitSocketAuth() });const unwatchProfileSimulation=watchOrbitProfileSimulation(socket);
     socket.on('connect', () => socket.emit('board:join', boardId));
     const refresh = (event?: { boardId?: string }) => { if (!event?.boardId || event.boardId === boardId) void load(); };
     socket.on('board:changed', refresh); socket.on('comment:changed', refresh); socket.on('prompt:progress', refresh);
-    return () => { socket.emit('board:leave', boardId); socket.disconnect(); };
+    return () => { socket.emit('board:leave', boardId); unwatchProfileSimulation();socket.disconnect(); };
   }, [collection?.id, load, available]);
 
   const lists = useMemo(() => collection?.lists || [], [collection?.lists]);

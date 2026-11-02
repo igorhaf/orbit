@@ -45,6 +45,7 @@ export default function BoardsPage() {
   const ready = useHydrated();
   const [query, setQuery] = useState("");
   const [create, setCreate] = useState(false);
+  const [createFocusTarget, setCreateFocusTarget] = useState<HTMLElement | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
@@ -166,7 +167,15 @@ export default function BoardsPage() {
       setError((err as Error).message);
     }
   }
-  if (!ready) return <div className="min-h-screen bg-[#f7f8fa]" />;
+  if (!ready) return (
+    <div className="min-h-screen bg-[#f7f8fa]">
+      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1200px] px-5 py-8 sm:px-8 md:py-10">
+        <p className="mb-1 text-xs font-bold uppercase tracking-[.12em] text-[#626f86]">QUADROS</p>
+        <h1 className="text-[26px] font-bold tracking-tight sm:text-[30px]">Seus quadros</h1>
+        <p role="status" className="mt-2 text-sm text-[#626f86]">Carregando seus quadros…</p>
+      </main>
+    </div>
+  );
   if (!user) return null;
   const visibleBoards = boards.filter((board) => !board.is_inbox && !board.is_collection);
   const filtered = visibleBoards.filter((board) =>
@@ -182,14 +191,14 @@ export default function BoardsPage() {
     .slice(0, 4);
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f8fa]">
-      <AppHeader user={user} boards={boards} onCreate={() => setCreate(true)} />
+      <AppHeader user={user} boards={boards} onCreate={() => { setCreateFocusTarget(document.activeElement instanceof HTMLElement ? document.activeElement : null); setCreate(true); }} />
       <div className="flex min-h-0 flex-1">
         <WorkspaceSidebar
           boards={boards}
           onCreate={() => setCreate(true)}
           onChoose={(id) => router.push(id ? `/board/${id}` : "/boards")}
         />
-        <main className="mx-auto w-full max-w-[1200px] px-5 py-8 sm:px-8 md:py-10">
+        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1200px] px-5 py-8 sm:px-8 md:py-10">
           <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="mb-1 text-xs font-bold uppercase tracking-[.12em] text-[#626f86]">
@@ -204,7 +213,7 @@ export default function BoardsPage() {
             </div>
             <div className="flex gap-2">
               {canCreateBoard&&<button
-                onClick={() => setCreate(true)}
+                onClick={(event) => { setCreateFocusTarget(event.currentTarget); setCreate(true); }}
                 className="flex items-center gap-2 rounded bg-[#0c66e4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]"
               >
                 <Plus size={17} /> Criar quadro
@@ -228,6 +237,7 @@ export default function BoardsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filtrar seus quadros"
+              aria-label="Filtrar seus quadros"
               className="w-full rounded border border-[#8590a2] bg-white py-2 pl-9 pr-3 text-sm"
             />
           </div>
@@ -311,7 +321,7 @@ export default function BoardsPage() {
                       </div>
                     ))}
               {canCreateBoard&&<button
-                onClick={() => setCreate(true)}
+                onClick={(event) => { setCreateFocusTarget(event.currentTarget); setCreate(true); }}
                 className="flex h-[112px] items-center justify-center gap-2 rounded bg-[#dfe1e6] p-3 text-center text-sm font-semibold text-[#44546f] hover:bg-[#cdd3db]"
               >
                 <Plus size={18} /> Criar novo quadro
@@ -378,6 +388,7 @@ export default function BoardsPage() {
         <CreateBoardModal
           onClose={() => setCreate(false)}
           onCreate={createBoard}
+          restoreFocusTo={createFocusTarget}
         />
       )}
       {confirmationModal}

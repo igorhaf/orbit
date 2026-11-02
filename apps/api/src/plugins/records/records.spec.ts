@@ -21,6 +21,7 @@ import type { PluginDefinition } from "../contract";
 test("versioned record routes delegate access decisions to their record service", () => {
   assert.equal(recordsBasePlugin.handlesRoute?.("/extensions"), true);
   assert.equal(recordsBasePlugin.handlesRoute?.("/extensions/example-plugin/records/123"), true);
+  assert.equal(recordsBasePlugin.handlesRoute?.("/extensions/example-learning/me/records/enrollment"), true);
   assert.equal(recordsBasePlugin.handlesRoute?.("/git/status"), false);
   assert.equal(recordsBasePlugin.routePermission?.("/extensions/example-plugin/records/123", "GET"), null);
 });
@@ -192,6 +193,7 @@ test("validation context counts only latest workspace records and serializes cap
   const validation = (service as unknown as { validationContext(workspace: string, user: string): {
     countLatestRecordsByPayloadValue(plugin: string, kind: string, state: string, field: string, value: string, lockScope?: string): Promise<number | null>;
     countLatestRecordsMatchingPayload(plugin: string, kind: string, state: string, match: Record<string, string>, lockScope?: string, excludeRecordId?: string): Promise<number | null>;
+    nextLatestRecordOrdinal(plugin: string, kind: string, state: string, field: string, match: Record<string, string>, lockScope?: string, excludeRecordId?: string): Promise<number | null>;
   } }).validationContext(workspaceId, userId);
 
   assert.equal(await validation.countLatestRecordsByPayloadValue("capacity-test", "assignment", "assigned", "reviewer_ids", userId, "capacity:user"), 2);
@@ -204,6 +206,10 @@ test("validation context counts only latest workspace records and serializes cap
   assert.match(queries[2].sql, /pg_advisory_xact_lock/);
   assert.match(queries[3].sql, /payload @> \$5::jsonb/);
   assert.deepEqual(queries[3].values, [workspaceId, "capacity-test", "evaluation", "submitted", JSON.stringify({ assignment_record_id: userId, evaluator_user_id: userId }), userId]);
+  assert.equal(await validation.nextLatestRecordOrdinal("capacity-test", "evaluation", "waitlisted", "position", { assignment_record_id: userId }, "waitlist:assignment"), 1);
+  assert.match(queries[4].sql, /pg_advisory_xact_lock/);
+  assert.match(queries[5].sql, /MAX\(CASE WHEN jsonb_typeof\(payload->\$5\)='number'/);
+  assert.deepEqual(queries[5].values, [workspaceId, "capacity-test", "evaluation", "waitlisted", "position", JSON.stringify({ assignment_record_id: userId }), null]);
 });
 
 test("declared payload snapshots can change only before a record leaves its initial state", () => {
@@ -336,7 +342,7 @@ test("plugin deadline effects update only same-workspace generic clocks and reta
     payload: {
       duration_days: 3, started_at: new Date(now.getTime() - 60_000).toISOString(),
       due_at: new Date(now.getTime() + 3 * 86400000).toISOString(), paused_at: null,
-      target_type: "safdoulas_process", target_id: "00000000-0000-4000-8000-000000000053",
+      target_type: "external_process", target_id: "00000000-0000-4000-8000-000000000053",
     }, created_by: "actor", updated_by: "actor",
   };
   const saved: unknown[][] = [];

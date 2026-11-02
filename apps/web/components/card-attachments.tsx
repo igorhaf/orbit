@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Download, Paperclip } from 'lucide-react';
-import { CardAttachment, getToken } from '@/lib/api';
+import { CardAttachment, orbitApiHeaders } from '@/lib/api';
 import { Modal } from '@/components/ui';
 
 function AttachmentImage({ attachment }: { attachment: CardAttachment }) {
@@ -13,7 +13,7 @@ function AttachmentImage({ attachment }: { attachment: CardAttachment }) {
     let active = true;
     let objectUrl = '';
     void fetch(`/api/card-attachments/${attachment.id}/content`, {
-      headers: { Authorization: `Bearer ${getToken() || ''}` },
+      headers: orbitApiHeaders(),
     }).then(async response => {
       if (!response.ok) throw new Error('Imagem indisponível.');
       objectUrl = URL.createObjectURL(await response.blob());
@@ -25,7 +25,7 @@ function AttachmentImage({ attachment }: { attachment: CardAttachment }) {
     {url ? <button type="button" onClick={() => setIsOpen(true)} aria-label={`Ampliar imagem ${attachment.name}`} className="rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0c66e4]">
       <Image unoptimized src={url} alt={attachment.name} width={40} height={40} className="h-10 w-10 rounded object-cover" />
     </button> : <span className="grid h-10 w-10 place-items-center rounded bg-[#e9eaed]"><Paperclip size={16} /></span>}
-    {isOpen && <Modal onClose={() => setIsOpen(false)} wide>
+    {isOpen && <Modal ariaLabel={`Imagem ampliada: ${attachment.name}`} onClose={() => setIsOpen(false)} wide>
       <div className="flex min-h-32 items-center justify-center p-4 pt-12 sm:p-6 sm:pt-12">
         <Image unoptimized src={url} alt={attachment.name} width={1600} height={1200} className="h-auto max-h-[75dvh] w-auto max-w-full object-contain" />
       </div>
@@ -45,7 +45,7 @@ export function CardAttachments({ attachments }: { attachments: CardAttachment[]
           {attachment.size_bytes !== null && <span className="text-[#626f86]">{attachment.size_bytes < 1_000_000 ? `${Math.max(1, Math.round(attachment.size_bytes / 1000))} KB` : `${(attachment.size_bytes / 1_000_000).toFixed(1)} MB`}</span>}
         </span>
         <button type="button" title={`Baixar ${attachment.name}`} aria-label={`Baixar ${attachment.name}`} onClick={async () => {
-          const response = await fetch(`/api/card-attachments/${attachment.id}/content`, { headers: { Authorization: `Bearer ${getToken() || ''}` } });
+          const response = await fetch(`/api/card-attachments/${attachment.id}/content`, { headers: orbitApiHeaders() });
           if (!response.ok) return;
           const url = URL.createObjectURL(await response.blob());
           const link = document.createElement('a');
