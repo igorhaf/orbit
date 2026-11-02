@@ -6,13 +6,13 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Image from 'next/image';
 import { ExternalLink, Github, Link2, Youtube } from 'lucide-react';
-import { getToken } from '@/lib/api';
+import { getToken, profileSimulationHeaders } from '@/lib/api';
 
 function ProtectedImage({src,alt,onClick}:{src:string;alt:string;onClick?:()=>void}) {
   const [url,setUrl]=useState('');
   useEffect(()=>{
     let active=true;let objectUrl='';
-    fetch(src,{headers:{Authorization:`Bearer ${getToken()||''}`}}).then(async response=>{
+    fetch(src,{headers:{Authorization:`Bearer ${getToken()||''}`,...profileSimulationHeaders()}}).then(async response=>{
       if(!response.ok)throw new Error('Imagem indisponível.');
       objectUrl=URL.createObjectURL(await response.blob());
       if(active)setUrl(objectUrl);

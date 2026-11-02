@@ -83,6 +83,7 @@ export function CardAi({
   const [models, setModels] = useState<AiModel[]>([]);
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [busy, setBusy] = useState(false);
+  const [multipleAgents, setMultipleAgents] = useState(true);
   const [generationBusy, setGenerationBusy] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -201,6 +202,7 @@ export function CardAi({
     try {
       await send<PromptRun>(`/cards/${card.id}/prompt-runs`, "POST", {
         instruction,
+        multiple_agents: multipleAgents,
       });
       await onChanged();
     } catch (err) {
@@ -298,6 +300,11 @@ export function CardAi({
           {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
           Gerar
         </button>}
+        <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded px-2 text-xs font-semibold text-[#403294] dark:text-[#d4c7ff]">
+          <input type="checkbox" role="switch" checked={multipleAgents} disabled={busy || aiLocked} onChange={event=>setMultipleAgents(event.target.checked)} className="peer sr-only" aria-label="Múltiplos agentes" />
+          <span aria-hidden="true" className="relative h-5 w-9 rounded-full bg-[#8590a2] transition-colors peer-checked:bg-[#6554c0] after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#6554c0]" />
+          Múltiplos agentes
+        </label>
         <button
           type="button"
           disabled={busy || aiLocked || !effectiveProjectId || !effective || !effectiveEffort}

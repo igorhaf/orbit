@@ -1,24 +1,32 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, CheckCircle2, Eye, EyeOff, Sparkles, TreeDeciduous } from 'lucide-react';
-import { send, setSession, User } from '@/lib/api';
+import { api, send, setSession, User } from '@/lib/api';
 
 export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
   const [email,setEmail] = useState('');
   const [password,setPassword] = useState('');
+  const [challenge,setChallenge] = useState('');
+  const [code,setCode] = useState('');
+  const [emailHint,setEmailHint] = useState('');
+  const [socialProviders,setSocialProviders] = useState<Array<{id:string;name:string}>>([]);
+  useEffect(()=>{let active=true;void api<{providers:Array<{id:string;name:string}>}>('/auth/social/providers').then(result=>{if(active)setSocialProviders(result.providers)}).catch(()=>undefined);return()=>{active=false}},[]);
   const [showPassword,setShowPassword] = useState(false);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
     try {
-      const data=await send<{user:User;token:string}>('/auth/login','POST',{email,password});
+      const data=await send<{user?:User;token?:string;mfa_required?:boolean;challenge_id?:string;email_hint?:string}>('/auth/login','POST',challenge?{email,mfa_challenge_id:challenge,mfa_code:code}:{email,password});
+      if(data.mfa_required&&data.challenge_id){setChallenge(data.challenge_id);setEmailHint(data.email_hint||email);setPassword('');return}
+      if(!data.user||!data.token)throw new Error('Não foi possível iniciar a sessão.');
       setSession(data.token,data.user);
       onDone(data.user);
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   }
+  async function loginWith(provider:{id:string;name:string}){if(busy)return;setBusy(true);setError('');try{const result=await send<{url:string}>(`/auth/social/${encodeURIComponent(provider.id)}/start`,'POST',{});window.location.assign(result.url)}catch(err){setError((err as Error).message);setBusy(false)}}
   return <div className="min-h-screen bg-[#f8f9fb]">
     <div className="flex items-center justify-center gap-2 pt-10 text-[#172b4d]">
       <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f9e6dc] text-[#7c2816]"><TreeDeciduous size={27} strokeWidth={2.2}/></span>
@@ -41,14 +49,16 @@ export function AuthScreen({ onDone }: { onDone: (user: User) => void }) {
       </div>
       <div className="mx-auto w-full max-w-[420px] rounded-xl bg-white px-6 py-8 shadow-[0_8px_32px_#091e421a] sm:px-10">
         <h2 className="text-center text-base font-bold">Entre para continuar</h2>
-        <p className="mt-1 text-center text-sm text-[#626f86]">Entre com seu e-mail e senha.</p>
+        <p className="mt-1 text-center text-sm text-[#626f86]">{challenge?`Digite o código enviado para ${emailHint}.`:'Entre com seu e-mail e senha.'}</p>
         <form onSubmit={submit} className="mt-7 space-y-4">
           <div><label htmlFor="email" className="mb-1 block text-xs font-bold">E-mail</label><input id="email" required type="email" value={email} onChange={e=>setEmail(e.target.value)} className="min-h-11 w-full rounded border border-[#8590a2] px-3 py-2.5 text-sm"/></div>
-          <div><label htmlFor="password" className="mb-1 block text-xs font-bold">Senha</label><div className="relative"><input id="password" required type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Sua senha" className="min-h-11 w-full rounded border border-[#8590a2] py-2.5 pl-3 pr-12 text-sm"/><button type="button" onClick={()=>setShowPassword(visible=>!visible)} aria-label={showPassword?'Ocultar senha':'Mostrar senha'} aria-controls="password" className="absolute inset-y-0 right-0 flex min-h-11 w-11 items-center justify-center rounded-r text-[#626f86] hover:text-[#172b4d] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0c66e4]"><span className="sr-only">{showPassword?'Ocultar senha':'Mostrar senha'}</span>{showPassword?<EyeOff size={18} aria-hidden="true"/>:<Eye size={18} aria-hidden="true"/>}</button></div></div>
+          {!challenge&&<div><label htmlFor="password" className="mb-1 block text-xs font-bold">Senha</label><div className="relative"><input id="password" required type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Sua senha" className="min-h-11 w-full rounded border border-[#8590a2] py-2.5 pl-3 pr-12 text-sm"/><button type="button" onClick={()=>setShowPassword(visible=>!visible)} aria-label={showPassword?'Ocultar senha':'Mostrar senha'} aria-controls="password" className="absolute inset-y-0 right-0 flex min-h-11 w-11 items-center justify-center rounded-r text-[#626f86] hover:text-[#172b4d] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0c66e4]"><span className="sr-only">{showPassword?'Ocultar senha':'Mostrar senha'}</span>{showPassword?<EyeOff size={18} aria-hidden="true"/>:<Eye size={18} aria-hidden="true"/>}</button></div></div>}
+          {challenge&&<div><label htmlFor="mfa-code" className="mb-1 block text-xs font-bold">Código de acesso</label><input id="mfa-code" required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={event=>setCode(event.target.value.replace(/\D/g,'').slice(0,6))} className="min-h-11 w-full rounded border border-[#8590a2] px-3 py-2.5 text-sm tracking-[.3em]"/></div>}
           {error && <p role="alert" className="rounded bg-[#ffebe6] px-3 py-2 text-xs text-[#ae2a19]">{error}</p>}
-          <button disabled={busy} className="flex min-h-11 w-full items-center justify-center gap-2 rounded bg-[#0c66e4] py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">{busy?'Aguarde...':'Entrar'} <ArrowRight size={16}/></button>
+          <button disabled={busy} className="flex min-h-11 w-full items-center justify-center gap-2 rounded bg-[#0c66e4] py-2.5 text-sm font-semibold text-white hover:bg-[#0055cc]">{busy?'Aguarde...':challenge?'Confirmar código':'Entrar'} <ArrowRight size={16}/></button>
         </form>
-        <Link href="/auth/recover" className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-[#0c66e4] hover:underline">Esqueci minha senha</Link>
+        {!challenge&&socialProviders.length>0&&<div className="mt-5 border-t border-[#dfe1e6] pt-4"><p className="mb-3 text-center text-xs text-[#626f86]">Ou entre com</p><div className="grid gap-2">{socialProviders.map(provider=><button key={provider.id} type="button" disabled={busy} onClick={()=>void loginWith(provider)} className="min-h-11 rounded border border-[#dfe1e6] bg-white px-3 text-sm font-semibold text-[#172b4d] hover:bg-[#f7f8fa] disabled:opacity-50">{provider.name}</button>)}</div></div>}
+        {challenge?<button type="button" onClick={()=>{setChallenge('');setCode('');setError('')}} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[#0c66e4] hover:underline">Voltar ao login</button>:<Link href="/auth/recover" className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-[#0c66e4] hover:underline">Esqueci minha senha</Link>}
         <p className="mt-6 border-t border-[#dfe1e6] pt-5 text-center text-xs text-[#626f86]">Acesso seguro aos seus quadros e projetos.</p>
       </div>
     </div>

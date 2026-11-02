@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, send, authenticatedBlob, User } from "@/lib/api";
 import {
   AccessShell,
@@ -16,6 +17,9 @@ type Kind = {
   schema: Schema;
   initial: string;
   serverCreated?: boolean;
+  stateLabels?: Record<string, string>;
+  personalOwnerField?: string;
+  selfServiceCreate?: boolean;
   detailActions?: Array<{
     id: string;
     label: string;
@@ -48,6 +52,7 @@ type Plugin = {
   enabled: boolean;
   kinds: Kind[];
 };
+export type ExtensionSummaryCard = { kind: string; label: string; states?: string[]; audience?: "staff" | "member" };
 type Workspace = { id: string; name: string };
 type RecordRow = {
   id: string;
@@ -57,6 +62,7 @@ type RecordRow = {
   revision: number;
   payload: Record<string, unknown>;
 };
+type RecordCount = { kind: string; state: string; count: number };
 type Detail = RecordRow & {
   next_states: string[];
   validation_issues?: Array<{ severity: "error" | "warning"; code: string; path: string; message: string }>;
@@ -92,7 +98,8 @@ function operationKey() {
   const hex = Array.from(data, (b) => b.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-const stateLabel = (state: string) =>
+const stateLabel = (state: string, labels?: Record<string, string>) =>
+  labels?.[state] ||
   ({
     draft: "Rascunho",
     published: "Publicado",
@@ -100,7 +107,6 @@ const stateLabel = (state: string) =>
     identity_verification: "Verificar identidade",
     triage: "Triagem",
     in_review: "Em análise",
-    under_review: "Em análise",
     response_ready: "Resposta pronta",
     completed: "Concluído",
     blocked: "Bloqueado",
@@ -109,25 +115,13 @@ const stateLabel = (state: string) =>
     dismissed: "Arquivado",
     submitted: "Enviado",
     active: "Ativo",
-    suspended: "Suspenso",
-    expired: "Expirado",
-    cancelled: "Cancelado",
-    withdrawn: "Retirado da consulta pública",
-    accepted: "Aceito",
-    rejected: "Não aceito",
-    needs_revision: "Precisa de complementação",
-    record_only: "Atualização cadastral",
-    review_required: "Revisão necessária",
-    reopened: "Novo processo aberto",
-    not_applicable: "Sem impacto para a acreditação",
-    ratified: "Ratificado",
     responded: "Respondido",
     returned: "Devolvido",
     running: "Em contagem",
     paused: "Pausado",
   })[state] || state;
-
-export default function ExtensionPage({ pluginId, workspaceId, recordId, embedded=false, onChanged }: { pluginId: string; workspaceId?:string;recordId?:string;embedded?:boolean;onChanged?:()=>Promise<void> }) {
+export default function ExtensionPage({ pluginId, workspaceId, recordId, embedded=false, onChanged, summaryCards=[] }: { pluginId: string; workspaceId?:string;recordId?:string;embedded?:boolean;onChanged?:()=>Promise<void>;summaryCards?:ExtensionSummaryCard[] }) {
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null),
     [plugin, setPlugin] = useState<Plugin | null>(null),
     [spaces, setSpaces] = useState<Workspace[]>([]),
@@ -137,9 +131,12 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     publish: false,
   });
   const [rows, setRows] = useState<RecordRow[]>([]),
+    [recordCounts, setRecordCounts] = useState<RecordCount[]>([]),
     [detail, setDetail] = useState<Detail | null>(null),
     [kind, setKind] = useState(""),
     [editing, setEditing] = useState(false);
+  const requestedKind = searchParams.get("kind") || "";
+  const kindFilter = plugin?.kinds.some((item) => item.id === requestedKind) ? requestedKind : "";
   const [templateVersion, setTemplateVersion] = useState(0);
   const [title, setTitle] = useState(""),
     [payload, setPayload] = useState<Record<string, unknown>>({}),
@@ -175,11 +172,18 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     } catch (error) { if (generation === formSelection.current) setError((error as Error).message); }
   }
   const editableKinds = (plugin?.kinds || []).filter((item) => !item.serverCreated);
+  const visibleRows = kindFilter ? rows.filter((row) => row.kind === kindFilter) : rows;
   const definition = plugin?.kinds.find(
-    (item) => item.id === (editing ? kind : detail?.kind || kind),
+    (item) => item.id === (editing ? kind : detail?.kind || kind || kindFilter),
   );
-  const canWrite = Boolean(user?.is_root || workspaceAccess.write),
+  const selfCreateKind = Boolean(definition?.selfServiceCreate && definition.personalOwnerField && user);
+  const editableKindsForForm = selfCreateKind ? editableKinds.filter((item) => item.id === kindFilter) : editableKinds;
+  const canWrite = Boolean(user?.is_root || workspaceAccess.write || selfCreateKind),
     canPublish = Boolean(user?.is_root || workspaceAccess.publish);
+  const countRecords = (kindId: string, states?: string[]) => recordCounts.filter((row) => row.kind === kindId && (!states || states.includes(row.state))).reduce((total, row) => total + row.count, 0);
+  const staffSummary = Boolean(user?.is_root || workspaceAccess.write || workspaceAccess.publish);
+  const dashboardMetrics = summaryCards.filter((card) => !card.audience || card.audience === (staffSummary ? "staff" : "member"))
+    .map((card) => [card.label, countRecords(card.kind, card.states)] as [string, number]);
   const detailCanWrite = Boolean(user?.is_root || (detail?.record_permissions ? detail.record_permissions.write : canWrite)),
     detailCanPublish = Boolean(user?.is_root || (detail?.record_permissions ? detail.record_permissions.publish : canPublish));
   const refreshCatalog = useCallback(async () => {
@@ -201,10 +205,12 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
               api<RecordRow[]>(`/extensions/${pluginId}/workspaces/${encodeURIComponent(requestedWorkspace)}/records`),
               api<{ write: boolean; publish: boolean }>(`/extensions/${pluginId}/workspaces/${encodeURIComponent(requestedWorkspace)}/access`),
               requestedRecord ? api<Detail>(`/extensions/${pluginId}/records/${encodeURIComponent(requestedRecord)}`) : Promise.resolve(null),
-            ]).then(([records, permissions, selected]) => {
+              api<{ counts: RecordCount[] }>(`/extensions/${pluginId}/workspaces/${encodeURIComponent(requestedWorkspace)}/summary`),
+            ]).then(([records, permissions, selected, summary]) => {
               if (!active) return;
               setWorkspace(requestedWorkspace);
               setRows(records);
+              setRecordCounts(summary.counts);
               setWorkspaceAccess(permissions);
               if (selected && (selected as Detail & { workspace_id: string }).workspace_id === requestedWorkspace) setDetail(selected);
             }).catch((error) => { if (active) setError(error.message); });
@@ -243,17 +249,20 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     setDetail(null);
     setEditing(false);
     setRows([]);
+    setRecordCounts([]);
     setError("");
     if (!id) return;
     try {
-      const [records, permissions] = await Promise.all([
+      const [records, permissions, summary] = await Promise.all([
         api<RecordRow[]>(`/extensions/${pluginId}/workspaces/${id}/records`),
         api<{ write: boolean; publish: boolean }>(
           `/extensions/${pluginId}/workspaces/${id}/access`,
         ),
+        api<{ counts: RecordCount[] }>(`/extensions/${pluginId}/workspaces/${id}/summary`),
       ]);
       if (selection.current === request) {
         setRows(records);
+        setRecordCounts(summary.counts);
         setWorkspaceAccess(permissions);
       }
     } catch (error) {
@@ -282,6 +291,8 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
           `/extensions/${pluginId}/workspaces/${workspace}/records`,
         ),
       );
+      const summary = await api<{ counts: RecordCount[] }>(`/extensions/${pluginId}/workspaces/${workspace}/summary`);
+      setRecordCounts(summary.counts);
       if (result?.id) await open(result.id);
       else if (detail) await open(detail.id);
       setMessage("Operação concluída.");
@@ -296,9 +307,9 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
     formSelection.current++;
     setFormSchema(null);
     if (pluginId === "forms" && row?.kind === "submission") void chooseForm(String(row.payload.form_id), Number(row.payload.form_revision), true);
-    setKind(row?.kind || editableKinds[0]?.id || "");
+    setKind(row?.kind || kindFilter || editableKinds[0]?.id || "");
     setTitle(row?.title || "");
-    setPayload(row?.payload || {});
+    setPayload(row?.payload || (selfCreateKind && user && definition?.personalOwnerField ? { [definition.personalOwnerField]: user.id } : {}));
     setDetail(row ? detail : null);
     setReason("");
     setEditing(true);
@@ -458,6 +469,10 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
             </select>
           </label>
           {workspace && plugin?.enabled && (
+            <>
+            {summaryCards.length > 0 && !kindFilter && <section aria-label="Resumo da extensão" className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {dashboardMetrics.map(([label, value]) => <article key={label} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4"><p className="text-sm text-[#9aa7b5]">{label}</p><p className="mt-2 text-2xl font-semibold text-white">{value}</p></article>)}
+            </section>}
             <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(220px,1fr)_minmax(0,2fr)]">
               <section className={panel}>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -474,7 +489,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                 </div>
                 <p className="mb-3 text-xs">Até 100 registros recentes.</p>
                 <div className="space-y-2">
-                  {rows.map((row) => (
+                  {visibleRows.map((row) => (
                     <button
                       type="button"
                       key={row.id}
@@ -483,13 +498,14 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                       className="block min-h-11 w-full min-w-0 rounded border p-3 text-left"
                     >
                       <strong className="break-words">{row.title}</strong>
+                      <span className="block text-xs text-[#8d99a8]">{plugin?.kinds.find((item) => item.id === row.kind)?.label || row.kind}</span>
                       <span className="block text-sm">
-                        {stateLabel(row.state)} · v{row.revision}
+                        {stateLabel(row.state, plugin?.kinds.find((item) => item.id === row.kind)?.stateLabels)} · v{row.revision}
                       </span>
                     </button>
                   ))}
                 </div>
-                {!rows.length && <p>Nenhum registro neste workspace.</p>}
+                {!visibleRows.length && <p>{kindFilter ? "Nenhum registro desta área neste workspace." : "Nenhum registro neste workspace."}</p>}
               </section>
               <section className={`${panel} min-w-0`}>
                 {editing ? (
@@ -516,7 +532,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                           setPayload({});
                         }}
                       >
-                        {editableKinds.map((kind) => (
+                        {editableKindsForForm.map((kind) => (
                           <option key={kind.id} value={kind.id}>
                             {kind.label}
                           </option>
@@ -613,6 +629,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                             schema={pluginId === "forms" && kind === "submission" && formSchema ? { ...definition.schema, properties: { ...definition.schema.properties, answers: { ...formSchema, title: "Respostas" } } } : definition.schema}
                             value={payload}
                             onChange={setPayload}
+                            records={rows}
                             skip={
                               pluginId === "workflows" && kind === "process"
                                 ? ["current_state", "protocol"]
@@ -670,7 +687,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                           {detail.title}
                         </h2>
                         <p>
-                          {stateLabel(detail.state)} · versão {detail.revision}
+                          {stateLabel(detail.state, definition?.stateLabels)} · versão {detail.revision}
                         </p>
                         <p className="break-all text-xs">ID: {detail.id}</p>
                       </div>
@@ -841,7 +858,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                                     )
                                   }
                                 >
-                                  {stateLabel(state)}
+                                  {stateLabel(state, definition?.stateLabels)}
                                 </button>
                               ))
                             )}
@@ -976,7 +993,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                             className="min-w-0 rounded border p-3"
                           >
                             <strong>
-                              v{version.revision} · {stateLabel(version.state)}
+                              v{version.revision} · {stateLabel(version.state, definition?.stateLabels)}
                             </strong>
                             <p className="break-words text-sm">
                               {version.reason}
@@ -1002,6 +1019,7 @@ export default function ExtensionPage({ pluginId, workspaceId, recordId, embedde
                 )}
               </section>
             </div>
+            </>
           )}
         </>
       )}

@@ -64,6 +64,33 @@ export class FeaturesService {
     return this.access?{...account,...await this.access.me(userId)}:account;
   }
 
+  async loginHistory(userId: string) {
+    return this.db.query<{id:string;logged_at:Date;device_label:string}>(
+      'SELECT id,logged_at,device_label FROM auth_login_history WHERE user_id=$1 AND logged_at>=now()-interval \'180 days\' ORDER BY logged_at DESC,id DESC LIMIT 100',
+      [userId],
+    );
+  }
+
+  async securityActivity(userId: string) {
+    const labels:Record<string,string>={
+      'account.profile.updated':'Perfil atualizado',
+      'account.password.set':'Senha definida',
+      'account.password.changed':'Senha alterada',
+      'account.password.admin_changed':'Senha redefinida pela administração',
+      'account.access.admin_changed':'Acesso atualizado pela administração',
+      'account.email_change.requested':'Alteração de e-mail solicitada',
+      'account.email_change.completed':'E-mail alterado',
+      'account.mfa.enabled':'Verificação em duas etapas ativada',
+      'account.mfa.disabled':'Verificação em duas etapas desativada',
+      'account.social_identity.linked':'Login social vinculado',
+    };
+    const rows=await this.db.query<{id:string;action:string;created_at:Date}>(
+      'SELECT id::text,action,created_at FROM access_audit WHERE ((actor_id=$1 AND action NOT IN (\'account.password.admin_changed\',\'account.access.admin_changed\')) OR (target=$1::text AND action IN (\'account.password.admin_changed\',\'account.access.admin_changed\'))) AND created_at>=now()-interval \'180 days\' AND action=ANY($2::text[]) ORDER BY created_at DESC,id DESC LIMIT 100',
+      [userId,Object.keys(labels)],
+    );
+    return rows.flatMap(row=>labels[row.action]?[{id:row.id,label:labels[row.action],created_at:row.created_at}]:[]);
+  }
+
   async updateProfile(userId: string, body: Record<string, unknown>) {
     const name = body.name === undefined ? null : bounded(body.name, 'Nome', 120);
     let avatar: string | null | undefined;
@@ -73,7 +100,15 @@ export class FeaturesService {
         (/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(body.avatar_url) || /^https:\/\//i.test(body.avatar_url))) avatar = body.avatar_url;
       else bad('Imagem de perfil inválida. Use PNG, JPEG, WebP ou uma URL HTTPS.');
     }
-    await this.db.query('UPDATE users SET name=COALESCE($2,name),avatar_url=CASE WHEN $3::boolean THEN $4::text ELSE avatar_url END WHERE id=$1', [userId,name,avatar!==undefined,avatar??null]);
+    if(name!==null||avatar!==undefined){
+      const client=await this.db.pool.connect();
+      try{
+        await client.query('BEGIN');
+        await client.query('UPDATE users SET name=COALESCE($2,name),avatar_url=CASE WHEN $3::boolean THEN $4::text ELSE avatar_url END WHERE id=$1', [userId,name,avatar!==undefined,avatar??null]);
+        await client.query("INSERT INTO access_audit(actor_id,action) VALUES($1,'account.profile.updated')",[userId]);
+        await client.query('COMMIT');
+      }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+    }
     return this.account(userId);
   }
 
@@ -427,12 +462,15 @@ export class FeaturesService {
 @Controller()
 export class FeaturesController {
   constructor(@Inject(FeaturesService) private features: FeaturesService,@Inject(RequestRateLimiter) private requestLimits:RequestRateLimiter) {}
+  private accountHistoryUser(req:Request) { const user=this.features.user(req),actor=(req as AccessRequest).orbitActor;if(actor&&actor!==user)bad('O histórico da conta está disponível somente ao titular.',403);return user; }
   private async limitSearch(operation:string,req:Request,response:Response,user:string){
     const origin=req.ip||req.socket.remoteAddress||'unknown';
     const result=await this.requestLimits.consume(operation,[{kind:'identity',value:user,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_SEARCH_IDENTITY',60)},{kind:'origin',value:origin,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_SEARCH_ORIGIN',300)}],60_000);
     if(!result.allowed){response.setHeader('Retry-After',String(result.retryAfterSeconds));response.setHeader('Cache-Control','no-store');throw new HttpException('Limite de consultas atingido. Tente novamente em instantes.',429)}
   }
   @Get('account') account(@Req() req: Request) { return this.features.account(this.features.user(req)); }
+  @Get('account/login-history') loginHistory(@Req() req:Request) { return this.features.loginHistory(this.accountHistoryUser(req)); }
+  @Get('account/security-activity') securityActivity(@Req() req:Request) { return this.features.securityActivity(this.accountHistoryUser(req)); }
   @Patch('account') updateAccount(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updateProfile(this.features.user(req),body); }
   @Patch('account/preferences') preferences(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updatePreferences(this.features.user(req),body); }
   @Get('account/activity') activity(@Req() req: Request) { return this.features.activities(this.features.user(req),60); }

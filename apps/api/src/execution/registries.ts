@@ -1,3 +1,4 @@
+import {assertCoreCompatibility} from '../plugins/core-compatibility';
 import Ajv from 'ajv';
 import {Executor,ExecutionInput,Integration,Output,Plugin,PluginAction} from './types';
 import {ActionDefinition,CapabilityDefinition,PluginActionContext,PluginDefinition} from '../plugins/contract';
@@ -18,6 +19,7 @@ export class PluginRegistry {
   private id(value:string,label:string){if(!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(value))throw new Error(`${label} inválido: ${value}`)}
   private unique<T extends {id:string}>(items:T[],label:string){const ids=new Set<string>();for(const item of items){this.id(item.id,label);if(ids.has(item.id))throw new Error(`${label} duplicado: ${item.id}`);ids.add(item.id)}}
   register(plugin:Plugin){
+    assertCoreCompatibility(plugin);
     this.id(plugin.id,'Plugin');if(this.items.has(plugin.id))throw new Error('Plugin duplicado.');
     if(!plugin.version||!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(plugin.version))throw new Error(`Versão inválida para ${plugin.id}.`);
     const capabilities=plugin.capabilities||[],actions=plugin.actions||[],notifications=plugin.contributions?.notifications||[];
@@ -42,17 +44,24 @@ export class PluginRegistry {
     this.unique(plugin.contributions?.cardLayouts||[],'Card layout');
     this.unique(plugin.contributions?.cardTypes||[],'Card type');
     this.unique(plugin.contributions?.boardViews||[],'Board view');
+    if(plugin.recordEvents){
+      const events=plugin.recordEvents.events;
+      if(!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(plugin.recordEvents.sourcePluginId)||!plugin.dependencies?.includes(plugin.recordEvents.sourcePluginId)||typeof plugin.recordEvents.onSnapshot!=='function'||!Array.isArray(events)||!events.length||new Set(events.map(event=>event.type)).size!==events.length||events.some(event=>!(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(event.type))||event.type.startsWith('record.')||!event.type.startsWith(`${plugin.recordEvents!.sourcePluginId}.`)||!event.label?.trim()||!Number.isInteger(event.version)||event.version<1))throw new Error(`Eventos de registro inválidos para ${plugin.id}.`);
+    }
     const recordKinds=plugin.contributions?.recordKinds||{};
     for(const [kind,definition] of Object.entries(recordKinds)){
       this.id(kind,'Record kind');
       if(!definition||typeof definition.label!=='string'||!definition.label.trim()||typeof definition.initial!=='string'||!definition.initial.trim()||!definition.transitions||typeof definition.transitions!=='object'||Array.isArray(definition.transitions)||!definition.example||typeof definition.example!=='object'||Array.isArray(definition.example))throw new Error(`Tipo de registro inválido para ${plugin.id}.${kind}.`);
       for(const [state,next] of Object.entries(definition.transitions))if(!state.trim()||!Array.isArray(next)||next.some(value=>typeof value!=='string'||!value.trim()))throw new Error(`Transições inválidas para ${plugin.id}.${kind}.`);
+      if(definition.stateLabels!==undefined&&(!definition.stateLabels||typeof definition.stateLabels!=='object'||Array.isArray(definition.stateLabels)||Object.entries(definition.stateLabels).some(([state,label])=>!Object.hasOwn(definition.transitions,state)||typeof label!=='string'||!label.trim())))throw new Error(`Rótulos de estado inválidos para ${plugin.id}.${kind}.`);
       for(const action of definition.detailActions||[]){
         if(!/^[a-z][a-z0-9_-]{1,60}$/.test(action.id)||!action.label?.trim()||(action.retryLabel!==undefined&&(typeof action.retryLabel!=='string'||!action.retryLabel.trim()))||!Array.isArray(action.states)||!action.states.length||action.states.some(state=>typeof state!=='string'||!state.trim())||!['write','publish'].includes(action.permission)||!action.path?.startsWith('/')||action.path.startsWith('//')||/[\r\n]/.test(action.path)||(action.ownsTransitions!==undefined&&typeof action.ownsTransitions!=='boolean'))throw new Error(`Ação de registro inválida para ${plugin.id}.${kind}.`);
         if(action.download&&(!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.recordIdField)||!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.revisionField)||!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.fileNameField)||!action.download.path.startsWith('/')||action.download.path.startsWith('//')||/[\r\n]/.test(action.download.path)))throw new Error(`Download inválido para ${plugin.id}.${kind}.${action.id}.`);
       }
       if(definition.immutable!==undefined&&(!Array.isArray(definition.immutable)||definition.immutable.some(state=>typeof state!=='string'||!state.trim())))throw new Error(`Estados imutáveis inválidos para ${plugin.id}.${kind}.`);
       if(definition.uniqueFields!==undefined&&(!Array.isArray(definition.uniqueFields)||new Set(definition.uniqueFields).size!==definition.uniqueFields.length||definition.uniqueFields.some(field=>typeof field!=='string'||!(/^[a-z][a-z0-9_]*$/.test(field))||!Object.hasOwn(definition.schema.properties||{},field))))throw new Error(`Campos únicos inválidos para ${plugin.id}.${kind}.`);
+      if(definition.selfServiceCreate!==undefined&&(typeof definition.selfServiceCreate!=='boolean'||definition.selfServiceCreate&&(!definition.resourceScoped||!definition.personalOwnerField||!Object.hasOwn(definition.schema.properties||{},definition.personalOwnerField))))throw new Error(`Criação individual inválida para ${plugin.id}.${kind}.`);
+      if(definition.publicRead!==undefined&&(!Array.isArray(definition.publicRead.states)||!definition.publicRead.states.length||definition.publicRead.states.some(state=>typeof state!=='string'||!Object.hasOwn(definition.transitions,state))||!Array.isArray(definition.publicRead.fields)||!definition.publicRead.fields.length||new Set(definition.publicRead.fields).size!==definition.publicRead.fields.length||definition.publicRead.fields.some(field=>typeof field!=='string'||!Object.hasOwn(definition.schema.properties||{},field))))throw new Error(`Projeção pública inválida para ${plugin.id}.${kind}.`);
       if(definition.validate!==undefined&&typeof definition.validate!=='function')throw new Error(`Validador semântico inválido para ${plugin.id}.${kind}.`);
       if(definition.resourceScoped!==undefined&&typeof definition.resourceScoped!=='boolean')throw new Error(`Escopo de registro inválido para ${plugin.id}.${kind}.`);
       if(definition.serverCreated!==undefined&&typeof definition.serverCreated!=='boolean')throw new Error(`Origem de criação inválida para ${plugin.id}.${kind}.`);
@@ -94,6 +103,7 @@ export class PluginRegistry {
     for(const type of plugin.contributions?.cardTypes||[])if(!type.name||!Array.isArray(type.slots||[])||(type.slots||[]).some(slot=>typeof slot!=='string'||!slot))throw new Error('Tipo de cartão inválido.');
 
     for(const dependency of plugin.dependencies||[]){this.id(dependency,'Dependency');if(dependency===plugin.id)throw new Error('Plugin não pode depender de si mesmo.');}
+    if(plugin.parentPlugin){this.id(plugin.parentPlugin,'Parent plugin');if(plugin.parentPlugin===plugin.id)throw new Error('Plugin não pode estender a si mesmo.');if(!plugin.dependencies?.includes(plugin.parentPlugin))throw new Error(`Plugin filho ${plugin.id} precisa declarar dependência do pai ${plugin.parentPlugin}.`);}
     this.items.set(plugin.id,{...plugin,capabilities,actions});
     try{this.dependencyChain(plugin.id,false)}catch(error){this.items.delete(plugin.id);throw error}
 
@@ -144,6 +154,6 @@ export class PluginRegistry {
     const action=this.validate(integration,input.permissions);await this.authorizeAction?.(integration.plugin,integration.action,input.userId);const output=await action.execute(integration.config||{},{userId:input.userId,projectId:input.projectId,cardId:input.cardId,runId:input.runId,connectionId:integration.connection_id,execution:input,services,logger:{info(){},warn(){}}});
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;
   }
-  catalog(){return this.list().map(p=>({id:p.id,name:p.name,version:p.version,description:p.description,blockedBy:this.blockedBy(p.id),dependents:this.dependents(p.id),status:this.disabled.has(p.id)?"disabled":this.isEnabled(p.id)?"active":"blocked",dependencies:p.dependencies||[],configuredEnabled:!this.disabled.has(p.id),enabled:this.isEnabled(p.id),configurable:Boolean(p.configurable||p.configuration?.length),capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}
+  catalog(){return this.list().map(p=>({id:p.id,name:p.name,version:p.version,description:p.description,parentPlugin:p.parentPlugin,children:this.list().filter(child=>child.parentPlugin===p.id).map(child=>child.id),blockedBy:this.blockedBy(p.id),dependents:this.dependents(p.id),status:this.disabled.has(p.id)?"disabled":this.isEnabled(p.id)?"active":"blocked",dependencies:p.dependencies||[],configuredEnabled:!this.disabled.has(p.id),enabled:this.isEnabled(p.id),configurable:Boolean(p.configurable||p.configuration?.length),capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}
 }
 export function filesystemPlugin():PluginDefinition{return {id:'filesystem',name:'Arquivos do projeto',version:'1.0.0',capabilities:[{id:'filesystem.read',name:'Ler arquivos',permissions:['filesystem.read']}],actions:[{id:'read',name:'Ler arquivo',permissions:['filesystem.read'],requiredCapabilities:['filesystem.read'],inputSchema:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:1000}},required:['path'],additionalProperties:false},async execute(config,context){const input=context.execution;if(!input)throw new Error('Contexto de execução ausente.');return {type:'text',label:String(config.path),value:await readResource(input.projectRoot,String(config.path))}}}]}}

@@ -68,3 +68,9 @@ test("plugin SDK rejects invalid ids, schemas, duplicates and missing capabiliti
     }),
   );
 });
+
+test("plugin SDK requires child plugins to depend on the declared parent", () => {
+  assert.throws(() => definePlugin({ id: "child", name: "Child", version: "1.0.0", parentPlugin: "host" }), /declarar dependência do pai/);
+  const child = definePlugin({ id: "child", name: "Child", version: "1.0.0", parentPlugin: "host", dependencies: ["host"] });
+  assert.equal(child.parentPlugin, "host");
+});

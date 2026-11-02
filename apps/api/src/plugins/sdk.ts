@@ -1,3 +1,4 @@
+import {assertCoreCompatibility} from "./core-compatibility";
 import Ajv from "ajv";
 import {
   CardLayoutContribution,
@@ -75,11 +76,13 @@ export const defineBoardView = <T extends BoardViewContribution>(value:T)=>{
 };
 
 export const definePlugin = <T extends PluginDefinition>(definition: T): T => {
+  assertCoreCompatibility(definition);
   identifier(definition.id, "Plugin");
   if (!definition.name.trim()) throw new Error("Nome do plugin obrigatório.");
   if (!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(definition.version))
     throw new Error(`Versão inválida para ${definition.id}.`);
   const dependencies=definition.dependencies||[];for(const dependency of dependencies){identifier(dependency,'Dependency');if(dependency===definition.id)throw new Error('Plugin não pode depender de si mesmo.');}
+  if(definition.parentPlugin){identifier(definition.parentPlugin,'Parent plugin');if(definition.parentPlugin===definition.id)throw new Error('Plugin não pode estender a si mesmo.');if(!dependencies.includes(definition.parentPlugin))throw new Error(`Plugin filho ${definition.id} precisa declarar dependência do pai ${definition.parentPlugin}.`);}
   const layouts=(definition.contributions?.cardLayouts||[]).map(defineCardLayout);unique(layouts,'Card layout');
   const cardTypes=(definition.contributions?.cardTypes||[]).map(defineCardType);unique(cardTypes,'Card type');
   const boardViews=(definition.contributions?.boardViews||[]).map(defineBoardView);unique(boardViews,'Board view');

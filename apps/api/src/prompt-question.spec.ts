@@ -40,10 +40,10 @@ test('answers validate membership, ownership, pending state and content',async()
 });
 
 test('answer reuses the pending execution and its saved session',async()=>{
-  const run={id:runId,user_id:'user',project_id:'project',model:'gpt-6-luna',effort:'high',codex_session_id:'saved-session',output:'Pergunta'};
+  const run={id:runId,user_id:'user',project_id:'project',model:'gpt-6-luna',effort:'high',codex_session_id:'saved-session',output:'Pergunta',multiple_agents:true};
   const service=answerService(run);
   let received:unknown[]=[];
-  service.execute=async(...args:Parameters<PromptSessionsService['execute']>)=>{received=args;return {id:runId,project_id:'project',model:'gpt-6-luna',effort:'high',status:'queued'};};
+  service.execute=async(...args:Parameters<PromptSessionsService['execute']>)=>{received=args;return {id:runId,project_id:'project',model:'gpt-6-luna',effort:'high',multiple_agents:true,status:'queued'};};
   assert.equal((await service.answerRun('card',runId,'user',{answer:' Sim '})).status,'queued');
   assert.deepEqual(received,['card','user',{instruction:'Sim'},undefined,run]);
 });
@@ -56,17 +56,17 @@ test('cancelling a pending question releases it and emits cancellation',async()=
   assert.deepEqual(event,{runId,status:'cancelled',message:'Execução cancelada.'});
 });
 
-test('Questionar uses read only on the first turn, skips completion checks while waiting, and resumes saved sessions',async()=>{
+test('Questionar preserves multiple-agent mode and resumes saved sessions',async()=>{
   const directory=await mkdtemp(join(tmpdir(),'orbit-question-test-'));
   const executable=join(directory,'codex.mjs');
   const oldBin=process.env.CODEX_BIN,oldHome=process.env.CODEX_HOME;
   try{
-    await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst a=process.argv.slice(2);let prompt='';for await(const chunk of process.stdin)prompt+=chunk;\nif(a.includes('resume')){if(!a.includes('saved-session')||!a.includes('--dangerously-bypass-approvals-and-sandbox'))process.exit(2);}else if(a[a.indexOf('--sandbox')+1]!=='read-only')process.exit(3);\nconsole.log(JSON.stringify({type:'thread.started',thread_id:'saved-session'}));\nawait writeFile(a[a.indexOf('--output-last-message')+1],a.includes('resume')?'Concluído':${JSON.stringify(question)});\n`);
+    await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst a=process.argv.slice(2);let prompt='';for await(const chunk of process.stdin)prompt+=chunk;\nif(!a.includes('--enable')||a[a.indexOf('--enable')+1]!=='multi_agent')process.exit(4);\nif(a.includes('resume')){if(!a.includes('saved-session')||!a.includes('--dangerously-bypass-approvals-and-sandbox'))process.exit(2);}else if(a[a.indexOf('--sandbox')+1]!=='read-only')process.exit(3);\nconsole.log(JSON.stringify({type:'thread.started',thread_id:'saved-session'}));\nawait writeFile(a[a.indexOf('--output-last-message')+1],a.includes('resume')?'Concluído':${JSON.stringify(question)});\n`);
     await chmod(executable,0o755);process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;
     const codex=new CodexAiService();
-    const waiting=await codex.execute(questionGuidance(false),directory,'gpt-6-luna','high',()=>{},null,undefined,undefined,'planning',[],[],[['node','-e','process.exit(7)']],true);
+    const waiting=await codex.execute(questionGuidance(false),directory,'gpt-6-luna','high',()=>{},null,undefined,undefined,'planning',[],[],[['node','-e','process.exit(7)']],true,true);
     assert.equal(waiting.sessionId,'saved-session');assert.equal(extractPromptQuestion(waiting.output),'Posso seguir com a implementação?');
-    const completed=await codex.execute(questionGuidance(true),directory,'gpt-6-luna','high',()=>{},waiting.sessionId,undefined,undefined,'bypass',[],undefined,[['node','-e','process.exit(0)']],true);
+    const completed=await codex.execute(questionGuidance(true),directory,'gpt-6-luna','high',()=>{},waiting.sessionId,undefined,undefined,'bypass',[],undefined,[['node','-e','process.exit(0)']],true,true);
     assert.equal(completed.output,'Concluído');
     await assert.rejects(()=>codex.execute('Finalizar',directory,'gpt-6-luna','high',()=>{},waiting.sessionId,undefined,undefined,'bypass',[],undefined,[['node','-e','process.exit(7)']],true));
   }finally{
