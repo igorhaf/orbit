@@ -4,11 +4,12 @@ import {resolve} from 'node:path';
 import {Pool,PoolClient} from 'pg';
 
 /** Allows a verified data conversion and its schema upgrade to commit atomically. */
-export async function applyVersionedMigrations(client:PoolClient) {
+export async function applyVersionedMigrations(client:PoolClient,directory=resolve(__dirname,'../sql/migrations')) {
   await client.query("SELECT set_config('search_path', quote_ident(current_schema()), true)");
   await client.query('SELECT pg_advisory_xact_lock(72641025)');
   await client.query('CREATE TABLE IF NOT EXISTS schema_migrations(version text PRIMARY KEY,checksum text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now())');
-  const directory=resolve(__dirname,'../sql/migrations');
+  // The full filename is the migration identity; numeric prefixes may be shared
+  // when downstream branches have independently allocated migrations.
   for(const version of (await readdir(directory)).filter(x=>/^\d+_[\w-]+\.sql$/.test(x)).sort()){
     const sql=await readFile(resolve(directory,version),'utf8');
     const checksum=createHash('sha256').update(sql).digest('hex');

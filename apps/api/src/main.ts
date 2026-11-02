@@ -14,11 +14,16 @@ import {visualBoardPlugin,structuredViewPlugin} from './plugins/board-views/boar
 import {BoardViewsService,BoardViewsController} from './plugins/board-views/board-views';
 import {hasBoardViewAfterChange,REQUIRED_BOARD_VIEW_PLUGIN_IDS} from './plugins/board-views/required-views';
 import {QueueManagement} from './plugins/ai/queue-management';
+import {OrbitKnowledgeRetentionService} from './plugins/ai/knowledge-retention';
 import {AccessManagement,AccessManagementController} from './access/management';
 import {AuthLifecycle,SmtpAuthMailer} from './access/auth-lifecycle';
-import {LoginAttemptLimiter,authenticateLoginAccount} from './access/login-attempts';
+import {LoginAttemptLimiter,authenticateLoginWithMfa, type LoginAccount} from './access/login-attempts';
+import {MfaService} from './access/mfa';
+import {SocialLoginService} from './access/social-login';
+import {recordSuccessfulLogin} from './access/login-history';
 import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
 import {AccessService,AccessGuard,AccessController} from './access/access';
+import {profileSimulationContext,profileSimulationMiddleware} from './access/profile-simulation-context';
 import {WorkspacesService,WorkspacesController,workspacesPlugin} from './workspaces/workspaces.plugin';
 import {AiPluginModule,aiPluginDefinition} from './plugins/ai/ai.plugin';
 import {softwareDevelopmentPlugin} from './plugins/software-development/software-development.plugin';
@@ -35,7 +40,7 @@ import {AlexaOrbitController,alexaOrbitPluginDefinition} from './alexa-orbit/ale
 import { MonitoringController, MonitoringService } from './monitoring';
 import { BrandingController } from './branding';
 import { NestFactory } from '@nestjs/core';
-import { NextFunction, Request, Response, json } from 'express';
+import { NextFunction, Request, Response, json, urlencoded } from 'express';
 import * as jwt from 'jsonwebtoken';
 import {containsSecretText,redact} from './execution/security';
 import {loadVaultEnvironment} from './credential-store';
@@ -58,6 +63,7 @@ import { TrelloController, TrelloSyncService, trelloPluginDefinition } from './t
 import { PromptSessionsService } from './prompt-sessions';
 import { PluginRegistry } from './execution/registries';
 import { PluginNotifications, cardNotificationPlugin } from './plugins/notifications';
+import { WebhooksController, WebhooksService, webhooksPlugin } from './plugins/webhooks';
 import { CalendarController, CalendarService } from './calendar/calendar.service';
 import { CalendarSourceRegistry } from './calendar/source-registry';
 import { OrbitCardCalendarSource } from './calendar/orbit-card-provider';
@@ -122,7 +128,7 @@ const listColors = new Set(['blue','green','yellow','orange','red','purple','pin
 
 @Injectable()
 class Service {
-  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Optional() @Inject(ORBIT_AI_CARD) private ai:AiCardOperations|undefined,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(DeliveryRunner) private delivery:DeliveryRunner,@Inject(CardTypesService) private cardTypes:CardTypesService,@Inject(CardLayoutsService) private cardLayouts:CardLayoutsService,@Optional() @Inject(BackupService) private backups?:BackupService) {}
+  constructor(@Inject(Db) private db: Db, @Inject(FeaturesService) private features: FeaturesService, @Optional() @Inject(ORBIT_AI_CARD) private ai:AiCardOperations|undefined,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(OrbitEvents) private events:OrbitEvents,@Inject(DeliveryRunner) private delivery:DeliveryRunner,@Inject(CardTypesService) private cardTypes:CardTypesService,@Inject(CardLayoutsService) private cardLayouts:CardLayoutsService,@Inject(MfaService) private mfa:MfaService,@Optional() @Inject(BackupService) private backups?:BackupService) {}
   private async classifyTitle(title:string,userId:string){
     const result=cardKindFromTitle(title,process.env.WEB_ORIGIN||'http://localhost:3000');
     if(result.targetBoardId)await this.member(result.targetBoardId,userId);
@@ -146,7 +152,7 @@ class Service {
   private assertCardTextSafe(text:string){if(containsSecretText(text))fail('Credenciais não podem ser armazenadas em cartões ou comentários. Use uma referência de credencial.');}
   private safeCardText(text:string){this.assertCardTextSafe(text);return text;}
   async notebooks(userId:string) {
-    const shared=await this.features.access?.sharedResources(userId,'notebooks')||[],root=Boolean((await this.db.one('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);return this.db.query('SELECT id,title,content_html,created_at,updated_at FROM notebooks WHERE owner_id=$1 OR id=ANY($2::uuid[]) OR $3 ORDER BY updated_at DESC',[userId,shared,root]);
+    const shared=await this.features.access?.sharedResources(userId,'notebooks')||[],root=Boolean(await this.features.access?.isRootForAuthorization(userId));return this.db.query('SELECT id,title,content_html,created_at,updated_at FROM notebooks WHERE owner_id=$1 OR id=ANY($2::uuid[]) OR $3 ORDER BY updated_at DESC',[userId,shared,root]);
   }
   async createNotebook(userId:string,body:Payload) {
     const title=body.title===undefined?'Nova anotação':value(body.title,'Título',160);
@@ -213,16 +219,21 @@ class Service {
   pluginsChanged(id:string){this.events.pluginsChanged(id)}
   featuresAccessRevoke(user:string){this.features.access?.revoke(user)}
   async register() { return fail('Cadastro desativado. Contas são criadas pela administração de acessos.', 403); }
-  async login(body: Payload,origin='unknown') {
+  async login(body: Payload,origin='unknown',userAgent?:string) {
     const email = value(body.email, 'E-mail', 255).toLowerCase();
-    const password = value(body.password, 'Senha', 200);
     const attempts=new LoginAttemptLimiter(this.db);
     if(!await attempts.tryStartAttempt(email,origin))throw new HttpException({message:'Muitas tentativas de acesso. Aguarde antes de tentar novamente.',retry_after_seconds:await attempts.retryAfterSeconds(email,origin)},429);
-    const row=await authenticateLoginAccount(this.db,email,password);
+    const row=await authenticateLoginWithMfa(this.db,this.mfa,email,body);
     if(!row)return fail('E-mail ou senha incorretos.',401);
+    if('mfa_required' in row)return row;
     await attempts.recordSuccess(email,origin);
-    return { user: { id: row.id, name: row.name, email: row.email, avatar_url: row.avatar_url, preferences: row.preferences, is_root:row.is_root }, token: jwt.sign({ sub: row.id, email: row.email,version:row.session_version }, process.env.JWT_SECRET!, { expiresIn: '14d' }) };
+    return this.issueSession(row,userAgent);
   }
+  async socialSession(row:LoginAccount,userAgent?:string){if(row.mfa_enabled)return {mfa_required:true,...await this.mfa.requestLogin(row.id),email:row.email};return this.issueSession(row,userAgent)}
+  private async issueSession(row:LoginAccount,userAgent?:string){await recordSuccessfulLogin(this.db,row.id,userAgent);return {user:{id:row.id,name:row.name,email:row.email,avatar_url:row.avatar_url,preferences:row.preferences,is_root:row.is_root},token:jwt.sign({sub:row.id,email:row.email,version:row.session_version},process.env.JWT_SECRET!,{expiresIn:'14d'})}}
+  async accountMfaStatus(userId:string){const row=await this.db.one<{mfa_enabled:boolean}>('SELECT mfa_enabled FROM users WHERE id=$1 AND NOT disabled',[userId]);if(!row)return fail('Conta não encontrada.',404);return {enabled:row.mfa_enabled}}
+  requestMfaChange(userId:string,body:Payload){return this.mfa.requestChange(userId,body)}
+  confirmMfaChange(userId:string,body:Payload){return this.mfa.confirmChange(userId,body)}
   async inboxEmail(body:Payload, token?:string) {
     if(!process.env.EMAIL_INGEST_TOKEN||token!==process.env.EMAIL_INGEST_TOKEN) fail('Entrada de e-mail não autorizada.',401);
     const subject=value(body.subject||body.title,'Assunto',300); const text=optionalText(body.body||'',10000);
@@ -1144,7 +1155,7 @@ class Service {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Service) private service: Service,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(Db) private db:Db,@Inject(BackupService) private backupService:BackupService,@Inject(QueueManagement) private queues:QueueManagement,@Inject(AuthLifecycle) private auth:AuthLifecycle,@Inject(RequestRateLimiter) private requestLimits:RequestRateLimiter) {}
+  constructor(@Inject(Service) private service: Service,@Inject(PromptSessionsService) private prompts:PromptSessionsService,@Inject(PluginRegistry) private plugins:PluginRegistry,@Inject(Db) private db:Db,@Inject(BackupService) private backupService:BackupService,@Inject(QueueManagement) private queues:QueueManagement,@Inject(AuthLifecycle) private auth:AuthLifecycle,@Inject(RequestRateLimiter) private requestLimits:RequestRateLimiter,@Inject(SocialLoginService) private socialLogin:SocialLoginService) {}
   private async checkRequestLimit(operation:string,req:Request,response:Response,identity:string,identityLimit:number,originLimit:number,windowMs:number){
     const origin=req.ip||req.socket.remoteAddress||'unknown';
     const result=await this.requestLimits.consume(operation,[{kind:'identity',value:identity,limit:identityLimit},{kind:'origin',value:origin,limit:originLimit}],windowMs);
@@ -1187,12 +1198,20 @@ class ApiController {
     const email=typeof body.email==='string'?body.email.trim().toLowerCase():'invalid';
     const limit=await this.checkRequestLimit('auth.login',req,response,email,configuredRequestLimit('ORBIT_RATE_LIMIT_LOGIN_IDENTITY',30),configuredRequestLimit('ORBIT_RATE_LIMIT_LOGIN_ORIGIN',180),15*60*1000);
     if(!limit.allowed)throw new HttpException('Limite de tentativas de autenticação atingido. Tente novamente mais tarde.',429);
-    try{return await this.service.login(body,req.ip||req.socket.remoteAddress||'unknown')}
+    try{return await this.service.login(body,req.ip||req.socket.remoteAddress||'unknown',req.headers['user-agent'])}
     catch(error){
       if(error instanceof HttpException&&error.getStatus()===429){const body=error.getResponse();const seconds=body&&typeof body==='object'&&'retry_after_seconds' in body?Number(body.retry_after_seconds):1;response.setHeader('Retry-After',String(Math.max(1,seconds)))}
       throw error;
     }
   }
+  @Get('auth/social/providers') socialProviders(){return this.socialLogin.listProviders()}
+  @Post('auth/social/:provider/start') async socialLoginStart(@Req() req:Request,@Res({passthrough:true}) response:Response,@Param('provider') provider:string){const limit=await this.checkRequestLimit('auth.social.start',req,response,provider,10,40,15*60*1000);if(!limit.allowed)throw new HttpException('Limite de tentativas de login social atingido.',429);response.setHeader('Cache-Control','no-store');response.setHeader('Referrer-Policy','no-referrer');return this.socialLogin.start(provider)}
+  @Get('auth/social/:provider/callback')
+  @Post('auth/social/:provider/callback')
+  async socialLoginCallback(@Req() req:Request,@Res() response:Response,@Param('provider') provider:string,@Body() body:Payload){const callbackData=req.method==='POST'?body:req.query;const state=typeof callbackData.state==='string'?callbackData.state:'invalid';const limit=await this.checkRequestLimit('auth.social.callback',req,response,state,5,40,15*60*1000);if(!limit.allowed)throw new HttpException('Limite de retornos de login social atingido.',429);response.setHeader('Cache-Control','no-store');response.setHeader('Referrer-Policy','no-referrer');const target=new URL('/auth/social/callback',(process.env.WEB_ORIGIN||'http://localhost:3000').replace(/\/$/,''));try{if(callbackData.error||typeof callbackData.code!=='string')throw new HttpException('Login cancelado.',401);const account=await this.socialLogin.finish(provider,state,callbackData.code);const accountLimit=await this.checkRequestLimit('auth.social.account',req,response,account.id,5,40,15*60*1000);if(!accountLimit.allowed)throw new HttpException('Limite de login social por conta atingido.',429);const result=await this.service.socialSession(account,req.headers['user-agent']);const fragment=new URLSearchParams();for(const [key,value] of Object.entries(result))fragment.set(key,typeof value==='string'?value:JSON.stringify(value));target.hash=fragment.toString()}catch{target.hash=new URLSearchParams({error:'social_login_failed'}).toString()}return response.redirect(303,target.toString())}
+  @Get('account/mfa') accountMfa(@Req() req:Request){return this.service.accountMfaStatus(this.service.user(req))}
+  @Post('account/mfa/challenge') async requestMfaChange(@Req() req:Request,@Res({passthrough:true}) response:Response,@Body() body:Payload){const actor=this.service.user(req),limit=await this.checkRequestLimit('auth.mfa.change',req,response,actor,5,20,60*60*1000);if(!limit.allowed)throw new HttpException('Limite de solicitações atingido. Tente novamente mais tarde.',429);return this.service.requestMfaChange(actor,body)}
+  @Post('account/mfa/confirm') async confirmMfaChange(@Req() req:Request,@Res({passthrough:true}) response:Response,@Body() body:Payload){const actor=this.service.user(req),limit=await this.checkRequestLimit('auth.mfa.confirm',req,response,actor,10,30,60*60*1000);if(!limit.allowed)throw new HttpException('Limite de confirmações atingido. Tente novamente mais tarde.',429);return this.service.confirmMfaChange(actor,body)}
   @Post('auth/recovery') async recovery(@Req() req:Request,@Res({passthrough:true}) response:Response,@Body() body:Payload) {
     const email=typeof body.email==='string'?body.email.trim().toLowerCase():'invalid';
     const limit=await this.checkRequestLimit('auth.recovery',req,response,email,configuredRequestLimit('ORBIT_RATE_LIMIT_RECOVERY_IDENTITY',5),configuredRequestLimit('ORBIT_RATE_LIMIT_RECOVERY_ORIGIN',20),60*60*1000);
@@ -1302,7 +1321,7 @@ class ApiController {
   @Post('cards/:cardId/labels/:labelId/toggle') toggleLabel(@Req() req: Request,@Param('cardId') cardId: string,@Param('labelId') labelId: string) { return this.service.toggleLabel(cardId,labelId,this.service.user(req)); }
 }
 
-@Module({ imports:[AiPluginModule], providers: [VaultService,RecordCardsService,ExtensionRecords,DocumentScanner,MonitoringService,QueueManagement,...aiCardProviders,CardLayoutsService,CardTypesService,BoardViewsService,AccessManagement,AccessService,AccessGuard,AuthLifecycle,{provide:'AUTH_MAILER',useClass:SmtpAuthMailer},RequestRateLimiter,WorkspacesService,AlexaOrbitService,AlexaSecurity,{provide:ORBIT_VOICE_OPERATIONS,useFactory:(service:Service)=>({createCard:(list:string,owner:string,title:string)=>service.createCard(list,owner,{title}),scheduleCard:(card:string,owner:string,schedule:unknown)=>service.updateCard(card,owner,{schedule})}),inject:[Service]},CloudflareTunnelPlugin, Db, FeaturesService, Service, CardExtensionsService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, GoogleCredentials,GoogleDriveBackupPlugin,BackupService,PluginNotifications, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
+@Module({ imports:[AiPluginModule], providers: [VaultService,RecordCardsService,ExtensionRecords,DocumentScanner,MonitoringService,QueueManagement,OrbitKnowledgeRetentionService,...aiCardProviders,CardLayoutsService,CardTypesService,BoardViewsService,AccessManagement,AccessService,AccessGuard,AuthLifecycle,MfaService,SocialLoginService,{provide:'AUTH_MAILER',useClass:SmtpAuthMailer},RequestRateLimiter,WorkspacesService,AlexaOrbitService,AlexaSecurity,{provide:ORBIT_VOICE_OPERATIONS,useFactory:(service:Service)=>({createCard:(list:string,owner:string,title:string)=>service.createCard(list,owner,{title}),scheduleCard:(card:string,owner:string,schedule:unknown)=>service.updateCard(card,owner,{schedule})}),inject:[Service]},CloudflareTunnelPlugin, Db, FeaturesService, Service, CardExtensionsService, OrbitEvents, TrelloSyncService, PromptSessionsService, ProjectRegistry, SecretVault, GoogleCredentials,GoogleDriveBackupPlugin,BackupService,PluginNotifications, WebhooksService, OrbitCardCalendarSource, GoogleCalendarPlugin, CalendarService, MailConnectionClient, GmailProvider, OutlookMailProvider, MailService, GitHubClient, GitHubPlugin, GitPlugin, DropboxClient, DropboxPlugin, MicrosoftGraphClient, MicrosoftGraphSubscriptionManager, OutlookCalendarPlugin, MicrosoftTeamsPlugin, PlannerPlugin,LocalCommandExecutor,SshCommandExecutor,DeliveryCredentialService,DeliveryGitService,DeliveryHandlers,DeliveryManagement,DeliveryRunner,
   {provide:BackupDestinationRegistry,useFactory:(drive:GoogleDriveBackupPlugin)=>{const registry=new BackupDestinationRegistry();registry.register(drive);return registry},inject:[GoogleDriveBackupPlugin]},
   {provide:CommandExecutorRegistry,useFactory:(local:LocalCommandExecutor,ssh:SshCommandExecutor)=>{const registry=new CommandExecutorRegistry();registry.register(local);registry.register(ssh);return registry},inject:[LocalCommandExecutor,SshCommandExecutor]},
   {provide:DeploymentStrategyRegistry,useFactory:()=>new DeploymentStrategyRegistry()},
@@ -1310,13 +1329,14 @@ class ApiController {
   {provide:StepHandlerRegistry,useFactory:(handlers:DeliveryHandlers,deployments:DeploymentStrategyRegistry,promotions:PromotionStrategyRegistry)=>{const registry=new StepHandlerRegistry();handlers.register(registry,deployments,promotions);return registry},inject:[DeliveryHandlers,DeploymentStrategyRegistry,PromotionStrategyRegistry]},
   {provide:CalendarSourceRegistry,useFactory:(orbit:OrbitCardCalendarSource,google:GoogleCalendarPlugin,outlook:OutlookCalendarPlugin)=>{const registry=new CalendarSourceRegistry();registry.register(orbit);registry.register(google);registry.register(outlook);return registry;},inject:[OrbitCardCalendarSource,GoogleCalendarPlugin,OutlookCalendarPlugin]},
   {provide:MailProviderRegistry,useFactory:(gmail:GmailProvider,outlook:OutlookMailProvider)=>{const registry=new MailProviderRegistry();registry.register(gmail);registry.register(outlook);return registry;},inject:[GmailProvider,OutlookMailProvider]},
-  {provide:PluginRegistry,useFactory:async(db:Db,ai:CodexAiService,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService,backups:BackupService,cloudflare:CloudflareTunnelPlugin)=>{const registry=new PluginRegistry();registry.register(aiPluginDefinition(ai));registry.register(softwareDevelopmentPlugin);registry.register(visualBoardPlugin);registry.register(structuredViewPlugin);registry.register(collectionsPlugin);registry.register(projectBoardsPlugin);registry.register(vaultPlugin);registry.register(processBoardPlugin);registry.register(recordCardsPlugin);registry.register(workspacesPlugin);for(const plugin of [...genericPlugins,auditHistoryPlugin])registry.register(plugin);registry.register(alexaOrbitPluginDefinition);registry.setEnabled('alexa-orbit',false);registry.register(cloudflareTunnelPluginDefinition(cloudflare));registry.setEnabled('cloudflare-tunnel',false);registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(googleDriveBackupPluginDefinition(backups));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}for(const row of await db.query<{plugin_id:string;installed:boolean}>('SELECT plugin_id,installed FROM plugin_installations')){try{registry.setInstalled(row.plugin_id,row.installed)}catch{continue}}backups.setVaultAvailability(()=>registry.isEnabled('vault'));ai.setAvailability(()=>registry.isEnabled('ai'));return registry;},inject:[Db,CodexAiService,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService,BackupService,CloudflareTunnelPlugin]}, CardExecutionService], controllers: [VaultController,RecordCardsController,ExtensionRecordsController,AuditHistoryController,MonitoringController,BrandingController,CardLayoutsController,CardTypesController,BoardViewsController,AccessManagementController,AccessController,WorkspacesController,AlexaOrbitController,CloudflareTunnelController, ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController,GoogleDriveBackupController,GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
+  {provide:PluginRegistry,useFactory:async(db:Db,ai:CodexAiService,google:GoogleCalendarPlugin,mail:MailService,github:GitHubPlugin,git:GitPlugin,dropbox:DropboxPlugin,outlook:OutlookCalendarPlugin,teams:MicrosoftTeamsPlugin,planner:PlannerPlugin,ssh:SshCommandExecutor,delivery:DeliveryRunner,deliveryGit:DeliveryGitService,backups:BackupService,cloudflare:CloudflareTunnelPlugin)=>{const registry=new PluginRegistry();registry.register(aiPluginDefinition(ai));registry.register(softwareDevelopmentPlugin);registry.register(visualBoardPlugin);registry.register(structuredViewPlugin);registry.register(collectionsPlugin);registry.register(projectBoardsPlugin);registry.register(vaultPlugin);registry.register(processBoardPlugin);registry.register(recordCardsPlugin);registry.register(workspacesPlugin);registry.register(webhooksPlugin);for(const plugin of [...genericPlugins,auditHistoryPlugin])registry.register(plugin);registry.register(alexaOrbitPluginDefinition);registry.setEnabled('alexa-orbit',false);registry.register(cloudflareTunnelPluginDefinition(cloudflare));registry.setEnabled('cloudflare-tunnel',false);registry.register(cardNotificationPlugin);registry.register(trelloPluginDefinition);registry.register(googleCalendarPluginDefinition(google));registry.register(googleDriveBackupPluginDefinition(backups));registry.register(mailPluginDefinition('gmail','Gmail',mail));registry.register(mailPluginDefinition('outlook_mail','Outlook Mail',mail));registry.register(githubPluginDefinition(github));registry.register(gitPluginDefinition(git,deliveryGit));registry.register(sshPluginDefinition(ssh));registry.register(deliveryPluginDefinition(delivery));registry.register(dropboxPluginDefinition(dropbox));registry.register(outlookCalendarPluginDefinition(outlook));registry.register(microsoftTeamsPluginDefinition(teams));registry.register(plannerPluginDefinition(planner));for(const state of await db.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings')){try{registry.setEnabled(state.plugin_id,state.enabled)}catch{continue}}for(const row of await db.query<{plugin_id:string;installed:boolean}>('SELECT plugin_id,installed FROM plugin_installations')){try{registry.setInstalled(row.plugin_id,row.installed)}catch{continue}}backups.setVaultAvailability(()=>registry.isEnabled('vault'));ai.setAvailability(()=>registry.isEnabled('ai'));return registry;},inject:[Db,CodexAiService,GoogleCalendarPlugin,MailService,GitHubPlugin,GitPlugin,DropboxPlugin,OutlookCalendarPlugin,MicrosoftTeamsPlugin,PlannerPlugin,SshCommandExecutor,DeliveryRunner,DeliveryGitService,BackupService,CloudflareTunnelPlugin]}, CardExecutionService], controllers: [VaultController,RecordCardsController,ExtensionRecordsController,WebhooksController,AuditHistoryController,MonitoringController,BrandingController,CardLayoutsController,CardTypesController,BoardViewsController,AccessManagementController,AccessController,WorkspacesController,AlexaOrbitController,CloudflareTunnelController, ApiController, EnvironmentSettingsController, FeaturesController, CardExtensionsController, CardExecutionController, CalendarController, GoogleCalendarController,GoogleDriveBackupController,GitController,DeliveryController, OutlookCalendarController, MailController, GitHubController, DropboxController, PlannerController, TrelloController] })
 class AppModule {}
 
 async function bootstrap() {
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('JWT_SECRET must contain at least 32 characters');
   if(Object.values(process.env).some(value=>value?.startsWith('orbit-vault://'))){const db=new Db();try{await loadVaultEnvironment(db)}finally{await db.pool.end()}}
   const app = await NestFactory.create(AppModule,{rawBody:true});
+  app.use(profileSimulationMiddleware);
   app.enableShutdownHooks();
   app.useGlobalGuards(app.get(AccessGuard));
   const trustedProxies=(process.env.ORBIT_TRUSTED_PROXY_CIDRS||'').split(',').map(value=>value.trim()).filter(Boolean);
@@ -1331,6 +1351,7 @@ async function bootstrap() {
       return next();
     }catch(error){return next(error)}
   });
+  app.use('/auth/social',urlencoded({extended:false,limit:'16kb'}));
   app.use(json({limit:'16mb'}));
   app.use(app.get(MonitoringService).requestMiddleware);
   const plugins=app.get(PluginRegistry);
@@ -1373,13 +1394,13 @@ async function bootstrap() {
   const events=app.get(OrbitEvents);
   const features=app.get(FeaturesService);
   const sockets=new Server(app.getHttpServer(),{cors:{origin:process.env.WEB_ORIGIN||'http://localhost:3000'}});
-  sockets.use((socket,next)=>{void app.get(AccessService).authenticate(String(socket.handshake.auth.token||'')).then(user=>{socket.data.userId=user.id;next()}).catch(()=>next(new Error('Não autorizado.')))});
+  sockets.use((socket,next)=>{void (async()=>{const access=app.get(AccessService),user=await access.authenticate(String(socket.handshake.auth.token||''));socket.data.userId=user.id;const selected=socket.handshake.auth.profileSimulation;if(selected!==undefined){if(!user.is_root||typeof selected!=='string')throw new Error('Não autorizado.');const {roles}=await access.simulationRoles(user.id);const role=roles.find((item: {id:string})=>item.id===selected) as {id:string;name:string;permissions:string[]}|undefined;if(!role)throw new Error('Não autorizado.');socket.data.profileSimulation={id:role.id,name:role.name,permissions:role.permissions||[]};}next()})().catch(()=>next(new Error('Não autorizado.')))});
   sockets.on('connection',socket=>{
-    socket.join(`user:${String(socket.data.userId)}`);
-    socket.on('board:join',(boardId:unknown)=>{if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId))void app.get(AccessService).authenticate(String(socket.handshake.auth.token)).then(()=>features.member(boardId,String(socket.data.userId))).then(()=>socket.join(`board:${boardId}`)).catch(()=>undefined);});
+    if(!socket.data.profileSimulation)socket.join(`user:${String(socket.data.userId)}`);
+    socket.on('board:join',(boardId:unknown)=>{if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId)){const access=app.get(AccessService),userId=String(socket.data.userId),profile=socket.data.profileSimulation as {id:string;name:string;permissions:string[]}|undefined;void access.authenticate(String(socket.handshake.auth.token)).then(()=>profile?profileSimulationContext.run({actorId:userId,profile},()=>features.member(boardId,userId)):features.member(boardId,userId)).then(()=>socket.join(`board:${boardId}`)).catch(()=>undefined);}});
     socket.on('board:leave',(boardId:unknown)=>{if(typeof boardId==='string')socket.leave(`board:${boardId}`);});
   });
-  const sessionTimer=setInterval(()=>{for(const socket of sockets.sockets.sockets.values())void app.get(AccessService).authenticate(String(socket.handshake.auth.token)).catch(()=>socket.disconnect(true))},2000);sessionTimer.unref();
+  const sessionTimer=setInterval(()=>{for(const socket of sockets.sockets.sockets.values())void (async()=>{try{await app.get(AccessService).authenticate(String(socket.handshake.auth.token));const simulation=socket.data.profileSimulation as {id:string;name:string;permissions:string[]}|undefined;if(simulation){const current=await app.get(Db).one<{id:string;name:string;permissions:string[]}>('SELECT id,name,permissions FROM access_roles WHERE id=$1',[simulation.id]);if(!current||current.name!==simulation.name||JSON.stringify(current.permissions||[])!==JSON.stringify(simulation.permissions||[]))socket.disconnect(true)}}catch{socket.disconnect(true)}})()},2000);sessionTimer.unref();
   app.get(AccessService).onRevoke(user=>sockets.in(`user:${user}`).disconnectSockets(true));
   events.attach(sockets);
   await app.listen(Number(process.env.API_PORT || 4000), process.env.API_HOST || '0.0.0.0');

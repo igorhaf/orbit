@@ -48,11 +48,11 @@ export class CodexAiService {
     const result=await this.run(instruction, process.cwd(), model, effort, undefined, undefined, undefined, undefined, 'planning');
     return typeof result==='string'?result:result.output;
   }
-  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], writeScope?:string[], projectChecks:string[][]=[], allowQuestions=false): Promise<CodexExecution> {
+  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], writeScope?:string[], projectChecks:string[][]=[], allowQuestions=false, multiAgents=false): Promise<CodexExecution> {
     const verify=writeScope===undefined?null:await captureFileScope(projectPath,writeScope);
     try{
       const scoped=writeScope===undefined?instruction:`ESCRITA LIMITADA A ESTES ARQUIVOS (qualquer alteração fora desta lista será revertida e falhará a execução):\n${writeScope.join('\n')}\n\n${instruction}`;
-      const result=await this.run(scoped, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode, images);
+      const result=await this.run(scoped, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode, images, multiAgents);
       if(verify)await verify();
       if(projectChecks.length&&!(allowQuestions&&extractPromptQuestion(typeof result==='string'?result:result.output))){
         progress?.('Validando as verificações obrigatórias do projeto…');
@@ -92,7 +92,7 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
-  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[]): Promise<string|CodexExecution> {
+  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], multiAgents=false): Promise<string|CodexExecution> {
     if(!this.available())throw new HttpException('O plugin de IA está desativado.',409);
     const codexHome = await prepareOrbitCodexHome();
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
@@ -118,8 +118,8 @@ export class CodexAiService {
       await new Promise<void>((resolve, reject) => {
         const executionPolicy = executionMode === 'planning' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox'];
         const command = sessionId
-          ? ['exec', '-C', workingDirectory, ...executionPolicy, '--skip-git-repo-check', 'resume', sessionId, ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
-          : ['exec', ...executionPolicy, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
+          ? ['exec', '-C', workingDirectory, ...executionPolicy, '--skip-git-repo-check', ...(multiAgents ? ['--enable', 'multi_agent'] : []), 'resume', sessionId, ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
+          : ['exec', ...executionPolicy, '--skip-git-repo-check', ...(multiAgents ? ['--enable', 'multi_agent'] : []), ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
         const child = spawn(executable, [
           ...command,
           ...imageFiles.flatMap(image=>['--image',image]),
@@ -235,7 +235,7 @@ export class CodexAiService {
       const detail = error instanceof Error ? error.message : '';
       if (sessionId && /(?:no (?:saved )?(?:session|conversation|thread|rollout)|(?:session|conversation|thread|rollout).*(?:not found|does not exist|could not be found)|could not find (?:the )?(?:session|conversation|thread|rollout))/i.test(detail)) {
         progress?.('A sessão anterior não está disponível neste armazenamento; iniciando uma nova sessão.');
-        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat, executionMode);
+        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat, executionMode, images, multiAgents);
       }
       console.error('[CodexAi] Execução falhou.',redact(detail));
       await sessionPersistence;

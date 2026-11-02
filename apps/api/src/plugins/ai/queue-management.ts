@@ -9,11 +9,11 @@ export class QueueManagement {
  async settings(user:string):Promise<QueueSettings>{const row=await this.db.one<{preferences:Record<string,unknown>}>('SELECT preferences FROM users WHERE id=$1',[user]);if(!row)throw new HttpException('Usuário não encontrado.',404);const p=row.preferences||{};return {paused:p.codexQueuePaused===true,autoPaused:p.codexQueueAutoPaused===true,autoResume:p.codexQueueAutoResume===true};}
  async update(actor:string,body:Record<string,unknown>){if(!body||Object.keys(body).some(key=>!['paused','autoResume','userId'].includes(key))||!['paused','autoResume'].some(key=>key in body)||['paused','autoResume'].some(key=>key in body&&typeof body[key]!=='boolean'))throw new HttpException('Configuração da fila inválida.',400);
  if(body.userId!==undefined&&(typeof body.userId!=='string'||! /^[0-9a-f-]{36}$/i.test(body.userId)))throw new HttpException('Usuário inválido.',400);
- const owner=body.userId===undefined?actor:String(body.userId);if(owner!==actor&&!(await this.access.account(actor)).is_root)throw new HttpException('Somente ROOT gerencia filas de outros usuários.',403);await this.settings(owner);
+ const owner=body.userId===undefined?actor:String(body.userId);if(owner!==actor&&!await this.access.isRootForAuthorization(actor))throw new HttpException('Somente ROOT gerencia filas de outros usuários.',403);await this.settings(owner);
  const changes:Record<string,unknown>={};if('autoResume'in body)changes.codexQueueAutoResume=body.autoResume;
  if('paused'in body){changes.codexQueuePaused=body.paused;changes.codexQueueAutoPaused=false;}
  await this.db.query("UPDATE users SET preferences=COALESCE(preferences,'{}'::jsonb)||$2::jsonb||CASE WHEN $3 THEN jsonb_build_object('codexQuotaAcknowledged',COALESCE(preferences->>'codexQuotaKey','')) ELSE '{}'::jsonb END WHERE id=$1",[owner,JSON.stringify(changes),body.paused===false]);await this.access.audit(actor,'queue.settings',JSON.stringify({owner,...changes}));return this.settings(owner);}
- async list(actor:string){await enforceCodexQuota(this.db);const root=(await this.access.account(actor)).is_root;
+ async list(actor:string){await enforceCodexQuota(this.db);const root=await this.access.isRootForAuthorization(actor);
  const items=await this.db.query(`WITH entries AS (
  SELECT r.id,r.user_id,'prompt'::text AS kind,r.status,r.card_id,r.project_id,r.created_at,r.started_at,r.finished_at,r.source::text AS detail FROM card_ai_runs r
  UNION ALL SELECT r.comment_id,r.user_id,'comment',r.status,r.card_id,r.project_id,r.created_at,r.started_at,r.finished_at,'Comentário' FROM card_ai_comment_jobs r

@@ -73,6 +73,8 @@ export type RecordValidationContext = {
   resolveRecord: (recordId: string, revision: number) => Promise<ResolvedRecordReference | null>;
   /** Resolves the current version of a record in the same workspace, for live entity relationships. */
   resolveLatestRecord?: (recordId: string) => Promise<ResolvedRecordReference | null>;
+  /** Lists MIME types for attachments on the current record revision, without exposing file contents or uploader identity. */
+  listCurrentRecordAttachments?: () => Promise<Array<{ mime_type: string }> | null>;
   /** Returns an aggregate count over latest versions in this workspace without returning record contents. */
   countLatestRecordsByPayloadValue?: (pluginId: string, kind: string, state: string, field: string, value: string, lockScope?: string, excludeRecordId?: string) => Promise<number | null>;
   /** Counts latest versions whose JSON payload contains all supplied scalar values. */
@@ -140,6 +142,22 @@ export type RecordKindContribution = {
   validate?: (payload: Record<string, unknown>, context: RecordValidationContext) => RecordValidationIssue[] | Promise<RecordValidationIssue[]>;
 };
 
+/** Minimal metadata emitted to webhook consumers; payload and title never leave Orbit. */
+export type RecordWebhookResource = {
+  workspace_id: string;
+  id: string;
+  plugin_id: string;
+  kind: string;
+  state: string;
+  revision: number;
+  payload: Record<string, unknown>;
+};
+export type RecordWebhookContribution = {
+  sourcePluginId: string;
+  events: Array<{ type: string; label: string; version: number }>;
+  onSnapshot: (record: RecordWebhookResource, previousState?: string) => string[];
+};
+
 export type RecordBoardDefinition={
  visible:boolean;fixedScope:true;phases:Array<{id:string;label:string}>;
  templates:Array<{id:string;name:string;phase:string;description:string;checklist:string[]}>;
@@ -170,6 +188,8 @@ export type PluginDefinition = {
   name: string;
   version: string;
   description?: string;
+  /** Explicit parent for product-owned child plugins that extend a reusable Orbit capability. */
+  parentPlugin?: string;
   dependencies?: string[];
   /** Plugin-owned API route matcher; the host uses it for routing and access control. */
   handlesRoute?: (path: string) => boolean;
@@ -182,6 +202,8 @@ export type PluginDefinition = {
   actions?: ActionDefinition[];
   connectionProvider?: ConnectionProviderDefinition;
   contributions?: PluginContribution;
+  /** Optional domain events emitted transactionally when a source plugin record is snapshotted. */
+  recordEvents?: RecordWebhookContribution;
 };
 
 export type ExternalResource = {

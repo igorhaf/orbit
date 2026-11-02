@@ -19,3 +19,16 @@ Invitation and recovery links use cryptographically random one-time tokens. Only
 ## Login abuse protection
 
 Login attempts use shared PostgreSQL buckets so parallel API instances enforce the same limits. The account bucket allows five unresolved attempts per fifteen-minute window; the network-origin bucket allows twenty. Both identifiers are HMAC digests keyed with the server JWT secret, so raw e-mail and IP values are not stored. PostgreSQL advisory locks make reservations atomic under concurrency. A successful login releases only its own reservations, preserving earlier failures; expired rows are cleaned after 24 hours. Unknown accounts use the same bcrypt comparison path and response as invalid credentials for existing accounts. The API uses the connection-derived request IP and does not trust forwarded headers unless proxy trust is explicitly configured.
+
+
+## Verificação em duas etapas por e-mail
+
+Contas com endereço confirmado podem ativar MFA em **Perfil → Verificação em duas etapas**. Ativação e desativação exigem a senha atual e um código enviado ao endereço da conta. Códigos de login são aleatórios, armazenados somente como HMAC, expiram em dez minutos, têm limite de tentativas e são consumidos em uso único. O desafio fica vinculado à versão da sessão para invalidá-lo após mudança de credencial. Configure SMTP para entregar os códigos.
+
+## Login social OpenID Connect
+
+O Orbit aceita provedores OIDC configurados por ambiente e só associa uma identidade a uma conta existente, verificada e ativa com o mesmo endereço confirmado. O fluxo usa Authorization Code com PKCE S256, nonce, validação de issuer/audience/expiração/assinatura e estados de curta duração. Login social não cria conta nem contorna o MFA da conta.
+
+Configure `ORBIT_SOCIAL_PROVIDERS` com IDs separados por vírgula e, para cada ID, `ORBIT_OAUTH_<ID>_CLIENT_ID`, `ORBIT_OAUTH_<ID>_CLIENT_SECRET` e `ORBIT_OAUTH_<ID>_ISSUER`. Configure também `API_PUBLIC_URL` para formar a URL de callback pública e `WEB_ORIGIN` para o retorno ao cliente. O callback de formulário OIDC (Apple) aceita URL-encoded até 16 KiB. Mantenha o servidor em HTTPS fora do desenvolvimento local.
+
+As identidades sociais vinculadas e alterações de MFA aparecem no histórico de segurança da conta. Os fluxos não alteram cadastro/invites, que continuam sob as regras administrativas existentes.

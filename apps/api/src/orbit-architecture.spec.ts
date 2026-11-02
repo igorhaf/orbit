@@ -16,3 +16,9 @@ test('checklist conversion and references cannot embed arbitrary execution confi
   assert.throws(() => assertOrbitFields({ ids: [], prompt: 'override' }, orbitArchitecture.contexts), /Campos fora da arquitetura/);
   assert.throws(() => assertOrbitFields([], orbitArchitecture.cardCreate), /objeto válido/);
 });
+
+test('prompt-run contract accepts only the instruction and per-run multi-agent option', () => {
+  assert.doesNotThrow(() => assertOrbitFields({ instruction: 'Implementar', multiple_agents: false }, orbitArchitecture.promptRunExecute));
+  assert.doesNotThrow(() => assertOrbitFields({ multiple_agents: 'true' }, orbitArchitecture.promptRunExecute));
+  assert.throws(() => assertOrbitFields({ instruction: 'Implementar', model: 'inventado' }, orbitArchitecture.promptRunExecute), /Campos fora da arquitetura/);
+});

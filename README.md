@@ -163,6 +163,10 @@ Abra **Calendário** para combinar Cards agendados e qualquer quantidade de cont
 
 Consulte [arquitetura, OAuth, sync incremental, watch channels, ExternalResources e automações](docs/calendar-workspace.md). Configure as variáveis Google somente no backend e execute `npm run db:migrate`.
 
+## Acessibilidade
+
+Diálogos de aplicação usam o componente compartilhado com contenção/restauração de foco; consulte [o comportamento e limites de validação](docs/accessibility.md).
+
 ## Comandos
 
 | Comando | Função |

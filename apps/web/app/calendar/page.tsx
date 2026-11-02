@@ -43,6 +43,36 @@ const isoDate = (date: Date) =>
 const addDays = (date: Date, days: number) =>
   new Date(date.getTime() + days * dayMs);
 const eventColor = (source?: CalendarSource) => source?.color || "#0c66e4";
+const accessibleEventColor = (value: string, dark: boolean) => {
+  const match = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  const fallback = dark ? [196, 181, 253] : [12, 102, 228];
+  const channels = match
+    ? (match[1].length === 3
+        ? [...match[1]].map((part) => parseInt(part + part, 16))
+        : [0, 2, 4].map((index) => parseInt(match[1].slice(index, index + 2), 16)))
+    : fallback;
+  const background = dark ? [29, 33, 37] : [255, 255, 255];
+  const luminance = (rgb: number[]) => {
+    const linear = rgb.map((channel) => channel / 255).map((channel) =>
+      channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+    );
+    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+  };
+  const backgroundLuminance = luminance(background);
+  for (let step = 0; step <= 100; step += 1) {
+    const ratio = step / 100;
+    const adjusted = channels.map((channel) =>
+      Math.round(channel + ((dark ? 255 : 0) - channel) * ratio),
+    );
+    const foregroundLuminance = luminance(adjusted);
+    const contrast = (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+      (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+    if (contrast >= 4.5) {
+      return `#${adjusted.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+    }
+  }
+  return dark ? "#ffffff" : "#000000";
+};
 const readable = (date: string, allDay = false) =>
   new Date(date).toLocaleString(
     "pt-BR",
@@ -574,40 +604,52 @@ function EventForm({
         className="space-y-3 p-6"
       >
         <h2 className="pr-8 text-lg font-bold">Novo evento</h2>
-        <select
-          required
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-          className="w-full rounded border p-2"
-        >
-          {sources.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.connection_name ? `${s.connection_name} · ` : ""}
-              {s.name}
-            </option>
-          ))}
-        </select>
-        <input
-          required
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Título"
-          className="w-full rounded border p-2"
-        />
-        <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block space-y-1 text-sm font-medium">
+          Agenda
+          <select
+            required
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            className="w-full rounded border p-2"
+          >
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.connection_name ? `${s.connection_name} · ` : ""}
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1 text-sm font-medium">
+          Título
           <input
             required
-            type={allDay ? "date" : "datetime-local"}
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
-            className="rounded border p-2"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Digite um título para o evento"
+            className="w-full rounded border p-2"
           />
-          <input
-            type={allDay ? "date" : "datetime-local"}
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
-            className="rounded border p-2"
-          />
+        </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="block space-y-1 text-sm font-medium">
+            Início
+            <input
+              required
+              type={allDay ? "date" : "datetime-local"}
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="w-full rounded border p-2"
+            />
+          </label>
+          <label className="block space-y-1 text-sm font-medium">
+            Fim (opcional)
+            <input
+              type={allDay ? "date" : "datetime-local"}
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="w-full rounded border p-2"
+            />
+          </label>
         </div>
         <label className="flex gap-2 text-sm">
           <input
@@ -617,30 +659,42 @@ function EventForm({
           />
           Dia inteiro
         </label>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Descrição"
-          className="min-h-20 w-full rounded border p-2"
-        />
-        <input
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-          placeholder="Local"
-          className="w-full rounded border p-2"
-        />
-        <input
-          value={attendees}
-          onChange={(e) => setAttendees(e.target.value)}
-          placeholder="Convidados, separados por vírgula"
-          className="w-full rounded border p-2"
-        />
-        <input
-          value={recurrence}
-          onChange={(e) => setRecurrence(e.target.value)}
-          placeholder="RRULE:FREQ=WEEKLY (opcional)"
-          className="w-full rounded border p-2"
-        />
+        <label className="block space-y-1 text-sm font-medium">
+          Descrição (opcional)
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Detalhes do evento"
+            className="min-h-20 w-full rounded border p-2"
+          />
+        </label>
+        <label className="block space-y-1 text-sm font-medium">
+          Local (opcional)
+          <input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Local"
+            className="w-full rounded border p-2"
+          />
+        </label>
+        <label className="block space-y-1 text-sm font-medium">
+          Convidados (separados por vírgula; opcional)
+          <input
+            value={attendees}
+            onChange={(e) => setAttendees(e.target.value)}
+            placeholder="nome@exemplo.com"
+            className="w-full rounded border p-2"
+          />
+        </label>
+        <label className="block space-y-1 text-sm font-medium">
+          Regra de recorrência (opcional)
+          <input
+            value={recurrence}
+            onChange={(e) => setRecurrence(e.target.value)}
+            placeholder="RRULE:FREQ=WEEKLY"
+            className="w-full rounded border p-2"
+          />
+        </label>
         <label className="flex gap-2 text-sm">
           <input
             type="checkbox"
@@ -685,6 +739,15 @@ function EventDetail({
   ) => void;
 }) {
   const router = useRouter();
+  const [darkTheme, setDarkTheme] = useState(false);
+  useEffect(() => {
+    const root = document.documentElement;
+    const syncTheme = () => setDarkTheme(root.dataset.theme === "dark");
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
   const conference = item.conference && typeof item.conference === 'object' ? item.conference as {joinUrl?:string;provider?:string} : null;
   const [linking, setLinking] = useState(false),
     [editing, setEditing] = useState(false),
@@ -727,7 +790,7 @@ function EventDetail({
         <div className="pr-8">
           <p
             className="text-xs font-bold"
-            style={{ color: eventColor(source) }}
+            style={{ color: accessibleEventColor(eventColor(source), darkTheme) }}
           >
             {source?.name}
           </p>
@@ -772,7 +835,7 @@ function EventDetail({
           {item.resourceType === "event" && (
             <button
               onClick={() => setEditing(!editing)}
-              className="rounded bg-[#e9eaed] px-3 py-2 text-sm"
+              className="rounded border border-[#626f86] bg-[#e9eaed] px-3 py-2 text-sm"
             >
               Editar
             </button>
@@ -796,7 +859,7 @@ function EventDetail({
                     (typeof item.metadata.recordHref==="string"&&/^\/[a-z0-9/-]+\?workspace=[a-f0-9-]+&[a-z_]+=[a-f0-9-]+$/.test(item.metadata.recordHref)?item.metadata.recordHref:cardUrl(String(item.metadata.boardId || ""), item.cardId, item.cardUrlToken)),
                   )
                 }
-                className="rounded bg-[#e9eaed] px-3 py-2 text-sm"
+                className="rounded border border-[#626f86] bg-[#e9eaed] px-3 py-2 text-sm"
               >
                 Abrir Card
               </button>
@@ -808,7 +871,7 @@ function EventDetail({
                       "DELETE",
                     ).then(changed)
                   }
-                  className="rounded bg-[#e9eaed] px-3 py-2 text-sm"
+                  className="rounded border border-[#626f86] bg-[#e9eaed] px-3 py-2 text-sm"
                 >
                   <Unlink size={14} className="mr-1 inline" />
                   Desvincular
@@ -819,7 +882,7 @@ function EventDetail({
             item.resourceType === "event" && (
               <button
                 onClick={() => setLinking(!linking)}
-                className="rounded bg-[#e9eaed] px-3 py-2 text-sm"
+                className="rounded border border-[#626f86] bg-[#e9eaed] px-3 py-2 text-sm"
               >
                 <Link2 size={14} className="mr-1 inline" />
                 Criar ou vincular Card
@@ -832,7 +895,7 @@ function EventDetail({
                 onClick={() =>
                   void resize(30).catch((e) => setError((e as Error).message))
                 }
-                className="rounded bg-[#e9eaed] px-3 py-2 text-sm"
+                className="rounded border border-[#626f86] bg-[#e9eaed] px-3 py-2 text-sm"
               >
                 +30 min
               </button>
@@ -840,7 +903,7 @@ function EventDetail({
                 onClick={() =>
                   void resize(-30).catch((e) => setError((e as Error).message))
                 }
-                className="rounded bg-[#e9eaed] px-3 py-2 text-sm"
+                className="rounded border border-[#626f86] bg-[#e9eaed] px-3 py-2 text-sm"
               >
                 −30 min
               </button>
@@ -859,7 +922,7 @@ function EventDetail({
                     },
                   )
                 }
-                className="rounded bg-[#ffebe6] px-3 py-2 text-sm text-[#ae2a19]"
+                className="rounded border border-[#626f86] bg-[#ffebe6] px-3 py-2 text-sm text-[#ae2a19]"
               >
                 <Trash2 size={14} className="mr-1 inline" />
                 Excluir

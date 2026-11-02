@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Inject, Injectable, OnModuleInit } from "@nestjs/common";
 import type { PoolClient } from "pg";
+import { enqueueWebhookEvent } from "../webhooks";
 import { AccessService, id, text } from "../../access/access";
 import { Db } from "../../db";
 import { PluginRegistry } from "../../execution/registries";
@@ -74,7 +75,7 @@ export class ExtensionRecords implements OnModuleInit {
   }
 
   async catalog(user: string) {
-    const root = (await this.access.account(user)).is_root;
+    const root = await this.access.isRootForAuthorization(user);
     const workspaces = root
       ? []
       : await this.db.query<{ workspace_id: string }>(
@@ -229,6 +230,22 @@ export class ExtensionRecords implements OnModuleInit {
           return null;
         }
         return reference;
+      },
+      listCurrentRecordAttachments: async () => {
+        if (!recordId) return null;
+        const availableSql = "SELECT to_regclass('extension_record_attachments') IS NOT NULL AS available";
+        const available = client
+          ? (await client.query<{ available: boolean }>(availableSql)).rows[0]?.available
+          : (await this.db.one<{ available: boolean }>(availableSql))?.available;
+        if (!available) return null;
+        const sql = `SELECT a.mime_type FROM extension_record_attachments a
+          JOIN extension_records r ON r.id=a.record_id
+          WHERE r.id=$1 AND r.workspace_id=$2
+            AND a.revision=(SELECT max(v.revision) FROM extension_record_versions v WHERE v.record_id=r.id)
+          ORDER BY a.created_at,a.id`;
+        return client
+          ? (await client.query<{ mime_type: string }>(sql, [recordId, workspace])).rows
+          : await this.db.query<{ mime_type: string }>(sql, [recordId, workspace]);
       },
       resolveLatestRecord: async (recordId) => {
         const sql = `SELECT r.id,r.plugin_id AS "pluginId",r.kind,v.state,v.revision,v.payload
@@ -533,6 +550,7 @@ export class ExtensionRecords implements OnModuleInit {
     record: ExtensionRecord,
     user: string,
     reason: string,
+    previousState?: string,
   ) {
     const resourceScoped = this.definition(record.plugin_id, record.kind).resourceScoped === true;
     await client.query(
@@ -557,6 +575,37 @@ export class ExtensionRecords implements OnModuleInit {
         resourceScoped ? record.id : record.workspace_id,
       ],
     );
+    // Event and delivery rows share this record mutation's transaction. Only stable,
+    // non-content metadata is persisted in the webhook event envelope.
+    const webhookResource = {
+      workspace_id: record.workspace_id,
+      id: record.id,
+      plugin_id: record.plugin_id,
+      kind: record.kind,
+      state: record.state,
+      revision: record.revision,
+      payload: record.payload,
+    };
+    await enqueueWebhookEvent(
+      client,
+      webhookResource,
+      record.revision === 1 ? "record.created" : "record.updated",
+      1,
+    );
+    for (const eventPlugin of this.registry.list()) {
+      const contribution = eventPlugin.recordEvents;
+      if (
+        !contribution ||
+        contribution.sourcePluginId !== record.plugin_id ||
+        !this.registry.isEnabled(eventPlugin.id)
+      ) continue;
+      const declared = new Map(contribution.events.map((event) => [event.type, event]));
+      for (const eventType of contribution.onSnapshot(webhookResource, previousState)) {
+        const event = declared.get(eventType);
+        if (!event) throw new Error(`Evento não declarado pelo plugin: ${eventType}`);
+        await enqueueWebhookEvent(client, webhookResource, event.type, event.version);
+      }
+    }
     return record;
   }
 
@@ -919,7 +968,7 @@ export class ExtensionRecords implements OnModuleInit {
         [current.id, title, JSON.stringify(payload), state, user],
       )
     ).rows[0];
-    return this.snapshot(client, updated, user, reason);
+    return this.snapshot(client, updated, user, reason, current.state);
   }
 
   private async applyDeadlineEffects(

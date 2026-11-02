@@ -71,13 +71,14 @@ html[data-theme="dark"] {
   --orbit-surface: #22272b;
   --orbit-surface-raised: #2c333a;
   --orbit-surface-hover: #38414a;
-  --orbit-border: #3b4754;
+  --orbit-border: #80909d;
   --orbit-text: #dee4ea;
   --orbit-muted: #9fadbc;
 }
 html[data-theme-forced="true"] .theme-preference-control { display: none; }
 html[data-theme="dark"] body { color: var(--orbit-text); background: #1d2125; }
 html[data-theme="dark"] button { color: var(--orbit-text); }
+html[data-theme="dark"] button:hover:not(:focus-visible) { outline: 1px solid var(--orbit-border); outline-offset: 1px; }
 html[data-theme="dark"] :is(.bg-white,[class~="bg-[#f7f8fa]"],[class~="bg-[#f8f9fb]"]) { background-color: var(--orbit-surface) !important; }
 html[data-theme="dark"] :is([class~="bg-[#f1f2f4]"]) { background-color: var(--orbit-surface-raised) !important; }
 html[data-theme="dark"] :is([class~="bg-[#cdd3db]"],[class~="bg-[#dfe1e6]"],[class~="bg-[#e9eaed]"]) { background-color: var(--orbit-surface-hover) !important; }
@@ -98,6 +99,7 @@ html[data-theme="dark"] :is([class~="hover:bg-[#ffebe6]"],[class~="hover:bg-[#ff
 html[data-theme="dark"] :is([class~="hover:bg-[#fff1b8]"],[class~="hover:bg-[#fff7d6]"]):hover { background-color: #453a1e !important; }
 html[data-theme="dark"] :is([class~="hover:bg-[#091e4214]"]):hover { background-color: rgb(255 255 255 / 8%) !important; }
 html[data-theme="dark"] :is([class~="border-[#8590a2]"],[class~="border-[#c1c7d0]"],[class~="border-[#dfe1e6]"]) { border-color: var(--orbit-border) !important; }
+html[data-theme="dark"] [class~="border-[#ae2a19]"] { border-color: #ff9f8f !important; }
 html[data-theme="dark"] [class~="border-[#f1f2f4]"] { border-color: #313a43 !important; }
 html[data-theme="dark"] :is([class~="border-[#b3d4ff]"],[class~="border-[#cce0ff]"],[class~="border-[#0c66e4]"],[class~="border-[#c3b6f7]"]) { border-color: #594d7d !important; }
 html[data-theme="dark"] :is([class~="border-[#ffbdad]"]) { border-color: #75403a !important; }
@@ -113,7 +115,7 @@ html[data-theme="dark"] .profile-theme-option[aria-pressed="true"] { background-
 html[data-theme="dark"] :is([class~="text-[#7f5f01]"],[class~="text-[#e2b203]"]) { color: #f5d778 !important; }
 html[data-theme="dark"] :is([class~="text-[#ae2a19]"],[class~="text-[#e5484d]"],[class~="text-red-700"],[class~="text-red-800"]) { color: #ff9b8f !important; }
 html[data-theme="dark"] [class~="text-green-800"] { color: #7ee2b8 !important; }
-html[data-theme="dark"] :is(input,textarea,select) { color: var(--orbit-text); background-color: var(--orbit-surface-raised); border-color: #596773; }
+html[data-theme="dark"] :is(input,textarea,select) { color: var(--orbit-text); background-color: var(--orbit-surface-raised); border-color: var(--orbit-border); }
 html[data-theme="dark"] option { color: var(--orbit-text); background-color: var(--orbit-surface-raised); }
 html[data-theme="dark"] :is(input,textarea)::placeholder { color: var(--orbit-muted); }
 html[data-theme="dark"] .shadow-card { box-shadow: 0 1px 2px #0008; }
@@ -177,3 +179,10 @@ html[data-theme="terroso"] .notebook-editor td, html[data-theme="terroso"] .note
 html[data-theme="terroso"] .theme-preference-control { color: var(--orbit-text); }
 html[data-theme-forced="true"] .theme-preference-options { display: none; }
 html[data-theme-forced="true"] .theme-forced-notice { display: block; }
+@layer utilities {
+  html[data-theme="dark"] [class*="bg-[#44546f]"] { background-color: #657687 !important; color: #fff !important; }
+  html[data-theme="dark"] input[type="checkbox"]:not(.sr-only) { appearance: none !important; width: 1rem; height: 1rem; border: 1px solid var(--orbit-border) !important; border-radius: .25rem; background: var(--orbit-surface-raised); }
+  html[data-theme="dark"] input[type="checkbox"]:not(.sr-only):checked { border-color: #a5f3fc !important; background-color: #a5f3fc; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 8 3 3 7-7' fill='none' stroke='%231d2125' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  html[data-theme="dark"] input[type="radio"]:not(.sr-only) { appearance: none !important; width: 1rem; height: 1rem; border: 1px solid var(--orbit-border) !important; border-radius: 50%; background: var(--orbit-surface-raised); }
+  html[data-theme="dark"] input[type="radio"]:not(.sr-only):checked { border-color: #a5f3fc !important; background: radial-gradient(circle, #1d2125 0 3px, #a5f3fc 3.5px); }
+}

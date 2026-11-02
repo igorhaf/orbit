@@ -21,11 +21,21 @@ export async function loginPasswordMatches(storedHash:string|undefined,password:
   return Boolean(storedHash)&&matches;
 }
 
-export type LoginAccount={id:string;name:string;email:string;avatar_url:string|null;preferences:unknown;is_root:boolean;disabled:boolean;email_verified:boolean;session_version:number};
+export type LoginAccount={id:string;name:string;email:string;avatar_url:string|null;preferences:unknown;is_root:boolean;disabled:boolean;email_verified:boolean;session_version:number;mfa_enabled:boolean};
 export async function authenticateLoginAccount(db:Pick<Db,'one'>,email:string,password:string){
-  const row=await db.one<LoginAccount&{password_hash:string}>('SELECT id,name,email,avatar_url,preferences,password_hash,is_root,disabled,email_verified,session_version FROM users WHERE email=$1',[email]);
+  const row=await db.one<LoginAccount&{password_hash:string}>('SELECT id,name,email,avatar_url,preferences,password_hash,is_root,disabled,email_verified,session_version,mfa_enabled FROM users WHERE email=$1',[email]);
   const passwordMatches=await loginPasswordMatches(row?.password_hash,password);
   return row&&!row.disabled&&row.email_verified!==false&&passwordMatches?row:null;
+}
+
+export type MfaLoginAdapter={requestLogin(userId:string):Promise<{challenge_id:string;email_hint:string}>;completeChallenge(challengeId:unknown,code:unknown,purpose:"login"):Promise<LoginAccount|null>};
+export type MfaLoginResult=LoginAccount|{mfa_required:true;challenge_id:string;email_hint:string;email:string}|null;
+export async function authenticateLoginWithMfa(db:Pick<Db,'one'>,mfa:MfaLoginAdapter,email:string,body:Record<string,unknown>):Promise<MfaLoginResult>{
+  const challengeId=typeof body.mfa_challenge_id==='string'?body.mfa_challenge_id:null;
+  const row=challengeId?await mfa.completeChallenge(challengeId,body.mfa_code,'login'):await authenticateLoginAccount(db,email,typeof body.password==='string'?body.password:'');
+  if(!row||row.email.toLowerCase()!==email||challengeId&&!row.mfa_enabled)return null;
+  if(row.mfa_enabled&&!challengeId)return {mfa_required:true,...await mfa.requestLogin(row.id),email:row.email};
+  return row;
 }
 
 export function nextLoginBucketState(current:LoginBucketState|null,now:number,limit:number){

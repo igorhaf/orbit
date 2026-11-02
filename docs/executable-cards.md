@@ -171,3 +171,21 @@ O executor sinaliza perguntas com um bloco final não vazio
 `[[ORBIT_QUESTION]] ... [[/ORBIT_QUESTION]]`. Verificações de conclusão rodam
 quando a implementação conclui; escopo de escrita permanece validado em cada turno.
 A migração `060_prompt_questions.sql` habilita os novos valores persistidos.
+
+### Múltiplos agentes por execução
+
+O cartão de execução apresenta o controle liga/desliga **Múltiplos agentes**,
+marcado por padrão. O `POST /cards/:id/prompt-runs` aceita
+`{ "instruction": "...", "multiple_agents": true|false }`; a API valida e
+salva o modo no histórico da execução. A opção pode ser desligada antes de cada
+execução. O histórico exibe o modo usado, e responder uma pergunta ou repetir
+uma execução conserva a decisão gravada. Execuções anteriores à migration
+`143_prompt_run_multiple_agents.sql` aparecem como agente único; execuções
+automáticas iniciadas por comentários também usam agente único.
+
+Quando ativado, o Codex CLI recebe `--enable multi_agent` nessa execução. Isso
+habilita o Codex a avaliar a delegação, sem obrigar a criar subagentes. O Orbit
+instrui o agente a delegar somente quando frentes independentes e bem delimitadas
+reduzirem o tempo e o uso total de tokens após coordenação, integração e revisão.
+A delegação não altera autorização, escopo de escrita, limites de tokens nem
+verificações obrigatórias do projeto.

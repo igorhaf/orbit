@@ -18,14 +18,13 @@ import {
   Comment,
   commentAttachmentBlob,
   cardUrl,
-  getToken,
+  profileSimulationSocketAuth,
   send,
   withExpansion,
 } from "@/lib/api";
-import { Avatar } from "./ui";
+import { Avatar, Modal } from "./ui";
 import { RichText } from "./rich-text";
 import Image from "next/image";
-import { createPortal } from "react-dom";
 import { clipboardFiles } from "@/lib/clipboard-files";
 import { hasPendingCommentReply } from "@/lib/comment-replies";
 
@@ -64,21 +63,15 @@ function ImageAttachment({ id, name }: { id: string; name: string }) {
     }).catch(() => undefined);
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [id]);
-  useEffect(() => {
-    if (!open) return;
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [open]);
   return url ? <>
     <button type="button" onClick={() => setOpen(true)} aria-label={`Ampliar imagem: ${name}`} className="mt-1 block cursor-zoom-in">
       <Image unoptimized src={url} alt={name} width={640} height={320} className="h-auto max-h-64 max-w-full rounded border border-[#dfe1e6] object-contain" />
     </button>
-    {open && typeof document !== "undefined" ? createPortal(
-      <div role="dialog" aria-modal="true" aria-label={name} onClick={() => setOpen(false)} className="fixed inset-0 z-[10000] flex cursor-zoom-out items-center justify-center bg-black/85 p-4">
-        <Image unoptimized src={url} alt={name} width={1600} height={1200} onClick={event => event.stopPropagation()} className="h-auto max-h-full w-auto max-w-full rounded object-contain" />
-        <button type="button" onClick={() => setOpen(false)} aria-label="Fechar imagem" className="absolute right-4 top-4 rounded bg-black/60 px-3 py-2 text-sm text-white">Fechar</button>
-      </div>, document.body) : null}
+    {open && <Modal onClose={() => setOpen(false)} ariaLabel={`Imagem ampliada: ${name}`} theme="dark" extraWide>
+      <div className="flex min-h-[60vh] items-center justify-center rounded-lg bg-black/80 p-3">
+        <Image unoptimized src={url} alt={name} width={1600} height={1200} className="h-auto max-h-[75vh] w-auto max-w-full rounded object-contain" />
+      </div>
+    </Modal>}
   </> : null;
 }
 
@@ -118,7 +111,7 @@ export function CardComments({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiAction, setAiAction] = useState<CommentAiAction>("elaborate");
   useEffect(() => {
-    const socket=io({path:"/socket.io",auth:{token:getToken()}});
+    const socket=io({path:"/socket.io",auth:profileSimulationSocketAuth()});
     socket.on("connect",()=>socket.emit("board:join",board.id));
     socket.on("comment:changed",(event:{boardId:string;cardId:string})=>{
       if(event.boardId===board.id&&event.cardId===card.id)void refreshDetails();

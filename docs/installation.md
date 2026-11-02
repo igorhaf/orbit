@@ -63,6 +63,7 @@ Edite `apps/api/.env` e configure pelo menos:
 - `JWT_SECRET`: segredo aleatório com pelo menos 32 caracteres. Gere com `openssl rand -hex 32`.
 - `ORBIT_BACKUP_KEY`: chave independente para criptografar backups. Gere outra chave com `openssl rand -hex 32` e guarde uma cópia fora deste servidor.
 - `ORBIT_SECRET_KEY` e `VAULT_ENCRYPTION_KEY`: chaves independentes para criptografia das credenciais de integrações e do cofre. Gere cada uma com `openssl rand -hex 32`.
+- `ORBIT_WEBHOOK_ENCRYPTION_KEY`: chave separada, com pelo menos 32 caracteres, para cifrar segredos de webhooks por workspace e assinar as entregas HMAC. Sem ela não é possível criar ou entregar assinaturas.
 - `ORBIT_SECRET_KEY_PREVIOUS` e `VAULT_ENCRYPTION_KEY_PREVIOUS`: chaves anteriores usadas para abrir registros cifrados antes da rotação. Ao trocar uma chave ativa, copie seu valor antigo para a variável `*_PREVIOUS` correspondente e mantenha-a configurada até confirmar que todos os dados cifrados antigos foram regravados por um procedimento de migração verificado. O Orbit preserva o formato legado na leitura, grava somente com a chave ativa e não recriptografa dados automaticamente; ausência ou divergência de chave falha sem revelar o conteúdo.
 - `API_PORT`, `WEB_ORIGIN` e `NEXT_PUBLIC_API_URL`: ajuste se for usar portas ou origens diferentes das locais.
 

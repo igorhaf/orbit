@@ -1,0 +1,16 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { send, setSession, User } from '@/lib/api';
+
+type Pending={challengeId:string;email:string;hint:string};
+export default function SocialLoginCallback(){
+  const router=useRouter();
+  const [pending,setPending]=useState<Pending|null>(null);
+  const [code,setCode]=useState('');
+  const [error,setError]=useState('');
+  const [busy,setBusy]=useState(false);
+  useEffect(()=>{const timer=window.setTimeout(()=>{const fragment=new URLSearchParams(window.location.hash.slice(1));if(fragment.get('error')){setError('Não foi possível concluir o login social. Tente novamente ou entre com e-mail e senha.');return}if(fragment.get('mfa_required')==='true'){const challengeId=fragment.get('challenge_id'),email=fragment.get('email');if(!challengeId||!email){setError('O provedor não retornou os dados de confirmação.');return}setPending({challengeId,email,hint:fragment.get('email_hint')||email});history.replaceState(null,'',window.location.pathname);return}try{const token=fragment.get('token'),userText=fragment.get('user');if(!token||!userText)throw new Error();setSession(token,JSON.parse(userText) as User);history.replaceState(null,'',window.location.pathname);router.replace('/')}catch{setError('A resposta do provedor está incompleta. Entre novamente.')}},0);return()=>window.clearTimeout(timer)},[router]);
+  async function confirm(event:React.FormEvent){event.preventDefault();if(!pending)return;setBusy(true);setError('');try{const result=await send<{user:User;token:string}>('/auth/login','POST',{email:pending.email,mfa_challenge_id:pending.challengeId,mfa_code:code});setSession(result.token,result.user);router.replace('/')}catch(reason){setError((reason as Error).message)}finally{setBusy(false)}}
+  return <main className="flex min-h-screen items-center justify-center bg-[#f8f9fb] px-4"><section className="w-full max-w-md rounded-xl bg-white p-6 shadow-[0_8px_32px_#091e421a] sm:p-9"><h1 className="text-xl font-bold text-[#172b4d]">{pending?'Confirme seu acesso':'Entrando com login social'}</h1>{pending?<><p className="mt-2 text-sm text-[#626f86]">Digite o código enviado para {pending.hint}.</p><form onSubmit={confirm} className="mt-5 grid gap-4"><label className="text-sm font-semibold">Código de seis dígitos<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={event=>setCode(event.target.value.replace(/\D/g,'').slice(0,6))} className="mt-1 min-h-11 w-full rounded border border-[#8590a2] px-3 tracking-[.3em]"/></label><button disabled={busy||code.length!==6} className="min-h-11 rounded bg-[#0c66e4] px-4 text-sm font-semibold text-white disabled:opacity-60">{busy?'Aguarde…':'Confirmar código'}</button></form></>:!error&&<p className="mt-2 text-sm text-[#626f86]">Aguarde enquanto validamos sua conta.</p>}{error&&<p role="alert" className="mt-4 rounded bg-[#ffebe6] p-3 text-sm text-[#ae2a19]">{error}</p>}{error&&<button onClick={()=>router.replace('/')} className="mt-4 min-h-11 text-sm font-semibold text-[#0c66e4]">Voltar para entrar</button>}<p className="mt-6 border-t border-[#dfe1e6] pt-4 text-xs text-[#626f86]">{/* Deliberately avoid exposing OAuth response details in the UI. */}Conexão protegida por OpenID Connect.</p></section></main>
+}

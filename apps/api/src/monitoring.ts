@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { Db } from './db';
 import type { AccessRequest } from './access/access';
 import { AccessService } from './access/access';
+import { currentSimulatedProfile } from './access/profile-simulation-context';
 
 type Aggregate = { count: number; errors: number; totalLatencyMs: number; maxLatencyMs: number };
 type MetricRow = Record<string, unknown>;
@@ -186,7 +187,8 @@ export class MonitoringController {
   async snapshot(@Req() req: AccessRequest) {
     const actor = req.orbitActor!;
     const account = await this.access.account(actor);
-    const profiles = account.is_root ? undefined : (await this.access.grants(actor)).map(row => row.role_id);
+    const simulation = currentSimulatedProfile(actor);
+    const profiles = simulation ? [simulation.id] : account.is_root ? undefined : (await this.access.grants(actor)).map(row => row.role_id);
     return this.monitoring.snapshot(profiles);
   }
 

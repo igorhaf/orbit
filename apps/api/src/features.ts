@@ -1,11 +1,12 @@
 import {vaultConstants as credentialConstants} from './credential-store';
 import {AccessRequest,AccessService} from './access/access';
-import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Optional, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Optional, Param, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { Request,Response } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { Db } from './db';
 import { OrbitEvents } from './orbit-events';
 import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
+import { PluginNotifications } from './plugins/notifications';
 
 export const SINGLE_EMAIL = 'igorhaf@gmail.com';
 const bad = (message: string, status = 400): never => { throw new HttpException({ message }, status); };
@@ -64,6 +65,33 @@ export class FeaturesService {
     return this.access?{...account,...await this.access.me(userId)}:account;
   }
 
+  async securityActivity(userId: string) {
+    const labels: Record<string, string> = {
+      'account.profile.updated': 'Perfil atualizado',
+      'account.password.set': 'Senha definida',
+      'account.password.admin_changed':'Senha redefinida pela administração',
+      'account.access.admin_changed':'Acesso atualizado pela administração',
+      'account.password.changed': 'Senha alterada',
+      'account.email_change.requested': 'Alteração de e-mail solicitada',
+      'account.email_change.completed': 'E-mail alterado',
+      'account.mfa.enabled': 'Verificação em duas etapas ativada',
+      'account.mfa.disabled': 'Verificação em duas etapas desativada',
+      'account.social_identity.linked': 'Login social vinculado',
+    };
+    const rows = await this.db.query<{ id: string; action: string; created_at: Date }>(
+      "SELECT id::text,action,created_at FROM access_audit WHERE ((actor_id=$1 AND action NOT IN ('account.password.admin_changed','account.access.admin_changed')) OR (target=$1::text AND action IN ('account.password.admin_changed','account.access.admin_changed'))) AND created_at>=now()-interval '180 days' AND action=ANY($2::text[]) ORDER BY created_at DESC,id DESC LIMIT 100",
+      [userId, Object.keys(labels)],
+    );
+    return rows.flatMap(row => labels[row.action] ? [{ id: row.id, label: labels[row.action], created_at: row.created_at }] : []);
+  }
+
+  async loginHistory(userId: string) {
+    return this.db.query<{ id: string; logged_at: Date; device_label: string }>(
+      "SELECT id,logged_at,device_label FROM auth_login_history WHERE user_id=$1 AND logged_at>=now()-interval '180 days' ORDER BY logged_at DESC,id DESC LIMIT 100",
+      [userId],
+    );
+  }
+
   async updateProfile(userId: string, body: Record<string, unknown>) {
     const name = body.name === undefined ? null : bounded(body.name, 'Nome', 120);
     let avatar: string | null | undefined;
@@ -73,12 +101,22 @@ export class FeaturesService {
         (/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(body.avatar_url) || /^https:\/\//i.test(body.avatar_url))) avatar = body.avatar_url;
       else bad('Imagem de perfil inválida. Use PNG, JPEG, WebP ou uma URL HTTPS.');
     }
-    await this.db.query('UPDATE users SET name=COALESCE($2,name),avatar_url=CASE WHEN $3::boolean THEN $4::text ELSE avatar_url END WHERE id=$1', [userId,name,avatar!==undefined,avatar??null]);
+    const client = await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET name=COALESCE($2,name),avatar_url=CASE WHEN $3::boolean THEN $4::text ELSE avatar_url END WHERE id=$1', [userId,name,avatar!==undefined,avatar??null]);
+      if (name !== null || avatar !== undefined)
+        await client.query("INSERT INTO access_audit(actor_id,action) VALUES($1,'account.profile.updated')", [userId]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
     return this.account(userId);
   }
 
   async updatePreferences(userId: string, body: Record<string, unknown>) {
-    const allowed = ['theme','notifications','browserNotifications','shortcuts','compactCards'];
+    const allowed = ['theme','notifications','emailNotifications','browserNotifications','shortcuts','compactCards'];
     const changes: Record<string, unknown> = {};
     for (const key of allowed) {
       if (body[key] === undefined) continue;
@@ -100,7 +138,23 @@ export class FeaturesService {
       if (order.some((id: string) => !valid.has(id))) bad('Ordem das categorias do cofre inválida.');
       changes.vaultCategoryOrder = order;
     }
-    await this.db.query('UPDATE users SET preferences=preferences || $2::jsonb WHERE id=$1', [userId,JSON.stringify(changes)]);
+    const client = await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET preferences=preferences || $2::jsonb WHERE id=$1', [userId,JSON.stringify(changes)]);
+      if (changes.notifications === false) {
+        await client.query("UPDATE notification_email_deliveries SET status='cancelled',updated_at=now() WHERE user_id=$1 AND status='pending'", [userId]);
+        await client.query("UPDATE notification_push_deliveries SET status='cancelled',updated_at=now() WHERE user_id=$1 AND status='pending'", [userId]);
+      } else if (changes.emailNotifications === false) {
+        await client.query("UPDATE notification_email_deliveries SET status='cancelled',updated_at=now() WHERE user_id=$1 AND status='pending'", [userId]);
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
     return this.account(userId);
   }
 
@@ -426,7 +480,10 @@ export class FeaturesService {
 
 @Controller()
 export class FeaturesController {
-  constructor(@Inject(FeaturesService) private features: FeaturesService,@Inject(RequestRateLimiter) private requestLimits:RequestRateLimiter) {}
+  constructor(@Inject(FeaturesService) private features: FeaturesService,@Inject(RequestRateLimiter) private requestLimits:RequestRateLimiter,
+    @Optional() @Inject(PluginNotifications) private pluginNotifications?: PluginNotifications) {}
+  private accountHistoryUser(req:Request) { const user=this.features.user(req),actor=(req as AccessRequest).orbitActor;if(actor&&actor!==user)bad('O histórico da conta está disponível somente ao titular.',403);return user; }
+  private notificationDelivery() { return this.pluginNotifications || bad('Notificações push indisponíveis.',503); }
   private async limitSearch(operation:string,req:Request,response:Response,user:string){
     const origin=req.ip||req.socket.remoteAddress||'unknown';
     const result=await this.requestLimits.consume(operation,[{kind:'identity',value:user,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_SEARCH_IDENTITY',60)},{kind:'origin',value:origin,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_SEARCH_ORIGIN',300)}],60_000);
@@ -436,6 +493,8 @@ export class FeaturesController {
   @Patch('account') updateAccount(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updateProfile(this.features.user(req),body); }
   @Patch('account/preferences') preferences(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updatePreferences(this.features.user(req),body); }
   @Get('account/activity') activity(@Req() req: Request) { return this.features.activities(this.features.user(req),60); }
+  @Get('account/login-history') loginHistory(@Req() req:Request) { return this.features.loginHistory(this.accountHistoryUser(req)); }
+  @Get('account/security-activity') securityActivity(@Req() req:Request) { return this.features.securityActivity(this.accountHistoryUser(req)); }
   @Get('account/credential-constants') constants(@Req()req:Request){return this.features.credentialConstants(this.features.user(req))}
   @Get('account/cards') cards(@Req() req: Request) { return this.features.assignedCards(this.features.user(req)); }
   @Get('inbox/cards') inboxCards(@Req() req:Request){return this.features.assignedCards(this.features.user(req))}
@@ -457,6 +516,9 @@ export class FeaturesController {
   @Get('planner') planner(@Req() req:Request,@Query('board_id') boardId?:string){return this.features.planner(this.features.user(req),boardId);}
   @Post('planner/cards') createScheduledCard(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.createScheduledCard(this.features.user(req),body);}
   @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
+  @Get('notifications/push/config') pushConfig(@Req() req: Request) { return this.notificationDelivery().pushConfig(this.features.user(req)); }
+  @Put('notifications/push/subscription') subscribePush(@Req() req:Request,@Body() body:unknown){return this.notificationDelivery().subscribePush(this.features.user(req),body);}
+  @Delete('notifications/push/subscription') unsubscribePush(@Req() req:Request,@Body() body:unknown){const endpoint=body&&typeof body==='object'&&!Array.isArray(body)?(body as {endpoint?:unknown}).endpoint:undefined;return this.notificationDelivery().unsubscribePush(this.features.user(req),endpoint);}
   @Patch('cards/:id/prompt-notifications/read') readCardPromptNotifications(@Req() req:Request,@Param('id') id:string){return this.features.markCardPromptNotificationsRead(this.features.user(req),id);}
   @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }
   @Delete('notifications') clearAll(@Req() req: Request) { return this.features.clearAllNotifications(this.features.user(req)); }

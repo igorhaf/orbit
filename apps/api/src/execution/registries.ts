@@ -42,6 +42,10 @@ export class PluginRegistry {
     this.unique(plugin.contributions?.cardLayouts||[],'Card layout');
     this.unique(plugin.contributions?.cardTypes||[],'Card type');
     this.unique(plugin.contributions?.boardViews||[],'Board view');
+    if(plugin.recordEvents){
+      const events=plugin.recordEvents.events;
+      if(!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(plugin.recordEvents.sourcePluginId)||!plugin.dependencies?.includes(plugin.recordEvents.sourcePluginId)||typeof plugin.recordEvents.onSnapshot!=='function'||!Array.isArray(events)||!events.length||new Set(events.map(event=>event.type)).size!==events.length||events.some(event=>!(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(event.type))||event.type.startsWith('record.')||!event.type.startsWith(`${plugin.recordEvents!.sourcePluginId}.`)||!event.label?.trim()||!Number.isInteger(event.version)||event.version<1))throw new Error(`Eventos de registro inválidos para ${plugin.id}.`);
+    }
     const recordKinds=plugin.contributions?.recordKinds||{};
     for(const [kind,definition] of Object.entries(recordKinds)){
       this.id(kind,'Record kind');
@@ -93,6 +97,7 @@ export class PluginRegistry {
     for(const layout of plugin.contributions?.cardLayouts||[])for(const field of layout.fields||[])if(field.childDefault&&field.type==='select'&&!field.options?.some(option=>option.value===field.childDefault))throw new Error('Valor de filho fora das opções do layout.');
     for(const type of plugin.contributions?.cardTypes||[])if(!type.name||!Array.isArray(type.slots||[])||(type.slots||[]).some(slot=>typeof slot!=='string'||!slot))throw new Error('Tipo de cartão inválido.');
 
+    if(plugin.parentPlugin){this.id(plugin.parentPlugin,'Parent plugin');if(plugin.parentPlugin===plugin.id)throw new Error('Plugin não pode estender a si mesmo.');if(!plugin.dependencies?.includes(plugin.parentPlugin))throw new Error(`Plugin filho ${plugin.id} precisa declarar dependência do pai ${plugin.parentPlugin}.`);}
     for(const dependency of plugin.dependencies||[]){this.id(dependency,'Dependency');if(dependency===plugin.id)throw new Error('Plugin não pode depender de si mesmo.');}
     this.items.set(plugin.id,{...plugin,capabilities,actions});
     try{this.dependencyChain(plugin.id,false)}catch(error){this.items.delete(plugin.id);throw error}
@@ -144,6 +149,6 @@ export class PluginRegistry {
     const action=this.validate(integration,input.permissions);await this.authorizeAction?.(integration.plugin,integration.action,input.userId);const output=await action.execute(integration.config||{},{userId:input.userId,projectId:input.projectId,cardId:input.cardId,runId:input.runId,connectionId:integration.connection_id,execution:input,services,logger:{info(){},warn(){}}});
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;
   }
-  catalog(){return this.list().map(p=>({id:p.id,name:p.name,version:p.version,description:p.description,blockedBy:this.blockedBy(p.id),dependents:this.dependents(p.id),status:this.disabled.has(p.id)?"disabled":this.isEnabled(p.id)?"active":"blocked",dependencies:p.dependencies||[],configuredEnabled:!this.disabled.has(p.id),enabled:this.isEnabled(p.id),configurable:Boolean(p.configurable||p.configuration?.length),capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}
+  catalog(){return this.list().map(p=>({id:p.id,name:p.name,version:p.version,description:p.description,parentPlugin:p.parentPlugin,children:this.list().filter(child=>child.parentPlugin===p.id).map(child=>child.id),blockedBy:this.blockedBy(p.id),dependents:this.dependents(p.id),status:this.disabled.has(p.id)?"disabled":this.isEnabled(p.id)?"active":"blocked",dependencies:p.dependencies||[],configuredEnabled:!this.disabled.has(p.id),enabled:this.isEnabled(p.id),configurable:Boolean(p.configurable||p.configuration?.length),capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}
 }
 export function filesystemPlugin():PluginDefinition{return {id:'filesystem',name:'Arquivos do projeto',version:'1.0.0',capabilities:[{id:'filesystem.read',name:'Ler arquivos',permissions:['filesystem.read']}],actions:[{id:'read',name:'Ler arquivo',permissions:['filesystem.read'],requiredCapabilities:['filesystem.read'],inputSchema:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:1000}},required:['path'],additionalProperties:false},async execute(config,context){const input=context.execution;if(!input)throw new Error('Contexto de execução ausente.');return {type:'text',label:String(config.path),value:await readResource(input.projectRoot,String(config.path))}}}]}}

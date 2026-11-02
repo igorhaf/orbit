@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Boxes, Check, PlugZap, Power, RefreshCw, Settings, ShieldCheck, Zap } from "lucide-react";
 import { api, Board, getToken, PluginCatalogItem, send, User } from "@/lib/api";
-import { AppHeader, WorkspaceSidebar } from "@/components/ui";
+import { AppHeader, Modal, WorkspaceSidebar } from "@/components/ui";
 import {CloudflareTunnelPanel} from "@/plugins/cloudflare-tunnel/CloudflareTunnelPanel";
 import {AlexaOrbitPanel} from '@/plugins/alexa-orbit/AlexaOrbitPanel';
 import { PluginConfiguration } from "@/components/plugin-configuration";
@@ -24,6 +24,7 @@ export default function PluginsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toggling, setToggling] = useState<string|null>(null);
+  const dark = process.env.NEXT_PUBLIC_ORBIT_THEME === "dark";
 
   useEffect(() => {
     if (!getToken()) {
@@ -85,7 +86,7 @@ export default function PluginsPage() {
       <p className="mt-8 flex items-center gap-2 text-xs text-[#626f86]"><Zap size={14} className="text-[#e2b203]"/> O estado é global nesta instalação; ações de execução ainda respeitam as permissões configuradas em cada projeto.</p>
       </main>
     </div>
-    {selected && <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#091e42a6] p-4 pt-[10vh]" onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}><section role="dialog" aria-modal="true" className="w-full max-w-xl rounded-xl bg-white p-6 shadow-dialog"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[#0c66e4]">Plugin</p><h2 className="mt-1 text-xl font-bold text-[#172b4d]">{selected.name}</h2><p className="mt-1 font-mono text-xs text-[#626f86]">{selected.id} · v{selected.version}</p></div><button onClick={() => setSelected(null)} className="rounded px-2 py-1 text-xl text-[#626f86] hover:bg-[#f1f2f4]" aria-label="Fechar">×</button></div><div className="mt-6 space-y-2">{selected.actions.map(action => <div key={action.id} className="rounded-lg border border-[#dfe1e6] p-3"><div className="flex items-center gap-2"><Check size={15} className="text-[#22a06b]"/><strong className="text-sm text-[#172b4d]">{action.name}</strong></div><p className="mt-1 pl-6 font-mono text-xs text-[#626f86]">{selected.id}.{action.id}</p>{action.permissions?.length ? <p className="mt-2 pl-6 text-xs text-[#626f86]">Permissões: {action.permissions.join(", ")}</p> : null}</div>)}</div><button onClick={() => setSelected(null)} className="mt-6 w-full rounded-lg border border-[#c1c7d0] px-4 py-2 text-sm font-semibold text-[#172b4d] hover:bg-[#f1f2f4]">Fechar</button></section></div>}
+    {selected && <Modal onClose={() => setSelected(null)} title={selected.name} wide theme={dark ? "dark" : "light"}><div className={`p-6 ${dark ? "text-[#dee4ea]" : "text-[#172b4d]"}`}><p className={`text-xs font-bold uppercase tracking-wide ${dark ? "text-cyan-200" : "text-[#0c66e4]"}`}>Plugin</p><h2 className="mt-1 text-xl font-bold">{selected.name}</h2><p className={`mt-1 font-mono text-xs ${dark ? "text-[#b6c2cf]" : "text-[#626f86]"}`}>{selected.id} · v{selected.version}</p><ul aria-label={`Ações de ${selected.name}`} className="mt-6 space-y-2">{selected.actions.map(action => <li key={action.id} className={`rounded-lg border p-3 ${dark ? "border-[#3b4754] bg-white/[0.02]" : "border-[#dfe1e6]"}`}><div className="flex items-center gap-2"><Check size={15} aria-hidden="true" className={dark ? "text-emerald-200" : "text-[#22a06b]"}/><strong className="text-sm">{action.name}</strong></div><p className={`mt-1 pl-6 font-mono text-xs ${dark ? "text-[#b6c2cf]" : "text-[#626f86]"}`}>{selected.id}.{action.id}</p>{action.permissions?.length ? <p className={`mt-2 pl-6 text-xs ${dark ? "text-[#b6c2cf]" : "text-[#626f86]"}`}>Permissões: {action.permissions.join(", ")}</p> : null}</li>)}</ul><button type="button" onClick={() => setSelected(null)} className={`mt-6 min-h-10 w-full rounded-lg border px-4 py-2 text-sm font-semibold ${dark ? "border-[#80909d] text-[#dee4ea] hover:bg-white/[0.05]" : "border-[#c1c7d0] text-[#172b4d] hover:bg-[#f1f2f4]"}`}>Fechar</button></div></Modal>}
     {configuring?.id==='alexa-orbit'?<AlexaOrbitPanel onClose={()=>{setConfiguring(null);window.history.replaceState(null,'','/plugins')}}/>:configuring?.id==='cloudflare-tunnel'?<CloudflareTunnelPanel onEnabledChanged={enabled=>{setPlugins(current=>current.map(item=>item.id==='cloudflare-tunnel'?{...item,enabled}:item));}} onClose={()=>{setConfiguring(null);window.history.replaceState(null,'','/plugins')}}/>:configuring&&<PluginConfiguration key={configuring.id} plugin={configuring} oauthResult={oauthResult} onClose={()=>{setConfiguring(null);setOauthResult(undefined);window.history.replaceState(null,'','/plugins')}}/>}
   </div>;
 }

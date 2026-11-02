@@ -60,6 +60,7 @@ test('completion consumes a token once, hashes password, verifies account, and r
   const token='a'.repeat(43);
   assert.deepEqual(await auth.complete(token,'a sufficiently long password'),{ok:true});
   assert.equal(commits,1);assert.ok(statements.some(sql=>sql.includes('session_version=session_version+1')));assert.ok(statements.some(sql=>sql.includes('email_verified=true')));
+  assert.ok(statements.some(sql=>sql.includes("INSERT INTO access_audit(actor_id,action) VALUES($1,$2)")));
   await assert.rejects(()=>auth.complete(token,'another sufficiently long password'),/Token inválido ou expirado/);
 });
 

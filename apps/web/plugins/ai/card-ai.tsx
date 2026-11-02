@@ -84,6 +84,7 @@ export function CardAi({
   const [projects, setProjects] = useState<AiProject[]>([]);
   const [busy, setBusy] = useState(false);
   const [generationBusy, setGenerationBusy] = useState(false);
+  const [multiAgentChoice, setMultiAgentChoice] = useState<{ cardId: string; enabled: boolean }>(() => ({ cardId: card.id, enabled: true }));
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
   const effectiveProjectId =
@@ -96,6 +97,7 @@ export function CardAi({
   const effective = card.ai_model || inheritedModel;
   const effectiveEffort = card.ai_effort || inheritedEffort;
   const instructionStorageKey = `orbit:card:${card.id}:prompt-instruction`;
+  const multipleAgents = multiAgentChoice.cardId === card.id ? multiAgentChoice.enabled : true;
   useEffect(() => {
     const handleGeneration = (event: Event) => setGenerationBusy(Boolean((event as CustomEvent<{ active?: boolean }>).detail?.active));
     window.addEventListener("orbit:text-generation", handleGeneration);
@@ -201,6 +203,7 @@ export function CardAi({
     try {
       await send<PromptRun>(`/cards/${card.id}/prompt-runs`, "POST", {
         instruction,
+        multiple_agents: multipleAgents,
       });
       await onChanged();
     } catch (err) {
@@ -307,6 +310,12 @@ export function CardAi({
           {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Bot size={14} />}
           Executar
         </button>
+        <label title="Habilita o Codex a avaliar delegação; não força subagentes e pode aumentar o uso de tokens." className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded px-2 text-xs font-semibold text-[#403294] dark:text-[#d4c7ff]">
+          <input type="checkbox" role="switch" checked={multipleAgents} disabled={busy || aiLocked} onChange={event => setMultiAgentChoice({ cardId: card.id, enabled: event.target.checked })} className="peer sr-only" aria-label="Múltiplos agentes" aria-describedby={`multiple-agent-help-${card.id}`} />
+          <span id={`multiple-agent-help-${card.id}`} className="sr-only">Habilita o Codex a avaliar delegação apenas quando isso puder reduzir o tempo e o uso total de tokens; pode aumentar o consumo.</span>
+          <span aria-hidden="true" className="relative h-5 w-9 shrink-0 rounded-full bg-[#8590a2] transition-colors peer-checked:bg-[#6554c0] after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#6554c0]" />
+          Múltiplos agentes
+        </label>
         </div>
       </div>
       {error && (

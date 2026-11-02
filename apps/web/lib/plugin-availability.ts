@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
-import { api, getToken, type User } from './api';
+import { api, getToken, profileSimulationSocketAuth, type User } from './api';
 import {pluginNavigation,type NavigationCatalogPlugin} from './plugin-navigation';
 
 type BoardLink = { id: string; name: string; href: string; permission: string };
@@ -17,7 +17,8 @@ export function usePluginAvailability() {
       const current = ++generation;
       const token=getToken();
       if (!token) { socket.disconnect();socketToken=null;setState({ ready: true, plugins: [], user: null }); return; }
-      if(token!==socketToken){socket.disconnect();socket.auth={token};socketToken=token;socket.connect();}
+      const auth=profileSimulationSocketAuth();const authKey=JSON.stringify(auth);
+      if(authKey!==socketToken){socket.disconnect();socket.auth=auth;socketToken=authKey;socket.connect();}
       try {
         const [catalog, user] = await Promise.all([api<{ plugins: Plugin[] }>('/plugins'), api<User>('/auth/me')]);
         if (active && current === generation) setState({ ready: true, plugins: catalog.plugins, user });

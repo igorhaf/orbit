@@ -1,6 +1,7 @@
 export type Preferences = {
   theme: 'light' | 'dark' | 'terroso';
   notifications: boolean;
+  emailNotifications?: boolean;
   browserNotifications: boolean;
   shortcuts: boolean;
   compactCards: boolean;
@@ -17,6 +18,8 @@ export type User = {
   created_at?: string;
   role?: string;
   is_root?: boolean;
+  /** True when this authenticated session belongs to ROOT, including simulated mode. */
+  is_root_actor?: boolean;
   permissions?: string[];
 };
 export type Label = { id: string; name: string; color: string };
@@ -118,7 +121,7 @@ export type AiEffort = 'low'|'medium'|'high'|'xhigh';
 export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_internal_orbit?:boolean};
 export type PromptFileChange={path:string;kind:'add'|'delete'|'update';additions?:number;deletions?:number;diff?:string};
 export type PromptActivity={id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
-export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
+export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';multiple_agents?:boolean;summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
 export type ToolDiagnostic={run_id:string;card_id:string;board_id:string;card_title:string;board_title:string;created_at:string;kind:'missing'|'permission'|'command'|'authentication'|'version';tool:string;title:string;details:string;installCommands:string[];failedCommand:string|null};
 export type ToolDiagnostics={status:'error'|'success'|'running';issues:ToolDiagnostic[]};
 export type TrelloConnection = { id:string; trello_board_id:string; trello_board_name:string; enabled:boolean; last_synced_at:string|null; last_error:string|null; created_at:string };
@@ -160,7 +163,16 @@ export type PluginCatalogItem = {id:string;name:string;version:string;enabled:bo
 // which also makes the app work from another device on the local network.
 const BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 export const getToken = () => typeof window === 'undefined' ? null : localStorage.getItem('orbit_token');
+export const getProfileSimulation = () => typeof window === 'undefined' ? null : localStorage.getItem('orbit_profile_simulation');
+export const profileSimulationHeaders = ():Record<string,string> => getProfileSimulation() ? { 'X-Orbit-Profile-Simulation': getProfileSimulation()! } : {};
+export const profileSimulationSocketAuth = () => ({ token:getToken()||'', ...(getProfileSimulation()?{profileSimulation:getProfileSimulation()!}:{}) });
+export const setProfileSimulation = (roleId:string|null) => {
+  if(typeof window==='undefined')return;
+  if(roleId)localStorage.setItem('orbit_profile_simulation',roleId);else localStorage.removeItem('orbit_profile_simulation');
+  window.dispatchEvent(new Event('orbit:profile-simulation-changed'));
+};
 export const setSession = (token: string, user: User) => {
+  setProfileSimulation(null);
   localStorage.setItem('orbit_token', token);
   localStorage.setItem('orbit_user', JSON.stringify(user));
   applyTheme(user.preferences?.theme || 'light');
@@ -168,6 +180,7 @@ export const setSession = (token: string, user: User) => {
   window.dispatchEvent(new Event('account:changed'));
 };
 export const clearSession = () => {
+  setProfileSimulation(null);
   localStorage.removeItem('orbit_token');
   localStorage.removeItem('orbit_user');
   applyTheme('light');
@@ -198,6 +211,7 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
       headers: {
         'Content-Type': 'application/json',
         ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        ...profileSimulationHeaders(),
         ...options.headers,
       },
       cache: 'no-store',
@@ -225,12 +239,12 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
 export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body?: unknown) =>
   api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
 export async function commentAttachmentBlob(id:string):Promise<Blob>{
-  const response=await fetch(`${BASE}/comment-attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`}});
+  const response=await fetch(`${BASE}/comment-attachments/${id}/content`,{headers:{Authorization:`Bearer ${getToken()||''}`,...profileSimulationHeaders()}});
   if(!response.ok)throw new Error('Não foi possível abrir o anexo.');
   return response.blob();
 }
 export async function authenticatedBlob(path:string):Promise<Blob>{
-  const response=await fetch(`${BASE}${path}`,{headers:{Authorization:`Bearer ${getToken()||''}`},cache:'no-store'});
+  const response=await fetch(`${BASE}${path}`,{headers:{Authorization:`Bearer ${getToken()||''}`,...profileSimulationHeaders()},cache:'no-store'});
   if(!response.ok)throw new Error('Não foi possível baixar o arquivo autorizado.');
   return response.blob();
 }

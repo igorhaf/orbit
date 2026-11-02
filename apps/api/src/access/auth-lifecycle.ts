@@ -121,6 +121,7 @@ export class AuthLifecycle {
       const hash = await bcrypt.hash(rawPassword,12);
       if (row.purpose === 'recover') await client.query('UPDATE users SET password_hash=$2,session_version=session_version+1 WHERE id=$1',[row.user_id,hash]);
       else await client.query('UPDATE users SET password_hash=$2,email_verified=true,session_version=session_version+1 WHERE id=$1 AND NOT is_root',[row.user_id,hash]);
+      await client.query("INSERT INTO access_audit(actor_id,action) VALUES($1,$2)",[row.user_id,row.purpose==='recover'?'account.password.changed':'account.password.set']);
       await client.query('UPDATE account_auth_tokens SET consumed_at=now() WHERE id=$1',[row.id]);
       await client.query('UPDATE account_auth_tokens SET consumed_at=now() WHERE user_id=$1 AND consumed_at IS NULL',[row.user_id]);
       await client.query('COMMIT');
