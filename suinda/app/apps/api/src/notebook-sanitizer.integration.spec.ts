@@ -1,20 +1,17 @@
 import 'dotenv/config';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { integrationAdminUrl } from './integration-test-db';
 import { sanitizeNotebookHtml } from './notebook-sanitizer';
 
 test('sanitized notebook HTML stays safe after a PostgreSQL write/read round-trip', async () => {
   const url = new URL(process.env.DATABASE_URL!);
   url.hostname = process.env.ORBIT_TEST_DB_HOST || process.env.ORBIT_SELENIUM_DB_HOST || url.hostname;
-  const adminUrl = new URL(url);
-  const adminContainer = process.env.ORBIT_TEST_DB_CONTAINER || 'orbit-db-dev';
-  adminUrl.username = execFileSync('docker', ['exec', adminContainer, 'printenv', 'POSTGRES_USER'], { encoding: 'utf8' }).trim();
-  adminUrl.password = execFileSync('docker', ['exec', adminContainer, 'printenv', 'POSTGRES_PASSWORD'], { encoding: 'utf8' }).trim();
+  const adminUrl = integrationAdminUrl(url);
   const schema = `notebook_sanitize_test_${randomUUID().replaceAll('-', '')}`;
   const admin = new Pool({ connectionString: adminUrl.toString() });
   const db = new Pool({ connectionString: url.toString(), options: `-c search_path=${schema}` });

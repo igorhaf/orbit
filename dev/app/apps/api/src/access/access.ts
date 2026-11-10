@@ -17,6 +17,12 @@ export const routePermission=permissionForRoute;
 
 @Injectable()
 export class AccessService {
+ private recordPermissionProviders:Array<(user:string,plugin:string,kind:string,recordId:string,action:string)=>Promise<boolean|null>>=[];
+ registerRecordPermissionProvider(provider:(user:string,plugin:string,kind:string,recordId:string,action:string)=>Promise<boolean|null>){this.recordPermissionProviders.push(provider)}
+ async authorizeRecord(user:string,plugin:string,kind:string,recordId:string,action:string):Promise<boolean|null>{
+  for(const provider of this.recordPermissionProviders){const decision=await provider(user,plugin,kind,recordId,action);if(decision!==null)return decision}
+  return null
+ }
  private resourceAvailability:Array<(type:string)=>boolean>=[];
  registerResourceAvailability(provider:(type:string)=>boolean){this.resourceAvailability.push(provider)}
  resourceAvailable(type:string){return this.resourceAvailability.every(provider=>provider(type))}
@@ -70,6 +76,7 @@ export class AccessService {
  registerScope(type:string,enabled:(scope:string)=>Promise<boolean>){this.scopes.set(type,enabled)}
  async account(user:string){const row=await this.db.one<{id:string;name:string;email:string;is_root:boolean;disabled:boolean;session_version:number}>('SELECT id,name,email,is_root,disabled,session_version FROM users WHERE id=$1',[user]);if(!row||row.disabled)deny('Sessão inválida ou conta suspensa.',401);return row!}
  async isRootForAuthorization(user:string){return Boolean((await this.account(user)).is_root&&!currentSimulatedProfile(user))}
+ async isRoot(user:string){return this.isRootForAuthorization(user)}
  async authenticate(token:string){let payload:jwt.JwtPayload;try{payload=jwt.verify(token,process.env.JWT_SECRET!) as jwt.JwtPayload}catch{return deny('Sessão expirada.',401)}const user=await this.account(id(payload.sub));if(Number(payload.version||0)!==user.session_version)deny('Sessão revogada. Entre novamente.',401);return user}
  async grants(user:string,type='global',scope='*'){return this.db.query<{role_id:string;name:string;permissions:string[]}>('SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id WHERE g.user_id=$1 AND g.scope_type=$2 AND g.scope_id=$3',[user,type,scope])}
  async isAdmin(user:string){const simulation=currentSimulatedProfile(user);if(simulation)return ['administrator','platform_admin'].includes(simulation.id);return Boolean(await this.db.one("SELECT user_id FROM access_grants WHERE user_id=$1 AND scope_type='global' AND role_id IN ('administrator','platform_admin')",[user]))}

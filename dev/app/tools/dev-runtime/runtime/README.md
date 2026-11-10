@@ -6,7 +6,7 @@ Estas cópias permitem revisar as mudanças nos arquivos Compose que ficam fora 
 |---|---|
 | orbit.compose.snapshot.yml | /home/meada/projetos/orbit/compose.yml |
 | suinda.compose.snapshot.yml | /home/meada/projetos/orbit/suinda/compose.yml |
-| safdoulas-v2.compose.snapshot.yml | /home/meada/projetos/orbit/safdoulas-v2/compose.yml |
+| safdoulas-v2.compose.snapshot.yml | /home/meada/projetos/orbit/safdoulas/compose.yml |
 
 Os arquivos `.patch` mostram a diferença em relação à configuração anterior à intervenção. Nenhum `.env`, token ou conteúdo de banco foi copiado. Os snapshots anteriores e evidências estão em `/home/meada/projetos/orbit/control/state/ram-20261101/`.
 

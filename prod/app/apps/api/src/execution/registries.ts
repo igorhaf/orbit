@@ -134,6 +134,11 @@ export class PluginRegistry {
 
   setEnabled(id:string,enabled:boolean){this.getById(id);if(enabled)this.disabled.delete(id);else this.disabled.add(id)}
   list(){return [...this.items.values()].filter(plugin=>!this.isHidden(plugin.id))}
+  recordAccessPolicies(targetPluginId:string,targetKind:string){
+    return this.list().flatMap(plugin=>(plugin.recordAccessPolicies||[])
+      .filter(policy=>(this.isEnabled(plugin.id)||policy.enforceWhenDisabled===true)
+        &&policy.targetPluginId===targetPluginId&&policy.targetKind===targetKind));
+  }
   getAction(pluginId:string,actionId:string):ActionDefinition{if(!this.isEnabled(pluginId))throw new Error(`O plugin ${pluginId} está desativado.`);const action=(this.getById(pluginId).actions||[]).find(item=>item.id===actionId);if(!action)throw new Error(`Action não registrada: ${pluginId}.${actionId}`);return action}
   getCapability(pluginId:string,capabilityId:string):CapabilityDefinition{if(!this.isEnabled(pluginId))throw new Error(`O plugin ${pluginId} está desativado.`);const capability=(this.getById(pluginId).capabilities||[]).find(item=>item.id===capabilityId);if(!capability)throw new Error(`Capability não registrada: ${pluginId}.${capabilityId}`);return capability}
   connectionProviders(){return this.list().filter(plugin=>this.isEnabled(plugin.id)).flatMap(plugin=>plugin.connectionProvider?[{pluginId:plugin.id,...plugin.connectionProvider}]:[])}

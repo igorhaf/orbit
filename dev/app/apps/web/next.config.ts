@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
       turbopackFileSystemCacheForDev: true,
       turbopackMemoryEviction: 'full' as const,
       turbopackGc: true,
+      turbopackLazyDynamicImports: true,
+      turbopackLazyDynamicImportsSSR: true,
     } : {}),
   },
   async headers() {

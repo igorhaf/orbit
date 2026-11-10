@@ -222,6 +222,7 @@ export type PluginContribution = {
 };
 
 export type PluginDefinition = {
+  coreCompatibility?: import("./core-compatibility").CoreCompatibility;
   id: string;
   name: string;
   version: string;

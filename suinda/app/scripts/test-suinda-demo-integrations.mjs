@@ -12,9 +12,9 @@ const externalChecklist = resolve(root, "docs/suinda/PRE-REQUISITOS-EXTERNOS.md"
 const scenarios = [
   {
     ids: ["1.3"],
-    title: "Descoberta OIDC, rotas de callback e limites de autenticação",
-    files: ["access/access.spec.ts"],
-    evidence: "fixture de guard e catálogo de provedores; não executa login num IdP real",
+    title: "Jornada OIDC sintética: discovery, PKCE, callback, RS256/JWKS e replay",
+    files: ["access/access.spec.ts", "access/social-login.spec.ts"],
+    evidence: "IdP, token, JWKS, conta e state inteiramente simulados; nenhum tenant ou endpoint real",
     coverage: "partial-fixture",
   },
   {
@@ -129,7 +129,7 @@ const scenarios = [
   {
     ids: ["32.16"],
     title: "SSO corporativo e vinculação de conta com limites OIDC",
-    files: ["access/access.spec.ts", "access/auth-lifecycle.spec.ts"],
+    files: ["access/access.spec.ts", "access/auth-lifecycle.spec.ts", "access/social-login.spec.ts"],
     evidence: "contas e rotas de fixture; validação de tenant real permanece fora do cenário",
     coverage: "partial-fixture",
   },

@@ -2,8 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { AppHeader, WorkspaceSidebar } from "@/components/ui";
+import dynamic from "next/dynamic";
 import { api, getToken, type Board, type User } from "@/lib/api";
+
+const AppHeader = dynamic(() => import("@/components/orbit-shell-ui").then((module) => module.AppHeader), {
+  ssr: false,
+  loading: () => <div className="h-14 border-b border-[#39434d] bg-[#1d2125]" aria-hidden="true" />,
+});
+const WorkspaceSidebar = dynamic(() => import("@/components/orbit-shell-ui").then((module) => module.WorkspaceSidebar), {
+  ssr: false,
+  loading: () => <aside className="hidden w-64 border-r border-[#39434d] bg-[#1d2125] md:block" aria-hidden="true" />,
+});
 
 export default function SuindaOrbitShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();

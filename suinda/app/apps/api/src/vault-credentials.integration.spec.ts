@@ -3,11 +3,11 @@ import 'dotenv/config';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {randomUUID} from 'node:crypto';
-import {execFileSync} from 'node:child_process';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Pool} from 'pg';
+import {integrationAdminUrl} from './integration-test-db';
 import {Db} from './db';
 import {openVaultIntegrationCredentials} from './vault-integration-credentials';
 import {GoogleCredentials} from './google/credentials';
@@ -20,8 +20,7 @@ import {DeliveryCredentialService} from './delivery/executors';
 
 test('vault constants, deploy resolution, deletion protection and encrypted backup restore in isolated PostgreSQL',async()=>{
  const url=new URL(process.env.DATABASE_URL!);url.hostname=process.env.ORBIT_TEST_DB_HOST||process.env.ORBIT_SELENIUM_DB_HOST||url.hostname;
- const adminContainer=process.env.ORBIT_TEST_DB_CONTAINER||'orbit-db-dev';
- const adminUrl=new URL(url);adminUrl.username=execFileSync('docker',['exec',adminContainer,'printenv','POSTGRES_USER'],{encoding:'utf8'}).trim();adminUrl.password=execFileSync('docker',['exec',adminContainer,'printenv','POSTGRES_PASSWORD'],{encoding:'utf8'}).trim();
+ const adminUrl=integrationAdminUrl(url);
  const schema=`vault_test_${randomUUID().replaceAll('-','')}`,admin=new Pool({connectionString:adminUrl.toString()});
  const directory=await mkdtemp(join(tmpdir(),'orbit-vault-constants-'));
  const previous={GOOGLE_CLIENT_ID:process.env.GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET:process.env.GOOGLE_CLIENT_SECRET,ORBIT_TEST_VAULT_TOKEN:process.env.ORBIT_TEST_VAULT_TOKEN,ORBIT_API_ENV_FILE:process.env.ORBIT_API_ENV_FILE,ORBIT_BACKUP_DIR:process.env.ORBIT_BACKUP_DIR,ORBIT_BACKUP_KEY:process.env.ORBIT_BACKUP_KEY};

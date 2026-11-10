@@ -82,7 +82,7 @@ for route in routes:
     if 'alt' not in a: problems.append((route,'image-missing-alt',a.get('src')))
   mains=sum(n.tag=='main' for n in all_nodes)
   if mains!=1: problems.append((route,'main-count',mains))
- except (HTTPError,URLError,TimeoutError) as e: problems.append((route,'http-error',str(e)))
+ except (HTTPError,URLError,TimeoutError,ConnectionError) as e: problems.append((route,'http-error',str(e)))
 print('Totals:',totals)
 print('Issues:',len(problems))
 for item in problems[:100]: print(item)

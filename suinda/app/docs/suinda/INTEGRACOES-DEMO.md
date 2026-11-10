@@ -17,7 +17,7 @@ O primeiro comando só valida o mapa dos IDs e lista cenários. O segundo execut
 
 | Requisitos | Cenário e dados de exemplo | Specs locais |
 | --- | --- | --- |
-| `1.3` | Descoberta OIDC e rotas de callback sob o guard; ainda não há callback completo de IdP fake neste pacote. | `access/access.spec.ts` |
+| `1.3` | Jornada OIDC completa com IdP fake: discovery, state/nonce, PKCE, callback, troca de token, validação RS256/JWKS e replay. | `access/access.spec.ts`, `access/social-login.spec.ts` |
 | `1.4–1.6`, `17.6`, `32.10` | Convites, confirmação, recuperação, MFA, modelos e mensagens capturadas por mailer de fixture, incluindo falha de envio. | `access/auth-lifecycle.spec.ts`, `mail/mail.spec.ts`, `plugins/workspace-email-templates.spec.ts` |
 | `5.9`, `32.7` | Arquivo Drive/Picker e anexos de aula sintéticos; política de acesso, MIME e integração com mídia são exercitados sem selecionar arquivo real. | `plugins/suinda-google-drive.spec.ts`, `google/backup.spec.ts`, `plugins/suinda/suinda.spec.ts` |
 | `6.2`, `32.3` | Evento Google Calendar/Meet com conta e reunião de exemplo; criação repetida verifica idempotência. | `calendar/calendar.spec.ts`, `plugins/suinda/suinda-calendar.provider.spec.ts`, `plugins/suinda/suinda.spec.ts` |
@@ -30,21 +30,21 @@ O primeiro comando só valida o mapa dos IDs e lista cenários. O segundo execut
 | `17.7`, `32.9` | Consentimento, template permitido/recusado, opt-out e idempotência da entrega WhatsApp. | `plugins/suinda-whatsapp.spec.ts` |
 | `17.8` | Chaves VAPID efêmeras e sender interceptado; envio, expiração e ausência de configuração sem push real. | `plugins/notifications.spec.ts` |
 | `21.11`, `32.6` | Sincronização de calendário, recorrência, cursor expirado e eventos com datas/zonas de exemplo. | `calendar/calendar.spec.ts`, `calendar/microsoft-calendar.spec.ts`, `plugins/suinda/suinda-calendar.provider.spec.ts` |
-| `29.3` | Host e URLs permitidos/rejeitados em configuração; a fixture não representa DNS nem certificado público válidos. | `env-settings.spec.ts`, `workspaces/workspace-branding.spec.ts` |
+| `29.3` | Host e URLs permitidos/rejeitados em configuração; Express local exercita hostname e HTTPS encaminhados por proxy confiável, e rejeita headers não confiáveis ou requests inseguros. A fixture não representa DNS, certificado público, propriedade do domínio nem roteamento externo. | `env-settings.spec.ts`, `workspaces/workspace-branding.spec.ts` |
 | `30.6–30.7` | Pedido de privacidade com titular sintético, mapa incompleto e decisão explícita; caminhos não autorizados falham fechados. | `plugins/suinda/suinda-privacy.spec.ts` |
 | `32.2` | Payload de webhook assinado, repetição, falha e URL de destino insegura. | `plugins/webhooks.spec.ts`, `plugins/suinda/domain-webhook-events.spec.ts` |
 | `32.12` | Arquivo de liquidação de exemplo com tarifas, estornos e chargebacks; linha ambígua não muda saldo. | `plugins/suinda/mercado-pago-settlement.spec.ts`, `plugins/suinda-accounting.spec.ts`, `plugins/financial-reconciliation-csv.spec.ts` |
 | `32.13` | Upsert/delete e retirada de consentimento via contrato CRM vendor-neutral. | `plugins/suinda-crm.spec.ts` |
 | `32.14` | Contas e lote diário ERP sintéticos; validação de equilíbrio, reenvio e trilha imutável. | `plugins/suinda-accounting.spec.ts` |
-| `32.16` | Rotas OIDC, conta Orbit existente e limites de autenticação de fixture; sem tenant SSO real. | `access/access.spec.ts`, `access/auth-lifecycle.spec.ts` |
+| `32.16` | Callback OIDC e vínculo a conta Orbit sintética com issuer, audience, nonce, expiração, e-mail verificado e assinatura inválidos rejeitados; sem tenant SSO real. | `access/access.spec.ts`, `access/auth-lifecycle.spec.ts`, `access/social-login.spec.ts` |
 | `33.15–33.19` | Catálogo elegível, RAG por matrícula, revisão docente, embeddings e transcrição sintéticos. | `plugins/suinda/learning-assistant.spec.ts`, `plugins/ai/knowledge-retrieval.spec.ts`, `plugins/suinda/suinda-transcription.spec.ts` |
 
-As duas specs adicionais do runner cobrem regras do auditor editorial e a emissão Open Badges offline: `plugins/suinda/accessibility-audit.spec.ts` e `plugins/suinda-open-badges.spec.ts`. Elas dão exemplos reproduzíveis para os requisitos parciais `31.9` e `32.15`, mas não transformam esses itens em completos.
+As duas specs adicionais do runner cobrem regras do auditor editorial e a emissão Open Badges offline: plugins/suinda/accessibility-audit.spec.ts e plugins/suinda-open-badges.spec.ts. A spec editorial agora percorre um curso sintético com artigo, imagens, tabela, áudio, vídeo WebVTT, vídeo externo, PDF e apresentação, além de material legado com lacunas. Elas dão exemplos reproduzíveis para os requisitos parciais 31.9 e 32.15, mas não transformam esses itens em completos.
 
 ## Cobertura que permanece fora da simulação
 
-- `1.3` e `32.16`: discovery e guardas são cobertos; ainda falta uma jornada completa de callback OIDC com provedor local falso, troca de token, `iss`/`aud`, nonce e vinculação da conta.
-- `29.3`: testar parsing/allowlist local não comprova propriedade de domínio, DNS, TLS público, cookies nem roteamento externo.
+- `1.3` e `32.16`: a jornada completa é coberta com um IdP inteiramente falso, incluindo troca de token, `iss`/`aud`, nonce, assinatura e vínculo. A fixture não comprova interoperabilidade com um tenant/provedor real; a homologação de produção permanece externa.
+- `29.3`: Express local verifica o comportamento do proxy confiável e o bloqueio de requests inseguros, mas não comprova propriedade de domínio, DNS, TLS público, cookies nem roteamento externo.
 - `31.9`: fixtures editoriais não substituem conteúdo de curso representativo fornecido pela instituição nem revisão assistiva independente.
 - `32.15`: assinatura, esquema, JWKS e status list são validados offline; a suíte 1EdTech hosted, URL HTTPS pública, demonstração e aprovação institucional ficam pendentes.
 - Nos demais conectores, o resultado prova comportamento do contrato diante de dados sintéticos. Não prova disponibilidade, permissões, limites, entrega ou certificação de Google, Microsoft, Zoom, Meta, gateway, CRM, ERP, SMTP, VAPID ou provedor de IA.

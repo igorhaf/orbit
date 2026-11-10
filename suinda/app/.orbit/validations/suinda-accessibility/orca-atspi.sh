@@ -38,8 +38,16 @@ EOF
     node .orbit/validations/suinda-accessibility/authenticated-routes.browser.mjs >"$test_dir/authenticated-report.json" 2>&1
     test_code=$?
     set -e
-    jq '\''{routes_requested, route_viewports, routes_covered: ([.results[].route] | unique), api_requests_intercepted, generic_fixture_fallback_requests, atspi_failures, axe_violations_by_rule, responsive_failures, runtime_errors, unnamed_controls: [.results[] | select((.atspi_tree.unnamed_interactive_controls // []) | length > 0) | {route, viewport, controls: .atspi_tree.unnamed_interactive_controls}], heading_failures: [.results[] | select(.atspi_tree.expected_heading_seen != true) | {route, viewport, atspi_tree}], skip_link_focus_failures: [.results[] | select(.atspi_tree.focused_accessible_object.focused != true or .atspi_tree.focused_accessible_object.name != "Ir para o conteúdo principal") | {route, viewport, atspi_tree}]} '\'' "$test_dir/authenticated-report.json"
-    if [[ "$test_code" -ne 0 ]]; then exit "$test_code"; fi
+    if [[ "$test_code" -ne 0 ]]; then
+      echo "O runner de acessibilidade autenticada falhou; saída integral:" >&2
+      cat "$test_dir/authenticated-report.json" >&2
+      exit "$test_code"
+    fi
+    if ! jq '\''{routes_requested, route_viewports, routes_covered: ([.results[].route] | unique), api_requests_intercepted, generic_fixture_fallback_requests, atspi_failures, axe_violations_by_rule, responsive_failures, runtime_errors, unnamed_controls: [.results[] | select((.atspi_tree.unnamed_interactive_controls // []) | length > 0) | {route, viewport, controls: .atspi_tree.unnamed_interactive_controls}], heading_failures: [.results[] | select(.atspi_tree.expected_heading_seen != true) | {route, viewport, atspi_tree}], skip_link_focus_failures: [.results[] | select(.atspi_tree.focused_accessible_object.focused != true or .atspi_tree.focused_accessible_object.name != "Ir para o conteúdo principal") | {route, viewport, atspi_tree}]} '\'' "$test_dir/authenticated-report.json"; then
+      echo "O runner retornou código zero, mas seu relatório não é JSON válido:" >&2
+      cat "$test_dir/authenticated-report.json" >&2
+      exit 1
+    fi
   else
     node .orbit/validations/suinda-accessibility/atspi-tree.browser.mjs
   fi

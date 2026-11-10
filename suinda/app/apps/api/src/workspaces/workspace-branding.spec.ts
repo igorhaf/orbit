@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import express from 'express';
 import test from 'node:test';
 import { HttpException } from '@nestjs/common';
-import { WorkspaceBrandingService } from './workspace-branding';
+import { PublicWorkspaceBrandingController, WorkspaceBrandingService } from './workspace-branding';
 
 const workspaceA = '22222222-2222-4222-8222-222222222222';
 const workspaceB = '33333333-3333-4333-8333-333333333333';
@@ -31,8 +32,7 @@ function makeService(options: { row?: typeof pending | null; updateRow?: typeof 
       if (options.denyWorkspace === workspace) throw new HttpException('Compartilhamento não autorizado.', 403);
     },
   };
-  const access = { registerRoutes() {} };
-  return { service: new WorkspaceBrandingService(db as never, workspaces as never, access as never), statements };
+  return { service: new WorkspaceBrandingService(db as never, workspaces as never), statements };
 }
 
 test('branding validates public domains and logo URLs before writes', async () => {
@@ -74,8 +74,8 @@ test('TXT verification confirms only the same workspace, domain and token that w
   const verified = { ...pending, domain_verified_at: new Date('2026-10-24T00:00:00Z') };
   const { service, statements } = makeService({ updateRow: verified });
   const result = await service.verify(actor, workspaceA, async queryName => {
-    assert.equal(queryName, `_suinda-verification.${pending.custom_domain}`);
-    return [['suinda-domain-verification=token-a']];
+    assert.equal(queryName, `_orbit-verification.${pending.custom_domain}`);
+    return [['orbit-domain-verification=token-a']];
   });
   assert.equal(result.domain_verified, true);
   const update = statements.find(item => item.sql.includes('UPDATE workspace_branding SET domain_verified_at'));
@@ -85,9 +85,83 @@ test('TXT verification confirms only the same workspace, domain and token that w
 
 test('TXT verification rejects stale configuration after DNS lookup', async () => {
   const { service, statements } = makeService({ updateRow: null });
-  await assert.rejects(service.verify(actor, workspaceA, async () => [['suinda-domain-verification=token-a']]),
+  await assert.rejects(service.verify(actor, workspaceA, async () => [['orbit-domain-verification=token-a']]),
     (error: unknown) => error instanceof HttpException && error.getStatus() === 409);
   assert.equal(statements.some(item => item.sql.startsWith('INSERT INTO access_audit')), false);
+});
+
+test('public branding uses the Express hostname selected by the trusted-proxy configuration', async () => {
+  const seen: Array<string | undefined> = [];
+  const controller = new PublicWorkspaceBrandingController({
+    async publicForHost(host: string | undefined) { seen.push(host); return null; },
+  } as never);
+  await controller.current({ secure: true, hostname: 'verified.school.example.org', headers: { 'x-forwarded-host': 'attacker.example.net', host: 'internal-api:4000' } } as never);
+  assert.deepEqual(seen, ['verified.school.example.org']);
+});
+
+test('public branding does not activate for a verified host over an insecure request', async () => {
+  const seen: Array<string | undefined> = [];
+  const controller = new PublicWorkspaceBrandingController({
+    async publicForHost(host: string | undefined) { seen.push(host); return null; },
+  } as never);
+  const result = await controller.current({ secure: false, hostname: 'verified.school.example.org', headers: {} } as never);
+  assert.equal(result, null);
+  assert.deepEqual(seen, []);
+});
+
+test('domain branding requires HTTPS from a trusted proxy and ignores untrusted forwarded headers', async () => {
+  const observedHosts: string[] = [];
+  const controller = new PublicWorkspaceBrandingController({
+    async publicForHost(host: string | undefined) { if (host) observedHosts.push(host); return host || null; },
+  } as never);
+  const trustedApp = express();
+  trustedApp.set('trust proxy', ['127.0.0.1']);
+  trustedApp.get('/host', async (request, response) => {
+    const branding = await controller.current(request as never);
+    if (branding === null) { response.status(404).end(); return; }
+    response.json(branding);
+  });
+  const untrustedApp = express();
+  untrustedApp.get('/host', async (request, response) => {
+    const branding = await controller.current(request as never);
+    if (branding === null) { response.status(404).end(); return; }
+    response.json(branding);
+  });
+  const servers: Array<ReturnType<typeof trustedApp.listen>> = [];
+  try {
+    const trustedServer = trustedApp.listen(0, '127.0.0.1');
+    const untrustedServer = untrustedApp.listen(0, '127.0.0.1');
+    servers.push(trustedServer, untrustedServer);
+    await Promise.all(servers.map(server => new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    })));
+    const trustedAddress = trustedServer.address();
+    const untrustedAddress = untrustedServer.address();
+    assert.ok(trustedAddress && typeof trustedAddress === 'object');
+    assert.ok(untrustedAddress && typeof untrustedAddress === 'object');
+
+    const untrustedProxyResponse = await fetch(`http://127.0.0.1:${untrustedAddress.port}/host`, {
+      headers: { 'x-forwarded-host': 'attacker.example.net', 'x-forwarded-proto': 'https' },
+    });
+    assert.equal(untrustedProxyResponse.status, 404, 'untrusted forwarding metadata cannot activate branding');
+
+    const insecureResponse = await fetch(`http://127.0.0.1:${trustedAddress.port}/host`, {
+      headers: { 'x-forwarded-host': 'courses.example.org', 'x-forwarded-proto': 'http' },
+    });
+    assert.equal(insecureResponse.status, 404, 'a trusted proxy forwarding an HTTP request cannot activate branding');
+    assert.deepEqual(observedHosts, []);
+
+    const secureResponse = await fetch(`http://127.0.0.1:${trustedAddress.port}/host`, {
+      headers: { 'x-forwarded-host': 'courses.example.org', 'x-forwarded-proto': 'https' },
+    });
+    assert.equal(secureResponse.status, 200);
+    assert.equal(await secureResponse.json(), 'courses.example.org');
+    assert.deepEqual(observedHosts, ['courses.example.org']);
+  } finally {
+    await Promise.all(servers.map(server => new Promise<void>((resolve, reject) =>
+      server.close(error => error ? reject(error) : resolve()))));
+  }
 });
 
 test('host branding is returned only through verified-domain and active-workspace filtering', async () => {

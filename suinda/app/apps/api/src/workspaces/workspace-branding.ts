@@ -5,7 +5,7 @@ import { domainToASCII } from 'node:url';
 import { resolveTxt } from 'node:dns/promises';
 import type { Request } from 'express';
 import { Db } from '../db';
-import { AccessRequest, AccessService, id } from '../access/access';
+import { AccessRequest, id } from '../access/access';
 import { WorkspacesService } from './workspaces.plugin';
 import type { PluginDefinition } from '../plugins/contract';
 
@@ -61,7 +61,7 @@ function safeLogo(value: unknown): string | null {
 
 @Injectable()
 export class WorkspaceBrandingService {
-  constructor(@Inject(Db) private readonly db: Db, @Inject(WorkspacesService) private readonly workspaces: WorkspacesService, @Inject(AccessService) private readonly access: AccessService) {}
+  constructor(@Inject(Db) private readonly db: Db, @Inject(WorkspacesService) private readonly workspaces: WorkspacesService) {}
 
   async read(actor: string, workspaceId: string) {
     id(workspaceId); await this.workspaces.shared(actor, workspaceId, true);
@@ -73,7 +73,7 @@ export class WorkspaceBrandingService {
     return { workspace_id: row.workspace_id, public_name: row.public_name, logo_url: row.logo_url,
       primary_color: row.primary_color, accent_color: row.accent_color, custom_domain: row.custom_domain,
       domain_verified: Boolean(row.domain_verified_at),
-      verification_record: row.custom_domain && row.domain_verification_token ? { type: 'TXT', name: `_suinda-verification.${row.custom_domain}`, value: `suinda-domain-verification=${row.domain_verification_token}` } : null };
+      verification_record: row.custom_domain && row.domain_verification_token ? { type: 'TXT', name: `_orbit-verification.${row.custom_domain}`, value: `orbit-domain-verification=${row.domain_verification_token}` } : null };
   }
 
   async update(actor: string, workspaceId: string, body: BrandingInput) {
@@ -113,9 +113,9 @@ export class WorkspaceBrandingService {
     id(workspaceId); await this.workspaces.shared(actor, workspaceId, true);
     const row = await this.db.one<BrandingRow>('SELECT * FROM workspace_branding WHERE workspace_id=$1', [workspaceId]);
     if (!row?.custom_domain || !row.domain_verification_token) throw new HttpException('Configure um domínio antes de verificar.', 409);
-    const expected = `suinda-domain-verification=${row.domain_verification_token}`;
+    const expected = `orbit-domain-verification=${row.domain_verification_token}`;
     try {
-      const records = await lookup(`_suinda-verification.${row.custom_domain}`);
+      const records = await lookup(`_orbit-verification.${row.custom_domain}`);
       if (!records.some(parts => parts.join('') === expected)) throw new HttpException('O registro TXT ainda não corresponde. Confira o valor e tente novamente após a propagação do DNS.', 409);
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -153,8 +153,7 @@ export class WorkspaceBrandingController {
 export class PublicWorkspaceBrandingController {
   constructor(@Inject(WorkspaceBrandingService) private readonly branding: WorkspaceBrandingService) {}
   @Get('host') current(@Req() req: Request) {
-    const forwarded = req.headers['x-forwarded-host'];
-    const host = Array.isArray(forwarded) ? forwarded[0] : forwarded || req.headers.host;
-    return this.branding.publicForHost(host);
+    if (!req.secure) return null;
+    return this.branding.publicForHost(req.hostname);
   }
 }

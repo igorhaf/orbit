@@ -1,3 +1,4 @@
+import {assertCoreCompatibility} from '../plugins/core-compatibility';
 import Ajv from 'ajv';
 import {Executor,ExecutionInput,Integration,Output,Plugin,PluginAction} from './types';
 import {ActionDefinition,CapabilityDefinition,PluginActionContext,PluginDefinition} from '../plugins/contract';
@@ -18,6 +19,7 @@ export class PluginRegistry {
   private id(value:string,label:string){if(!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(value))throw new Error(`${label} inválido: ${value}`)}
   private unique<T extends {id:string}>(items:T[],label:string){const ids=new Set<string>();for(const item of items){this.id(item.id,label);if(ids.has(item.id))throw new Error(`${label} duplicado: ${item.id}`);ids.add(item.id)}}
   register(plugin:Plugin){
+    assertCoreCompatibility(plugin);
     this.id(plugin.id,'Plugin');if(this.items.has(plugin.id))throw new Error('Plugin duplicado.');
     if(!plugin.version||!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(plugin.version))throw new Error(`Versão inválida para ${plugin.id}.`);
     const capabilities=plugin.capabilities||[],actions=plugin.actions||[],notifications=plugin.contributions?.notifications||[];
@@ -39,14 +41,13 @@ export class PluginRegistry {
     const known=new Set(capabilities.map(item=>item.id));
     for(const action of actions){for(const capability of action.requiredCapabilities||[])if(!known.has(capability))throw new Error(`Capability não registrada: ${capability}`);this.ajv.compile(action.inputSchema);if(action.outputSchema)this.ajv.compile(action.outputSchema)}
     if(plugin.connectionProvider){this.id(plugin.connectionProvider.id,'Connection provider');for(const capability of plugin.connectionProvider.capabilities)if(!known.has(capability))throw new Error(`Capability não registrada: ${capability}`)}
-    if(plugin.recordEvents){
-      this.id(plugin.recordEvents.sourcePluginId,'Webhook source plugin');
-      const events=plugin.recordEvents.events;
-      if(!plugin.dependencies?.includes(plugin.recordEvents.sourcePluginId)||typeof plugin.recordEvents.onSnapshot!=='function'||!Array.isArray(events)||!events.length||new Set(events.map(event=>event.type)).size!==events.length||events.some(event=>!(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(event.type))||event.type.startsWith('record.')||!event.type.startsWith(`${plugin.recordEvents!.sourcePluginId}.`)||!event.label?.trim()||!Number.isInteger(event.version)||event.version<1))throw new Error(`Eventos de registro inválidos para ${plugin.id}.`);
-    }
     this.unique(plugin.contributions?.cardLayouts||[],'Card layout');
     this.unique(plugin.contributions?.cardTypes||[],'Card type');
     this.unique(plugin.contributions?.boardViews||[],'Board view');
+    if(plugin.recordEvents){
+      const events=plugin.recordEvents.events;
+      if(!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(plugin.recordEvents.sourcePluginId)||!plugin.dependencies?.includes(plugin.recordEvents.sourcePluginId)||typeof plugin.recordEvents.onSnapshot!=='function'||!Array.isArray(events)||!events.length||new Set(events.map(event=>event.type)).size!==events.length||events.some(event=>!(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(event.type))||event.type.startsWith('record.')||!event.type.startsWith(`${plugin.recordEvents!.sourcePluginId}.`)||!event.label?.trim()||!Number.isInteger(event.version)||event.version<1))throw new Error(`Eventos de registro inválidos para ${plugin.id}.`);
+    }
     const recordKinds=plugin.contributions?.recordKinds||{};
     for(const [kind,definition] of Object.entries(recordKinds)){
       this.id(kind,'Record kind');

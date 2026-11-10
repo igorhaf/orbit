@@ -10815,11 +10815,15 @@ private async canReadTeachingAccessibilityCourse(user: string, course: Extension
          AND ($1::uuid IS NULL OR r.id>$1::uuid) ORDER BY r.id LIMIT 250`, [after],
       );
       if (!candidates.length) { exhausted = true; break; }
-      for (const course of candidates) {
-        after = course.id;
-        if (await this.canReadTeachingAccessibilityCourse(user, course))
-          items.push({ id: course.id, title: course.title });
-        if (items.length > limit) break;
+      for (let offset = 0; offset < candidates.length && items.length <= limit; offset += 16) {
+        const batch = candidates.slice(offset, offset + 16);
+        const readable = await Promise.all(batch.map((course) => this.canReadTeachingAccessibilityCourse(user, course)));
+        for (let index = 0; index < batch.length; index += 1) {
+          const course = batch[index]!;
+          after = course.id;
+          if (readable[index]) items.push({ id: course.id, title: course.title });
+          if (items.length > limit) break;
+        }
       }
       if (candidates.length < 250) exhausted = true;
     }
@@ -10885,7 +10889,11 @@ private async canReadTeachingAccessibilityCourse(user: string, course: Extension
         }, files), attachments: files,
       };
     });
-    for (const lesson of page) await this.access.audit(user, "suinda-learning.teaching.accessibility-audit.read", lesson.id, { type: "extension_record", id: lesson.id });
+    for (let offset = 0; offset < page.length; offset += 16) {
+      await Promise.all(page.slice(offset, offset + 16).map((lesson) =>
+        this.access.audit(user, "suinda-learning.teaching.accessibility-audit.read", lesson.id, { type: "extension_record", id: lesson.id }),
+      ));
+    }
     return { items, next_cursor: hasMore ? page.at(-1)!.id : null, complete: !hasMore };
   }
 

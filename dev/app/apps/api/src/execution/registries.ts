@@ -1,3 +1,4 @@
+import {assertCoreCompatibility} from '../plugins/core-compatibility';
 import Ajv from 'ajv';
 import {Executor,ExecutionInput,Integration,Output,Plugin,PluginAction} from './types';
 import {ActionDefinition,CapabilityDefinition,PluginActionContext,PluginDefinition} from '../plugins/contract';
@@ -18,6 +19,7 @@ export class PluginRegistry {
   private id(value:string,label:string){if(!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(value))throw new Error(`${label} inválido: ${value}`)}
   private unique<T extends {id:string}>(items:T[],label:string){const ids=new Set<string>();for(const item of items){this.id(item.id,label);if(ids.has(item.id))throw new Error(`${label} duplicado: ${item.id}`);ids.add(item.id)}}
   register(plugin:Plugin){
+    assertCoreCompatibility(plugin);
     this.id(plugin.id,'Plugin');if(this.items.has(plugin.id))throw new Error('Plugin duplicado.');
     if(!plugin.version||!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(plugin.version))throw new Error(`Versão inválida para ${plugin.id}.`);
     const capabilities=plugin.capabilities||[],actions=plugin.actions||[],notifications=plugin.contributions?.notifications||[];
@@ -51,12 +53,15 @@ export class PluginRegistry {
       this.id(kind,'Record kind');
       if(!definition||typeof definition.label!=='string'||!definition.label.trim()||typeof definition.initial!=='string'||!definition.initial.trim()||!definition.transitions||typeof definition.transitions!=='object'||Array.isArray(definition.transitions)||!definition.example||typeof definition.example!=='object'||Array.isArray(definition.example))throw new Error(`Tipo de registro inválido para ${plugin.id}.${kind}.`);
       for(const [state,next] of Object.entries(definition.transitions))if(!state.trim()||!Array.isArray(next)||next.some(value=>typeof value!=='string'||!value.trim()))throw new Error(`Transições inválidas para ${plugin.id}.${kind}.`);
+      if(definition.stateLabels!==undefined&&(!definition.stateLabels||typeof definition.stateLabels!=='object'||Array.isArray(definition.stateLabels)||Object.entries(definition.stateLabels).some(([state,label])=>!Object.hasOwn(definition.transitions,state)||typeof label!=='string'||!label.trim())))throw new Error(`Rótulos de estado inválidos para ${plugin.id}.${kind}.`);
       for(const action of definition.detailActions||[]){
         if(!/^[a-z][a-z0-9_-]{1,60}$/.test(action.id)||!action.label?.trim()||(action.retryLabel!==undefined&&(typeof action.retryLabel!=='string'||!action.retryLabel.trim()))||!Array.isArray(action.states)||!action.states.length||action.states.some(state=>typeof state!=='string'||!state.trim())||!['write','publish'].includes(action.permission)||!action.path?.startsWith('/')||action.path.startsWith('//')||/[\r\n]/.test(action.path)||(action.ownsTransitions!==undefined&&typeof action.ownsTransitions!=='boolean'))throw new Error(`Ação de registro inválida para ${plugin.id}.${kind}.`);
         if(action.download&&(!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.recordIdField)||!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.revisionField)||!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.fileNameField)||!action.download.path.startsWith('/')||action.download.path.startsWith('//')||/[\r\n]/.test(action.download.path)))throw new Error(`Download inválido para ${plugin.id}.${kind}.${action.id}.`);
       }
       if(definition.immutable!==undefined&&(!Array.isArray(definition.immutable)||definition.immutable.some(state=>typeof state!=='string'||!state.trim())))throw new Error(`Estados imutáveis inválidos para ${plugin.id}.${kind}.`);
       if(definition.uniqueFields!==undefined&&(!Array.isArray(definition.uniqueFields)||new Set(definition.uniqueFields).size!==definition.uniqueFields.length||definition.uniqueFields.some(field=>typeof field!=='string'||!(/^[a-z][a-z0-9_]*$/.test(field))||!Object.hasOwn(definition.schema.properties||{},field))))throw new Error(`Campos únicos inválidos para ${plugin.id}.${kind}.`);
+      if(definition.selfServiceCreate!==undefined&&(typeof definition.selfServiceCreate!=='boolean'||definition.selfServiceCreate&&(!definition.resourceScoped||!definition.personalOwnerField||!Object.hasOwn(definition.schema.properties||{},definition.personalOwnerField))))throw new Error(`Criação individual inválida para ${plugin.id}.${kind}.`);
+      if(definition.publicRead!==undefined&&(!Array.isArray(definition.publicRead.states)||!definition.publicRead.states.length||definition.publicRead.states.some(state=>typeof state!=='string'||!Object.hasOwn(definition.transitions,state))||!Array.isArray(definition.publicRead.fields)||!definition.publicRead.fields.length||new Set(definition.publicRead.fields).size!==definition.publicRead.fields.length||definition.publicRead.fields.some(field=>typeof field!=='string'||!Object.hasOwn(definition.schema.properties||{},field))))throw new Error(`Projeção pública inválida para ${plugin.id}.${kind}.`);
       if(definition.validate!==undefined&&typeof definition.validate!=='function')throw new Error(`Validador semântico inválido para ${plugin.id}.${kind}.`);
       if(definition.resourceScoped!==undefined&&typeof definition.resourceScoped!=='boolean')throw new Error(`Escopo de registro inválido para ${plugin.id}.${kind}.`);
       if(definition.serverCreated!==undefined&&typeof definition.serverCreated!=='boolean')throw new Error(`Origem de criação inválida para ${plugin.id}.${kind}.`);
@@ -97,8 +102,8 @@ export class PluginRegistry {
     for(const layout of plugin.contributions?.cardLayouts||[])for(const field of layout.fields||[])if(field.childDefault&&field.type==='select'&&!field.options?.some(option=>option.value===field.childDefault))throw new Error('Valor de filho fora das opções do layout.');
     for(const type of plugin.contributions?.cardTypes||[])if(!type.name||!Array.isArray(type.slots||[])||(type.slots||[]).some(slot=>typeof slot!=='string'||!slot))throw new Error('Tipo de cartão inválido.');
 
-    if(plugin.parentPlugin){this.id(plugin.parentPlugin,'Parent plugin');if(plugin.parentPlugin===plugin.id)throw new Error('Plugin não pode estender a si mesmo.');if(!plugin.dependencies?.includes(plugin.parentPlugin))throw new Error(`Plugin filho ${plugin.id} precisa declarar dependência do pai ${plugin.parentPlugin}.`);}
     for(const dependency of plugin.dependencies||[]){this.id(dependency,'Dependency');if(dependency===plugin.id)throw new Error('Plugin não pode depender de si mesmo.');}
+    if(plugin.parentPlugin){this.id(plugin.parentPlugin,'Parent plugin');if(plugin.parentPlugin===plugin.id)throw new Error('Plugin não pode estender a si mesmo.');if(!plugin.dependencies?.includes(plugin.parentPlugin))throw new Error(`Plugin filho ${plugin.id} precisa declarar dependência do pai ${plugin.parentPlugin}.`);}
     this.items.set(plugin.id,{...plugin,capabilities,actions});
     try{this.dependencyChain(plugin.id,false)}catch(error){this.items.delete(plugin.id);throw error}
 
@@ -129,6 +134,11 @@ export class PluginRegistry {
 
   setEnabled(id:string,enabled:boolean){this.getById(id);if(enabled)this.disabled.delete(id);else this.disabled.add(id)}
   list(){return [...this.items.values()].filter(plugin=>!this.isHidden(plugin.id))}
+  recordAccessPolicies(targetPluginId:string,targetKind:string){
+    return this.list().flatMap(plugin=>(plugin.recordAccessPolicies||[])
+      .filter(policy=>(this.isEnabled(plugin.id)||policy.enforceWhenDisabled===true)
+        &&policy.targetPluginId===targetPluginId&&policy.targetKind===targetKind));
+  }
   getAction(pluginId:string,actionId:string):ActionDefinition{if(!this.isEnabled(pluginId))throw new Error(`O plugin ${pluginId} está desativado.`);const action=(this.getById(pluginId).actions||[]).find(item=>item.id===actionId);if(!action)throw new Error(`Action não registrada: ${pluginId}.${actionId}`);return action}
   getCapability(pluginId:string,capabilityId:string):CapabilityDefinition{if(!this.isEnabled(pluginId))throw new Error(`O plugin ${pluginId} está desativado.`);const capability=(this.getById(pluginId).capabilities||[]).find(item=>item.id===capabilityId);if(!capability)throw new Error(`Capability não registrada: ${pluginId}.${capabilityId}`);return capability}
   connectionProviders(){return this.list().filter(plugin=>this.isEnabled(plugin.id)).flatMap(plugin=>plugin.connectionProvider?[{pluginId:plugin.id,...plugin.connectionProvider}]:[])}

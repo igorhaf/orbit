@@ -47,8 +47,8 @@
    api-prod:
      build:
 @@ -70,22 +76,25 @@
-       - ./safdoulas-v2:/host-projects/safdoulas-v2:rw
-       - safdoulas_v2_node_modules:/host-projects/safdoulas-v2/app/node_modules:ro
+       - ./safdoulas:/host-projects/safdoulas:rw
+       - safdoulas_v2_node_modules:/host-projects/safdoulas/app/node_modules:ro
        - /home/meada/.codex/auth.json:/home/meada/.codex/auth.json:ro
 -    ports: ['127.0.0.1:4000:4000']
 -    networks: [prod_db_net, prod_net, control_net]
@@ -169,7 +169,7 @@
    control:
      build:
 @@ -184,27 +205,30 @@
-       - ./safdoulas-v2/data/config:/home/meada/projetos/orbit/safdoulas-v2/data/config:rw
+       - ./safdoulas/data/config:/home/meada/projetos/orbit/safdoulas/data/config:rw
        - ./control/backups:/control/backups:rw
        - ./control/snapshots:/control/snapshots:rw
 -    networks: [control_net, prod_db_net, dev_db_net]

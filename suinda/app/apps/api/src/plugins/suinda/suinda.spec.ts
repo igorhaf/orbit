@@ -165,6 +165,38 @@ test("a auditoria de acessibilidade pagina todos os cursos atribuídos além do 
   assert.equal(second.next_cursor, null);
 });
 
+test("a auditoria de acessibilidade verifica permissões em lotes limitados sem reordenar cursos", async () => {
+  const user = "teacher-a";
+  const workspaceId = randomUUID();
+  const records = Array.from({ length: 40 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    workspace_id: workspaceId, plugin_id: "suinda-learning", kind: "course", title: `Curso ${index + 1}`,
+    state: "published", revision: 1, payload: {},
+  }));
+  const db = { async query(_sql: string, args: unknown[] = []) {
+    const after = String(args[0] || "");
+    return records.filter((record) => record.id > after).slice(0, 250);
+  } };
+  const service = new ExtensionRecords(db as never, { async has() { return false; } } as never,
+    learningRegistry(), new DocumentScanner());
+  let active = 0;
+  let peak = 0;
+  Object.assign(service, { async canReadTeachingAccessibilityCourse() {
+    active += 1; peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    active -= 1;
+    return true;
+  } });
+
+  const page = await service.teachingAccessibilityAuditCourses(user, undefined, 20);
+
+  assert.equal(peak, 16);
+  assert.equal(page.items.length, 20);
+  assert.deepEqual(page.items.map((item) => item.id), records.slice(0, 20).map((record) => record.id));
+  assert.equal(page.next_cursor, records[19]!.id);
+  assert.equal(page.complete, false);
+});
+
 test("a auditoria paginada associa anexos à revisão exata da aula", async () => {
   const user = "teacher-a";
   const workspaceId = randomUUID();
@@ -213,6 +245,46 @@ test("a auditoria paginada associa anexos à revisão exata da aula", async () =
   assert.match(attachmentQuery.sql, /unnest\(\$1::uuid\[\],\$2::integer\[\]\)/);
   assert.deepEqual(attachmentQuery.args, [[lessonId, nextLessonId], [1, 2]]);
   assert.deepEqual(lessonQuery.args, [workspaceId, "00000000-0000-0000-0000-000000000000", courseId, 3, "2", 3]);
+});
+
+test("a auditoria paginada aguarda todos os eventos de leitura com concorrência limitada", async () => {
+  const user = "teacher-a";
+  const workspaceId = randomUUID();
+  const courseId = randomUUID();
+  const lessons = Array.from({ length: 40 }, (_, index) => ({
+    id: randomUUID(), workspace_id: workspaceId, plugin_id: "suinda-learning", kind: "lesson",
+    title: `Aula ${index + 1}`, state: "published", revision: 1, payload: { content_type: "article" },
+  }));
+  const course = { id: courseId, workspace_id: workspaceId, plugin_id: "suinda-learning", kind: "course", title: "Curso",
+    state: "published", revision: 1, payload: { instructor_ids: [user], version: 1 } };
+  const db = {
+    async one() { return course; },
+    async query(sql: string) {
+      if (sql.includes("JOIN extension_records m")) return lessons;
+      return [];
+    },
+  };
+  let active = 0;
+  let peak = 0;
+  const logged: string[] = [];
+  const access = {
+    async has() { return false; },
+    async audit(_user: string, action: string, target: string) {
+      assert.equal(action, "suinda-learning.teaching.accessibility-audit.read");
+      active += 1; peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      logged.push(target); active -= 1;
+    },
+  };
+  const service = new ExtensionRecords(db as never, access as never, learningRegistry(), new DocumentScanner());
+  Object.assign(service, { async canReadTeachingAccessibilityCourse() { return true; } });
+
+  const page = await service.teachingAccessibilityAuditLessons(user, courseId, undefined, 40);
+
+  assert.equal(page.items.length, 40);
+  assert.equal(peak, 16);
+  assert.equal(logged.length, 40);
+  assert.deepEqual(new Set(logged), new Set(lessons.map((lesson) => lesson.id)));
 });
 
 test("a fila de moderação pré-filtra denúncias por workspace, unidade ou atribuição antes de projetar pessoas", async () => {

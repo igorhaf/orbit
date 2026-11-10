@@ -19,10 +19,17 @@ export const routePermission=permissionForRoute;
 
 @Injectable()
 export class AccessService {
+ private recordPermissionProviders:Array<(user:string,plugin:string,kind:string,recordId:string,action:string)=>Promise<boolean|null>>=[];
+ registerRecordPermissionProvider(provider:(user:string,plugin:string,kind:string,recordId:string,action:string)=>Promise<boolean|null>){this.recordPermissionProviders.push(provider)}
+ async authorizeRecord(user:string,plugin:string,kind:string,recordId:string,action:string):Promise<boolean|null>{
+  for(const provider of this.recordPermissionProviders){const decision=await provider(user,plugin,kind,recordId,action);if(decision!==null)return decision}
+  return null
+ }
  private readonly requestContext=new AsyncLocalStorage<RequestAccessContext>();
  runRequest<T>(callback:()=>T){return this.requestContext.run({},callback)}
  private simulation(user:string){const simulation=this.requestContext.getStore()?.profileSimulation;return simulation?.actor===user?simulation:null}
  async isRootBypass(user:string){return (await this.account(user)).is_root}
+ async isRoot(user:string){return this.isRootBypass(user)}
  isProfileSimulation(user:string){return Boolean(this.simulation(user))}
  profileSimulationRoleId(user:string){return this.simulation(user)?.role.id}
  async activateProfileSimulation(actor:string,roleId:string){

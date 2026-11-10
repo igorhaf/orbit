@@ -63,8 +63,8 @@ services:
       ORBIT_ENV: production
       ORBIT_APP_NAME: Orbit
       ORBIT_APP_ICON_KIND: orbit
-      ORBIT_HOST_PROJECTS_ROOT: /home/meada/projetos/orbit/safdoulas-v2
-      ORBIT_CONTAINER_PROJECTS_ROOT: /host-projects/safdoulas-v2
+      ORBIT_HOST_PROJECTS_ROOT: /home/meada/projetos/orbit/safdoulas
+      ORBIT_CONTAINER_PROJECTS_ROOT: /host-projects/safdoulas
       ORBIT_NEXT_DIST_DIR: .next-dev
       HOME: /tmp
       CODEX_HOME: /home/meada/.codex
@@ -73,8 +73,8 @@ services:
       - ./prod/data/backups:/data/backups:rw
       - ./prod/data/root-orbit-sessions:/home/meada/projetos/orbit/.orbit/sessions:rw
       - ./prod/data/api-orbit-sessions:/home/meada/projetos/orbit/apps/api/.orbit/sessions:rw
-      - ./safdoulas-v2:/host-projects/safdoulas-v2:rw
-      - safdoulas_v2_node_modules:/host-projects/safdoulas-v2/app/node_modules:ro
+      - ./safdoulas:/host-projects/safdoulas:rw
+      - safdoulas_v2_node_modules:/host-projects/safdoulas/app/node_modules:ro
       - /home/meada/.codex/auth.json:/home/meada/.codex/auth.json:ro
     ports: [ '127.0.0.1:4000:4000' ]
     networks: [ prod_db_net, prod_net, control_net ]
@@ -199,10 +199,10 @@ services:
       - ./control/state:/control/state:rw
       - ./control/state:/home/meada/projetos/orbit/control/state:rw
       - ./prod/app:/home/meada/projetos/orbit/prod/app:rw
-      - ./safdoulas-v2/app:/home/meada/projetos/orbit/safdoulas-v2/app:rw
+      - ./safdoulas/app:/home/meada/projetos/orbit/safdoulas/app:rw
       - ./dev/data/config:/home/meada/projetos/orbit/dev/data/config:rw
       - ./prod/data/config:/home/meada/projetos/orbit/prod/data/config:rw
-      - ./safdoulas-v2/data/config:/home/meada/projetos/orbit/safdoulas-v2/data/config:rw
+      - ./safdoulas/data/config:/home/meada/projetos/orbit/safdoulas/data/config:rw
       - ./control/backups:/control/backups:rw
       - ./control/snapshots:/control/snapshots:rw
     networks: [ control_net, prod_db_net, dev_db_net ]

@@ -120,9 +120,12 @@ test("generic personal record history includes records beyond the previous 500 r
 
 test("enabled child-plugin policies can remove restricted records from public projections", async () => {
   const workspaceId = "00000000-0000-4000-8000-000000000041";
-  const rows = ["public-course", "corporate-course"].map((id) => ({ id, workspace_id: workspaceId, workspace_name: "Workspace",
-    plugin_id: "policy-fixture", kind: "course", title: id, state: "published", revision: 1, payload: { summary: "public" }, created_by: "owner", updated_by: "owner" }));
-  const db = { async query() { return rows; }, async one() { return null; } };
+  const rows = [
+    { id: "00000000-0000-4000-8000-000000000043", title: "public-course" },
+    { id: "00000000-0000-4000-8000-000000000044", title: "corporate-course" },
+  ].map(({ id, title }) => ({ id, workspace_id: workspaceId, workspace_name: "Workspace",
+    plugin_id: "policy-fixture", kind: "course", title, state: "published", revision: 1, payload: { summary: "public" }, created_by: "owner", updated_by: "owner" }));
+  const db = { async query() { return rows; }, async one(sql: string) { return sql.includes("FROM extension_records") ? rows[1] : null; } };
   const access = { registerRoutes() {}, registerScope() {}, registerMembership() {}, async has() { return true; }, async audit() {} };
   const registry = new PluginRegistry();
   registry.register({ id: "policy-fixture", name: "Policy fixture", version: "1.0.0", contributions: { recordKinds: { course: {
@@ -130,10 +133,11 @@ test("enabled child-plugin policies can remove restricted records from public pr
     example: { summary: "Public" }, publicRead: { states: ["published"], fields: ["summary"] },
   } } } });
   registry.register({ id: "policy-child", name: "Policy child", version: "1.0.0", recordAccessPolicies: [{ targetPluginId: "policy-fixture", targetKind: "course",
-    async isPubliclyAvailable(record) { return record.id !== "corporate-course"; } }] });
+    async isPubliclyAvailable(record) { return record.id !== "00000000-0000-4000-8000-000000000044"; } }] });
   const service = new ExtensionRecords(db as never, access as never, registry, new DocumentScanner());
   const visible = await service.publicList("policy-fixture", "course");
-  assert.deepEqual(visible.map((record) => record.id), ["public-course"]);
+  assert.deepEqual(visible.map((record) => record.id), ["00000000-0000-4000-8000-000000000043"]);
+  await assert.rejects(service.publicDetail("policy-fixture", "course", "00000000-0000-4000-8000-000000000044"), /não encontrado ou indisponível/);
 });
 
 test("generic document download opens authenticated ciphertext only with its original file metadata", async () => {

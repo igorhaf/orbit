@@ -4,10 +4,10 @@ import "reflect-metadata";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Pool } from "pg";
+import { integrationAdminUrl } from "../../integration-test-db";
 import { Db } from "../../db";
 import { AccessService } from "../../access/access";
 import {
@@ -34,18 +34,7 @@ test(
       );
     const target = new URL(process.env.DATABASE_URL);
     target.hostname = process.env.ORBIT_TEST_DB_HOST || target.hostname;
-    const adminUrl = new URL(target);
-    const adminContainer = process.env.ORBIT_TEST_DB_CONTAINER || "orbit-db-dev";
-    adminUrl.username = execFileSync(
-      "docker",
-      ["exec", adminContainer, "printenv", "POSTGRES_USER"],
-      { encoding: "utf8" },
-    ).trim();
-    adminUrl.password = execFileSync(
-      "docker",
-      ["exec", adminContainer, "printenv", "POSTGRES_PASSWORD"],
-      { encoding: "utf8" },
-    ).trim();
+    const adminUrl = integrationAdminUrl(target);
     const schema = "extensions_test_" + randomUUID().replaceAll("-", ""),
       admin = new Pool({ connectionString: adminUrl.toString() });
     const pool = new Pool({

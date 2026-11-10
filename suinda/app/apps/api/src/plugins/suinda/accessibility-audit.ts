@@ -41,20 +41,6 @@ function hasGenericImageAlternative(value: unknown): boolean {
     || /^(?:imagem|foto|fotografia|figura|ilustracao|grafico|image|photo|picture|logotipo)(?:\s+\d+)?$/u.test(normalized);
 }
 
-function markdownImageAltTexts(markdown: string): string[] {
-  const tree = unified().use(remarkParse).parse(markdown) as { type?: string; alt?: unknown; children?: unknown[] };
-  const alternatives: string[] = [];
-  const visit = (node: unknown) => {
-    if (!node || typeof node !== "object") return;
-    const current = node as { type?: unknown; alt?: unknown; children?: unknown[] };
-    if ((current.type === "image" || current.type === "imageReference") && typeof current.alt === "string")
-      alternatives.push(current.alt);
-    if (Array.isArray(current.children)) current.children.forEach(visit);
-  };
-  visit(tree);
-  return alternatives;
-}
-
 function markdownLinkAccessibleText(node: unknown): string {
   if (!node || typeof node !== "object") return "";
   const current = node as { type?: unknown; value?: unknown; alt?: unknown; children?: unknown[] };
@@ -64,65 +50,39 @@ function markdownLinkAccessibleText(node: unknown): string {
   return current.children.map(markdownLinkAccessibleText).join("");
 }
 
-function markdownLinksWithoutAccessibleText(markdown: string): number {
-  const tree = unified().use(remarkParse).parse(markdown) as { type?: string; children?: unknown[] };
-  let count = 0;
-  const visit = (node: unknown) => {
-    if (!node || typeof node !== "object") return;
-    const current = node as { type?: unknown; children?: unknown[] };
-    if ((current.type === "link" || current.type === "linkReference")
-      && !hasAccessibleText(markdownLinkAccessibleText(current))) count += 1;
-    if (Array.isArray(current.children)) current.children.forEach(visit);
-  };
-  visit(tree);
-  return count;
-}
+const genericLinkNames = new Set(["aqui", "clique aqui", "saiba mais", "leia mais", "mais", "mais informações", "mais detalhes", "acesse", "acesse aqui", "veja aqui", "veja mais", "link"].map(normalizeAccessibilityLabel));
 
-function markdownLinksWithGenericNames(markdown: string): number {
-  const tree = unified().use(remarkParse).parse(markdown) as { type?: string; children?: unknown[] };
-  const genericNames = new Set(["aqui", "clique aqui", "saiba mais", "leia mais", "mais", "mais informações", "mais detalhes", "acesse", "acesse aqui", "veja aqui", "veja mais", "link"].map(normalizeAccessibilityLabel));
-  let count = 0;
+function markdownAccessibilitySignals(markdown: string) {
+  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as {
+    type?: unknown; alt?: unknown; depth?: unknown; children?: unknown[];
+  };
+  const imageAlts: string[] = [];
+  const headingLevels: number[] = [];
+  let unnamedLinks = 0;
+  let genericLinks = 0;
+  let unnamedTableHeaders = 0;
   const visit = (node: unknown) => {
     if (!node || typeof node !== "object") return;
-    const current = node as { type?: unknown; children?: unknown[] };
-    if (current.type === "link" || current.type === "linkReference") {
-      const name = normalizeAccessibilityLabel(markdownLinkAccessibleText(current));
-      if (genericNames.has(name) || /^(?:clique aqui|saiba mais|leia mais|veja mais)(?:\s|$)/u.test(name)) count += 1;
+    const current = node as { type?: unknown; alt?: unknown; depth?: unknown; children?: unknown[] };
+    if ((current.type === "image" || current.type === "imageReference") && typeof current.alt === "string")
+      imageAlts.push(current.alt);
+    if (current.type === "heading" && typeof current.depth === "number") headingLevels.push(current.depth);
+    if ((current.type === "link" || current.type === "linkReference")) {
+      const name = markdownLinkAccessibleText(current);
+      if (!hasAccessibleText(name)) unnamedLinks += 1;
+      const normalized = normalizeAccessibilityLabel(name);
+      if (genericLinkNames.has(normalized) || /^(?:clique aqui|saiba mais|leia mais|veja mais)(?:\s|$)/u.test(normalized)) genericLinks += 1;
     }
-    if (Array.isArray(current.children)) current.children.forEach(visit);
-  };
-  visit(tree);
-  return count;
-}
-
-function markdownHeadingLevelSkips(markdown: string): number {
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as { type?: string; depth?: number; children?: unknown[] };
-  const levels: number[] = [];
-  const visit = (node: unknown) => {
-    if (!node || typeof node !== "object") return;
-    const current = node as { type?: unknown; depth?: unknown; children?: unknown[] };
-    if (current.type === "heading" && typeof current.depth === "number") levels.push(current.depth);
-    if (Array.isArray(current.children)) current.children.forEach(visit);
-  };
-  visit(tree);
-  return levels.slice(1).filter((level, index) => level > levels[index] + 1).length;
-}
-
-function markdownTableHeaderCellsWithoutNames(markdown: string): number {
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as { type?: string; children?: unknown[] };
-  let missing = 0;
-  const visit = (node: unknown) => {
-    if (!node || typeof node !== "object") return;
-    const current = node as { type?: unknown; children?: unknown[] };
     if (current.type === "table" && Array.isArray(current.children)) {
       const header = current.children[0] as { type?: unknown; children?: unknown[] } | undefined;
       if (header?.type === "tableRow" && Array.isArray(header.children))
-        missing += header.children.filter((cell) => !hasAccessibleText(markdownLinkAccessibleText(cell))).length;
+        unnamedTableHeaders += header.children.filter((cell) => !hasAccessibleText(markdownLinkAccessibleText(cell))).length;
     }
     if (Array.isArray(current.children)) current.children.forEach(visit);
   };
   visit(tree);
-  return missing;
+  const headingSkips = headingLevels.slice(1).filter((level, index) => level > headingLevels[index]! + 1).length;
+  return { imageAlts, headingSkips, unnamedLinks, genericLinks, unnamedTableHeaders };
 }
 
 /** Reports legacy published lessons that predate publication-time accessibility checks. */
@@ -164,13 +124,12 @@ export function lessonAccessibilityGaps(
   if (genericAttachmentAlts)
     gaps.push({ code: "image_alt_generic", message: `${genericAttachmentAlts} ${genericAttachmentAlts === 1 ? "imagem usa" : "imagens usam"} texto alternativo genérico; descreva o conteúdo ou a finalidade da imagem.` });
   if (hasAccessibleText(lesson.body_markdown)) {
-    const headingLevelSkips = markdownHeadingLevelSkips(lesson.body_markdown);
-    if (headingLevelSkips)
-      gaps.push({ code: "markdown_heading_order", message: `${headingLevelSkips} título(s) saltam um nível na hierarquia; confira se as seções refletem a estrutura do conteúdo.` });
-    const unnamedTableHeaders = markdownTableHeaderCellsWithoutNames(lesson.body_markdown);
-    if (unnamedTableHeaders)
-      gaps.push({ code: "markdown_table_header_missing", message: `${unnamedTableHeaders} coluna(s) de tabela precisam de um cabeçalho descritivo.` });
-    const markdownAlts = markdownImageAltTexts(lesson.body_markdown);
+    const markdown = markdownAccessibilitySignals(lesson.body_markdown);
+    if (markdown.headingSkips)
+      gaps.push({ code: "markdown_heading_order", message: `${markdown.headingSkips} título(s) saltam um nível na hierarquia; confira se as seções refletem a estrutura do conteúdo.` });
+    if (markdown.unnamedTableHeaders)
+      gaps.push({ code: "markdown_table_header_missing", message: `${markdown.unnamedTableHeaders} coluna(s) de tabela precisam de um cabeçalho descritivo.` });
+    const markdownAlts = markdown.imageAlts;
     const markdownImagesWithoutAlt = markdownAlts.filter((alt) => alt !== "" && !hasAccessibleText(alt)).length;
     if (markdownImagesWithoutAlt)
       gaps.push({ code: "markdown_image_alt_missing", message: `${markdownImagesWithoutAlt} ${markdownImagesWithoutAlt === 1 ? "imagem no texto precisa" : "imagens no texto precisam"} de descrição alternativa.` });
@@ -180,12 +139,10 @@ export function lessonAccessibilityGaps(
     const genericMarkdownAlts = markdownAlts.filter(hasGenericImageAlternative).length;
     if (genericMarkdownAlts)
       gaps.push({ code: "markdown_image_alt_generic", message: `${genericMarkdownAlts} ${genericMarkdownAlts === 1 ? "imagem no texto usa" : "imagens no texto usam"} texto alternativo genérico; descreva o conteúdo ou a finalidade da imagem.` });
-    const markdownLinksWithoutName = markdownLinksWithoutAccessibleText(lesson.body_markdown);
-    if (markdownLinksWithoutName)
-      gaps.push({ code: "markdown_link_name_missing", message: `${markdownLinksWithoutName} ${markdownLinksWithoutName === 1 ? "link precisa" : "links precisam"} de um texto que descreva seu destino.` });
-    const genericLinkNames = markdownLinksWithGenericNames(lesson.body_markdown);
-    if (genericLinkNames)
-      gaps.push({ code: "markdown_link_name_generic", message: `${genericLinkNames} ${genericLinkNames === 1 ? "link usa" : "links usam"} um rótulo genérico; torne o texto mais específico ou confira se o contexto imediato deixa o destino claro.` });
+    if (markdown.unnamedLinks)
+      gaps.push({ code: "markdown_link_name_missing", message: `${markdown.unnamedLinks} ${markdown.unnamedLinks === 1 ? "link precisa" : "links precisam"} de um texto que descreva seu destino.` });
+    if (markdown.genericLinks)
+      gaps.push({ code: "markdown_link_name_generic", message: `${markdown.genericLinks} ${markdown.genericLinks === 1 ? "link usa" : "links usam"} um rótulo genérico; torne o texto mais específico ou confira se o contexto imediato deixa o destino claro.` });
   }
   return gaps;
 }

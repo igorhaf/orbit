@@ -153,3 +153,66 @@ test("auditoria de vídeos legados valida WebVTT e metadados de faixa", () => {
   const unreviewed = lessonAccessibilityGaps({ ...base, transcript_reviewed: false, ...validTrack, captions_reviewed: false }, []);
   assert.deepEqual(unreviewed.map((gap) => gap.code), ["transcript_review_missing", "captions_review_missing"]);
 });
+
+test("auditoria percorre um curso sintético com formatos e conteúdo diversos", () => {
+  const course = [
+    {
+      title: "Artigo com conteúdo estruturado",
+      lesson: {
+        state: "published", content_type: "article",
+        body_markdown: "# Primeiros socorros\n\n## Objetivos\n\nConsulte o [guia de atendimento inicial](https://example.test/guia).\n\n![Mapa das etapas de atendimento](https://example.test/mapa.png)\n\n| Etapa | Ação |\n| --- | --- |\n| 1 | Avaliar o local |",
+      },
+      attachments: [{ mime_type: "image/png", alt_text: "Mapa da sala de atendimento e saídas" }],
+    },
+    {
+      title: "Áudio com transcrição revisada",
+      lesson: { state: "published", content_type: "audio", transcript: "Descrição sintética da orientação em áudio.", transcript_reviewed: true },
+      attachments: [],
+    },
+    {
+      title: "Vídeo com faixa WebVTT revisada",
+      lesson: {
+        state: "published", content_type: "video", content_url: "https://media.example.test/atendimento.mp4",
+        transcript: "A pessoa instrutora demonstra a avaliação inicial.", transcript_reviewed: true,
+        captions_vtt: "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nAvalie se o local é seguro.\n",
+        captions_language: "pt-BR", captions_label: "Português (Brasil)", captions_reviewed: true,
+      },
+      attachments: [],
+    },
+    {
+      title: "Vídeo externo com faixa confirmada",
+      lesson: {
+        state: "published", content_type: "video", content_url: "https://youtu.be/synthetic-course-video",
+        transcript: "Transcrição sintética da aula externa.", transcript_reviewed: true,
+        provider_captions_confirmed: true, captions_reviewed: true,
+      },
+      attachments: [],
+    },
+    {
+      title: "Documento PDF revisado",
+      lesson: { state: "published", content_type: "pdf", document_accessibility_reviewed: true },
+      attachments: [{ mime_type: "application/pdf" }],
+    },
+    {
+      title: "Apresentação revisada",
+      lesson: { state: "published", content_type: "presentation", document_accessibility_reviewed: true },
+      attachments: [{ mime_type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }],
+    },
+  ];
+
+  const issues = course.flatMap(({ lesson, attachments }) => lessonAccessibilityGaps(lesson, attachments));
+  assert.deepEqual(issues, [], `curso sintético sem lacunas: ${issues.map((issue) => issue.code).join(", ")}`);
+
+  const legacy = lessonAccessibilityGaps({
+    state: "published", content_type: "article",
+    body_markdown: "# Revisão\n\n### Imagem\n\n![Imagem](https://example.test/sem-alt.png)\n\n[Clique aqui](https://example.test/recurso)\n\n|  | Etapa |\n| --- | --- |",
+  }, [
+    { mime_type: "image/png", alt_text: null },
+    { mime_type: "image/jpeg", alt_text: "Foto" },
+    { mime_type: "application/pdf" },
+  ]);
+  assert.deepEqual(legacy.map((issue) => issue.code), [
+    "document_accessibility_review_missing", "image_alt_missing", "image_alt_generic",
+    "markdown_heading_order", "markdown_table_header_missing", "markdown_image_alt_generic", "markdown_link_name_generic",
+  ]);
+});

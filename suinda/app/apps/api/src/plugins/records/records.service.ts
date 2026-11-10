@@ -744,6 +744,8 @@ export class ExtensionRecords implements OnModuleInit {
       [id(recordId), plugin, kind, publicRead.states],
     );
     if (!record) invalid("Curso não encontrado ou indisponível.", 404);
+    if (!(await this.applyPublicRecordPolicies(plugin, kind, [record])).length)
+      invalid("Curso não encontrado ou indisponível.", 404);
     return {
       id: record.id,
       workspace_id: record.workspace_id,

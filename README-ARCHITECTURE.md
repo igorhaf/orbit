@@ -10,8 +10,8 @@ separada da consolidação Git.
 | Ambiente | Código executado | Quadro de trabalho | Caminho alvo | Branch |
 | --- | --- | --- | --- | --- |
 | DEV (`:3001`) | `dev/app` | Orbit | `prod/app` | `main` |
-| PROD (`:3000`) | `prod/app` | Safdoulas | `safdoulas-v2/app` | `main` |
-| Safdoulas (`:3002`) | `safdoulas-v2/app` | validação do cliente | — | `main` |
+| PROD (`:3000`) | `prod/app` | Safdoulas | `safdoulas/app` | `main` |
+| Safdoulas (`:3002`) | `safdoulas/app` | validação do cliente | — | `main` |
 | Suindá (`:3003`) | `suinda/app` | plataforma de cursos | `suinda/app` | `main` |
 
 Os caminhos acima pertencem ao mesmo repositório e branch. As cópias dos runtimes
@@ -46,7 +46,7 @@ destino de código selecionado pelo quadro Orbit de DEV.
 
 O quadro `SAFDOULA` no banco PROD usa o projeto `Safdoulas` em
 `/host-projects/safdoulas`. Ele aponta ao diretório físico
-`/home/meada/projetos/orbit/safdoulas-v2/app`, dentro do mesmo repositório e
+`/home/meada/projetos/orbit/safdoulas/app`, dentro do mesmo repositório e
 branch `main`. Esse diretório também é montado na instância de validação da porta
 3002, que possui banco separado. Os quadros continuam limitados por caminho e
 escopo do projeto, mesmo que a branch Git seja comum.

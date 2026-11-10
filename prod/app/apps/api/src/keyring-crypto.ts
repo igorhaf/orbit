@@ -8,14 +8,15 @@ const candidates=(secrets:string[],purpose:string):KeyCandidate[]=>[...new Set(s
   return {id:sha256(current).toString('hex').slice(0,24),current,legacy:sha256(secret)};
 });
 
-export function sealJson(value:unknown,secret:string,purpose:string):string{
+export function sealJson(value:unknown,secret:string,purpose:string,associatedData?:string):string{
   if(!secret)throw new Error('Chave de criptografia não configurada.');
   const key=candidates([secret],purpose)[0];const iv=randomBytes(12);const cipher=createCipheriv('aes-256-gcm',key.current,iv);
+  if(associatedData!==undefined)cipher.setAAD(Buffer.from(associatedData,'utf8'));
   const encrypted=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);
   return ['v2',key.id,iv.toString('base64url'),cipher.getAuthTag().toString('base64url'),encrypted.toString('base64url')].join('.');
 }
 
-export function openJson<T>(value:string,secrets:string[],purpose:string):T{
+export function openJson<T>(value:string,secrets:string[],purpose:string,associatedData?:string):T{
   const keys=candidates(secrets,purpose);if(!keys.length)throw new Error(unavailable);
   try{
     const parts=value.split('.');let ivText:string;let tagText:string;let dataText:string;let selected:KeyCandidate|undefined;
@@ -32,6 +33,7 @@ export function openJson<T>(value:string,secrets:string[],purpose:string):T{
     const legacy=parts.length!==5;
     for(const candidate of selected?[selected]:keys){
       const decipher=createDecipheriv('aes-256-gcm',legacy?candidate.legacy:candidate.current,iv);decipher.setAuthTag(tag);
+      if(associatedData!==undefined)decipher.setAAD(Buffer.from(associatedData,'utf8'));
       try{return JSON.parse(Buffer.concat([decipher.update(encrypted),decipher.final()]).toString('utf8')) as T}catch{/* Try the next configured legacy key without exposing crypto errors. */}
     }
   }catch{/* Return one generic error for malformed data, missing keys and authentication failures. */}

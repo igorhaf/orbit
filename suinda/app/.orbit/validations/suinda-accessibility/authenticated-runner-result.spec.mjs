@@ -5,6 +5,7 @@ import { hasAuthenticatedAccessibilityFailures } from "./authenticated-runner-re
 const clean = {
   browser_fatal_error: null,
   escaped_api_requests: [],
+  generic_fixture_fallback_requests: [],
   routes_with_errors: [],
   runtime_errors: [],
   axe_violations_by_rule: {},
@@ -24,6 +25,7 @@ test("passes a clean synthetic authenticated accessibility report", () => {
 for (const [field, value] of [
   ["browser_fatal_error", "browser failed"],
   ["escaped_api_requests", [{ endpoint: "GET /api/private" }]],
+  ["generic_fixture_fallback_requests", [{ endpoint: "GET /api/account/security-activity", count: 1 }]],
   ["routes_with_errors", [{ route: "/suinda/profile", status: 500 }]],
   ["runtime_errors", [{ route: "/suinda/profile", message: "render failed" }]],
   ["axe_violations_by_rule", { "button-name": 1 }],

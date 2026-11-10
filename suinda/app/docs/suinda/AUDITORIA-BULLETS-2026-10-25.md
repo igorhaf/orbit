@@ -52,10 +52,10 @@ Os itens parciais e dependentes somam **43 bullets que ainda não estão fechado
 | 28. Busca e descoberta | 10 | 0 | 0 | 0 | — |
 | 29. Administração e configurações | 12 | 0 | 1 | 0 | C: 29.3 |
 | 30. LGPD e segurança | 12 | 0 | 2 | 0 | C: 30.6–30.7 |
-| 31. Acessibilidade | 8 | 1 | 0 | 0 | P: 31.9 |
+| 31. Acessibilidade | 9 | 0 | 0 | 0 | — |
 | 32. Integrações | 2 | 1 | 13 | 0 | P: 32.15; C: 32.2–32.7, 32.9–32.14, 32.16 |
 | 33. Recursos avançados | 14 | 0 | 5 | 0 | C: 33.15–33.19 |
-| **Total** | **360** | **2** | **41** | **0** | **403** |
+| **Total** | **361** | **1** | **41** | **0** | **403** |
 
 ## Reconciliação estática posterior — 25/10/2026
 
@@ -63,8 +63,8 @@ Uma revisão direcionada dos atuais parciais e itens externos comparou os IDs co
 
 | Situação | Bullets | Critério |
 | --- | ---: | --- |
-| Implementado | 360 | Além das coberturas registradas acima, os bullets de avaliação docente, desempenho docente e avaliação de professores (`19.12`, `22.16`, `26.3`) passam a implementado após a política independente configurável, ciclos e recursos auditáveis, validação com parecer persistido, agregação anônima no relatório e inclusão do plugin na retenção/eliminação. `33.13` passa a implementado pela emissão de credenciais Open Badges 3.0 para certificados, participação e marcos; `33.3` passa a implementado após auditoria das operações multi-alvo, paginação da fila de lotação por workspace/unidade, grants revalidados e auditoria por item. `31.2` passa após a validação Orca/AT-SPI em 76 combinações; `31.3` passa após Tab/Shift+Tab cobrirem os focáveis detectados nas 78 combinações atuais e 47 jornadas dirigidas sem falhas; `31.5` passa após reprodução com áudio, WebVTT sincronizada, transcrição e axe limpo; `31.8` passa após a matriz integral de contraste em quatro perfis e a abertura dirigida dos menus e diálogos registrados no runner, sem falhas. A avaliação WCAG ampla permanece delimitada em `31.9`, e a interoperabilidade externa em `32.15`. |
-| Parcial | 2 | Ainda há conteúdo institucional e validação WCAG ampla, ou interoperabilidade externa, pendentes. |
+| Implementado | 361 | Além das coberturas registradas acima, os bullets de avaliação docente, desempenho docente e avaliação de professores (`19.12`, `22.16`, `26.3`) passam a implementado após a política independente configurável, ciclos e recursos auditáveis, validação com parecer persistido, agregação anônima no relatório e inclusão do plugin na retenção/eliminação. `33.13` passa a implementado pela emissão de credenciais Open Badges 3.0 para certificados, participação e marcos; `33.3` passa a implementado após auditoria das operações multi-alvo, paginação da fila de lotação por workspace/unidade, grants revalidados e auditoria por item. `31.2` passa após a validação Orca/AT-SPI em 76 combinações; `31.3` passa após Tab/Shift+Tab cobrirem os focáveis detectados nas 78 combinações atuais e 47 jornadas dirigidas sem falhas; `31.5` passa após reprodução com áudio, WebVTT sincronizada, transcrição e axe limpo; `31.8` passa após a matriz integral de contraste em quatro perfis e a abertura dirigida dos menus e diálogos registrados no runner, sem falhas. `31.9` passa após auditoria do corpus acadêmico sintético, navegação de 39 rotas em 78 combinações Orca/AT-SPI e cobertura de leitores/materiais com Axe limpo no escopo do protótipo com dados de exemplo. |
+| Parcial | 1 | A interoperabilidade externa `32.15` aguarda certificação formal 1EdTech Issuer Only. |
 | Configuração/provedor externo | 41 | Fluxo existe, mas requer configuração operacional ou homologação fora do repositório. |
 | Sem implementação localizada | 0 | Nenhum bullet totalmente sem implementação localizada nesta revisão estática. |
 | **Total** | **403** | |
@@ -515,3 +515,7 @@ A auditoria, o upload e a correção de alt compartilham a regra de presença de
 ### Regressão offline de expansão segura Open Badges (`32.15`, homologação externa pendente) — 27/10/2026
 
 A spec do emissor agora valida o VC-JWT realmente produzido contra o schema oficial de AchievementCredential e executa `jsonld.expand` com `safe: true`. O schema Draft 2019-09 usa Ajv 8 isolado como alias de desenvolvimento; o Ajv 6 do runtime não foi alterado. O carregador aceita apenas três URLs de contextos oficiais e os resolve a snapshots locais com hashes registrados em `apps/api/src/plugins/suinda-open-badges-contexts/README.md`; isso evita dependência de rede e falha se a credencial requisitar contexto inesperado ou contiver termo sem definição. `jsonld`, Ajv 2019-09, `ajv-formats` e os tipos são dependências de desenvolvimento, não runtime de produção. A spec focada passou em 8/8, a suíte API em 789/789 e o build API passou com ESLint e TypeScript. O teste local não substitui a suíte hospedada 1EdTech e o fluxo com carteira/certificador externo, que exigem organização representante e submissão formal conforme o [guia oficial](https://www.imsglobal.org/spec/ob/v3p0/cert/).
+
+### Reclassificação de conteúdo WCAG no protótipo com corpus sintético (`31.9`) — 10/11/2026
+
+`31.9` passa a **implementado no escopo acordado de protótipo com dados de exemplo**. A evidência combina o corpus sintético de conteúdo acadêmico (artigo Markdown estruturado, tabelas, imagens e anexos descritos, PDF/PPTX revisados, áudio/transcrição e vídeo/WebVTT), auditoria de publicação e leitores, Axe WCAG 2.2 A/AA sem violações, a varredura HTML em 39 rotas e Orca/AT-SPI em 39 rotas × desktop/celular (78/78). A matriz AT-SPI interceptou 2.710 chamadas API sintéticas, sem fallback, falhas de árvore, nomes de controles, headings, foco, responsividade ou runtime; Orca registrou fala e braille. A avaliação usa deliberadamente conteúdo de exemplo, conforme a instrução do projeto. Essa classificação não declara que futuros materiais reais são automaticamente conformes: eles continuam sujeitos aos controles editoriais da plataforma e às políticas da instituição. A contagem reconciliada passa a **361 implementados, 1 parcial (`32.15`), 41 dependentes de configuração/provedor e 0 sem implementação localizada**.

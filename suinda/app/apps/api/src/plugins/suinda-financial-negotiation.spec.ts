@@ -12,11 +12,11 @@ import {
 } from "./suinda-financial-negotiation";
 import { PluginRegistry } from "../execution/registries";
 
-const now = Date.parse("2026-10-24T12:00:00.000Z");
+const now = Date.now();
 const validTerms = {
   requested_total_amount: 500,
   installment_count: 5,
-  first_due_on: "2026-11-01",
+  first_due_on: new Date(now + 30 * 86_400_000).toISOString().slice(0, 10),
   interval_days: 30,
 };
 
@@ -29,7 +29,7 @@ test("builds bounded terms using the enrollment currency and balance snapshot", 
     requested_total_amount: 500,
     currency: "BRL",
     installment_count: 5,
-    first_due_on: "2026-11-01",
+    first_due_on: validTerms.first_due_on,
     interval_days: 30,
     current_balance_snapshot: 800,
     payment_count_snapshot: 0,
@@ -43,7 +43,8 @@ test("rejects proposals above the balance, invalid installment counts, and dista
   assertHttpFailure(() => buildNegotiationTerms({ ...validTerms, requested_total_amount: 800.01 }, 800, "BRL", now), 409);
   assertHttpFailure(() => buildNegotiationTerms({ ...validTerms, installment_count: 25 }, 800, "BRL", now), 400);
   assertHttpFailure(() => buildNegotiationTerms({ ...validTerms, first_due_on: "2026-02-30" }, 800, "BRL", now), 400);
-  assertHttpFailure(() => buildNegotiationTerms({ ...validTerms, first_due_on: "2027-02-01" }, 800, "BRL", now), 400);
+  const distantDueDate = new Date(now + 120 * 86_400_000).toISOString().slice(0, 10);
+  assertHttpFailure(() => buildNegotiationTerms({ ...validTerms, first_due_on: distantDueDate }, 800, "BRL", now), 400);
 });
 
 test("institution decisions require a pending institution proposal", () => {
@@ -72,7 +73,7 @@ test("formal agreement installments conserve cents and stale snapshots cannot be
   const installments = buildFormalAgreementInstallments(terms);
   assert.deepEqual(installments.map((row) => row.amount), [100.01, 100.01, 100, 100, 100]);
   assert.equal(installments.reduce((sum, row) => sum + Math.round(row.amount * 100), 0), 50002);
-  assert.equal(installments[0].due_on, "2026-11-01");
+  assert.equal(installments[0].due_on, validTerms.first_due_on);
   const snapshot = { enrollment: {}, course: {}, balance: 800, currency: "BRL", payment_count: 2,
     enrollment_state: "active", course_revision: 3, enrollment_revision: 8 };
   assert.equal(financialSnapshotMatches(terms, snapshot, now), true);
@@ -80,7 +81,7 @@ test("formal agreement installments conserve cents and stale snapshots cannot be
   assert.equal(financialSnapshotMatches(terms, { ...snapshot, payment_count: 3 }, now), false);
   assert.equal(financialSnapshotMatches(terms, { ...snapshot, course_revision: 4 }, now), false);
   assert.equal(financialSnapshotMatches(terms, { ...snapshot, enrollment_revision: 9 }, now), false);
-  assert.equal(financialSnapshotMatches(terms, snapshot, Date.parse("2027-01-01T00:00:00.000Z")), false);
+  assert.equal(financialSnapshotMatches(terms, snapshot, now + 180 * 86_400_000), false);
 });
 
 function acceptanceHarness() {

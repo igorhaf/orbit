@@ -182,7 +182,7 @@ const fixtures = [
     external_id: "synthetic-calendar", name: "Agenda sintética", time_zone: "America/Recife", color: "#0c66e4",
     access_role: "owner", is_primary: true, selected: true, visible: true, is_default: true,
     capabilities: { read: true, create: true, update: true, delete: true }, metadata: {}, settings: {} }]],
-  [/\/(?:account\/(?:activity|login-history|cards)|ai\/projects|backups|boards|inbox\/cards|calendar\/items|saved-searches|access\/(?:users|roles|permissions|audit))(?:\?.*)?$/, []],
+  [/\/(?:account\/(?:activity|security-activity|login-history|cards)|ai\/projects|backups|boards|inbox\/cards|calendar\/items|saved-searches|access\/(?:users|roles|permissions|audit))(?:\?.*)?$/, []],
   [/\/extensions\/suinda-learning\/me\/enrollments\/[^/]+\/learning$/, syntheticLearning],
   [/\/extensions\/suinda-learning\/me\/enrollments\/[^/]+\/signatures$/, { signer_name: "", terms: [], history: [] }],
   [/\/extensions\/suinda-learning\/me\/enrollments\/[^/]+\/community(?:\?.*)?$/, { moderator: false,
@@ -1677,7 +1677,13 @@ try {
         await route.continue();
       });
       // Socket.IO is intentionally unavailable in this isolated fixture run.
-      if (typeof page.routeWebSocket === "function") page.routeWebSocket("**/*", (socket) => socket.close());
+      try {
+        if (typeof page.routeWebSocket === "function") page.routeWebSocket("**/*", (socket) => socket.close());
+      } catch (error) {
+        browserFatalError = error instanceof Error ? error.message : "O navegador encerrou antes da interceptação do Socket.IO.";
+        routeResults.push({ route: routePath, viewport: viewport.name, browser_error: browserFatalError });
+        break routeLoop;
+      }
 
       let status = null;
       let navigationError = null;
@@ -1694,6 +1700,25 @@ try {
       try {
         const response = await page.goto(`${baseUrl}${routePath}`, { waitUntil: "networkidle", timeout: 30_000 });
         status = response?.status() ?? null;
+        if (routePath === "/suinda") {
+          await page.getByRole("heading", { name: "Olá, estudante", exact: true })
+            .waitFor({ state: "visible", timeout: 20_000 });
+          const teachingRequestKey = "GET /api/extensions/suinda-learning/me/teaching";
+          const teachingRequest = routeApiRequests.has(teachingRequestKey)
+            ? Promise.resolve()
+            : page.waitForResponse((candidate) => {
+              try { return new URL(candidate.url()).pathname.endsWith("/extensions/suinda-learning/me/teaching"); }
+              catch { return false; }
+            }, { timeout: 20_000 });
+          const expectsManagement = ["root", "workspace_manager"].includes(authProfile);
+          const managementNavigation = expectsManagement
+            ? page.getByRole("navigation", { name: "Áreas acadêmicas", exact: true })
+              .waitFor({ state: "visible", timeout: 20_000 })
+            : Promise.resolve();
+          await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+          await Promise.all([teachingRequest, managementNavigation]);
+          await page.evaluate(() => window.scrollTo(0, 0));
+        }
         await page.waitForTimeout(realChromeZoomAudit ? 600 : 150);
         if (realChromeZoomAudit) await page.waitForFunction(
           () => document.querySelector("main,[role=main]") && document.querySelector("h1"), null, { timeout: 3000 },

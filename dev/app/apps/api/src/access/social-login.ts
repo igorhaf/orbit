@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify as verifySignature, type JsonWebKey } from "node:crypto";
-import { HttpException, Inject, Injectable } from "@nestjs/common";
+import { HttpException, Inject, Injectable, Optional } from "@nestjs/common";
 import type { LoginAccount } from "./login-attempts";
 import { Db } from "../db";
 
@@ -12,12 +12,16 @@ const safeEqual = (left: string, right: string) => {
   const a = Buffer.from(left); const b = Buffer.from(right);
   return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
 };
+export const SOCIAL_LOGIN_FETCH = Symbol("SOCIAL_LOGIN_FETCH");
 
 @Injectable()
 export class SocialLoginService {
   private metadataCache = new Map<string, { value: OidcMetadata; expires: number }>();
-  private fetcher: typeof fetch = (...args) => globalThis.fetch(...args);
-  constructor(@Inject(Db) private readonly db: Db) {}
+  private readonly fetcher: typeof fetch;
+  constructor(
+    @Inject(Db) private readonly db: Db,
+    @Optional() @Inject(SOCIAL_LOGIN_FETCH) fetcher?: typeof fetch,
+  ) { this.fetcher = fetcher ?? globalThis.fetch.bind(globalThis); }
 
   private providerName(input: string) {
     const provider = input.trim().toLowerCase();

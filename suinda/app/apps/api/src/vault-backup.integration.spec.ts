@@ -1,13 +1,13 @@
 import 'reflect-metadata';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Pool } from 'pg';
+import { integrationAdminUrl } from './integration-test-db';
 import { Db } from './db';
 import { BackupDestinationRegistry } from './backup-destinations';
 import { BackupService } from './backup-service';
@@ -21,10 +21,7 @@ async function createIsolatedBackupTestDatabase() {
   if (!process.env.DATABASE_URL) throw new Error('Configure the isolated test database URL before running integration tests.');
   const url = new URL(process.env.DATABASE_URL);
   url.hostname = process.env.ORBIT_TEST_DB_HOST || url.hostname;
-  const adminContainer = process.env.ORBIT_TEST_DB_CONTAINER || 'orbit-db-dev';
-  const adminUrl = new URL(url);
-  adminUrl.username = execFileSync('docker', ['exec', adminContainer, 'printenv', 'POSTGRES_USER'], { encoding: 'utf8' }).trim();
-  adminUrl.password = execFileSync('docker', ['exec', adminContainer, 'printenv', 'POSTGRES_PASSWORD'], { encoding: 'utf8' }).trim();
+  const adminUrl = integrationAdminUrl(url);
   const schema = `vault_backup_test_${randomUUID().replaceAll('-', '')}`;
   const admin = new Pool({ connectionString: adminUrl.toString() });
   const db = new Db();

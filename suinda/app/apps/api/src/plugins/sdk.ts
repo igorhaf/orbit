@@ -1,3 +1,4 @@
+import {assertCoreCompatibility} from "./core-compatibility";
 import Ajv from "ajv";
 import {
   CardLayoutContribution,
@@ -75,6 +76,7 @@ export const defineBoardView = <T extends BoardViewContribution>(value:T)=>{
 };
 
 export const definePlugin = <T extends PluginDefinition>(definition: T): T => {
+  assertCoreCompatibility(definition);
   identifier(definition.id, "Plugin");
   if (!definition.name.trim()) throw new Error("Nome do plugin obrigatório.");
   if (!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(definition.version))

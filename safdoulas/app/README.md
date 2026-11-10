@@ -1,0 +1,186 @@
+# Orbit
+
+Orbit é uma aplicação Kanban feita com Next.js, NestJS, PostgreSQL e Tailwind CSS. Roda diretamente na máquina, sem Docker.
+
+## Funcionalidades desta etapa
+
+- Acesso por e-mail e senha para uma conta única
+- Perfil com nome, avatar, atividade, cartões atribuídos e preferências pessoais
+- Temas claro e escuro, cartões compactos, atalhos e preferências de notificações
+- Home com Up Next, Highlights, Your Items, conversas, quadros recentes e favoritos
+- Quadros organizados por áreas de trabalho, favoritos reordenáveis e visitas recentes
+- Cópia de quadros com listas, cartões, etiquetas, checklists e fundo; edição do nome e da descrição com links e menções
+- Planos de fundo por cor ou imagem local (PNG, JPEG e WebP até 1,5 MB), guardada no PostgreSQL
+- Atividade do quadro com filtro de comentários, link compartilhável e impressão de quadros e cartões
+- Fechamento reversível de quadros, reabertura e exclusão permanente pelo proprietário
+- Alternador de quadros com painel lateral fixável e pesquisa global de quadros e cartões
+- Central de notificações por prazo e menção; alertas do navegador quando autorizados
+- Desfazer/refazer de ações compatíveis durante a sessão (títulos, favoritos, movimentação, conclusão, descrição e prazos)
+- Listas e cartões com arrastar e soltar, etiquetas, prazos, checklists, atribuições e comentários
+- Listas com criação em qualquer posição, cópia e movimentação entre quadros, cores, recolhimento e arquivo reversível
+- Ações em lote para mover, arquivar e ordenar cartões; restauração de cartões arquivados pela lista
+- Cartões criados em qualquer posição ou em massa por colagem, com interpretação de datas no título
+- Descrições em Markdown com barra de formatação e prévia de textos, links, listas, código e imagens
+- Etiquetas com 30 cores e opção sem cor, editáveis no quadro; atribuição de membros do quadro
+- Datas de início e vencimento com horário, lembrete opcional e recorrência diária, semanal, mensal ou anual
+- Filtro de cartões por status e indicador de conclusão na pesquisa global
+- Múltiplos checklists por cartão, cópia entre cartões do quadro, colagem em massa, arrastar itens entre grupos e conversão de item em cartão
+- Responsável e prazo independentes por item; cinco tipos de campos personalizados por quadro, com valores próprios por cartão
+- Arquivos no PostgreSQL, anexos por arraste ou colagem de imagem, links externos e internos, prévia, download e reordenação
+- Links reconhecidos de Orbit, GitHub, YouTube e Figma; capas com cor ou imagem em tamanho parcial ou completo
+- Cartões normais, modelos reutilizáveis, links de quadros, separadores, links externos com prévia visual e espelhos sincronizados com recolhimento próprio
+- Mover e copiar cartões entre listas, quadros e Inbox; cópia com escolha de descrição, datas, etiquetas, membros, checklists, anexos, campos, comentários e capa
+- Arquivar e restaurar cartões; exclusão definitiva somente após arquivar
+- Seleção de até 20 cartões com Ctrl/Cmd, Shift ou modo de seleção por toque para mover, copiar, arrastar em grupo, arquivar ou mesclar; mesclagens podem ser desfeitas por cinco minutos
+- Comentários com anexos de arquivos, cartões e quadros; links diretos, menções `@card` e `@board`, e acompanhamento de cartão, lista ou quadro
+- A configuração de IA herda modelo, versão e esforço nesta ordem: global → projeto → quadro → cartão; cada nível substitui os anteriores, e campos sem configuração permanecem vazios até serem escolhidos
+- Em cartões com projeto e configuração de IA resolvida, cada comentário enviado continua o chat daquele cartão e projeto; a resposta do GPT entra como próximo comentário, identificada pelo modelo, versão e esforço. Mensagens enviadas ao chat ficam preservadas como histórico
+- Cada cartão exibe um endereço de comentário por e-mail. O recebimento exige configurar `COMMENT_EMAIL_DOMAIN` e um provedor para encaminhar mensagens ao endpoint protegido do Orbit
+
+Arquivos podem ter até 10 MB; imagens para capa, até 2 MB. A prévia de links usa informações da URL; vídeos do YouTube também podem mostrar a miniatura pública. O link abre o serviço original.
+
+O cadastro e os convites estão desativados nesta etapa de conta única. Exclusões permanentes não entram no histórico de desfazer.
+
+## Requisitos
+
+- Node.js 20.19+ e npm
+- PostgreSQL local ou remoto
+
+## Instalação
+
+1. Crie um banco vazio no PostgreSQL. Exemplo, usando uma conta com permissão:
+
+   ```bash
+   createdb orbit
+   ```
+
+2. Instale as dependências e prepare as variáveis:
+
+   ```bash
+   npm install
+   cp .env.example apps/api/.env
+   cp .env.example apps/web/.env.local
+   ```
+
+3. Edite `DATABASE_URL` em `apps/api/.env` com a conexão real do seu PostgreSQL. Defina `JWT_SECRET` com uma chave aleatória de pelo menos 32 caracteres (por exemplo, gere uma com `openssl rand -hex 32`) e configure `ORBIT_BACKUP_KEY` com `openssl rand -hex 32`; guarde a chave de backup fora do servidor. Se alterar as portas, ajuste `WEB_ORIGIN` e `NEXT_PUBLIC_API_URL` também.
+
+4. Crie as tabelas, configure a conta inicial e inicie os servidores:
+
+   ```bash
+   npm run db:prepare
+   npm run dev
+   ```
+
+Para publicar o Orbit DEV na instalação principal, execute `/home/meada/projetos/deploy-orbit.sh`. Ele valida e compila o desenvolvimento, atualiza `/home/meada/projetos/orbit`, aplica migrações e reinicia os serviços sem criar commits ou enviar alterações ao Git remoto.
+
+Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferece `GET /health` para checagem.
+
+## Instâncias principal e desenvolvimento
+
+Os runtimes principal (`prod/app`) e DEV (`dev/app`) estão no monorepo Orbit, branch única `main`, e mantêm bancos e volumes de arquivos isolados. A principal usa `http://localhost:3000` e API `4000`; desenvolvimento usa `http://localhost:3001` e API `4001`. O código Safdoulas fica em `safdoulas/app`, servido em `http://localhost:3002` com API em `http://localhost:4003` e banco dedicado.
+
+### Operação essencial
+
+Use uma única instância de cada gerenciador. Se uma porta já estiver ocupada, verifique o estado antes de executar o comando de início novamente.
+
+Para parar o Orbit DEV:
+
+```bash
+cd /home/meada/projetos/orbit-dev
+test -f .orbit-dev-manager.pid && kill "$(cat .orbit-dev-manager.pid)"
+```
+
+Para parar o Orbit de produção:
+
+```bash
+cd /home/meada/projetos/orbit
+test -f .orbit-manager.pid && kill "$(cat .orbit-manager.pid)"
+```
+
+Se o arquivo de PID não existir ou algum processo filho continuar ativo, derrube os servidores diretamente pelas portas:
+
+```bash
+# Orbit DEV: web 3001 e API 4001
+fuser -k 3001/tcp 4001/tcp
+
+# Orbit produção: web 3000 e API 4000
+fuser -k 3000/tcp 4000/tcp
+```
+
+Confira se as portas foram liberadas:
+
+```bash
+ss -ltnp | rg ':(3000|3001|4000|4001)\\b'
+```
+
+Para reconstruir e levantar o Orbit DEV:
+
+```bash
+cd /home/meada/projetos/orbit-dev
+npm run db:prepare
+npm run build
+npm run orbit:dev
+```
+
+Com o gerenciador DEV já ativo, `npm run orbit:rebuild-dev` recompila e solicita o reinício automático; não execute `npm run orbit:dev` em paralelo.
+
+Para reconstruir e levantar o Orbit de produção:
+
+```bash
+cd /home/meada/projetos/orbit
+npm run db:prepare
+npm run build
+npm run orbit:serve
+```
+
+Para conferir as instâncias:
+
+```bash
+curl http://localhost:4001/health # DEV
+curl http://localhost:4000/health # produção
+```
+
+Para acessar pelo celular, conecte-o à mesma rede Wi-Fi da máquina e abra no navegador o endereço `http://IP-DA-MAQUINA:3000` (por exemplo, `http://192.168.68.57:3000`). O frontend usa um proxy local para encaminhar as chamadas à API, então não é necessário configurar o IP do celular.
+
+## Conta inicial
+
+- E-mail: `igorhaf@gmail.com`
+- Senha: a senha informada na especificação desta etapa
+
+A migração guarda apenas o hash da senha. Em execuções seguintes, ela preserva a senha existente. Altere a senha inicial antes de disponibilizar o sistema publicamente.
+
+## Cartões executáveis (opcional)
+
+Cartões comuns continuam funcionando sem configuração. Na seção **Execução opcional** do cartão, selecione projeto, agente, executor e contexto para executar uma tarefa e acompanhar resultados e histórico. O primeiro executor usa o Codex local com a sessão ChatGPT do servidor; integrações ficam atrás de um registry genérico. Automações podem reagir ao resultado.
+
+Consulte [arquitetura, migrations, permissões, APIs e exemplo funcional](docs/executable-cards.md). Recursos de exemplo ficam em `.orbit/`. Execute `npm run db:migrate` antes de iniciar a nova versão.
+
+Para instalar e selecionar a versão compatível do Codex CLI no Linux, consulte o [guia de instalação](docs/installation.md).
+
+## Calendar Workspace
+
+Abra **Calendário** para combinar Cards agendados e qualquer quantidade de contas/calendários Google nas views de mês, semana, dia, agenda e timeline. O Workspace funciona sem Google; providers são desacoplados pelo Calendar Source Registry e os eventos externos são lidos do mirror local.
+
+Consulte [arquitetura, OAuth, sync incremental, watch channels, ExternalResources e automações](docs/calendar-workspace.md). Configure as variáveis Google somente no backend e execute `npm run db:migrate`.
+
+## Comandos
+
+| Comando | Função |
+| --- | --- |
+| `npm run dev` | Inicia Next.js e NestJS em desenvolvimento |
+| `npm run lint` | Verifica o código da API e do front, sem aceitar avisos |
+| `npm run lint:fix` | Corrige automaticamente os problemas de lint possíveis |
+| `npm run build` | Executa o lint e compila a API e o front |
+| `npm run test -w apps/api` | Executa os testes unitários da API |
+| `npm run test:integration -w apps/api` | Testa recursos integrados da API com PostgreSQL temporário |
+| `npm run db:migrate` | Aplica o esquema SQL e prepara a conta inicial |
+| `npm run db:backup -- create` | Cria e verifica um backup PostgreSQL criptografado |
+| `npm run db:backup -- list` | Lista os backups locais |
+| `npm run db:backup -- verify <arquivo>` | Verifica checksum, chave e integridade do arquivo |
+| `npm run db:backup -- restore <arquivo>` | Restaura para um banco vazio diferente do banco de origem |
+| `npm run start -w apps/api` | Inicia a API compilada |
+| `npm run start -w apps/web` | Inicia o front compilado |
+
+O SQL fica em `apps/api/sql/schema.sql`.
+
+Consulte [o plano de backup e recuperação](docs/database-backups.md) para configurar cópias agendadas, validar uma restauração e recuperar o serviço.

@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useParams } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, Check, CheckCircle2, ChevronLeft, ChevronRight, Circle, Clock3, Download, Flag, LockKeyhole, MessageCircle, Pin, Play, RefreshCw, Send, Sparkles, ThumbsUp, UserRound, Users } from "lucide-react";
 import { api, apiBlob } from "@/lib/api";
-import { Modal } from "@/components/ui";
+import { Modal } from "@/components/modal";
 import { findVimeoCaptionsTrack, googleDrivePreviewUrl, youtubeCaptionEmbedUrl } from "@/lib/media-embeds";
 import { hasAccessibleText } from "@/lib/accessibility-text";
 import { SuindaMarkdownArticle } from "@/plugins/suinda/SuindaMarkdownArticle";
