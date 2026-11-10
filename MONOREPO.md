@@ -19,7 +19,7 @@ Antes da consolidação, os quatro repositórios Git locais foram arquivados sob
 - `nested-git-metadata/` guarda cópias dos metadados `.git` originais;
 - `working-diffs/` preserva as alterações rastreadas que ainda não tinham commit.
 
-Esse diretório está ignorado pelo Git e não entra no monorepo. Os arquivos de trabalho atuais continuam na árvore de trabalho e foram selecionados para o snapshot inicial, exceto dados locais e artefatos gerados. O índice está vazio e os arquivos ainda não foram commitados. Os bundles não criam branches antigas no novo repositório.
+Esse diretório está ignorado pelo Git e não entra no monorepo. Os arquivos de trabalho atuais continuam na árvore e foram selecionados para o snapshot inicial, exceto dados locais e artefatos gerados. Os bundles não criam branches antigas no novo repositório.
 
 ## Exclusões do monorepo
 
@@ -27,7 +27,7 @@ Não são versionados: `.env` reais, credenciais, bancos e arquivos sob `data/`,
 
 ## Commit e tag de referência
 
-O repositório já está inicializado na branch `main`, mas o snapshot consolidado ainda está no working tree; não há commit ou tag. Para registrar o estado reunido, crie um commit e então a tag anotada `orbit-monorepo-baseline-2026-11-10`. Ela deve representar o conteúdo atual, incluindo alterações locais de código que estavam presentes nos quatro diretórios. A tag não representa deploy nem validação funcional.
+O commit raiz do repositório registra a árvore consolidada na branch `main`. A tag anotada `orbit-monorepo-baseline-2026-11-10` aponta para o snapshot que reúne os quatro runtimes e as alterações locais de código selecionadas. Ela não representa deploy nem validação funcional.
 
 ## Próxima etapa arquitetural
 

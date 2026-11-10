@@ -1,6 +1,6 @@
 # Orbit · ambientes e projetos
 
-Esta é a raiz preparada para o monorepo Orbit e da instalação local. Os ambientes e produtos permanecem em diretórios próprios para preservar seus Docker Compose e isolamento de execução. O repositório foi inicializado com `main`; o commit inicial ainda está pendente.
+Esta é a raiz do monorepo Orbit e da instalação local. Os ambientes e produtos permanecem em diretórios próprios para preservar seus Docker Compose e isolamento de execução. O código está na branch única `main`; o snapshot inicial está marcado por `orbit-monorepo-baseline-2026-11-10`.
 
 ## Mapa dos ambientes
 

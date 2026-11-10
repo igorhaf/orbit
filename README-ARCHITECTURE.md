@@ -2,8 +2,8 @@
 
 Esta instalação usa Docker Compose em uma máquina. Os ambientes mantêm serviços,
 configurações e bancos isolados, enquanto o código está consolidado neste
-repositório, inicializado na branch `main`; o commit inicial ainda está pendente.
-Os diretórios de aplicação ainda preservam
+repositório, branch única `main`, com snapshot inicial marcado por
+`orbit-monorepo-baseline-2026-11-10`. Os diretórios de aplicação ainda preservam
 as cópias de cada runtime; a extração de um core compartilhado é uma etapa
 separada da consolidação Git.
 
