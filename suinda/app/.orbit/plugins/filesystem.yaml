@@ -1,0 +1,3 @@
+id: filesystem
+name: Project files
+actions: [read]

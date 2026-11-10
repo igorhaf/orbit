@@ -1,0 +1,31 @@
+{
+  "validated_at": "2026-10-12T23:13:37.188507+00:00",
+  "environment": "development",
+  "build": "passed",
+  "unit_tests": {
+    "passed": 180,
+    "failed": 0
+  },
+  "queue_selenium": {
+    "checks": 26,
+    "result": "passed",
+    "widths": [
+      320,
+      375,
+      768,
+      1440
+    ]
+  },
+  "mobile_core_selenium": {
+    "result": "passed",
+    "widths": [
+      320,
+      375,
+      430,
+      768
+    ]
+  },
+  "automatic_resume": "verified with controlled quota protocol snapshots; real quota not modified",
+  "root_preferences_modified": false,
+  "prompts_executed_by_validation": 0
+}

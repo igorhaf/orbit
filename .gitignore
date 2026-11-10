@@ -1,0 +1,48 @@
+# Secrets and machine-local configuration
+**/.env
+**/.env.*
+!**/.env.example
+**/db.env
+control/environments.json
+
+# Runtime data, database files, encrypted backups, and sessions
+**/data/
+!suinda/data/
+suinda/data/*
+!suinda/data/config/
+suinda/data/config/*
+!suinda/data/config/.gitkeep
+!suinda/data/config/api.env.example
+!suinda/data/db.env.example
+!suinda/data/db-init/
+suinda/data/db-init/*
+!suinda/data/db-init/.gitkeep
+!suinda/data/backups/
+suinda/data/backups/*
+!suinda/data/backups/.gitkeep
+!suinda/data/sessions/
+suinda/data/sessions/*
+!suinda/data/sessions/.gitkeep
+
+control/snapshots/
+control/backups/
+control/state/
+**/backups/
+**/.orbit/sessions
+
+# Dependencies and generated output
+**/node_modules/
+**/.next/
+**/.next-*/
+**/dist/
+**/__pycache__/
+*.py[cod]
+*.tsbuildinfo
+
+# Local credentials and agent runtime caches
+**/.aws/
+**/.codex/
+
+# Keep only inert placeholder/example files in Suindá's data tree.
+!suinda/data/backups/
+!suinda/data/backups/.gitkeep

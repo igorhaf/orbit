@@ -1,0 +1,103 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "orbit",
+      "intents": [
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "OrbitMessageIntent",
+          "slots": [
+            {
+              "name": "utterance",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "anote {utterance}",
+            "registre {utterance}",
+            "preciso {utterance}",
+            "quero {utterance}",
+            "adicionar {utterance}",
+            "adicione {utterance}",
+            "comprar {utterance}",
+            "marcar {utterance}",
+            "agendar {utterance}",
+            "criar {utterance}",
+            "é {utterance}",
+            "para {utterance}",
+            "às {utterance}",
+            "o pedido é {utterance}",
+            "fale com a inteligência artificial",
+            "registrar um pedido"
+          ]
+        },
+        {
+          "name": "OrbitStatusIntent",
+          "samples": [
+            "verificar pedido",
+            "qual o resultado",
+            "meu pedido ficou pronto",
+            "consultar pedido",
+            "continuar",
+            "aguardar"
+          ]
+        }
+      ],
+      "types": []
+    },
+    "dialog": {
+      "delegationStrategy": "SKILL_RESPONSE",
+      "intents": [
+        {
+          "name": "OrbitMessageIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "utterance",
+              "type": "AMAZON.SearchQuery",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Elicit.OrbitMessageIntent.utterance"
+              },
+              "samples": [
+                "{utterance}"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "id": "Elicit.OrbitMessageIntent.utterance",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "O que você quer registrar no Orbit?"
+          }
+        ]
+      }
+    ]
+  }
+}

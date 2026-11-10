@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-21",
+  "unit_tests": {
+    "safdoulas": 380,
+    "dev": 283,
+    "prod": 283
+  },
+  "isolated_integration_tests": 2,
+  "full_builds": [
+    "safdoulas-v2",
+    "dev",
+    "prod"
+  ],
+  "safdoulas_groups": 3,
+  "phases_per_group": 9,
+  "collections": {
+    "dev": true,
+    "prod": true,
+    "safdoulas-v2": false
+  },
+  "browser_validation": "Não executada por restrição do host.",
+  "manual_service_restarts": false
+}

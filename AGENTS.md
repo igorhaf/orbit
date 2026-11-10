@@ -1,0 +1,7 @@
+# Instruções persistentes para projetos Orbit
+
+Este diretório é a raiz do monorepo Orbit. O versionamento ativo é único na branch `main`; não inicialize repositórios dentro de `dev/app`, `prod/app`, `safdoulas-v2/app` ou `suinda/app`, nem recrie branches por ambiente. Os caminhos de aplicação continuam separados para preservar a execução e ainda contêm cópias que podem divergir. Até a extração de módulos compartilhados, integre e revise mudanças comuns nos runtimes aplicáveis. Mantenha Docker, bancos, configuração e dados isolados por ambiente.
+
+Ao desenvolver uma demanda Orbit, avalie delegação paralela entre agentes quando houver frentes independentes. Use agentes somente se o ganho provável reduzir o tempo total e os tokens totais, já contando coordenação e integração, sem reduzir a qualidade. Escolha a menor quantidade que atenda a esse critério; se o ganho não for provável, trabalhe em sequência.
+
+Mantenha um agente integrador responsável pelo objetivo completo, contratos entre frentes, integração e revisão final. Dê a cada agente requisitos, escopo de arquivos, critérios de aceite e limites claros. Evite editar arquivos simultaneamente. Em cartões de execução, respeite `context.write_scope` e todas as verificações obrigatórias; delegar nunca amplia autorização, permissões ou escopo. Integre e revise todo resultado antes de concluir. A delegação não autoriza commit nem deploy.

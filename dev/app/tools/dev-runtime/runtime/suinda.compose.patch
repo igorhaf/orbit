@@ -1,0 +1,122 @@
+--- a/compose.yml
++++ b/compose.yml
+@@ -7,24 +7,30 @@
+     volumes:
+       - suinda_db_data:/var/lib/postgresql/data
+       - ./data/db-init:/docker-entrypoint-initdb.d:ro
+-    ports: ["127.0.0.1:5434:5432"]
+-    networks: [suinda]
++    ports: [ "127.0.0.1:5434:5432" ]
++    networks: [ suinda ]
+     restart: unless-stopped
+-    security_opt: [no-new-privileges:true]
++    security_opt: [ no-new-privileges:true ]
+     healthcheck:
+-      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
++      test: [ CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"' ]
+       interval: 10s
+       timeout: 5s
+       retries: 10
++    mem_limit: 1g
++    memswap_limit: 1536m
++    mem_reservation: 128m
+ 
+   clamav:
+     image: clamav/clamav:1.5.4-debian13-slim
+     container_name: suinda-clamav
+     volumes:
+       - suinda_clamav_db:/var/lib/clamav
+-    networks: [suinda]
++    networks: [ suinda ]
+     restart: unless-stopped
+-    security_opt: [no-new-privileges:true]
++    security_opt: [ no-new-privileges:true ]
++    mem_limit: 3g
++    memswap_limit: 5g
++    mem_reservation: 128m
+ 
+   api:
+     build:
+@@ -52,28 +58,32 @@
+       ORBIT_DOCUMENT_SCANNER_URL: tcp://clamav:3310
+       HOME: /tmp
+       CODEX_HOME: /data/sessions
+-      WATCHPACK_POLLING: "1000"
+-      CHOKIDAR_USEPOLLING: "true"
++      ORBIT_DEV_BUILD_LOCK: /run/orbit-dev-locks/build.lock
+     volumes:
+       - ./data/config:/data/config:rw
+       - ./data/backups:/data/backups:rw
+       - ./data/sessions:/data/sessions:rw
+       - ./app:/home/meada/projetos/orbit:rw
+       - suinda_node_modules:/home/meada/projetos/orbit/node_modules:rw
+-    ports: ["127.0.0.1:4004:4000"]
+-    networks: [suinda]
++      - ../control/state/dev-locks:/run/orbit-dev-locks:rw
++    ports: [ "127.0.0.1:4004:4000" ]
++    networks: [ suinda ]
+     depends_on:
+-      db: {condition: service_healthy}
+-      clamav: {condition: service_healthy}
++      db: { condition: service_healthy }
++      clamav: { condition: service_healthy }
+     restart: unless-stopped
+     user: "1000:1000"
+-    security_opt: [no-new-privileges:true]
++    security_opt: [ no-new-privileges:true ]
+     healthcheck:
+-      test: [CMD, node, -e, "(async()=>{const r=await fetch('http://127.0.0.1:4000/health');process.exit(r.status<500?0:1)})().catch(()=>process.exit(1))"]
++      test: [ CMD, node, -e, "(async()=>{const r=await fetch('http://127.0.0.1:4000/health');process.exit(r.status<500?0:1)})().catch(()=>process.exit(1))" ]
+       interval: 15s
+       timeout: 5s
+       retries: 8
+       start_period: 90s
++    init: true
++    mem_limit: 2g
++    memswap_limit: 3g
++    mem_reservation: 256m
+ 
+   web:
+     build:
+@@ -94,25 +104,33 @@
+       NEXT_PUBLIC_ORBIT_PORT: "3003"
+       NEXT_PUBLIC_ORBIT_PRODUCT_NAME: Suindá
+       ORBIT_NEXT_DIST_DIR: .next-suinda
+-      WATCHPACK_POLLING: "1000"
+-      CHOKIDAR_USEPOLLING: "true"
++      ORBIT_DEV_MEMORY_MODE: ${ORBIT_DEV_MEMORY_MODE:-conserve}
+     volumes:
+       - ./app:/home/meada/projetos/orbit:rw
+       - suinda_node_modules:/home/meada/projetos/orbit/node_modules:rw
+-    ports: ["127.0.0.1:3003:3000"]
+-    command: [npm, run, dev, -w, apps/web]
+-    networks: [suinda]
++    ports: [ "127.0.0.1:3003:3000" ]
++    command:
++      - npm
++      - run
++      - dev:turbopack
++      - -w
++      - apps/web
++    networks: [ suinda ]
+     depends_on:
+-      api: {condition: service_healthy}
++      api: { condition: service_healthy }
+     restart: unless-stopped
+     user: "1000:1000"
+-    security_opt: [no-new-privileges:true]
++    security_opt: [ no-new-privileges:true ]
+     healthcheck:
+-      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
++      test: [ CMD, node, -e, "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))" ]
+       interval: 15s
+       timeout: 5s
+       retries: 8
+       start_period: 60s
++    init: true
++    mem_limit: 2g
++    memswap_limit: 3g
++    mem_reservation: 384m
+ 
+ volumes:
+   suinda_node_modules:

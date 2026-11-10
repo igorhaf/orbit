@@ -1,0 +1,137 @@
+name: orbit-safdoulas-v2
+services:
+  db:
+    build:
+      context: ../control
+      dockerfile: postgres.Dockerfile
+    container_name: orbit-safdoulas-v2-db
+    env_file: ./data/db.env
+    environment:
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=pt_BR.UTF-8
+      LANG: pt_BR.UTF-8
+    volumes:
+      - orbit_db_safdoulas_v2_data:/var/lib/postgresql/data
+      - ./data/db-init:/docker-entrypoint-initdb.d:ro
+    networks: [ safdoulas-v2 ]
+    restart: unless-stopped
+    security_opt: [ no-new-privileges:true ]
+    healthcheck:
+      test: [ CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"' ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+    memswap_limit: 1536m
+    mem_reservation: 128m
+
+  api:
+    build:
+      context: ./app
+      dockerfile: ../Dockerfile
+      target: api
+      args:
+        ORBIT_API_PROXY_URL: http://api:4000
+    image: orbit-api-safdoulas-v2:local
+    container_name: orbit-safdoulas-v2-api
+    env_file: ./data/api.env
+    environment:
+      ORBIT_ENV: development
+      ORBIT_HIDDEN_PLUGINS: ai,software-development,alexa-orbit,dropbox,trello,cloudflare-tunnel,gmail,outlook_mail,github,git,ssh,outlook_calendar,microsoft_teams,environment-management
+      ORBIT_APP_NAME: SafDoulas
+      ORBIT_APP_ICON_KIND: tree_of_life
+      ORBIT_LOGIN_TAGLINE: Doulas conectadas, aprendendo e crescendo juntas.
+      ORBIT_LOGIN_DESCRIPTION: Um espaço para aproximar doulas, compartilhar saberes e fortalecer práticas de cuidado ao longo da jornada perinatal.
+      ORBIT_LOGIN_BENEFITS_JSON: '["Conecte-se com doulas e fortaleça sua rede de apoio","Compartilhe experiências e aprenda em comunidade","Organize formações, projetos e ações de cuidado"]'
+      ORBIT_DEV_ALLOW_LOCAL_ONLY_MIGRATION_BACKUP: 'true'
+      ORBIT_API_ONLY: 'true'
+      HOME: /tmp
+      CODEX_HOME: /home/meada/.local/share/orbit-codex
+      ORBIT_NEXT_DIST_DIR: .next-dev
+      ORBIT_DEV_BUILD_LOCK: /run/orbit-dev-locks/build.lock
+    volumes:
+      - ./data/config:/data/config:rw
+      - ./data/backups:/data/backups:rw
+      - ./data/sessions:/home/meada/.local/share/orbit-codex:rw
+      - ./app:/host-projects/app:rw
+      - /home/meada/.codex/auth.json:/home/meada/.local/share/orbit-codex/auth.json:ro
+      - ./app:/home/meada/projetos/orbit:rw
+      - orbit_safdoulas_v2_node_modules:/home/meada/projetos/orbit/node_modules:rw
+      - ../control/state/dev-locks:/run/orbit-dev-locks:rw
+    ports: [ '127.0.0.1:4003:4000' ]
+    networks: [ safdoulas-v2 ]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+    user: '1000:1000'
+    read_only: false
+    tmpfs: [ /tmp ]
+    cap_drop: [ ALL ]
+    security_opt: [ no-new-privileges:true ]
+    healthcheck:
+      test: [ CMD, node, -e, "(async()=>{const r=await fetch('http://127.0.0.1:4000/');process.exit(r.status<500?0:1)})().catch(()=>process.exit(1))" ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 90s
+    mem_limit: 2g
+    memswap_limit: 3g
+    mem_reservation: 256m
+    init: true
+
+  web:
+    build:
+      context: ./app
+      dockerfile: ../Dockerfile
+      target: web
+      args:
+        ORBIT_API_PROXY_URL: http://api:4000
+    image: orbit-web-safdoulas-v2:local
+    container_name: orbit-safdoulas-v2-web
+    environment:
+      ORBIT_API_PROXY_URL: http://api:4000
+      WEB_HOSTNAME: 0.0.0.0
+      PORT: '3000'
+      THEME: terroso
+      ORBIT_NEXT_DIST_DIR: .next-dev
+      ORBIT_DEV_MEMORY_MODE: ${ORBIT_DEV_MEMORY_MODE:-conserve}
+    ports: [ '0.0.0.0:3002:3000' ]
+    command:
+      - npm
+      - run
+      - dev:turbopack
+      - -w
+      - apps/web
+    networks: [ safdoulas-v2 ]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+    user: '1000:1000'
+    read_only: false
+    tmpfs: [ /tmp, /home/meada/projetos/orbit/apps/web/.next/cache ]
+    cap_drop: [ ALL ]
+    security_opt: [ no-new-privileges:true ]
+    healthcheck:
+      test: [ CMD, node, -e, "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))" ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+    init: true
+    mem_limit: 2g
+    memswap_limit: 3g
+    mem_reservation: 384m
+    volumes:
+      - ./app:/home/meada/projetos/orbit:rw
+      - orbit_safdoulas_v2_web_node_modules:/home/meada/projetos/orbit/node_modules:rw
+
+volumes:
+  orbit_safdoulas_v2_node_modules:
+    name: orbit_safdoulas_v2_node_modules
+  orbit_db_safdoulas_v2_data:
+    name: orbit_db_safdoulas_v2_data
+  orbit_safdoulas_v2_web_node_modules:
+    external: true
+    name: orbit_safdoulas_v2_web_node_modules
+networks:
+  safdoulas-v2:
+    name: orbit_safdoulas_v2_net

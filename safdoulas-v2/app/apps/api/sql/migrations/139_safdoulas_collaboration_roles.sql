@@ -1,0 +1,1 @@
+UPDATE access_roles SET permissions=ARRAY(SELECT DISTINCT unnest(permissions||ARRAY['plugin.record-cards.write','boards.write','calendar.write'])) WHERE id IN ('safdoulas_workgroup','safdoulas_institution');

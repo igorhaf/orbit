@@ -1,0 +1,2 @@
+# Restricted backups may not be readable; keep workspace searches away from them.
+control/backups/**

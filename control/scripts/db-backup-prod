@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if [ "$#" -ne 1 ] || [ "$1" != prod ]; then
+  echo 'Uso: db-backup-prod prod' >&2
+  exit 2
+fi
+exec "$(dirname "$0")/../bin/orbit-env" snapshot prod

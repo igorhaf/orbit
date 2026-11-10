@@ -1,0 +1,294 @@
+export type Preferences = {
+  theme: 'light' | 'dark' | 'terroso';
+  notifications: boolean;
+  browserNotifications: boolean;
+  shortcuts: boolean;
+  compactCards: boolean;
+  vaultCategoryOrder?: string[];
+};
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url?: string | null;
+  preferences?: Preferences;
+  ai_default_model?: string | null;
+  ai_default_effort?: AiEffort | null;
+  created_at?: string;
+  role?: string;
+  is_root?: boolean;
+  is_root_actor?: boolean;
+  permissions?: string[];
+};
+export type Label = { id: string; name: string; color: string };
+export type CustomField = { id:string;board_id?:string;name:string;type:'text'|'number'|'date'|'dropdown'|'checkbox';options:string[];position:number;show_on_card:boolean };
+export type CustomValue = { field_id:string;name?:string;type?:CustomField['type'];value:string|number|boolean };
+export type ChecklistGroup = { id:string;card_id:string;title:string;position:number;items:ChecklistItem[] };
+export type CardExtensions = { checklists:ChecklistGroup[];values:CustomValue[] };
+export type Card = {managed_record?:boolean;
+  plugin_badges?:Array<{pluginId:string;field:string;value:string;label:string;color:string}>;
+  execution_blocked?:boolean;
+  id: string;
+  url_token?: string;
+  execution?: {enabled:boolean;project_id:string|null;agent:string|null;executor:string|null}|null;
+  result?: {status:string;unread?:boolean}|null;
+  prompt?: {status:'queued'|'running'|'waiting_answer'|'success'|'error';finished_at?:string|null;unread?:boolean}|null;
+  kind?: 'normal'|'template'|'board'|'separator'|'link'|'mirror';
+  target_board_id?: string|null;
+  target_board_title?: string|null;
+  link_url?: string|null;
+  source_card_id?: string|null;
+  source_board_id?: string|null;
+  source_board_title?: string|null;
+  mirror_expanded?: boolean;
+  list_id: string;
+  title: string;
+  description: string;
+  cover_color?: string | null;
+  position: number;
+  start_date: string | null;
+  due_date: string | null;
+  reminder_minutes: number | null;
+  recurrence: 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
+  schedule?: {startAt:string;endAt?:string|null;allDay:boolean;timeZone?:string|null}|null;
+  schedule_start_at?: string | null;
+  schedule_end_at?: string | null;
+  schedule_all_day?: boolean;
+  schedule_time_zone?: string | null;
+  overdue?: boolean;
+  ai_project_id?: string | null;
+  ai_model?: string | null;
+  ai_effort?: AiEffort | null;
+  ai_execution_mode?: 'planning' | 'bypass' | 'question';
+  ai_project_default_model?: string | null;
+  ai_project_default_effort?: AiEffort | null;
+  ai_global_model?: string | null;
+  ai_global_effort?: AiEffort | null;
+  assigned_to_me?: boolean;
+  assignees?: User[];
+  labels: Label[];
+  comment_count: number;
+  context_count?: number;
+  checklist_total: number;
+  checklist_done: number;
+  custom_values?: CustomValue[];
+};
+export type ListIntegration = {
+  id: string;
+  service: string;
+  direction: 'inbound' | 'outbound' | 'bidirectional';
+  source_name: string;
+  external_list_name: string | null;
+  enabled: boolean;
+  last_error: string | null;
+};
+export type List = { id: string; board_id: string; title: string; position: number; parent_list_id?: string | null; color: string | null; collapsed: boolean; archived_at?: string | null; card_count?: number; integrations?: ListIntegration[]; cards: Card[] };
+export type RecordBoardScope={board_id:string;record_id:string;plugin_id:string;workspace_id:string;primary_card_id:string;label:string;fixed_scope:true;state:string;record_href:string;can_write:boolean;phases:Array<{id:string;label:string;list_id:string}>;templates:Array<{id:string;name:string;phase:string;description:string;checklist:string[]}>};
+export type Board = {
+  record_scope?:RecordBoardScope|null;
+
+  id: string;
+  is_inbox?: boolean;
+  is_collection?: boolean;
+  title: string;
+  background: string;
+  background_image?: string | null;
+  created_at?: string;
+  description?: string;
+  closed_at?: string | null;
+  starred: boolean;
+  owner_id: string;
+  card_count?: number;
+  workspace_id?: string;
+  workspace_name?: string;
+  favorite_position?: number | null;
+  visited_at?: string | null;
+  member_count?: number;
+  lists?: List[];
+  labels?: Label[];
+  members?: User[];
+  custom_fields?: CustomField[];
+  ai_default_model?: string | null;
+  ai_default_effort?: AiEffort | null;
+  ai_default_project_id?: string | null;
+  ai_global_model?: string | null;
+  ai_global_effort?: AiEffort | null;
+};
+export type AiModel = {id:string;name:string;version:string};
+export type AiEffort = 'low'|'medium'|'high'|'xhigh';
+export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_internal_orbit?:boolean};
+export type PromptFileChange={path:string;kind:'add'|'delete'|'update';additions?:number;deletions?:number;diff?:string};
+export type PromptActivity={id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
+export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';multiple_agents?:boolean;summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
+export type ToolDiagnostic={run_id:string;card_id:string;board_id:string;card_title:string;board_title:string;created_at:string;kind:'missing'|'permission'|'command'|'authentication'|'version';tool:string;title:string;details:string;installCommands:string[];failedCommand:string|null};
+export type ToolDiagnostics={status:'error'|'success'|'running';issues:ToolDiagnostic[]};
+export type TrelloConnection = { id:string; trello_board_id:string; trello_board_name:string; enabled:boolean; last_synced_at:string|null; last_error:string|null; created_at:string };
+export type TrelloBoardOption = { id:string; name:string; url:string|null };
+export type TrelloListOption = {connection_id:string;trello_board_name:string;mapped_list_id:string|null;lists:{id:string;name:string}[]};
+export type Workspace = { id: string; name: string; board_count: number };
+export type Notebook = {id:string;title:string;content_html:string;created_at:string;updated_at:string};
+export type VaultItem = {id:string;title:string;category:string;created_at:string;updated_at:string;card_id?:string|null;board_id?:string|null;url_token?:string|null};
+export type VaultCredential = {id:string;name:string;constant:string;value:string};
+export type VaultItemDetail = VaultItem & {content_html:string;credentials:VaultCredential[];card_id?:string|null;board_id?:string|null;url_token?:string|null};
+export type CommentAttachment = {id:string;kind:'file'|'card'|'board';name:string;url:string|null;target_id:string|null;mime_type:string|null;size_bytes:number|null};
+export type CardAttachment = {id:string;name:string;mime_type:string|null;size_bytes:number|null;created_at:string};
+export type Comment = { id: string; body: string; created_at: string; edited_at?:string|null; author_id: string; author_name: string; is_ai?:boolean; ai_status?:'queued'|'running'|'success'|'error'|null; ai_error?:string|null; attachments?:CommentAttachment[] };
+export const withExpansion = (original: string, expansion: string, originalHeading?: string) => {
+  const source = original.trim();
+  const detail = expansion.trim();
+  if (!source) return detail;
+  return `${originalHeading ? `### ${originalHeading}\n\n` : ""}${source}\n\n---\n\n### Detalhamento\n\n${detail}`;
+};
+export type ChecklistItem = { id: string; card_id?:string; checklist_id?:string; text: string; completed: boolean; position: number; due_date: string | null };
+export type ExternalResource = {id:string;plugin_id:string;connection_id:string|null;resource_type:string;external_id:string;external_parent_id:string|null;url:string|null;etag:string|null;metadata:Record<string,unknown>;created_at:string;updated_at:string};
+export type CardDetails = { comments: Comment[]; checklist: ChecklistItem[]; externalResources:ExternalResource[]; attachments:CardAttachment[] };
+export type WatchState = {card:boolean;list:boolean;board:boolean};
+export type Activity = { id: string; kind: string; body: string; created_at: string; card_id: string | null; card_url_token?: string | null; card_title: string | null; board_id: string | null; board_title: string | null; actor_name: string };
+export type HomeCard = { id: string; url_token?: string; title: string; description: string; due_date: string | null; overdue?: boolean; board_id: string; board_title: string; list_title: string; assigned_to_me: boolean; background: string };
+export type HomeItem = { id: string; text: string; completed: boolean; due_date: string | null; overdue?: boolean; card_id: string; card_url_token?: string; card_title: string; board_id: string; board_title: string };
+export type RecentConversation = { id: string; body: string; created_at: string; card_id: string; card_url_token?: string; card_title: string; board_id: string; board_title: string; author_name: string };
+export type HomeData = { upNext: HomeCard[]; highlights: Activity[]; yourItems: HomeItem[]; recentBoards: Board[]; favorites: Board[]; recentConversations: RecentConversation[] };
+export type SearchResults = { boards: Board[]; lists?: {id:string;title:string;board_id:string;board_title:string;background:string}[]; cards: (HomeCard & { description: string; list_id?:string })[] };
+export type AdvancedSearchCard = HomeCard & {list_id:string;updated_at:string;labels:Label[]};
+export type SavedSearch = {id:string;name:string;query:Record<string,string>;created_at:string;updated_at:string};
+export type AppNotification = { id: string; plugin_id: string; target_url?: string | null; kind: string; title: string; body: string; created_at: string; read_at: string | null; board_id: string | null; board_title: string | null; card_id: string | null; card_url_token?: string | null };
+export type CalendarSource = {id:string;provider_id:string;connection_id:string|null;connection_name?:string|null;external_id:string;name:string;time_zone:string|null;color:string|null;access_role:string|null;is_primary:boolean;selected:boolean;visible:boolean;is_default:boolean;capabilities:Record<string,boolean>;metadata:Record<string,unknown>;settings:Record<string,unknown>};
+export type CalendarItem = {id:string;sourceId:string;resourceType:'event'|'card';title:string;description?:string|null;start:string;end?:string|null;allDay:boolean;timeZone?:string|null;location?:string|null;externalResourceId?:string|null;cardId?:string|null;cardUrlToken?:string|null;externalUrl?:string|null;status?:string;recurrence?:unknown[];attendees?:unknown[];conference?:unknown;metadata:Record<string,unknown>};
+export type PluginCatalogAction = {id:string;name:string;permissions?:string[];requiredCapabilities?:string[];inputSchema?:Record<string,unknown>;outputSchema?:Record<string,unknown>};
+export type PluginCatalogItem = {id:string;name:string;version:string;enabled:boolean;configuredEnabled?:boolean;dependencies?:string[];parentPlugin?:string;children?:string[];description?:string;status?:"active"|"disabled"|"blocked";blockedBy?:string[];dependents?:string[];configurable?:boolean;capabilities:{id:string;name:string;permissions?:string[]}[];actions:PluginCatalogAction[];triggers?:unknown[];connectionProvider?:unknown;contributions?:Record<string,unknown>};
+
+// Keep API calls on the same origin by default. Next.js proxies /api to Nest,
+// which also makes the app work from another device on the local network.
+const BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+export const PROFILE_SIMULATION_STORAGE_KEY = 'orbit_profile_simulation';
+export function getProfileSimulation(){if(typeof window==='undefined')return '';return localStorage.getItem(PROFILE_SIMULATION_STORAGE_KEY)||''}
+export function setProfileSimulation(roleId:string|null){if(typeof window==='undefined')return;if(roleId)localStorage.setItem(PROFILE_SIMULATION_STORAGE_KEY,roleId);else localStorage.removeItem(PROFILE_SIMULATION_STORAGE_KEY);window.dispatchEvent(new Event('profile-simulation:changed'))}
+export function orbitApiHeaders():Record<string,string>{const token=getToken(),roleId=getProfileSimulation();return {...(token?{Authorization:`Bearer ${token}`} :{}),...(roleId?{'X-Orbit-Profile-Simulation':roleId}:{})}}
+export function orbitSocketAuth(){const token=getToken(),profileSimulation=getProfileSimulation();return {...(token?{token}:{}),...(profileSimulation?{profileSimulation}:{})}}
+export function watchOrbitProfileSimulation<T extends {auth:unknown;disconnect:()=>unknown;connect:()=>unknown}>(socket:T){const refresh=()=>{socket.disconnect();socket.auth=orbitSocketAuth() as T['auth'];socket.connect()};window.addEventListener('profile-simulation:changed',refresh);return()=>window.removeEventListener('profile-simulation:changed',refresh)}
+export const getToken = () => typeof window === 'undefined' ? null : localStorage.getItem('orbit_token');
+export const setSession = (token: string, user: User) => {
+  localStorage.removeItem(PROFILE_SIMULATION_STORAGE_KEY);
+  localStorage.setItem('orbit_token', token);
+  localStorage.setItem('orbit_user', JSON.stringify(user));
+  applyTheme(user.preferences?.theme || 'light');
+  document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
+  window.dispatchEvent(new Event('account:changed'));
+};
+export const clearSession = () => {
+  localStorage.removeItem(PROFILE_SIMULATION_STORAGE_KEY);
+  localStorage.removeItem('orbit_token');
+  localStorage.removeItem('orbit_user');
+  applyTheme('light');
+  document.documentElement.dataset.compactCards = 'false';
+  window.dispatchEvent(new Event('account:changed'));
+};
+export const getUser = (): User | null => {
+  if (typeof window === 'undefined') return null;
+  try { return JSON.parse(localStorage.getItem('orbit_user') || 'null'); }
+  catch { return null; }
+};
+export const setUser = (user: User) => {
+  localStorage.setItem('orbit_user', JSON.stringify(user));
+  applyTheme(user.preferences?.theme || 'light');
+  document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
+  window.dispatchEvent(new Event('account:changed'));
+};
+export const applyTheme = (theme: 'light' | 'dark' | 'terroso') => {
+  if (typeof document === 'undefined') return;
+  if (process.env.NEXT_PUBLIC_ORBIT_THEME) document.documentElement.dataset.theme = process.env.NEXT_PUBLIC_ORBIT_THEME;
+  else document.documentElement.dataset.theme = theme;
+};
+export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...orbitApiHeaders(),
+        ...options.headers,
+      },
+      cache: 'no-store',
+    });
+  } catch (reason) {
+    const detail = reason instanceof Error && reason.message ? ` (${reason.message})` : '';
+    throw new Error(`Não foi possível conectar à API. Verifique se o servidor está rodando.${detail}`);
+  }
+  const raw = await response.text();
+  let data: unknown = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch { /* A resposta abaixo informa o código recebido. */ }
+  if (!response.ok) {
+    const body = data && typeof data === 'object' ? data as {message?:unknown;code?:unknown} : {};
+    const message = typeof body.message === 'string'
+      ? body.message
+      : Array.isArray(body.message) ? body.message.filter((item): item is string => typeof item === 'string').join(' ')
+      : `A API respondeu ${response.status}${response.statusText ? ` (${response.statusText})` : ''}.${raw ? ` ${raw.slice(0, 300)}` : ''}`;
+    const error = new Error(message) as Error & { status:number; code?:string };
+    error.status = response.status;
+    if (typeof body.code === 'string') error.code = body.code;
+    throw error;
+  }
+  return data as T;
+}
+export async function apiBlob(path: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      headers: orbitApiHeaders(),
+      cache: 'no-store',
+    });
+  } catch (reason) {
+    const detail = reason instanceof Error && reason.message ? ` (${reason.message})` : '';
+    throw new Error(`Não foi possível conectar à API. Verifique se o servidor está rodando.${detail}`);
+  }
+  if (!response.ok) {
+    const raw = await response.text();
+    let message = `A API respondeu ${response.status}${response.statusText ? ` (${response.statusText})` : ''}.`;
+    try {
+      const data = JSON.parse(raw) as { message?: unknown };
+      if (typeof data.message === 'string') message = data.message;
+    } catch { /* mantém a mensagem de status */ }
+    throw new Error(message);
+  }
+  return response.blob();
+}
+export const send = <T = unknown>(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body?: unknown) =>
+  api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+export async function commentAttachmentBlob(id:string):Promise<Blob>{
+  const response=await fetch(`${BASE}/comment-attachments/${id}/content`,{headers:orbitApiHeaders()});
+  if(!response.ok)throw new Error('Não foi possível abrir o anexo.');
+  return response.blob();
+}
+export async function authenticatedBlob(path:string):Promise<Blob>{
+  const response=await fetch(`${BASE}${path}`,{headers:orbitApiHeaders(),cache:'no-store'});
+  if(!response.ok)throw new Error('Não foi possível baixar o arquivo autorizado.');
+  return response.blob();
+}
+export const initials = (name: string) => name.split(' ').filter(Boolean).slice(0,2).map(n => n[0].toUpperCase()).join('');
+export const cardUrl = (boardId: string, cardId?: string | null, token?: string | null) => `/board/${boardId}${cardId ? `?card=${cardId}${token ? `&token=${encodeURIComponent(token)}` : ''}` : ''}`;
+export const dateLabel = (date: string) => new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+export const boardColors: Record<string,string> = {
+  blue: 'linear-gradient(135deg,#126aaf,#074b88)',
+  teal: 'linear-gradient(135deg,#16969b,#075e73)',
+  purple: 'linear-gradient(135deg,#8e68cb,#534292)',
+  pink: 'linear-gradient(135deg,#c96c9b,#935377)',
+  orange: 'linear-gradient(135deg,#df8751,#a45343)',
+  green: 'linear-gradient(135deg,#6b9b6d,#376e63)',
+  sunset: 'linear-gradient(135deg,#d27977 0%,#a3568c 50%,#575ca0 100%)',
+  ocean: 'linear-gradient(135deg,#4c94b0 0%,#31748d 50%,#1a4e73 100%)',
+};
+export const labelColors: Record<string,string> = {
+  green:'linear-gradient(135deg,#5ed6a1,#2d9d73)', green_light:'linear-gradient(135deg,#c9f7e0,#a7e9cc)', green_dark:'linear-gradient(135deg,#31865f,#17533d)',
+  yellow:'linear-gradient(135deg,#f8d85f,#d9aa2e)', yellow_light:'linear-gradient(135deg,#fbedb6,#f2d77e)', yellow_dark:'linear-gradient(135deg,#9b760c,#644901)',
+  orange:'linear-gradient(135deg,#ffb276,#df784c)', orange_light:'linear-gradient(135deg,#ffead9,#ffcda9)', orange_dark:'linear-gradient(135deg,#b46216,#773807)',
+  red:'linear-gradient(135deg,#fa8178,#d9534f)', red_light:'linear-gradient(135deg,#ffe4e1,#ffc2be)', red_dark:'linear-gradient(135deg,#c43e31,#861c14)',
+  purple:'linear-gradient(135deg,#ad9ff4,#7966ca)', purple_light:'linear-gradient(135deg,#ebe7ff,#d1c8fa)', purple_dark:'linear-gradient(135deg,#705fca,#49388f)',
+  blue:'linear-gradient(135deg,#70adff,#397bd6)', blue_light:'linear-gradient(135deg,#deebff,#b8d5fb)', blue_dark:'linear-gradient(135deg,#2174e6,#084da9)',
+  pink:'linear-gradient(135deg,#ed8bc5,#c05296)', pink_light:'linear-gradient(135deg,#ffe3f3,#f6bcdd)', pink_dark:'linear-gradient(135deg,#bd4c98,#7a2260)',
+  teal:'linear-gradient(135deg,#76d3dc,#3f9eaa)', teal_light:'linear-gradient(135deg,#dcf7fb,#afe4ef)', teal_dark:'linear-gradient(135deg,#2f8199,#155367)',
+  lime:'linear-gradient(135deg,#a8d95b,#74a832)', lime_light:'linear-gradient(135deg,#e1f7bd,#c3e890)', lime_dark:'linear-gradient(135deg,#658c2d,#3a5515)',
+  gray:'linear-gradient(135deg,#9aa4b4,#687587)', gray_light:'linear-gradient(135deg,#edf0f3,#d0d6dd)', gray_dark:'linear-gradient(135deg,#596a7d,#354254)',
+  none:'linear-gradient(135deg,#f2f3f5,#dfe1e6)',
+};
+export const labelTextColor = (color:string) => /_light$|^none$/.test(color) ? '#172b4d' : '#fff';

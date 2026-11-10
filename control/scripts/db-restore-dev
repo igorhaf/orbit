@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if [ "$#" -ne 2 ] || [ "$1" != dev ]; then
+  echo 'Uso: db-restore-dev dev <snapshot-prod.dump>' >&2
+  exit 2
+fi
+exec "$(dirname "$0")/../bin/orbit-env" restore dev "$2"

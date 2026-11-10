@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+if [ "$#" -eq 2 ] && [ "$1" = prod ]; then
+  exec "$(dirname "$0")/../bin/orbit-env" verify-snapshot prod "$2"
+fi
+if [ "$#" -eq 2 ] && [ "$1" = original ]; then
+  directory=$2
+  if [ ! -f "$directory/backup.dump" ] || [ ! -f "$directory/checksums.txt" ]; then
+    echo 'Backup original ou checksum ausente.' >&2
+    exit 1
+  fi
+  (cd "$directory" && sha256sum -c checksums.txt)
+  pg_restore -l "$directory/backup.dump" >/dev/null
+  echo 'Formato do backup original válido.'
+  exit 0
+fi
+echo 'Uso: db-verify original <diretório> | db-verify prod <snapshot-prod.dump>' >&2
+exit 2

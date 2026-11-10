@@ -1,0 +1,13 @@
+.env
+data/db.env
+data/config/api.env
+data/config/*
+!data/config/.gitkeep
+!data/config/api.env.example
+data/backups/*
+!data/backups/.gitkeep
+data/sessions/*
+!data/sessions/.gitkeep
+data/db-init/*
+!data/db-init/.gitkeep
+!data/db.env.example

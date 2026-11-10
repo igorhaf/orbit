@@ -1,0 +1,526 @@
+import {vaultConstants as credentialConstants} from './credential-store';
+import {AccessRequest,AccessService} from './access/access';
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Optional, Param, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
+import { Request,Response } from 'express';
+import * as jwt from 'jsonwebtoken';
+import { Db } from './db';
+import { OrbitEvents } from './orbit-events';
+import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
+import { PluginNotifications } from './plugins/notifications';
+
+export const SINGLE_EMAIL = 'igorhaf@gmail.com';
+const bad = (message: string, status = 400): never => { throw new HttpException({ message }, status); };
+const validId = (id: string) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) bad('ID inválido.');
+  return id;
+};
+const bounded = (value: unknown, label: string, max: number) => {
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > max) bad(`${label} inválido.`);
+  return (value as string).trim();
+};
+
+@Injectable()
+export class FeaturesService {
+  private boardLinkProviders:Array<(board:string,user:string)=>Promise<string|null>>=[];
+  registerBoardLinkProvider(provider:(board:string,user:string)=>Promise<string|null>){this.boardLinkProviders.push(provider)}
+  private notificationProviders:Array<(user:string)=>Promise<void>>=[];
+  registerNotificationProvider(provider:(user:string)=>Promise<void>){this.notificationProviders.push(provider)}
+
+  constructor(@Inject(Db) private db: Db,@Optional() @Inject(OrbitEvents) private events?:OrbitEvents,@Optional() @Inject(AccessService) public access?:AccessService) {}
+
+  user(req: Request): string {
+    if((req as AccessRequest).orbitUser)return (req as AccessRequest).orbitUser!;
+    const token = req.headers.authorization?.replace(/^Bearer /i, '');
+    if (!token) bad('Faça login para continuar.', 401);
+    try {
+      const payload = jwt.verify(token!, process.env.JWT_SECRET!) as { sub: string; email?: string };
+      if(typeof payload.sub!=='string')bad('Sessão inválida.',401);
+      return payload.sub;
+    } catch { return bad('Sessão expirada. Entre novamente.', 401); }
+  }
+
+  async member(boardId: string, userId: string) {
+    validId(boardId);
+    if(this.access&&!await this.access.boardPermission(boardId,userId))bad('Quadro não encontrado.',404);
+    let row = await this.db.one('SELECT bm.role,b.closed_at FROM authorized_board_members bm JOIN boards b ON b.id=bm.board_id WHERE bm.board_id=$1 AND bm.user_id=$2', [boardId, userId]);
+    if(!row&&this.access&&await this.access.boardPermission(boardId,userId))row=await this.db.one('SELECT closed_at FROM boards WHERE id=$1',[boardId]);
+    if (!row) return bad('Quadro não encontrado.', 404);
+    if (row?.closed_at) bad('Este quadro está fechado. Reabra-o para editar.', 409);
+  }
+
+  async cardBoard(cardId: string, userId: string): Promise<string> {
+    validId(cardId);
+    const row = await this.db.one('SELECT l.board_id,l.archived_at AS list_archived,c.archived_at AS card_archived,c.kind FROM cards c JOIN lists l ON l.id=c.list_id WHERE c.id=$1', [cardId]);
+    if (!row) return bad('Cartão não encontrado.', 404);
+    await this.member(row.board_id, userId);
+    if (row.list_archived || row.card_archived) bad('Este cartão está arquivado.',409);
+    if(!['normal','template'].includes(row.kind))bad('Este tipo de cartão não possui detalhes editáveis.',409);
+    if(await this.db.one('SELECT id FROM vault_items WHERE card_id=$1',[cardId]))bad('Cartões no cofre não possuem recursos de IA.',409);
+    return row.board_id;
+  }
+
+  async account(userId: string) {
+    const account = await this.db.one('SELECT id,name,email,avatar_url,preferences,ai_default_model,ai_default_effort,created_at,is_root FROM users WHERE id=$1', [userId]);
+    if (!account) return bad('Conta não encontrada.', 404);
+    return this.access?{...account,...await this.access.me(userId)}:account;
+  }
+
+  async securityActivity(userId: string) {
+    const labels: Record<string, string> = {
+      'account.profile.updated': 'Perfil atualizado',
+      'account.password.set': 'Senha definida',
+      'account.password.admin_changed':'Senha redefinida pela administração',
+      'account.access.admin_changed':'Acesso atualizado pela administração',
+      'account.password.changed': 'Senha alterada',
+      'account.email_change.requested': 'Alteração de e-mail solicitada',
+      'account.email_change.completed': 'E-mail alterado',
+      'account.mfa.enabled': 'Verificação em duas etapas ativada',
+      'account.mfa.disabled': 'Verificação em duas etapas desativada',
+      'account.social_identity.linked': 'Login social vinculado',
+    };
+    const rows = await this.db.query<{ id: string; action: string; created_at: Date }>(
+      "SELECT id::text,action,created_at FROM access_audit WHERE ((actor_id=$1 AND action NOT IN ('account.password.admin_changed','account.access.admin_changed')) OR (target=$1::text AND action IN ('account.password.admin_changed','account.access.admin_changed'))) AND created_at>=now()-interval '180 days' AND action=ANY($2::text[]) ORDER BY created_at DESC,id DESC LIMIT 100",
+      [userId, Object.keys(labels)],
+    );
+    return rows.flatMap(row => labels[row.action] ? [{ id: row.id, label: labels[row.action], created_at: row.created_at }] : []);
+  }
+
+  async loginHistory(userId: string) {
+    return this.db.query<{ id: string; logged_at: Date; device_label: string }>(
+      "SELECT id,logged_at,device_label FROM auth_login_history WHERE user_id=$1 AND logged_at>=now()-interval '180 days' ORDER BY logged_at DESC,id DESC LIMIT 100",
+      [userId],
+    );
+  }
+
+  async updateProfile(userId: string, body: Record<string, unknown>) {
+    const name = body.name === undefined ? null : bounded(body.name, 'Nome', 120);
+    let avatar: string | null | undefined;
+    if (body.avatar_url !== undefined) {
+      if (body.avatar_url === null || body.avatar_url === '') avatar = null;
+      else if (typeof body.avatar_url === 'string' && body.avatar_url.length <= 350000 &&
+        (/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(body.avatar_url) || /^https:\/\//i.test(body.avatar_url))) avatar = body.avatar_url;
+      else bad('Imagem de perfil inválida. Use PNG, JPEG, WebP ou uma URL HTTPS.');
+    }
+    const client = await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET name=COALESCE($2,name),avatar_url=CASE WHEN $3::boolean THEN $4::text ELSE avatar_url END WHERE id=$1', [userId,name,avatar!==undefined,avatar??null]);
+      if (name !== null || avatar !== undefined)
+        await client.query("INSERT INTO access_audit(actor_id,action) VALUES($1,'account.profile.updated')", [userId]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
+    return this.account(userId);
+  }
+
+  async updatePreferences(userId: string, body: Record<string, unknown>) {
+    const allowed = ['theme','notifications','emailNotifications','browserNotifications','shortcuts','compactCards'];
+    const changes: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (body[key] === undefined) continue;
+      if (key === 'theme') {
+        if (!['light','dark','terroso'].includes(String(body[key]))) bad('Tema inválido.');
+        changes.theme = body[key];
+      } else {
+        if (typeof body[key] !== 'boolean') bad(`Preferência ${key} inválida.`);
+        changes[key] = body[key];
+      }
+    }
+    if (body.vaultCategoryOrder !== undefined) {
+      if(this.access&&!this.access.resourceAvailable('vault'))bad('O Cofre não está disponível nesta instância.',409);
+      const order = Array.isArray(body.vaultCategoryOrder) ? body.vaultCategoryOrder : bad('Ordem das categorias do cofre inválida.');
+      if (order.some((id: unknown) => typeof id !== 'string') || new Set(order).size !== order.length) bad('Ordem das categorias do cofre inválida.');
+      const builtIn = new Set(['site','api','ssh','bank_test','license','custom']);
+      const custom = await this.db.query<{id:string}>('SELECT id FROM vault_categories WHERE owner_id=$1', [userId]);
+      const valid = new Set([...builtIn, ...custom.map((category) => category.id)]);
+      if (order.some((id: string) => !valid.has(id))) bad('Ordem das categorias do cofre inválida.');
+      changes.vaultCategoryOrder = order;
+    }
+    const client = await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET preferences=preferences || $2::jsonb WHERE id=$1', [userId,JSON.stringify(changes)]);
+      if (changes.notifications === false) {
+        await client.query("UPDATE notification_email_deliveries SET status='cancelled',updated_at=now() WHERE user_id=$1 AND status='pending'", [userId]);
+        await client.query("UPDATE notification_push_deliveries SET status='cancelled',updated_at=now() WHERE user_id=$1 AND status='pending'", [userId]);
+      } else if (changes.emailNotifications === false) {
+        await client.query("UPDATE notification_email_deliveries SET status='cancelled',updated_at=now() WHERE user_id=$1 AND status='pending'", [userId]);
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    return this.account(userId);
+  }
+
+
+  async visit(boardId: string, userId: string) {
+    await this.db.query(`INSERT INTO board_visits(board_id,user_id,visited_at) VALUES($1,$2,now())
+      ON CONFLICT(board_id,user_id) DO UPDATE SET visited_at=excluded.visited_at`, [boardId,userId]);
+  }
+
+  async reorderFavorites(userId: string, ids: unknown) {
+    if (!Array.isArray(ids) || ids.length > 100 || ids.some(x=>typeof x!=='string' || !/^[0-9a-f-]{36}$/i.test(x)) || new Set(ids).size!==ids.length) bad('Ordem inválida.');
+    const favoriteIds=ids as string[];
+    const count = await this.db.one(`SELECT count(*)::int AS total FROM boards b JOIN authorized_board_members bm ON bm.board_id=b.id
+      WHERE bm.user_id=$1 AND b.starred AND b.closed_at IS NULL`, [userId]);
+    if (Number(count?.total)!==favoriteIds.length) bad('Inclua todos os quadros favoritos.');
+    const client = await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (let i=0;i<favoriteIds.length;i++) {
+        const result=await client.query(`UPDATE boards b SET favorite_position=$3 FROM authorized_board_members bm
+          WHERE b.id=$1 AND bm.board_id=b.id AND bm.user_id=$2 AND b.starred RETURNING b.id`, [favoriteIds[i],userId,i]);
+        if (result.rowCount!==1) bad('Quadro favorito não encontrado.',404);
+      }
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
+    return { ok: true };
+  }
+
+  async toggleAssignee(cardId: string, userId: string) {
+    return this.toggleCardMember(cardId,userId,userId);
+  }
+
+  async toggleCardMember(cardId: string, actorId: string, memberId: string) {
+    const boardId=await this.cardBoard(cardId,actorId);
+    validId(memberId);
+    if (!(this.access?await this.access.boardPermission(boardId,memberId):await this.db.one('SELECT 1 FROM authorized_board_members WHERE board_id=$1 AND user_id=$2',[boardId,memberId]))) bad('Membro não pertence ao quadro.',404);
+    const existing=await this.db.one('SELECT 1 FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,memberId]);
+    if (existing) await this.db.query('DELETE FROM card_assignees WHERE card_id=$1 AND user_id=$2',[cardId,memberId]);
+    else {
+      await this.db.query('INSERT INTO card_assignees(card_id,user_id) VALUES($1,$2)',[cardId,memberId]);
+      await this.db.query('INSERT INTO card_watchers(card_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[cardId,memberId]);
+    }
+    await this.record(actorId,boardId,cardId,existing?'unassigned':'assigned',existing?'removeu um membro do cartão':'atribuiu um membro ao cartão');
+    if (!existing) {
+      const card=await this.db.one('SELECT title FROM cards WHERE id=$1',[cardId]);
+      await this.notify(memberId,boardId,cardId,'assignment','Cartão atribuído a você',card?.title||'');
+    }
+    return { assigned: !existing };
+  }
+
+  async notifyAssignees(actorId: string, boardId: string, cardId: string, kind: string, title: string, body: string) {
+    const members=await this.db.query('SELECT user_id FROM card_assignees WHERE card_id=$1 AND user_id<>$2',[cardId,actorId]);
+    for (const member of members) await this.notify(member.user_id,boardId,cardId,kind,title,body);
+  }
+
+  async record(actorId: string, boardId: string | null, cardId: string | null, kind: string, body: string) {
+    await this.db.query('INSERT INTO activities(actor_id,board_id,card_id,kind,body) VALUES($1,$2,$3,$4,$5)',[actorId,boardId,cardId,kind,body.slice(0,1000)]);
+    if(boardId) await this.notifyWatchers(actorId,boardId,cardId,kind,body);
+  }
+
+  async notify(userId: string, boardId: string, cardId: string | null, kind: string, title: string, body: string) {
+    if(this.access&&!await this.access.boardPermission(boardId,userId))return;
+    const account=await this.account(userId);
+    if (!account.preferences.notifications) return;
+    await this.db.query(`INSERT INTO notifications(plugin_id,user_id,board_id,card_id,kind,title,body)
+      VALUES('cards',$1,$2,$3,$4,$5,$6)`, [userId,boardId,cardId,kind,title,body.slice(0,300)]);
+    this.events?.notificationChanged(userId);
+  }
+
+  async mention(userId: string, boardId: string, cardId: string, body: string) {
+    const targets=new Set<string>();
+    if(/@card\b/i.test(body)) for(const row of await this.db.query('SELECT user_id FROM card_assignees WHERE card_id=$1',[cardId]))targets.add(row.user_id);
+    if(/@board\b/i.test(body)) for(const row of await this.db.query('SELECT user_id FROM authorized_board_members WHERE board_id=$1',[boardId]))targets.add(row.user_id);
+    if(/@(igor|igorhaf)\b/i.test(body))targets.add(userId);
+    if(!targets.size)return;
+    const card=await this.db.one('SELECT title FROM cards WHERE id=$1',[cardId]);
+    for(const target of targets)await this.notify(target,boardId,cardId,'mention',`Menção em ${card?.title||'um cartão'}`,body);
+  }
+
+  private async notifyWatchers(actorId:string,boardId:string,cardId:string|null,kind:string,body:string){
+    const ids=new Set<string>();
+    for(const row of await this.db.query('SELECT user_id FROM board_watchers WHERE board_id=$1',[boardId]))ids.add(row.user_id);
+    if(cardId){
+      for(const row of await this.db.query('SELECT user_id FROM card_watchers WHERE card_id=$1',[cardId]))ids.add(row.user_id);
+      for(const row of await this.db.query('SELECT lw.user_id FROM list_watchers lw JOIN cards c ON c.list_id=lw.list_id WHERE c.id=$1',[cardId]))ids.add(row.user_id);
+    }
+    const card=cardId?await this.db.one('SELECT title FROM cards WHERE id=$1',[cardId]):null;
+    for(const id of ids)if(id!==actorId)await this.notify(id,boardId,cardId,kind,`Atualização em ${card?.title||'quadro'}`,body);
+  }
+
+  async watches(cardId:string,userId:string){
+    const boardId=await this.cardBoard(cardId,userId);
+    const list=await this.db.one('SELECT list_id FROM cards WHERE id=$1',[cardId]);
+    return {
+      card:Boolean(await this.db.one('SELECT 1 FROM card_watchers WHERE card_id=$1 AND user_id=$2',[cardId,userId])),
+      list:Boolean(await this.db.one('SELECT 1 FROM list_watchers WHERE list_id=$1 AND user_id=$2',[list!.list_id,userId])),
+      board:Boolean(await this.db.one('SELECT 1 FROM board_watchers WHERE board_id=$1 AND user_id=$2',[boardId,userId])),
+    };
+  }
+  async toggleWatch(scope:'card'|'list'|'board',id:string,userId:string){
+    validId(id); let boardId:string;let table:string;let key:string;
+    if(scope==='card'){boardId=await this.cardBoard(id,userId);table='card_watchers';key='card_id'}
+    else if(scope==='list'){const row=await this.db.one('SELECT board_id FROM lists WHERE id=$1',[id]);if(!row)bad('Lista não encontrada.',404);await this.member(row!.board_id,userId);boardId=row!.board_id;table='list_watchers';key='list_id'}
+    else {await this.member(id,userId);boardId=id;table='board_watchers';key='board_id'}
+    const existing=await this.db.one(`SELECT 1 FROM ${table} WHERE ${key}=$1 AND user_id=$2`,[id,userId]);
+    if(existing)await this.db.query(`DELETE FROM ${table} WHERE ${key}=$1 AND user_id=$2`,[id,userId]);
+    else await this.db.query(`INSERT INTO ${table}(${key},user_id) VALUES($1,$2)`,[id,userId]);
+    await this.record(userId,boardId,scope==='card'?id:null,existing?'watch_stopped':'watch_started',existing?'parou de acompanhar':'começou a acompanhar');
+    return {watching:!existing};
+  }
+
+  async home(userId: string) {
+    const [upNext, highlights, yourItems, recentBoards, favorites, recentConversations] = await Promise.all([
+      this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,c.list_id,l.title AS list_title,
+        (c.due_date IS NOT NULL AND c.due_date<now()) AS overdue,
+        b.id AS board_id,b.title AS board_title,b.background,ca.user_id IS NOT NULL AS assigned_to_me
+        FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+        JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND ((c.due_date IS NOT NULL AND c.due_date<=now()+interval '7 days') OR ca.user_id IS NOT NULL)
+        ORDER BY c.due_date ASC NULLS LAST,c.updated_at DESC LIMIT 40`,[userId]),
+      this.activities(userId,18),
+      this.db.query(`SELECT ci.id,ci.text,ci.completed,ci.due_date,c.id AS card_id,c.url_token AS card_url_token,c.title AS card_title,
+        (ci.due_date IS NOT NULL AND ci.due_date<now()) AS overdue,
+        b.id AS board_id,b.title AS board_title FROM checklist_items ci
+        JOIN cards c ON c.id=ci.card_id JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+        JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE ci.assignee_id=$1 AND b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY ci.completed,ci.due_date ASC NULLS LAST,ci.position LIMIT 80`,[userId]),
+      this.db.query(`SELECT b.id,b.title,b.background,b.starred,b.workspace_id,w.name AS workspace_name,v.visited_at,
+        (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image
+        FROM board_visits v JOIN boards b ON b.id=v.board_id
+        JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        LEFT JOIN workspaces w ON w.id=b.workspace_id WHERE v.user_id=$1 AND b.closed_at IS NULL ORDER BY v.visited_at DESC LIMIT 8`,[userId]),
+      this.db.query(`SELECT b.id,b.title,b.background,b.starred,b.workspace_id,w.name AS workspace_name,b.favorite_position,
+        (SELECT 'data:'||m.mime_type||';base64,'||replace(encode(m.data,'base64'), E'\n', '') FROM board_media m WHERE m.board_id=b.id) AS background_image
+        FROM boards b JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        LEFT JOIN workspaces w ON w.id=b.workspace_id WHERE b.starred AND b.closed_at IS NULL ORDER BY b.favorite_position ASC NULLS LAST,b.created_at DESC`,[userId]),
+      this.db.query(`SELECT cm.id,cm.body,cm.created_at,c.id AS card_id,c.url_token AS card_url_token,c.title AS card_title,
+        b.id AS board_id,b.title AS board_title,COALESCE(cm.author_label,u.name) AS author_name
+        FROM comments cm JOIN users u ON u.id=cm.author_id JOIN cards c ON c.id=cm.card_id
+        JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+        JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL ORDER BY cm.created_at DESC LIMIT 6`,[userId]),
+    ]);
+    return { upNext,highlights,yourItems,recentBoards,favorites,recentConversations };
+  }
+
+  async trashSummary(userId: string) {
+    const [closedBoards,archivedLists,archivedCards]=await Promise.all([
+      this.db.one<{count:number}>(`SELECT count(*)::int AS count FROM boards b
+        JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1 WHERE b.closed_at IS NOT NULL AND NOT b.is_inbox`,[userId]),
+      this.db.one<{count:number}>(`SELECT count(*)::int AS count FROM lists l
+        JOIN boards b ON b.id=l.board_id JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE l.archived_at IS NOT NULL AND b.closed_at IS NULL AND NOT b.is_inbox`,[userId]),
+      this.db.one<{count:number}>(`SELECT count(*)::int AS count FROM cards c
+        JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+        JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE c.archived_at IS NOT NULL AND l.archived_at IS NULL AND b.closed_at IS NULL AND NOT b.is_inbox`,[userId]),
+    ]);
+    return {closedBoards:closedBoards?.count||0,archivedLists:archivedLists?.count||0,archivedCards:archivedCards?.count||0};
+  }
+
+  async activities(userId: string, limit=30) {
+    return this.db.query(`SELECT a.id,a.kind,a.body,a.created_at,a.card_id,a.board_id,
+      b.title AS board_title,c.title AS card_title,c.url_token AS card_url_token,u.name AS actor_name
+      FROM activities a JOIN users u ON u.id=a.actor_id
+      LEFT JOIN boards b ON b.id=a.board_id LEFT JOIN cards c ON c.id=a.card_id
+      WHERE (a.board_id IS NULL OR b.closed_at IS NULL) AND (a.actor_id=$1 OR (a.board_id IS NOT NULL AND EXISTS
+        (SELECT 1 FROM authorized_board_members bm WHERE bm.board_id=a.board_id AND bm.user_id=$1)))
+      ORDER BY a.created_at DESC LIMIT $2`,[userId,Math.min(limit,100)]);
+  }
+
+  async credentialConstants(user:string){return credentialConstants(this.db,user)}
+  async assignedCards(userId: string) {
+    if(this.access)await this.access.require(userId,'boards.read');
+    const rows=await this.db.query<{id:string;board_id:string;title:string}>(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,true AS assigned_to_me,b.id AS board_id,
+      b.title AS board_title,b.background,l.title AS list_title
+      FROM card_assignees ca JOIN cards c ON c.id=ca.card_id JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+      WHERE ca.user_id=$1 AND b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL
+      AND NOT EXISTS(SELECT 1 FROM vault_items v WHERE v.card_id=c.id)
+      ORDER BY c.due_date ASC NULLS LAST,c.updated_at DESC`,[userId]);
+    const permitted=new Set<string>();
+    for(const board of new Set(rows.map(row=>row.board_id))){
+      if(this.access){if(await this.access.boardPermission(board,userId))permitted.add(board)}
+      else if(await this.db.one('SELECT 1 FROM authorized_board_members WHERE board_id=$1 AND user_id=$2',[board,userId]))permitted.add(board);
+    }
+    return rows.filter(row=>permitted.has(row.board_id));
+  }
+
+  async assignToInbox(userId:string,body:Record<string,unknown>){
+    if(!body||Array.isArray(body)||Object.keys(body).some(key=>key!=='card_ids')||!Array.isArray(body.card_ids)||!body.card_ids.length||body.card_ids.length>20||body.card_ids.some(key=>typeof key!=='string'))bad('Selecione de 1 a 20 cartões para seu Inbox.');
+    const ids=[...new Set((body.card_ids as string[]).map(validId))];
+    if(this.access)await this.access.require(userId,'boards.write');
+    const cards=[];for(const cardId of ids){const boardId=await this.cardBoard(cardId,userId);if(this.access&&!await this.access.boardPermission(boardId,userId,'boards.write'))bad('Você não pode assumir cartões deste quadro.',403);cards.push({id:cardId,boardId})}
+    const client=await this.db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      // Lock before assigning so an archive or relocation cannot race this operation.
+      for(const card of [...cards].sort((a,b)=>a.id.localeCompare(b.id))){
+        const row=(await client.query('SELECT c.list_id,l.board_id,c.archived_at,l.archived_at AS list_archived,b.closed_at FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id WHERE c.id=$1 FOR UPDATE OF c',[card.id])).rows[0];
+        if(!row||row.board_id!==card.boardId||row.archived_at||row.list_archived||row.closed_at)bad('O cartão mudou; atualize o quadro e tente novamente.',409);
+        const added=await client.query('INSERT INTO card_assignees(card_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING card_id',[card.id,userId]);
+        await client.query('INSERT INTO card_watchers(card_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[card.id,userId]);
+        if(added.rows.length)await client.query("INSERT INTO activities(actor_id,board_id,card_id,kind,body) VALUES($1,$2,$3,'assigned','assumiu o cartão pelo Inbox')",[userId,card.boardId,card.id]);
+      }
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+    for(const board of new Set(cards.map(card=>card.boardId)))this.events?.boardChanged(board,'inbox');
+    this.events?.notificationChanged(userId);
+    return{assigned:true,card_ids:ids};
+  }
+
+  async search(userId: string, term: string) {
+    const q=term.trim().slice(0,100);
+    if (q.length<2) return { boards: [], lists: [], cards: [] };
+    const pattern=`%${q}%`;
+    const [boards,lists,cards]=await Promise.all([
+      this.db.query(`SELECT b.id,b.title,b.background,b.starred,w.name AS workspace_name
+        FROM boards b JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        LEFT JOIN workspaces w ON w.id=b.workspace_id WHERE b.closed_at IS NULL AND b.title ILIKE $2 ORDER BY b.starred DESC,b.title LIMIT 12`,[userId,pattern]),
+      this.db.query(`SELECT l.id,l.title,l.board_id,b.title AS board_title,b.background
+        FROM lists l JOIN boards b ON b.id=l.board_id JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE b.closed_at IS NULL AND b.is_inbox=false AND b.is_collection=false AND l.archived_at IS NULL AND l.title ILIKE $2 ORDER BY b.title,l.position LIMIT 12`,[userId,pattern]),
+      this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,b.id AS board_id,b.title AS board_title,
+        l.id AS list_id,l.title AS list_title FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+        JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND (c.title ILIKE $2 OR c.description ILIKE $2) ORDER BY c.updated_at DESC LIMIT 20`,[userId,pattern]),
+    ]);
+    return { boards,lists,cards };
+  }
+
+  async advancedSearch(userId:string, filters:Record<string,string>) {
+    const term=(filters.q||'').trim().slice(0,100);const values:unknown[]=[userId];const where=['bm.user_id=$1'];
+    const add=(sql:string,value:unknown)=>{values.push(value);where.push(sql.replace('?',`$${values.length}`));};
+    if(term){values.push(`%${term}%`);const p=`$${values.length}`;where.push(`(c.title ILIKE ${p} OR c.description ILIKE ${p} OR EXISTS(SELECT 1 FROM comments cm WHERE cm.card_id=c.id AND cm.body ILIKE ${p}) OR EXISTS(SELECT 1 FROM checklist_items ci WHERE ci.card_id=c.id AND ci.text ILIKE ${p}))`);}
+    if(filters.board_id)add('b.id=?',validId(filters.board_id));if(filters.list_id)add('l.id=?',validId(filters.list_id));
+    if(filters.label_id){values.push(validId(filters.label_id));where.push(`EXISTS(SELECT 1 FROM card_labels cl WHERE cl.card_id=c.id AND cl.label_id=$${values.length})`);}
+    if(filters.archived==='only')where.push('c.archived_at IS NOT NULL');else if(filters.archived!=='all')where.push('c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL');
+    if(filters.due==='overdue')where.push('c.due_date<now()');if(filters.due==='week')where.push("c.due_date BETWEEN now() AND now()+interval '7 days'");if(filters.due==='none')where.push('c.due_date IS NULL');
+    if(filters.comments==='yes')where.push('EXISTS(SELECT 1 FROM comments cm WHERE cm.card_id=c.id)');if(filters.checklist==='yes')where.push('EXISTS(SELECT 1 FROM checklist_items ci WHERE ci.card_id=c.id)');
+    const sort=filters.sort==='created'?'c.created_at DESC':filters.sort==='due'?'c.due_date ASC NULLS LAST':'c.updated_at DESC';
+    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.description,c.due_date,false AS completed,c.updated_at,b.id AS board_id,b.title AS board_title,l.id AS list_id,l.title AS list_title,COALESCE((SELECT json_agg(json_build_object('id',la.id,'name',la.name,'color',la.color)) FROM labels la JOIN card_labels cl ON cl.label_id=la.id WHERE cl.card_id=c.id),'[]') AS labels FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN authorized_board_members bm ON bm.board_id=b.id WHERE ${where.join(' AND ')} ORDER BY ${sort} LIMIT 100`,values);
+    return {cards};
+  }
+  async savedSearches(userId:string){return this.db.query('SELECT id,name,query,created_at,updated_at FROM saved_searches WHERE user_id=$1 ORDER BY updated_at DESC',[userId]);}
+  async saveSearch(userId:string,body:Record<string,unknown>){const name=bounded(body.name,'Nome',120);if(!body.query||typeof body.query!=='object'||Array.isArray(body.query))bad('Pesquisa inválida.');return this.db.one('INSERT INTO saved_searches(user_id,name,query) VALUES($1,$2,$3::jsonb) RETURNING id,name,query,created_at,updated_at',[userId,name,JSON.stringify(body.query)]);}
+  async deleteSavedSearch(userId:string,id:string){validId(id);const row=await this.db.one('DELETE FROM saved_searches WHERE id=$1 AND user_id=$2 RETURNING id',[id,userId]);if(!row)bad('Pesquisa salva não encontrada.',404);return {ok:true};}
+
+  async planner(userId:string, boardId?:string) {
+    const boardFilter=boardId?` AND b.id=$2`:''; const params=boardId?[userId,validId(boardId)]:[userId];
+    const cards=await this.db.query(`SELECT c.id,c.url_token,c.title,c.due_date,c.schedule_start_at,c.schedule_end_at,false AS completed,b.id AS board_id,b.title AS board_title,l.title AS list_title
+      FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN authorized_board_members bm ON bm.board_id=b.id
+      LEFT JOIN card_assignees ca ON ca.card_id=c.id AND ca.user_id=$1 WHERE bm.user_id=$1 AND (ca.user_id=$1 OR b.is_inbox) AND (c.due_date IS NOT NULL OR c.schedule_start_at IS NOT NULL) AND c.archived_at IS NULL AND l.archived_at IS NULL AND b.closed_at IS NULL${boardFilter} ORDER BY COALESCE(c.schedule_start_at,c.due_date)`,params);
+    return {cards};
+  }
+  async createScheduledCard(userId:string,body:Record<string,unknown>){
+    const title=bounded(body.title,'Título',300);const start=new Date(bounded(body.starts_at,'Início',40));const end=body.ends_at===undefined?new Date(start.getTime()+60*60_000):new Date(bounded(body.ends_at,'Fim',40));if(Number.isNaN(+start)||Number.isNaN(+end)||end<=start)bad('Intervalo inválido.');const description=body.description===undefined?'':bounded(body.description,'Descrição',4000);
+    const boardId=body.board_id===undefined||body.board_id===null||body.board_id===""?null:typeof body.board_id==='string'?validId(body.board_id):bad('Quadro inválido.');const target=boardId?await this.db.one<{id:string}>(`SELECT l.id FROM lists l JOIN authorized_board_members bm ON bm.board_id=l.board_id WHERE l.board_id=$1 AND bm.user_id=$2 AND l.archived_at IS NULL ORDER BY l.position LIMIT 1`,[boardId,userId]):await this.db.one<{id:string}>('SELECT l.id FROM lists l JOIN boards b ON b.id=l.board_id WHERE b.owner_id=$1 AND b.is_inbox AND l.archived_at IS NULL ORDER BY l.position LIMIT 1',[userId]);
+    if(!target)bad('Não encontrei uma lista disponível para criar o cartão.',404);
+    if(body.all_day!==undefined&&typeof body.all_day!=='boolean')bad('Tipo de agendamento inválido.');const allDay=body.all_day===true;
+    const destination=target as {id:string};return this.db.one(`INSERT INTO cards(list_id,title,description,due_date,position,schedule_start_at,schedule_end_at,schedule_all_day) VALUES($1,$2,$3,$4,COALESCE((SELECT max(position)+1 FROM cards WHERE list_id=$1 AND archived_at IS NULL),0),$5,$6,$7) RETURNING id,title,due_date,schedule_start_at,schedule_end_at`,[destination.id,title,description,start,start,end,allDay]);
+  }
+
+  async notifications(userId: string) {
+    const account=await this.account(userId);
+    await this.db.query(`DELETE FROM notifications n WHERE n.user_id=$1 AND n.kind='due'
+      AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id=n.card_id AND c.archived_at IS NULL
+        AND c.due_date=n.due_at AND c.reminder_minutes IS NOT NULL
+        AND EXISTS (SELECT 1 FROM lists l JOIN boards b ON b.id=l.board_id WHERE l.id=c.list_id AND l.archived_at IS NULL AND b.closed_at IS NULL))`,[userId]);
+    if (account.preferences.notifications) {
+      for(const provider of this.notificationProviders)await provider(userId);
+      await this.db.query(`INSERT INTO notifications(plugin_id,user_id,board_id,card_id,kind,title,body,due_at)
+        SELECT 'planner',$1,b.id,c.id,'due',CASE WHEN c.due_date<now() THEN 'Cartão vencido' ELSE 'Prazo próximo' END,
+          c.title,c.due_date FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id
+        JOIN authorized_board_members bm ON bm.board_id=b.id AND bm.user_id=$1
+        WHERE b.closed_at IS NULL AND l.archived_at IS NULL AND c.archived_at IS NULL AND c.due_date IS NOT NULL
+          AND c.reminder_minutes IS NOT NULL AND c.due_date<=now()+c.reminder_minutes*interval '1 minute'
+        ON CONFLICT DO NOTHING`,[userId]);
+    }
+    const notifications=await this.db.query(`SELECT n.id,n.plugin_id,n.target_url,n.kind,n.title,n.body,n.created_at,n.read_at,n.board_id,n.card_id,
+      b.title AS board_title,c.url_token AS card_url_token FROM notifications n LEFT JOIN boards b ON b.id=n.board_id LEFT JOIN cards c ON c.id=n.card_id
+      WHERE n.user_id=$1 ORDER BY n.created_at DESC LIMIT 80`,[userId]);
+    if(!this.access)return notifications;
+    const allowed=new Map<string,boolean>();for(const notification of notifications)if(notification.board_id&&!allowed.has(notification.board_id))allowed.set(notification.board_id,await this.access.boardPermission(notification.board_id,userId));
+    const visible=notifications.filter(notification=>!notification.board_id||allowed.get(notification.board_id));
+    const targets=new Map<string,string|null>();for(const notification of visible)if(notification.board_id&&!notification.target_url){
+      if(!targets.has(notification.board_id)){let target:string|null=null;for(const provider of this.boardLinkProviders){target=await provider(notification.board_id,userId);if(target)break}targets.set(notification.board_id,target)}
+      notification.target_url=targets.get(notification.board_id);
+    }
+    return visible;
+  }
+
+  async markNotification(userId: string, id: string) {
+    validId(id);
+    const result=await this.db.one('UPDATE notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND user_id=$2 RETURNING id',[id,userId]);
+    if (!result) bad('Notificação não encontrada.',404);
+    this.events?.notificationChanged(userId);
+    return {ok:true};
+  }
+
+  async markCardPromptNotificationsRead(userId:string,cardId:string) {
+    const boardId=await this.cardBoard(cardId,userId);
+    await this.db.query(`UPDATE notifications SET read_at=COALESCE(read_at,now())
+      WHERE user_id=$1 AND board_id=$2 AND card_id=$3 AND kind IN ('prompt_execution','card_execution')
+        AND title<>'Prompt na fila' AND read_at IS NULL`,[userId,boardId,cardId]);
+    this.events?.notificationChanged(userId);
+    return {ok:true};
+  }
+
+  async markAllNotifications(userId: string) {
+    await this.db.query('UPDATE notifications SET read_at=COALESCE(read_at,now()) WHERE user_id=$1 AND read_at IS NULL',[userId]);
+    this.events?.notificationChanged(userId);
+    return {ok:true};
+  }
+
+  async clearAllNotifications(userId: string) {
+    await this.db.query('DELETE FROM notifications WHERE user_id=$1',[userId]);
+    this.events?.notificationChanged(userId);
+    return {ok:true};
+  }
+}
+
+@Controller()
+export class FeaturesController {
+  constructor(@Inject(FeaturesService) private features: FeaturesService,@Inject(RequestRateLimiter) private requestLimits:RequestRateLimiter,
+    @Optional() @Inject(PluginNotifications) private pluginNotifications?: PluginNotifications) {}
+  private accountHistoryUser(req:Request) { const user=this.features.user(req),actor=(req as AccessRequest).orbitActor;if(actor&&actor!==user)bad('O histórico da conta está disponível somente ao titular.',403);return user; }
+  private notificationDelivery() { return this.pluginNotifications || bad('Notificações push indisponíveis.',503); }
+  private async limitSearch(operation:string,req:Request,response:Response,user:string){
+    const origin=req.ip||req.socket.remoteAddress||'unknown';
+    const result=await this.requestLimits.consume(operation,[{kind:'identity',value:user,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_SEARCH_IDENTITY',60)},{kind:'origin',value:origin,limit:configuredRequestLimit('ORBIT_RATE_LIMIT_SEARCH_ORIGIN',300)}],60_000);
+    if(!result.allowed){response.setHeader('Retry-After',String(result.retryAfterSeconds));response.setHeader('Cache-Control','no-store');throw new HttpException('Limite de consultas atingido. Tente novamente em instantes.',429)}
+  }
+  @Get('account') account(@Req() req: Request) { return this.features.account(this.features.user(req)); }
+  @Patch('account') updateAccount(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updateProfile(this.features.user(req),body); }
+  @Patch('account/preferences') preferences(@Req() req: Request,@Body() body: Record<string, unknown>) { return this.features.updatePreferences(this.features.user(req),body); }
+  @Get('account/activity') activity(@Req() req: Request) { return this.features.activities(this.features.user(req),60); }
+  @Get('account/login-history') loginHistory(@Req() req:Request) { return this.features.loginHistory(this.accountHistoryUser(req)); }
+  @Get('account/security-activity') securityActivity(@Req() req:Request) { return this.features.securityActivity(this.accountHistoryUser(req)); }
+  @Get('account/credential-constants') constants(@Req()req:Request){return this.features.credentialConstants(this.features.user(req))}
+  @Get('account/cards') cards(@Req() req: Request) { return this.features.assignedCards(this.features.user(req)); }
+  @Get('inbox/cards') inboxCards(@Req() req:Request){return this.features.assignedCards(this.features.user(req))}
+  @Post('inbox/cards') assignInbox(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.assignToInbox(this.features.user(req),body)}
+  @Get('home') home(@Req() req: Request) { return this.features.home(this.features.user(req)); }
+  @Get('trash/summary') trashSummary(@Req() req: Request) { return this.features.trashSummary(this.features.user(req)); }
+  @Patch('favorites/reorder') favorites(@Req() req: Request,@Body() body: {ids: string[]}) { return this.features.reorderFavorites(this.features.user(req),body.ids); }
+  @Post('cards/:id/assignee/toggle') toggleAssignee(@Req() req: Request,@Param('id') id: string) { return this.features.toggleAssignee(id,this.features.user(req)); }
+  @Post('cards/:id/assignees/:userId/toggle') toggleCardMember(@Req() req: Request,@Param('id') id: string,@Param('userId') userId: string) { return this.features.toggleCardMember(id,this.features.user(req),userId); }
+  @Get('cards/:id/watches') watches(@Req() req:Request,@Param('id') id:string){return this.features.watches(id,this.features.user(req));}
+  @Post('cards/:id/watch/toggle') watchCard(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('card',id,this.features.user(req));}
+  @Post('lists/:id/watch/toggle') watchList(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('list',id,this.features.user(req));}
+  @Post('boards/:id/watch/toggle') watchBoard(@Req() req:Request,@Param('id') id:string){return this.features.toggleWatch('board',id,this.features.user(req));}
+  @Get('search') async search(@Req() req: Request,@Res({passthrough:true}) response:Response,@Query('q') q='') { const user=this.features.user(req);await this.limitSearch('query.search',req,response,user);return this.features.search(user,q); }
+  @Get('search/advanced') async advancedSearch(@Req() req:Request,@Res({passthrough:true}) response:Response,@Query() query:Record<string,string>){const user=this.features.user(req);await this.limitSearch('query.search-advanced',req,response,user);return this.features.advancedSearch(user,query);}
+  @Get('saved-searches') savedSearches(@Req() req:Request){return this.features.savedSearches(this.features.user(req));}
+  @Post('saved-searches') saveSearch(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.saveSearch(this.features.user(req),body);}
+  @Delete('saved-searches/:id') deleteSavedSearch(@Req() req:Request,@Param('id') id:string){return this.features.deleteSavedSearch(this.features.user(req),id);}
+  @Get('planner') planner(@Req() req:Request,@Query('board_id') boardId?:string){return this.features.planner(this.features.user(req),boardId);}
+  @Post('planner/cards') createScheduledCard(@Req() req:Request,@Body() body:Record<string,unknown>){return this.features.createScheduledCard(this.features.user(req),body);}
+  @Get('notifications') notifications(@Req() req: Request) { return this.features.notifications(this.features.user(req)); }
+  @Get('notifications/push/config') pushConfig(@Req() req: Request) { return this.notificationDelivery().pushConfig(this.features.user(req)); }
+  @Put('notifications/push/subscription') subscribePush(@Req() req:Request,@Body() body:unknown){return this.notificationDelivery().subscribePush(this.features.user(req),body);}
+  @Delete('notifications/push/subscription') unsubscribePush(@Req() req:Request,@Body() body:unknown){const endpoint=body&&typeof body==='object'&&!Array.isArray(body)?(body as {endpoint?:unknown}).endpoint:undefined;return this.notificationDelivery().unsubscribePush(this.features.user(req),endpoint);}
+  @Patch('cards/:id/prompt-notifications/read') readCardPromptNotifications(@Req() req:Request,@Param('id') id:string){return this.features.markCardPromptNotificationsRead(this.features.user(req),id);}
+  @Patch('notifications/read-all') readAll(@Req() req: Request) { return this.features.markAllNotifications(this.features.user(req)); }
+  @Delete('notifications') clearAll(@Req() req: Request) { return this.features.clearAllNotifications(this.features.user(req)); }
+  @Patch('notifications/:id/read') read(@Req() req: Request,@Param('id') id: string) { return this.features.markNotification(this.features.user(req),id); }
+}
