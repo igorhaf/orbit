@@ -195,7 +195,7 @@ export default function BoardsPage() {
       <div className="flex min-h-0 flex-1">
         <WorkspaceSidebar
           boards={boards}
-          onCreate={() => { setCreateFocusTarget(document.activeElement instanceof HTMLElement ? document.activeElement : null); setCreate(true); }}
+          onCreate={() => setCreate(true)}
           onChoose={(id) => router.push(id ? `/board/${id}` : "/boards")}
         />
         <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1200px] px-5 py-8 sm:px-8 md:py-10">

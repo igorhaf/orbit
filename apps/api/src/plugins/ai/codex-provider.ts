@@ -117,9 +117,10 @@ export class CodexAiService {
       }
       await new Promise<void>((resolve, reject) => {
         const executionPolicy = executionMode === 'planning' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox'];
+        const agentOptions=multiAgents?['--enable','multi_agent']:[];
         const command = sessionId
-          ? ['exec', '-C', workingDirectory, ...executionPolicy, '--skip-git-repo-check', ...(multiAgents ? ['--enable', 'multi_agent'] : []), 'resume', sessionId, ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
-          : ['exec', ...executionPolicy, '--skip-git-repo-check', ...(multiAgents ? ['--enable', 'multi_agent'] : []), ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
+          ? ['exec', ...agentOptions, '-C', workingDirectory, ...executionPolicy, '--skip-git-repo-check', 'resume', sessionId, ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
+          : ['exec', ...agentOptions, ...executionPolicy, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
         const child = spawn(executable, [
           ...command,
           ...imageFiles.flatMap(image=>['--image',image]),
@@ -235,7 +236,7 @@ export class CodexAiService {
       const detail = error instanceof Error ? error.message : '';
       if (sessionId && /(?:no (?:saved )?(?:session|conversation|thread|rollout)|(?:session|conversation|thread|rollout).*(?:not found|does not exist|could not be found)|could not find (?:the )?(?:session|conversation|thread|rollout))/i.test(detail)) {
         progress?.('A sessão anterior não está disponível neste armazenamento; iniciando uma nova sessão.');
-        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat, executionMode, images, multiAgents);
+        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat, executionMode);
       }
       console.error('[CodexAi] Execução falhou.',redact(detail));
       await sessionPersistence;

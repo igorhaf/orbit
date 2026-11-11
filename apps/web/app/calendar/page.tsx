@@ -110,15 +110,20 @@ export default function CalendarPage() {
     [creating, setCreating] = useState(false),
     [error, setError] = useState("");
   const { confirm, confirmationModal } = useConfirmModal();
+  const hasPermission = (permission: string) => Boolean(user?.is_root || user?.permissions?.includes("*") || user?.permissions?.includes(permission));
+  const canReadBoards = hasPermission("boards.read");
+  const canWriteBoards = hasPermission("boards.write");
+  const canWriteCalendar = hasPermission("calendar.write");
   const current = useMemo(() => range(view, anchor), [view, anchor]);
   const load = useCallback(async () => {
     try {
       setError("");
-      const [u, b, s] = await Promise.all([
+      const [u, s] = await Promise.all([
         api<User>("/auth/me"),
-        api<Board[]>("/boards"),
         api<CalendarSource[]>("/calendar/sources"),
       ]);
+      const b = u.is_root || u.permissions?.includes("*") || u.permissions?.includes("boards.read")
+        ? await api<Board[]>("/boards").catch(() => []) : [];
       setUser(u);
       setBoards(b);
       setSources(s);
@@ -146,6 +151,8 @@ export default function CalendarPage() {
     setAnchor(addDays(anchor, direction * amount));
   }
   async function drop(item: CalendarItem, date: Date) {
+    if (item.metadata.readOnly === true || item.resourceType === "card" && !canWriteBoards
+      || item.resourceType === "event" && !canWriteCalendar) return;
     const oldStart = new Date(item.start),
       duration = item.end
         ? new Date(item.end).getTime() - oldStart.getTime()
@@ -181,6 +188,7 @@ export default function CalendarPage() {
     }
   }
   async function dropInboxCard(cardId: string, date: Date) {
+    if (!canWriteBoards) return;
     const start = new Date(date);
     start.setHours(9, 0, 0, 0);
     const end = new Date(start.getTime() + 60 * 60_000);
@@ -223,7 +231,7 @@ export default function CalendarPage() {
     <div className="flex min-h-screen flex-col bg-[#f7f8fa]">
       <AppHeader user={user} boards={boards} />
       <div className="flex min-h-0 flex-1">
-        <WorkspaceSidebar boards={boards} onCreate={() => router.push("/boards?create=1")} onChoose={(id) => router.push(id ? `/board/${id}` : "/boards")} />
+        {canReadBoards && <WorkspaceSidebar boards={boards} onCreate={() => router.push("/boards?create=1")} onChoose={(id) => router.push(id ? `/board/${id}` : "/boards")} />}
         <main className="mx-auto w-full min-w-0 max-w-[1400px] px-4 py-7 sm:px-7 lg:px-9">
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -231,7 +239,7 @@ export default function CalendarPage() {
               <h1 className="flex items-center gap-2.5 text-[27px] font-bold tracking-tight sm:text-[31px]"><CalendarDays size={25} className="text-[#0c66e4]" /> Calendário</h1>
               <p className="mt-1 text-sm text-[#626f86]">Acompanhe seus eventos e compromissos em todas as agendas.</p>
             </div>
-            <button onClick={() => setCreating(true)} className="flex items-center gap-2 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]"><Plus size={17} /> Criar evento</button>
+            {canWriteCalendar && sources.some((source) => source.capabilities?.create) && <button onClick={() => setCreating(true)} className="flex items-center gap-2 rounded bg-[#0c66e4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0055cc]"><Plus size={17} /> Criar evento</button>}
           </div>
           <section className="min-w-0 overflow-hidden rounded-xl border border-[#dfe1e6] bg-white shadow-sm" aria-label="Agenda do calendário">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dfe1e6] px-5 py-4">
@@ -294,6 +302,8 @@ export default function CalendarPage() {
             }}
             drop={drop}
             dropInboxCard={dropInboxCard}
+            canWriteCalendar={canWriteCalendar}
+            canWriteBoards={canWriteBoards}
           /></div>
           </section>
         </main>
@@ -309,6 +319,7 @@ export default function CalendarPage() {
             await load();
           }}
           confirm={confirm}
+          canWriteCalendar={canWriteCalendar}
         />
       )}{" "}
       {selectedCard && selectedCardBoard && (
@@ -345,14 +356,16 @@ function ItemButton({
   item,
   source,
   choose,
+  canDrag,
 }: {
   item: CalendarItem;
   source?: CalendarSource;
   choose: (item: CalendarItem) => void;
+  canDrag: boolean;
 }) {
   return (
     <button
-      draggable
+      draggable={canDrag && item.metadata.readOnly !== true}
       onDragStart={(e) =>
         e.dataTransfer.setData("application/x-orbit-calendar-item", item.id)
       }
@@ -379,6 +392,8 @@ function CalendarView({
   choose,
   drop,
   dropInboxCard,
+  canWriteCalendar,
+  canWriteBoards,
 }: {
   view: View;
   start: Date;
@@ -388,6 +403,8 @@ function CalendarView({
   choose: (item: CalendarItem) => void;
   drop: (item: CalendarItem, date: Date) => void;
   dropInboxCard: (cardId: string, date: Date) => void;
+  canWriteCalendar: boolean;
+  canWriteBoards: boolean;
 }) {
   const days = Array.from(
     { length: Math.round((end.getTime() - start.getTime()) / dayMs) },
@@ -500,6 +517,7 @@ function CalendarView({
                           item={item}
                           source={s}
                           choose={choose}
+                          canDrag={item.resourceType === "card" ? canWriteBoards : canWriteCalendar}
                         />
                       ))}
                   </div>
@@ -541,6 +559,7 @@ function CalendarView({
               item={item}
               source={source(item.sourceId)}
               choose={choose}
+              canDrag={item.resourceType === "card" ? canWriteBoards : canWriteCalendar}
             />
           ))}
           </div>
@@ -722,12 +741,14 @@ function EventDetail({
   close,
   changed,
   confirm,
+  canWriteCalendar,
 }: {
   item: CalendarItem;
   source?: CalendarSource;
   boards: Board[];
   close: () => void;
   changed: () => Promise<void>;
+  canWriteCalendar: boolean;
   confirm: (
     options: {
       title: string;
@@ -749,6 +770,7 @@ function EventDetail({
     return () => observer.disconnect();
   }, []);
   const conference = item.conference && typeof item.conference === 'object' ? item.conference as {joinUrl?:string;provider?:string} : null;
+  const readOnly = item.metadata.readOnly === true || !canWriteCalendar;
   const [linking, setLinking] = useState(false),
     [editing, setEditing] = useState(false),
     [editTitle, setEditTitle] = useState(item.title),
@@ -832,7 +854,7 @@ function EventDetail({
           </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-2">
-          {item.resourceType === "event" && (
+          {item.resourceType === "event" && !readOnly && (
             <button
               onClick={() => setEditing(!editing)}
               className="rounded border border-[#626f86] bg-[#e9eaed] px-3 py-2 text-sm"
@@ -863,7 +885,7 @@ function EventDetail({
               >
                 Abrir Card
               </button>
-              {item.resourceType === "event" && (
+              {item.resourceType === "event" && !readOnly && (
                 <button
                   onClick={() =>
                     void send(
@@ -879,7 +901,7 @@ function EventDetail({
               )}
             </>
           ) : (
-            item.resourceType === "event" && (
+            item.resourceType === "event" && !readOnly && (
               <button
                 onClick={() => setLinking(!linking)}
                 className="rounded border border-[#626f86] bg-[#e9eaed] px-3 py-2 text-sm"
@@ -889,7 +911,7 @@ function EventDetail({
               </button>
             )
           )}
-          {item.resourceType === "event" && (
+          {item.resourceType === "event" && !readOnly && (
             <>
               <button
                 onClick={() =>

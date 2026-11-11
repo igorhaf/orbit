@@ -78,7 +78,14 @@ html[data-theme="dark"] {
 html[data-theme-forced="true"] .theme-preference-control { display: none; }
 html[data-theme="dark"] body { color: var(--orbit-text); background: #1d2125; }
 html[data-theme="dark"] button { color: var(--orbit-text); }
-html[data-theme="dark"] button:hover:not(:focus-visible) { outline: 1px solid var(--orbit-border); outline-offset: 1px; }
+/* Keep pointer hover discernible while giving keyboard focus its own stronger cue. */
+html[data-theme="dark"] button:not(:disabled):hover { outline: 2px solid #80909d; outline-offset: 2px; }
+html[data-theme="dark"] button:not(:disabled):focus-visible { outline: 3px solid #80909d !important; outline-offset: 2px; }
+/* Legacy slate utility is used by secondary actions and inactive tabs. Use the
+   dark Orbit accent so the control boundary and white label remain legible. */
+@layer utilities {
+  html[data-theme="dark"] :is([class~="!bg-[#44546f]"]) { background-color: #7164c7 !important; color: #fff !important; border: 1px solid var(--orbit-border) !important; }
+}
 html[data-theme="dark"] :is(.bg-white,[class~="bg-[#f7f8fa]"],[class~="bg-[#f8f9fb]"]) { background-color: var(--orbit-surface) !important; }
 html[data-theme="dark"] :is([class~="bg-[#f1f2f4]"]) { background-color: var(--orbit-surface-raised) !important; }
 html[data-theme="dark"] :is([class~="bg-[#cdd3db]"],[class~="bg-[#dfe1e6]"],[class~="bg-[#e9eaed]"]) { background-color: var(--orbit-surface-hover) !important; }
@@ -116,6 +123,39 @@ html[data-theme="dark"] :is([class~="text-[#7f5f01]"],[class~="text-[#e2b203]"])
 html[data-theme="dark"] :is([class~="text-[#ae2a19]"],[class~="text-[#e5484d]"],[class~="text-red-700"],[class~="text-red-800"]) { color: #ff9b8f !important; }
 html[data-theme="dark"] [class~="text-green-800"] { color: #7ee2b8 !important; }
 html[data-theme="dark"] :is(input,textarea,select) { color: var(--orbit-text); background-color: var(--orbit-surface-raised); border-color: var(--orbit-border); }
+html[data-theme="dark"] :is(input[type="checkbox"],input[type="radio"]):not(.sr-only) {
+  appearance: none;
+  display: inline-grid;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  place-content: center;
+  padding: 0;
+  border: 1px solid var(--orbit-border);
+  background: var(--orbit-surface-raised);
+  color: #fff;
+}
+html[data-theme="dark"] input[type="checkbox"]:not(.sr-only) { border-radius: .2rem; }
+html[data-theme="dark"] input[type="radio"]:not(.sr-only) { border-radius: 50%; }
+html[data-theme="dark"] :is(input[type="checkbox"],input[type="radio"]):not(.sr-only):checked { border-color: var(--orbit-border); background: #7164c7; }
+html[data-theme="dark"] input[type="checkbox"]:not(.sr-only)::before {
+  content: "";
+  width: .25rem;
+  height: .5rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg) scale(0);
+}
+html[data-theme="dark"] input[type="checkbox"]:not(.sr-only):checked::before { transform: translateY(-1px) rotate(45deg) scale(1); }
+html[data-theme="dark"] input[type="radio"]:not(.sr-only)::before {
+  content: "";
+  width: .45rem;
+  height: .45rem;
+  border-radius: 50%;
+  background: currentColor;
+  transform: scale(0);
+}
+html[data-theme="dark"] input[type="radio"]:not(.sr-only):checked::before { transform: scale(1); }
 html[data-theme="dark"] option { color: var(--orbit-text); background-color: var(--orbit-surface-raised); }
 html[data-theme="dark"] :is(input,textarea)::placeholder { color: var(--orbit-muted); }
 html[data-theme="dark"] .shadow-card { box-shadow: 0 1px 2px #0008; }
@@ -124,8 +164,8 @@ html[data-theme="dark"] .notebook-paper { background-color: var(--orbit-surface)
 html[data-theme="dark"] .notebook-editor { color: var(--orbit-text); }
 html[data-theme="dark"] .notebook-tool { color: #b6c2cf; }
 html[data-theme="dark"] .notebook-tool:hover { background: #38414a; color: #dee4ea; }
-html[data-theme="dark"] .notebook-paper { border-color: #3b4754; }
-html[data-theme="dark"] .notebook-editor td, html[data-theme="dark"] .notebook-editor th { border-color: #596773; }
+html[data-theme="dark"] .notebook-paper { border-color: var(--orbit-border); }
+html[data-theme="dark"] .notebook-editor td, html[data-theme="dark"] .notebook-editor th { border-color: var(--orbit-border); }
 
 /* Terroso brand palette: warm paper, wine, terracotta, olive and wood. */
 html[data-theme="terroso"] {
@@ -179,10 +219,3 @@ html[data-theme="terroso"] .notebook-editor td, html[data-theme="terroso"] .note
 html[data-theme="terroso"] .theme-preference-control { color: var(--orbit-text); }
 html[data-theme-forced="true"] .theme-preference-options { display: none; }
 html[data-theme-forced="true"] .theme-forced-notice { display: block; }
-@layer utilities {
-  html[data-theme="dark"] [class*="bg-[#44546f]"] { background-color: #657687 !important; color: #fff !important; }
-  html[data-theme="dark"] input[type="checkbox"]:not(.sr-only) { appearance: none !important; width: 1rem; height: 1rem; border: 1px solid var(--orbit-border) !important; border-radius: .25rem; background: var(--orbit-surface-raised); }
-  html[data-theme="dark"] input[type="checkbox"]:not(.sr-only):checked { border-color: #a5f3fc !important; background-color: #a5f3fc; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 8 3 3 7-7' fill='none' stroke='%231d2125' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-  html[data-theme="dark"] input[type="radio"]:not(.sr-only) { appearance: none !important; width: 1rem; height: 1rem; border: 1px solid var(--orbit-border) !important; border-radius: 50%; background: var(--orbit-surface-raised); }
-  html[data-theme="dark"] input[type="radio"]:not(.sr-only):checked { border-color: #a5f3fc !important; background: radial-gradient(circle, #1d2125 0 3px, #a5f3fc 3.5px); }
-}

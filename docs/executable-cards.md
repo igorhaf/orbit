@@ -167,25 +167,25 @@ Se outra decisão for necessária, a execução pode voltar à espera.
 Execuções em espera podem ser canceladas pelo endpoint de cancelamento existente.
 A espera sobrevive à reinicialização e não é considerada heartbeat vencido.
 
+### Execução com múltiplos agentes
+
+O controle **Múltiplos agentes** aparece junto à ação Executar nos cartões com
+o plugin de IA ativo. Ele vem marcado para novas execuções; desmarcá-lo inicia
+um agente único. `POST /cards/:id/prompt-runs` aceita
+`{ "instruction": "...", "multiple_agents": true|false }`. A API valida e
+persiste a opção em cada execução; o histórico e o status mostram o modo usado,
+e reexecuções reaproveitam essa escolha. Respostas a perguntas retomam o mesmo
+modo. Execuções antigas e comentários processados pela fila automática usam
+agente único.
+
+Com a opção ativa, o Orbit habilita o recurso nativo `multi_agent` do Codex CLI
+na sessão. O prompt orienta o coordenador a delegar apenas quando frentes
+independentes reduzirem tempo e tokens totais após considerar coordenação e
+integração. A delegação não amplia o escopo de escrita nem permissões; o
+coordenador revisa e integra os resultados. A migration
+`150_prompt_run_multiple_agents.sql` adiciona o campo persistido.
+
 O executor sinaliza perguntas com um bloco final não vazio
 `[[ORBIT_QUESTION]] ... [[/ORBIT_QUESTION]]`. Verificações de conclusão rodam
 quando a implementação conclui; escopo de escrita permanece validado em cada turno.
 A migração `060_prompt_questions.sql` habilita os novos valores persistidos.
-
-### Múltiplos agentes por execução
-
-O cartão de execução apresenta o controle liga/desliga **Múltiplos agentes**,
-marcado por padrão. O `POST /cards/:id/prompt-runs` aceita
-`{ "instruction": "...", "multiple_agents": true|false }`; a API valida e
-salva o modo no histórico da execução. A opção pode ser desligada antes de cada
-execução. O histórico exibe o modo usado, e responder uma pergunta ou repetir
-uma execução conserva a decisão gravada. Execuções anteriores à migration
-`143_prompt_run_multiple_agents.sql` aparecem como agente único; execuções
-automáticas iniciadas por comentários também usam agente único.
-
-Quando ativado, o Codex CLI recebe `--enable multi_agent` nessa execução. Isso
-habilita o Codex a avaliar a delegação, sem obrigar a criar subagentes. O Orbit
-instrui o agente a delegar somente quando frentes independentes e bem delimitadas
-reduzirem o tempo e o uso total de tokens após coordenação, integração e revisão.
-A delegação não altera autorização, escopo de escrita, limites de tokens nem
-verificações obrigatórias do projeto.

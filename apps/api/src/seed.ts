@@ -3,13 +3,6 @@ import 'dotenv/config';
 import { Pool } from 'pg';
 
 export async function seedDatabase(pool: Pool) {
-  const brandName=(process.env.ORBIT_APP_NAME||'Orbit').trim().slice(0,80)||'Orbit';
-  const brandIcon=['orbit','tree_of_life'].includes(process.env.ORBIT_APP_ICON_KIND||'')?process.env.ORBIT_APP_ICON_KIND:'orbit';
-  const loginTagline=(process.env.ORBIT_LOGIN_TAGLINE||'Seu trabalho, com uma visão mais clara.').trim().slice(0,180);
-  const loginDescription=(process.env.ORBIT_LOGIN_DESCRIPTION||'Acompanhe o que vem pela frente, veja as novidades e organize seus projetos em quadros.').trim().slice(0,500);
-  let loginBenefits=['Tarefas e prazos em destaque','Quadros, listas e cartões','Atividade e notificações em um lugar'];
-  try{const parsed=JSON.parse(process.env.ORBIT_LOGIN_BENEFITS_JSON||'');if(Array.isArray(parsed)&&parsed.length>=1&&parsed.length<=5&&parsed.every((item)=>typeof item==='string'&&item.trim()&&item.length<=120))loginBenefits=parsed.map(item=>item.trim())}catch{/* Use the built-in Orbit copy when no valid list is configured. */}
-  await pool.query(`INSERT INTO instance_branding(id,app_name,icon_kind,login_tagline,login_description,login_benefits) VALUES(true,$1,$2,$3,$4,$5::jsonb) ON CONFLICT(id) DO UPDATE SET login_tagline=EXCLUDED.login_tagline,login_description=EXCLUDED.login_description,login_benefits=EXCLUDED.login_benefits WHERE NOT instance_branding.login_content_customized`,[brandName,brandIcon,loginTagline,loginDescription,JSON.stringify(loginBenefits)]);
   const { rows: [user] } = await pool.query(
     `INSERT INTO users(name,email,password_hash,is_root) VALUES($1,$2,$3,true)
      ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name

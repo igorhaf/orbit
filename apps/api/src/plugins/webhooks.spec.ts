@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { HttpException } from "@nestjs/common";
 import { PluginRegistry } from "../execution/registries";
 import { ExtensionRecords, type ExtensionRecord } from "./records/records.service";
-import { buildWebhookEnvelope, CLAIM_WEBHOOK_DELIVERIES_SQL, enqueueWebhookEvent, unsafeWebhookAddress, validatePublicHttpsTarget, webhookEventOptions, WebhooksService, webhooksPlugin } from "./webhooks";
+import { buildWebhookEnvelope, enqueueWebhookEvent, unsafeWebhookAddress, validatePublicHttpsTarget, webhookEventOptions, webhooksPlugin } from "./webhooks";
 
 test("plugin webhooks expõe eventos genéricos e eventos de domínio declarados", () => {
   const registry = new PluginRegistry();
@@ -35,38 +35,67 @@ test("envelopes de eventos excluem título, payload e dados pessoais", () => {
   assert.equal(JSON.stringify([generic, domain]).includes("title"), false);
 });
 
-test("eventos e entregas são idempotentes e usam a conexão da transação", async () => {
+test("eventos só são persistidos com assinaturas compatíveis e entregas usam a mesma transação", async () => {
   const calls: Array<{ sql: string; values: unknown[] }> = [];
-  let inserted = true;
+  const subscriptions = [
+    { id: "subscription-1", active: true, event_types: ["records.item.published"] },
+    { id: "subscription-2", active: true, event_types: ["record.created", "records.item.published"] },
+    { id: "subscription-inactive", active: false, event_types: ["records.item.published"] },
+  ];
+  const events = new Set<string>();
+  const deliveries = new Set<string>();
   const client = { async query(sql: string, values: unknown[] = []) {
     calls.push({ sql, values });
-    if (sql.includes("INSERT INTO webhook_events")) return inserted ? (inserted = false, { rows: [{ id: "event-1" }] }) : { rows: [] };
-    return { rows: [] };
+    assert.match(sql, /WITH matching_subscriptions AS MATERIALIZED/);
+    const [workspaceId, recordId, , , , revision, eventType] = values as [string, string, string, string, string, number, string, number];
+    const key = [workspaceId, recordId, revision, eventType].join("|");
+    const matching = subscriptions.filter((item) => item.active && item.event_types.includes(eventType));
+    if (!matching.length || events.has(key)) return { rows: [] };
+    events.add(key);
+    for (const subscription of matching) deliveries.add(`${subscription.id}|event-1`);
+    return { rows: [{ id: "event-1" }] };
   } };
   const resource = { id: "record-1", workspace_id: "workspace-1", plugin_id: "records", kind: "item", state: "published", revision: 2, payload: { email: "private@example.com" } };
   await enqueueWebhookEvent(client as never, resource, "records.item.published", 1);
   await enqueueWebhookEvent(client as never, resource, "records.item.published", 1);
-  assert.equal(calls.length, 2, "each attempt uses one atomic SQL statement");
-  assert.match(calls[0].sql, /matching_subscriptions AS MATERIALIZED/);
-  assert.match(calls[0].sql, /INSERT INTO webhook_events[\s\S]*WHERE EXISTS \(SELECT 1 FROM matching_subscriptions\)/);
-  assert.match(calls[0].sql, /INSERT INTO webhook_deliveries[\s\S]*FROM matching_subscriptions AS subscriptions CROSS JOIN inserted_event AS events/);
+  assert.equal(calls.length, 2, "each event is handled by one statement on the caller's transaction");
   assert.match(calls[0].sql, /ON CONFLICT\(workspace_id,record_id,revision,event_type\) DO NOTHING/);
-  assert.match(calls[0].sql, /ON CONFLICT\(subscription_id,event_id\) DO NOTHING/);
+  assert.match(calls[0].sql, /WHERE EXISTS\(SELECT 1 FROM matching_subscriptions\)/);
+  assert.match(calls[0].sql, /FROM matching_subscriptions subscriptions CROSS JOIN inserted_event/);
   assert.equal(calls[0].values[6], "records.item.published");
   assert.equal(calls[0].values.includes(resource.payload), false);
+  assert.equal(events.size, 1, "idempotent snapshots create one event");
+  assert.deepEqual([...deliveries].sort(), ["subscription-1|event-1", "subscription-2|event-1"]);
 });
 
-test("eventos não geram armazenamento quando nenhum workspace assinou o tipo", async () => {
+test("snapshots without active matching subscriptions create no orphan webhook event", async () => {
   const calls: string[] = [];
-  const client = { async query(sql: string) { calls.push(sql); return { rows: [] }; } };
-  await enqueueWebhookEvent(client as never, {
-    id: "record-1", workspace_id: "workspace-1", plugin_id: "records", kind: "item", state: "draft", revision: 1,
-  }, "record.created", 1);
-  assert.equal(calls.length, 1, "no-assignee path is a single SQL statement with no follow-up write");
-  assert.match(calls[0], /matching_subscriptions AS MATERIALIZED \([\s\S]*workspace_id=\$1 AND active AND \$7=ANY\(event_types\)/);
-  assert.match(calls[0], /WHERE EXISTS \(SELECT 1 FROM matching_subscriptions\)/);
-  assert.match(calls[0], /FROM matching_subscriptions AS subscriptions CROSS JOIN inserted_event AS events/,
-    "deliveries are generated only from the exact materialized subscription set and inserted event");
+  const activeSubscriptions: Array<{ event_types: string[] }> = [
+    { event_types: ["record.created"] },
+    { event_types: ["records.item.published"] },
+  ];
+  const persistedEvents: string[] = [];
+  const persistedDeliveries: string[] = [];
+  const client = { async query(sql: string, values: unknown[] = []) {
+    calls.push(sql);
+    assert.match(sql, /WITH matching_subscriptions AS MATERIALIZED/);
+    assert.match(sql, /WHERE EXISTS\(SELECT 1 FROM matching_subscriptions\)/);
+    assert.match(sql, /FROM matching_subscriptions subscriptions CROSS JOIN inserted_event/);
+    const eventType = String(values[6]);
+    const matching = activeSubscriptions.filter((item) => item.event_types.includes(eventType));
+    if (matching.length) {
+      persistedEvents.push(eventType);
+      persistedDeliveries.push(...matching.map(() => eventType));
+      return { rows: [{ id: "event-1" }] };
+    }
+    return { rows: [] };
+  } };
+  const resource = { id: "record-2", workspace_id: "workspace-1", plugin_id: "records", kind: "item", state: "draft", revision: 1 };
+  await enqueueWebhookEvent(client as never, resource, "record.updated", 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].includes("INSERT INTO webhook_events"), true);
+  assert.equal(persistedEvents.length, 0, "there is no event row without a matching subscription");
+  assert.equal(persistedDeliveries.length, 0, "the same atomic statement has no delivery row to attach");
 });
 
 test("snapshot enfileira eventos genéricos e declarados na mesma transação", async () => {
@@ -85,6 +114,8 @@ test("snapshot enfileira eventos genéricos e declarados na mesma transação", 
   await (service as unknown as { snapshot: (client: unknown, record: ExtensionRecord, user: string, reason: string, previousState?: string) => Promise<ExtensionRecord> }).snapshot(client, record, "user-1", "Published", "draft");
   assert.equal(calls.filter((sql) => sql.includes("INSERT INTO webhook_events")).length, 2);
   assert.equal(calls.filter((sql) => sql.includes("INSERT INTO webhook_deliveries")).length, 2);
+  assert.equal(calls.filter((sql) => sql.includes("WITH matching_subscriptions AS MATERIALIZED")).length, 2,
+    "both event types are enqueued with a single statement each");
   assert.equal(calls.some((sql) => sql.includes("Private title") || sql.includes("private@example.com")), false);
 });
 
@@ -94,19 +125,4 @@ test("destinos rejeitam HTTP e endereços não públicos", async () => {
   assert.equal(unsafeWebhookAddress("8.8.8.8"), false);
   await assert.rejects(validatePublicHttpsTarget("http://8.8.8.8/hook"), (error) => error instanceof HttpException && error.getStatus() === 400);
   await assert.rejects(validatePublicHttpsTarget("https://127.0.0.1/hook"), (error) => error instanceof HttpException && error.getStatus() === 400);
-});
-
-test("reconcilia webhooks stale no teto e impede nova tentativa acima do CHECK", async () => {
-  assert.match(CLAIM_WEBHOOK_DELIVERIES_SQL, /stale_exhausted AS \([\s\S]*status='dead_letter'[\s\S]*last_error='ATTEMPTS_EXHAUSTED'[\s\S]*attempt_count>=8/);
-  assert.match(CLAIM_WEBHOOK_DELIVERIES_SQL, /d\.status='pending'[\s\S]*d\.attempt_count<8[\s\S]*d\.status='sending'[\s\S]*d\.attempt_count<8/);
-  assert.match(CLAIM_WEBHOOK_DELIVERIES_SQL, /attempt_count=d\.attempt_count\+1/);
-
-  const calls: string[] = [];
-  const service = new WebhooksService(
-    { async query(sql: string) { calls.push(sql); return []; } } as never,
-    {} as never,
-    { isEnabled() { return true; } } as never,
-  );
-  await service.dispatch();
-  assert.deepEqual(calls, [CLAIM_WEBHOOK_DELIVERIES_SQL]);
 });

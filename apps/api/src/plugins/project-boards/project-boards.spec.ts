@@ -19,7 +19,7 @@ test('creation detaches without disabling reads, edits, cards or domain workflow
   registry.setEnabled('project-boards',true);
  }
  registry.setEnabled('project-boards',false);
- for(const [path,method] of [['/boards','GET'],['/boards/id','PATCH'],['/boards/id/cards','POST'],['/ai/projects/id','PATCH'],['/safdoulas/processes','POST']]){
+ for(const [path,method] of [['/boards','GET'],['/boards/id','PATCH'],['/boards/id/cards','POST'],['/ai/projects/id','PATCH'],['/external-processes','POST']]){
   let passed=false;middleware({path,method} as Request,{} as Response,(()=>{passed=true}) as NextFunction);assert.equal(passed,true);
  }
  assert.equal(registry.isEnabled('project-boards'),false);

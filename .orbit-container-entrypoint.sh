@@ -1,6 +1,14 @@
 #!/bin/sh
 set -eu
 cd /home/meada/projetos/orbit
+if [ "${ORBIT_RUNTIME_MODE:-}" = release ]; then
+  if [ "${ORBIT_ENV:-}" = development ] && [ "${ORBIT_DEV_ALLOW_LOCAL_ONLY_MIGRATION_BACKUP:-}" = true ]; then
+    npm run db:migrate -w apps/api -- --allow-dev-local-only-backup
+  else
+    npm run db:migrate
+  fi
+  exec node apps/api/dist/main.js
+fi
 if [ "${ORBIT_ENV:-}" = production ]; then
   npm run db:migrate
   exec node apps/api/dist/main.js

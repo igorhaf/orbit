@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { ORBIT_EMBEDDING_DIMENSIONS, ORBIT_EMBEDDING_MODEL } from "./embeddings";
-import { OrbitKnowledgeRetrievalService, type KnowledgeCandidate, type KnowledgeScope } from "./knowledge-retrieval";
+import { OrbitKnowledgeEmbeddingRetentionService, OrbitKnowledgeRetrievalService, type KnowledgeCandidate, type KnowledgeScope } from "./knowledge-retrieval";
 
 type StoredVector = {
   workspace_id: string; owner_plugin_id: string; collection_id: string; model: string; content_hash: string;
@@ -105,14 +105,10 @@ test("semantic ranking caches hashes and vectors without persisting raw content"
   assert.ok([...db.rows.values()].every((row) => row.model === ORBIT_EMBEDDING_MODEL && row.embedding.length === ORBIT_EMBEDDING_DIMENSIONS));
   assert.equal(JSON.stringify([...db.rows.values()]).includes("relevant lesson content"), false);
 
-  const activeRows = [...db.rows.values()];
-  for (const row of activeRows) row.updated_at = Date.now() - 29 * 24 * 60 * 60 * 1000;
-  const previousActivity = Math.min(...activeRows.map((row) => row.updated_at));
   await retrieval.rank(scopeA, "question about the course", candidates);
   assert.equal(provider.batches.length, 3, "a warm cache embeds only the new query vector, not candidate texts");
   assert.deepEqual(provider.batches[2], ["question about the course"]);
   assert.ok(db.calls.some(({ sql }) => sql.includes("SET updated_at=now()")), "cache hits refresh retention activity");
-  assert.ok(activeRows.every((row) => row.updated_at > previousActivity), "reused vectors get a fresh activity timestamp");
 });
 
 test("malformed cached vectors are re-embedded without refreshing their retention timestamp", async () => {
@@ -150,7 +146,7 @@ test("workspace, owner plugin and collection partition the cache and stale candi
     && row.owner_plugin_id === scopeA.pluginId && row.collection_id === scopeA.collectionId).length, 1);
 });
 
-test("ranking prunes removed vectors only in its collection and leaves global expiry to the retention service", async () => {
+test("retention removes unused vectors after 30 days and empty collections are purged within scope", async () => {
   const db = new MockEmbeddingDb();
   const provider = new MockEmbeddingProvider();
   const retrieval = new OrbitKnowledgeRetrievalService(db as never, provider as never);
@@ -160,14 +156,14 @@ test("ranking prunes removed vectors only in its collection and leaves global ex
   db.rows.set([stale.workspace_id, stale.owner_plugin_id, stale.collection_id, stale.model, stale.content_hash].join("|"), stale);
 
   await retrieval.rank(scopeA, "question", [candidate("active", "relevant active content")]);
-  assert.equal(db.rows.size, 2, "rank no longer owns application-wide retention cleanup");
-  assert.ok(!db.calls.some(({ sql }) => sql.includes("updated_at < now() - INTERVAL '30 days'")));
+  assert.equal(db.rows.size, 1, "the global expiry sweep removed the stale row");
+  assert.ok(db.calls.some(({ sql }) => sql.includes("updated_at < now() - INTERVAL '30 days'")));
 
   const otherScopeStale = { ...active, workspace_id: scopeB.workspaceId, content_hash: "b".repeat(64), updated_at: Date.now() };
   db.rows.set([otherScopeStale.workspace_id, otherScopeStale.owner_plugin_id, otherScopeStale.collection_id, otherScopeStale.model, otherScopeStale.content_hash].join("|"), otherScopeStale);
   await retrieval.rank(scopeA, "question", []);
-  assert.equal(db.rows.size, 2);
-  assert.ok([...db.rows.values()].every((row) => row.workspace_id === scopeB.workspaceId), "empty content purges only its authorized collection scope");
+  assert.equal(db.rows.size, 1);
+  assert.equal([...db.rows.values()][0].workspace_id, scopeB.workspaceId, "empty content purges only its authorized collection scope");
 });
 
 test("invalid scopes are rejected and disabled embeddings make no provider or database calls", async () => {
@@ -179,4 +175,83 @@ test("invalid scopes are rejected and disabled embeddings make no provider or da
   assert.deepEqual(await retrieval.rank(scopeA, "question", [candidate("x", "relevant")]), []);
   assert.equal(provider.batches.length, 0);
   assert.equal(db.calls.length, 0);
+});
+
+test("daily retention worker cleans on boot while embeddings are disabled and releases its unref timer", async () => {
+  const db = new MockEmbeddingDb();
+  const provider = new MockEmbeddingProvider();
+  const retrieval = new OrbitKnowledgeRetrievalService(db as never, provider as never);
+  provider.available = false;
+  assert.deepEqual(await retrieval.rank(scopeA, "question", [candidate("x", "relevant content")]), []);
+  assert.equal(db.calls.length, 0, "disabled semantic search stays database-free");
+
+  let timerCallback: (() => void) | undefined;
+  let timerDelay = 0;
+  let timerUnref = false;
+  let cleared: NodeJS.Timeout | undefined;
+  const token = { unref() { timerUnref = true; } } as unknown as NodeJS.Timeout;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = ((callback: () => void, delay?: number) => {
+    timerCallback = callback;
+    timerDelay = delay || 0;
+    return token;
+  }) as typeof globalThis.setInterval;
+  globalThis.clearInterval = ((timer: NodeJS.Timeout) => { cleared = timer; }) as typeof globalThis.clearInterval;
+  try {
+    const worker = new OrbitKnowledgeEmbeddingRetentionService(db as never);
+    worker.onModuleInit();
+    assert.equal(db.calls.length, 1, "the boot sweep runs without a rank request");
+    assert.match(db.calls[0].sql, /updated_at < now\(\) - INTERVAL '30 days'/);
+    assert.equal(timerDelay, 24 * 60 * 60 * 1_000);
+    assert.equal(timerUnref, true, "the periodic timer does not keep the process alive");
+    assert.equal(typeof timerCallback, "function");
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    timerCallback!();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(db.calls.length, 2, "the daily timer sweeps independently of rank");
+    worker.onModuleDestroy();
+    assert.equal(cleared, token, "module shutdown cancels the daily timer");
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("failed boot cleanup is logged and the next daily sweep retries", async () => {
+  let attempts = 0;
+  const db = { async query() {
+    attempts += 1;
+    if (attempts === 1) throw Object.assign(new Error("temporary db outage"), { code: "08006" });
+    return [];
+  } };
+  let timerCallback: (() => void) | undefined;
+  const token = { unref() {} } as unknown as NodeJS.Timeout;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = ((callback: () => void) => {
+    timerCallback = callback;
+    return token;
+  }) as typeof globalThis.setInterval;
+  globalThis.clearInterval = (() => undefined) as typeof globalThis.clearInterval;
+  const failures: string[] = [];
+  try {
+    const worker = new OrbitKnowledgeEmbeddingRetentionService(db as never);
+    Object.assign(worker, { logger: { error: (message: string) => failures.push(message) } });
+    worker.onModuleInit();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, 1);
+    assert.equal(failures.length, 1);
+    assert.match(failures[0], /database code 08006/);
+
+    timerCallback!();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, 2, "a later sweep retries after a transient database error");
+    assert.equal(failures.length, 1, "the successful retry is not logged as a failure");
+    worker.onModuleDestroy();
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
 });

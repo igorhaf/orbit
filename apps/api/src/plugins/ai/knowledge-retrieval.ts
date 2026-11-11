@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Db } from "../../db";
 import { ORBIT_EMBEDDING_DIMENSIONS, ORBIT_EMBEDDING_MODEL, OrbitEmbeddingsService } from "./embeddings";
 
@@ -42,6 +43,7 @@ export class OrbitKnowledgeRetrievalService {
         "DELETE FROM orbit_knowledge_embeddings WHERE workspace_id=$1 AND owner_plugin_id=$2 AND collection_id=$3 AND model=$4",
         [scope.workspaceId, scope.pluginId, scope.collectionId, ORBIT_EMBEDDING_MODEL],
       );
+      await this.db.query("DELETE FROM orbit_knowledge_embeddings WHERE updated_at < now() - INTERVAL '30 days'");
       return [];
     }
     const byHash = new Map<string, number[]>();
@@ -87,9 +89,55 @@ export class OrbitKnowledgeRetrievalService {
        AND model=$4 AND NOT(content_hash=ANY($5::text[]))`,
       [scope.workspaceId, scope.pluginId, scope.collectionId, ORBIT_EMBEDDING_MODEL, hashes],
     );
+    await this.db.query("DELETE FROM orbit_knowledge_embeddings WHERE updated_at < now() - INTERVAL '30 days'");
     const [queryVector] = await this.embeddings.embed([query.slice(0, 8_000)]);
     const ranked = bounded.map((item) => ({ value: item.value, score: cosineSimilarity(queryVector, byHash.get(hashFor(item.text))!) }))
       .filter((item) => item.score >= 0.15).sort((a, b) => b.score - a.score);
     return ranked.slice(0, Math.max(1, Math.min(8, limit)));
+  }
+}
+
+const KNOWLEDGE_EMBEDDING_RETENTION_DAYS = 30;
+const KNOWLEDGE_EMBEDDING_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1_000;
+
+/** Keeps the shared vector cache inside its retention window, even while embeddings are disabled. */
+@Injectable()
+export class OrbitKnowledgeEmbeddingRetentionService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(OrbitKnowledgeEmbeddingRetentionService.name);
+  private timer?: NodeJS.Timeout;
+  private sweep?: Promise<void>;
+
+  constructor(@Inject(Db) private readonly db: Db) {}
+
+  onModuleInit() {
+    this.timer = setInterval(() => this.runScheduledSweep(), KNOWLEDGE_EMBEDDING_SWEEP_INTERVAL_MS);
+    this.timer.unref();
+    this.runScheduledSweep();
+  }
+
+  onModuleDestroy() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
+  }
+
+  async cleanupExpiredVectors() {
+    if (this.sweep) return this.sweep;
+    const current = this.db.query(
+      `DELETE FROM orbit_knowledge_embeddings WHERE updated_at < now() - INTERVAL '${KNOWLEDGE_EMBEDDING_RETENTION_DAYS} days'`,
+    ).then(() => undefined);
+    this.sweep = current;
+    try {
+      await current;
+    } finally {
+      if (this.sweep === current) this.sweep = undefined;
+    }
+  }
+
+  private runScheduledSweep() {
+    void this.cleanupExpiredVectors().catch((error: unknown) => {
+      const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+        ? ` (database code ${error.code.slice(0, 32)})` : "";
+      this.logger.error(`Expired Orbit knowledge embeddings could not be purged${code}; the next daily sweep will retry.`);
+    });
   }
 }

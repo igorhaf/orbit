@@ -2,6 +2,8 @@
 
 As capacidades reutilizáveis ficam em `apps/api/src/plugins/records/`, sem entidades ou regras de clientes no core.
 
+Plugins de domínio podem estender a capacidade compartilhada sem alterar a lógica do plugin-base. Declare `parentPlugin` para identificar o host funcional e mantenha-o também em `dependencies`; o registry valida a relação, expõe pai e filhos no catálogo e herda o ciclo de ativação pelas dependências. Regras de cada produto continuam no plugin filho.
+
 | Plugin              | Recursos                                                                          |
 | ------------------- | --------------------------------------------------------------------------------- |
 | `versioned-records` | Persistência por workspace, versões imutáveis, referências fixadas e idempotência |
@@ -27,18 +29,27 @@ O core continua responsável pelo RBAC, e os plugins declaram `plugin.<id>.read`
 
 A auditoria verificável usa `access.audit.read`, registra eventos novos a partir da instalação da migration `119` e preserva a auditoria anterior sem alegar proteção retroativa.
 
+Campos de schema podem declarar a extensão de interface `recordKind` para mostrar um seletor dos registros desse tipo que o usuário pode consultar no workspace. `recordRevisionField` preenche o número da revisão selecionada. Essa sugestão de interface não substitui a validação do plugin; relações e permissões precisam ser verificadas novamente no servidor.
+
+Plugins podem declarar `publicRead` em um tipo para disponibilizar uma projeção anônima com estados e campos explicitamente permitidos. Validadores que resolvem relações aplicam a mesma projeção quando o ator não tem acesso ao workspace; isso permite validar uma inscrição contra um curso público sem liberar sua leitura geral. `publicRelatedList` limita os registros relacionados ao workspace e à revisão referenciada. Para itens com vagas, `seatAvailability` define o campo de capacidade e os estados que ocupam lugar; a projeção calcula os lugares restantes sem expor os registros individuais. `personalOwnerField` permite que `GET /extensions/:plugin/me/records/:kind` liste somente registros próprios de um tipo privado, depois de aplicar a política de autorização e gravar a auditoria. Tipos com `serverCreated` são persistidos apenas por operações do plugin confiável, enquanto suas respostas continuam protegidas pelo escopo individual.
+
+As regras de validação de domínio podem usar `listLatestRecords` para consultar um conjunto limitado de registros atuais do mesmo workspace por plugin, tipo, estado e correspondência de campos JSON. A consulta impõe limite máximo de mil linhas e não expõe resultados em uma rota; o uso é interno a validadores/transições. Opcionalmente, `lockScope` serializa operações relacionadas dentro da transação.
+
 ## API e persistência
 
 - `GET /extensions` lista os contratos e a disponibilidade efetiva.
 - `GET /extensions/:plugin/workspaces/:workspace/access` informa as permissões efetivas de escrita e publicação.
 - `GET|POST /extensions/:plugin/workspaces/:workspace/records` consulta até 100 registros recentes ou cria um registro.
+- `GET /extensions/:plugin/workspaces/:workspace/summary` agrega tipo e estado dos registros aos quais o usuário tem acesso, sem retornar seus payloads.
 - `GET /extensions/:plugin/records/:id` consulta o registro, até 100 versões, as referências e as próximas transições.
+- As rotas públicas específicas de um plugin usam projeções `publicRead`; relações públicas e disponibilidade derivada continuam limitadas pelas definições do plugin.
 - `POST /extensions/:plugin/records/:id/versions` cria uma revisão com `expected_revision`, `reason` e `operation_key`.
 - `POST /extensions/:plugin/records/:id/transitions` executa uma transição definida pelo plugin.
 - `POST /extensions/:plugin/records/:id/links` fixa `target_id`, `target_revision` e `relation` no mesmo workspace.
 - `POST /extensions/terms/records/:id/acceptances` registra um aceite explícito de uma versão publicada.
 - `POST /extensions/documents/workspaces/:workspace/files` recebe um arquivo base64 de até 8 MB.
 - `GET /extensions/documents/records/:id/files/:revision` verifica o hash e entrega a versão como download autenticado.
+- `GET /extensions/:plugin/records/:id/attachments/:revision/:attachmentId` entrega um anexo da revisão autenticada após aplicar a política do tipo de registro e verificar SHA-256.
 - `GET /extensions/audit-history` verifica a cadeia inteira e devolve os 100 eventos mais recentes.
 
 Toda mutação usa uma chave UUID de idempotência isolada por usuário, plugin e workspace, rejeita o reaproveitamento com conteúdo diferente e conclui dados, histórico e auditoria na mesma transação.
@@ -54,6 +65,10 @@ As tabelas compartilhadas não acrescentam campos aos cartões do core; novas ex
 O plugin aceita PDF, PNG, JPEG, texto UTF-8, DOCX e XLSX, valida assinatura de formato, tamanho, nome, hash e participação no workspace.
 
 `ORBIT_DOCUMENT_SCANNER_BIN` é uma configuração opcional do próprio plugin; quando definida, erro, timeout ou indisponibilidade do scanner bloqueiam o envio, e um upload sem scanner fica marcado como `not_configured`.
+
+## Anexos de registros
+
+Plugins podem associar vários arquivos a uma revisão imutável pela tabela genérica `extension_record_attachments`. A migration `144_record_attachments.sql` guarda nome, MIME, tamanho, hash, resultado do scanner, conteúdo binário e autor; a FK exige que a revisão exista e um trigger impede atualização ou exclusão. Plugins definem a leitura pelo hook `authorizeAttachment`, ou herdam a autorização do registro. O download é privado, não armazenável em cache, verifica o SHA-256 e grava auditoria. A operação acadêmica de envio de atividade grava seus anexos e a revisão da entrega na mesma transação.
 
 Uma variante anonimizada referencia uma versão original, e sua publicação exige uma revisão aprovada por alguém que não tenha enviado o original nem a cópia.
 

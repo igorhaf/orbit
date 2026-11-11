@@ -5,7 +5,7 @@ import { Files, LoaderCircle, Terminal, XCircle } from 'lucide-react';
 import { io } from 'socket.io-client';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Board, Card, PromptActivity, PromptFileChange, PromptRun, api, profileSimulationSocketAuth } from '@/lib/api';
+import { Board, Card, PromptActivity, PromptFileChange, PromptRun, api, orbitSocketAuth, watchOrbitProfileSimulation } from '@/lib/api';
 
 type ProgressEvent={runId:string;cardId:string;status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';message:string;output?:boolean;replace?:boolean;files?:PromptFileChange[];activity?:PromptActivity;at:string};
 const withoutSummary=(value:string)=>value.replace(/\[\[ORBIT_SUMMARY\]\][\s\S]*(?:\[\[\/ORBIT_SUMMARY\]\]|$)/i,'').trimEnd();
@@ -89,7 +89,7 @@ export function PromptExecution({card,board,active}:{card:Card;board:Board;activ
   useEffect(()=>{
     let mounted=true;
     void api<PromptRun[]>(`/cards/${card.id}/prompt-runs`).then(value=>{if(mounted){setRuns(value);setRunId(value.find(item=>['queued','running','waiting_answer'].includes(item.status))?.id||null);}}).catch(()=>undefined);
-    const socket=io({path:'/socket.io',auth:profileSimulationSocketAuth()});
+    const socket=io({path:'/socket.io',auth:orbitSocketAuth()});const unwatchProfileSimulation=watchOrbitProfileSimulation(socket);
     socket.on('connect',()=>socket.emit('board:join',board.id));
     socket.on('prompt:progress',(event:ProgressEvent)=>{
       if(event.cardId!==card.id)return;
@@ -103,7 +103,7 @@ export function PromptExecution({card,board,active}:{card:Card;board:Board;activ
       if(activity)setLiveActivities(current=>({...current,[event.runId]:[...(current[event.runId]||[]).filter(item=>item.id!==activity.id),activity]}));
       if(event.status!=='running')void api<PromptRun[]>(`/cards/${card.id}/prompt-runs`).then(value=>{if(mounted)setRuns(value);}).catch(()=>undefined);
     });
-    return()=>{mounted=false;socket.emit('board:leave',board.id);socket.disconnect();};
+    return()=>{mounted=false;socket.emit('board:leave',board.id);unwatchProfileSimulation();socket.disconnect();};
   },[board.id,card.id]);
   useEffect(()=>{
     if(!runs.some(run=>['queued','running','waiting_answer'].includes(run.status)))return;

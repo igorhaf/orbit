@@ -28,16 +28,6 @@ export async function authenticateLoginAccount(db:Pick<Db,'one'>,email:string,pa
   return row&&!row.disabled&&row.email_verified!==false&&passwordMatches?row:null;
 }
 
-export type MfaLoginAdapter={requestLogin(userId:string):Promise<{challenge_id:string;email_hint:string}>;completeChallenge(challengeId:unknown,code:unknown,purpose:"login"):Promise<LoginAccount|null>};
-export type MfaLoginResult=LoginAccount|{mfa_required:true;challenge_id:string;email_hint:string;email:string}|null;
-export async function authenticateLoginWithMfa(db:Pick<Db,'one'>,mfa:MfaLoginAdapter,email:string,body:Record<string,unknown>):Promise<MfaLoginResult>{
-  const challengeId=typeof body.mfa_challenge_id==='string'?body.mfa_challenge_id:null;
-  const row=challengeId?await mfa.completeChallenge(challengeId,body.mfa_code,'login'):await authenticateLoginAccount(db,email,typeof body.password==='string'?body.password:'');
-  if(!row||row.email.toLowerCase()!==email||challengeId&&!row.mfa_enabled)return null;
-  if(row.mfa_enabled&&!challengeId)return {mfa_required:true,...await mfa.requestLogin(row.id),email:row.email};
-  return row;
-}
-
 export function nextLoginBucketState(current:LoginBucketState|null,now:number,limit:number){
   const started=current?new Date(current.window_started_at).getTime():NaN;
   const blocked=current?.blocked_until?new Date(current.blocked_until).getTime():NaN;

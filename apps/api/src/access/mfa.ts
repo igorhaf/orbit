@@ -25,8 +25,10 @@ export class MfaService {
       if ((purpose === "login" && !account.mfa_enabled) || (purpose === "enable" && account.mfa_enabled) || (purpose === "disable" && !account.mfa_enabled))
         throw new HttpException("O estado da verificação em duas etapas mudou. Atualize a página e tente novamente.", 409);
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`mfa:${userId}:${purpose}`]);
-      const issued = (await client.query<{count:number}>("SELECT count(*)::int AS count FROM auth_mfa_challenges WHERE user_id=$1 AND purpose=$2 AND created_at>now()-interval '1 hour'", [userId,purpose])).rows[0]?.count||0;
-      if (issued >= 5) throw new HttpException("Limite de códigos de verificação atingido. Tente novamente mais tarde.", 429);
+      const recent = (await client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM auth_mfa_challenges WHERE user_id=$1 AND purpose=$2 AND created_at>now()-interval '1 hour'", [userId, purpose],
+      )).rows[0];
+      if (Number(recent?.count || 0) >= 5) throw new HttpException("Limite de códigos de verificação atingido. Tente novamente em uma hora.", 429);
       await client.query("UPDATE auth_mfa_challenges SET consumed_at=now() WHERE user_id=$1 AND purpose=$2 AND consumed_at IS NULL", [userId, purpose]);
       await client.query("INSERT INTO auth_mfa_challenges(id,user_id,purpose,code_hash,session_version,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '10 minutes')",
         [challengeId, userId, purpose, digestCode(challengeId, code), account.session_version]);
@@ -114,5 +116,11 @@ export class MfaService {
     if (!challenge) throw new HttpException("Código inválido ou expirado.", 401);
     const account = await this.completeChallenge(challengeId, body.code, challenge.purpose, userId);
     return { enabled: Boolean(account?.mfa_enabled) };
+  }
+
+  async status(userId: string) {
+    const account = await this.db.one<{ mfa_enabled: boolean }>("SELECT mfa_enabled FROM users WHERE id=$1 AND NOT disabled", [userId]);
+    if (!account) throw new HttpException("Conta não encontrada.", 404);
+    return { enabled: Boolean(account.mfa_enabled) };
   }
 }

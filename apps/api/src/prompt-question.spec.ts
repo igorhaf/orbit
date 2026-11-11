@@ -4,7 +4,7 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { extractPromptQuestion, questionGuidance } from './prompt-question';
-import { PromptSessionsService, promptRunMultipleAgents } from './prompt-sessions';
+import { PromptSessionsService } from './prompt-sessions';
 import { CodexAiService } from './codex-ai';
 
 const runId='11111111-1111-4111-8111-111111111111';
@@ -26,21 +26,6 @@ test('question protocol rejects incomplete, empty and non-final blocks',()=>{
   assert.match(questionGuidance(true),/permite continuar/);
 });
 
-test('prompt-run multi-agent mode defaults on, can be disabled, and remains off for comments and legacy resumes',()=>{
-  assert.equal(promptRunMultipleAgents({}),true);
-  assert.equal(promptRunMultipleAgents({multiple_agents:true}),true);
-  assert.equal(promptRunMultipleAgents({multiple_agents:false}),false);
-  assert.equal(promptRunMultipleAgents({}, {comment_id:'comment'} as never),false);
-  assert.equal(promptRunMultipleAgents({}, undefined, {multiple_agents:false}),false);
-  assert.equal(promptRunMultipleAgents({}, undefined, {}),false);
-});
-
-test('prompt-run rejects non-boolean multi-agent values before queueing',async()=>{
-  const service=new PromptSessionsService({} as never,{} as never,{} as never,{} as never);
-  await assert.rejects(()=>service.execute('card','user',{multiple_agents:'true'}),statusIs(400));
-  await assert.rejects(()=>service.execute('card','user',{multiple_agents:false,unexpected:true}),statusIs(400));
-});
-
 function answerService(run:Record<string,unknown>|null,authorized=true){
   const service=new PromptSessionsService({one:async(sql:string)=>sql.includes('SELECT c.id')?{id:'card'}:run} as never,{cardBoard:async()=>{if(!authorized)throw Object.assign(new Error('Sem acesso'),{getStatus:()=>404});return 'board';}} as never,{} as never,{} as never);
   return service;
@@ -55,10 +40,10 @@ test('answers validate membership, ownership, pending state and content',async()
 });
 
 test('answer reuses the pending execution and its saved session',async()=>{
-  const run={id:runId,user_id:'user',project_id:'project',model:'gpt-6-luna',effort:'high',codex_session_id:'saved-session',output:'Pergunta'};
+  const run={id:runId,user_id:'user',project_id:'project',model:'gpt-6-luna',effort:'high',codex_session_id:'saved-session',output:'Pergunta',multiple_agents:false};
   const service=answerService(run);
   let received:unknown[]=[];
-  service.execute=async(...args:Parameters<PromptSessionsService['execute']>)=>{received=args;return {id:runId,project_id:'project',model:'gpt-6-luna',effort:'high',status:'queued'};};
+  service.execute=async(...args:Parameters<PromptSessionsService['execute']>)=>{received=args;return {id:runId,project_id:'project',model:'gpt-6-luna',effort:'high',multiple_agents:false,status:'queued'};};
   assert.equal((await service.answerRun('card',runId,'user',{answer:' Sim '})).status,'queued');
   assert.deepEqual(received,['card','user',{instruction:'Sim'},undefined,run]);
 });
@@ -76,14 +61,14 @@ test('Questionar uses read only on the first turn, skips completion checks while
   const executable=join(directory,'codex.mjs');
   const oldBin=process.env.CODEX_BIN,oldHome=process.env.CODEX_HOME;
   try{
-    await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst a=process.argv.slice(2);let prompt='';for await(const chunk of process.stdin)prompt+=chunk;\nif(a.includes('resume')){if(!a.includes('saved-session')||!a.includes('--dangerously-bypass-approvals-and-sandbox'))process.exit(2);}else if(a[a.indexOf('--sandbox')+1]!=='read-only')process.exit(3);\nconsole.log(JSON.stringify({type:'thread.started',thread_id:'saved-session'}));\nawait writeFile(a[a.indexOf('--output-last-message')+1],a.includes('resume')?'Concluído':${JSON.stringify(question)});\n`);
+    await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst a=process.argv.slice(2);let prompt='';for await(const chunk of process.stdin)prompt+=chunk;\nif(a[a.indexOf('--enable')+1]!=='multi_agent')process.exit(4);\nif(a.includes('resume')){if(!a.includes('saved-session')||!a.includes('--dangerously-bypass-approvals-and-sandbox'))process.exit(2);}else if(a[a.indexOf('--sandbox')+1]!=='read-only')process.exit(3);\nconsole.log(JSON.stringify({type:'thread.started',thread_id:'saved-session'}));\nawait writeFile(a[a.indexOf('--output-last-message')+1],a.includes('resume')?'Concluído':${JSON.stringify(question)});\n`);
     await chmod(executable,0o755);process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;
     const codex=new CodexAiService();
-    const waiting=await codex.execute(questionGuidance(false),directory,'gpt-6-luna','high',()=>{},null,undefined,undefined,'planning',[],[],[['node','-e','process.exit(7)']],true);
+    const waiting=await codex.execute(questionGuidance(false),directory,'gpt-6-luna','high',()=>{},null,undefined,undefined,'planning',[],[],[['node','-e','process.exit(7)']],true,true);
     assert.equal(waiting.sessionId,'saved-session');assert.equal(extractPromptQuestion(waiting.output),'Posso seguir com a implementação?');
-    const completed=await codex.execute(questionGuidance(true),directory,'gpt-6-luna','high',()=>{},waiting.sessionId,undefined,undefined,'bypass',[],undefined,[['node','-e','process.exit(0)']],true);
+    const completed=await codex.execute(questionGuidance(true),directory,'gpt-6-luna','high',()=>{},waiting.sessionId,undefined,undefined,'bypass',[],undefined,[['node','-e','process.exit(0)']],true,true);
     assert.equal(completed.output,'Concluído');
-    await assert.rejects(()=>codex.execute('Finalizar',directory,'gpt-6-luna','high',()=>{},waiting.sessionId,undefined,undefined,'bypass',[],undefined,[['node','-e','process.exit(7)']],true));
+    await assert.rejects(()=>codex.execute('Finalizar',directory,'gpt-6-luna','high',()=>{},waiting.sessionId,undefined,undefined,'bypass',[],undefined,[['node','-e','process.exit(7)']],true,true));
   }finally{
     if(oldBin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=oldBin;
     if(oldHome===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=oldHome;
@@ -91,29 +76,10 @@ test('Questionar uses read only on the first turn, skips completion checks while
   }
 });
 
-test('Codex CLI only receives multi_agent when the execution setting is enabled',async()=>{
-  const directory=await mkdtemp(join(tmpdir(),'orbit-multiple-agents-test-'));
-  const executable=join(directory,'codex.mjs');
-  const oldBin=process.env.CODEX_BIN,oldHome=process.env.CODEX_HOME;
-  try{
-    await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst a=process.argv.slice(2);\nawait writeFile(a[a.indexOf('--output-last-message')+1],a.includes('--enable')&&a[a.indexOf('--enable')+1]==='multi_agent'?'enabled':'disabled');\n`);
-    await chmod(executable,0o755);process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;
-    const codex=new CodexAiService();
-    const enabled=await codex.execute('Implementar','/tmp','gpt-6-luna','medium',undefined,null,undefined,undefined,'bypass',[],undefined,[],false,true);
-    const disabled=await codex.execute('Implementar','/tmp','gpt-6-luna','medium',undefined,null,undefined,undefined,'bypass',[],undefined,[],false,false);
-    assert.equal(enabled.output,'enabled');
-    assert.equal(disabled.output,'disabled');
-  }finally{
-    if(oldBin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=oldBin;
-    if(oldHome===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=oldHome;
-    await rm(directory,{recursive:true,force:true});
-  }
-});
-
-test('prompt queue persists the selected multi-agent mode, releases locks, and requeues the same run after an answer',async()=>{
-  let status='queued',output='',sessionId:string|null=null,multipleAgents=false;
+test('prompt queue persists waiting, releases locks, and requeues the same run after an answer',async()=>{
+  let status='queued',output='',sessionId:string|null=null;
   let released=0,calls=0;
-  const modes:string[]=[],agentModes:boolean[]=[];
+  const modes:string[]=[];const agentModes:boolean[]=[];const persistedModes:unknown[]=[];
   const events:string[]=[];
   const pending=new Map<string,()=>void>();
   const until=(expected:string)=>new Promise<void>(resolve=>pending.set(expected,resolve));
@@ -123,28 +89,28 @@ test('prompt queue persists the selected multi-agent mode, releases locks, and r
       if(status!=='waiting_answer')return [];
       status='queued';return [{id:runId}];
     }
-    if(sql.includes('INSERT INTO card_ai_runs')){status='queued';multipleAgents=Boolean(args[8]);return [{id:runId}];}
+    if(sql.includes('INSERT INTO card_ai_runs')){status='queued';persistedModes.push(args[8]);return [{id:runId}];}
     if(sql.includes('SELECT id FROM card_ai_runs'))return status==='waiting_answer'&&sql.includes('LIMIT 1')&&!sql.includes('ORDER BY')?[{id:runId}]:sql.includes('ORDER BY')?[{id:runId}]:[];
     if(sql.includes('SELECT status FROM card_ai_runs'))return [{status}];
     if(sql.includes('SET status=\'running\'')){if(status!=='queued')return [];status='running';return [{id:runId}];}
     if(sql.includes('SET status=\'waiting_answer\'')){status='waiting_answer';output=String(args[1]);sessionId=String(args[2]);return [{id:runId}];}
     if(sql.includes('SET status=$2')){status=String(args[1]);return [];}
     if(sql.includes('SELECT 1 FROM card_ai_runs'))return [{id:runId}];
-    if(sql.includes('SELECT id,user_id'))return status==='waiting_answer'?[{id:runId,user_id:'user',project_id:'project',model:'gpt-6-luna',effort:'high',codex_session_id:sessionId,output,multiple_agents:multipleAgents}]:[];
+    if(sql.includes('SELECT id,user_id'))return status==='waiting_answer'?[{id:runId,user_id:'user',project_id:'project',model:'gpt-6-luna',effort:'high',codex_session_id:sessionId,output,multiple_agents:true}]:[];
     if(sql.includes('SELECT codex_session_id'))return sessionId?[{codex_session_id:sessionId}]:[];
     if(sql.includes('SELECT id,name,local_path'))return [{id:'project',name:'Test',local_path:process.cwd(),is_internal_orbit:false}];
     if(sql.includes('SELECT c.id'))return [{id:'card',title:'Card',description:'Implementar',ai_execution_mode:'question',ai_project_id:'project',ai_model:'gpt-6-luna',ai_effort:'high'}];
     return [];
   };
   const db={query,one:async(sql:string,args?:unknown[])=>(await query(sql,args))[0]||null,pool:{connect:async()=>({query:async(sql:string,args?:unknown[])=>({rows:await query(sql,args)}),release:()=>{released++;}})}};
-  const service=new PromptSessionsService(db as never,{cardBoard:async()=> 'board',notify:async()=>{},record:async()=>{}} as never,{isAvailable:()=>true,execute:async(...args:unknown[])=>{modes.push(String(args[8]));agentModes.push(Boolean(args[13]));calls++;if(calls===2)assert.equal(args[5],'saved-session');return {output:calls===1?question:'Concluído',sessionId:'saved-session',fileChanges:[],activities:[]};}} as never,{promptProgress:(_board:string,_card:string,event:{status:string})=>{events.push(event.status);pending.get(event.status)?.();}} as never);
+  const service=new PromptSessionsService(db as never,{cardBoard:async()=> 'board',notify:async()=>{},record:async()=>{}} as never,{isAvailable:()=>true,execute:async(...args:unknown[])=>{modes.push(String(args[8]));agentModes.push(args[13]===true);calls++;if(calls===2)assert.equal(args[5],'saved-session');return {output:calls===1?question:'Concluído',sessionId:'saved-session',fileChanges:[],activities:[]};}} as never,{promptProgress:(_board:string,_card:string,event:{status:string})=>{events.push(event.status);pending.get(event.status)?.();}} as never);
   Object.assign(service,{localPath:async()=>process.cwd(),queuePaused:async()=>false,descriptionImages:async()=>[]});
   const waiting=until('waiting_answer');
   const first=await service.execute('card','user');
   await waiting;
   // Finally releases both advisory lock clients after publishing the event.
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(first.id,runId);assert.equal(status,'waiting_answer');assert.equal(sessionId,'saved-session');assert.ok(released>=3);
+  assert.equal(first.id,runId);assert.equal(status,'waiting_answer');assert.equal(sessionId,'saved-session');assert.ok(released>=3);assert.deepEqual(persistedModes,[true]);
   await assert.rejects(()=>service.execute('card','user'),statusIs(409));
   const success=until('success');
   const responses=await Promise.allSettled([service.answerRun('card',runId,'user',{answer:'Sim'}),service.answerRun('card',runId,'user',{answer:'Sim duplicado'})]);
@@ -155,7 +121,7 @@ test('prompt queue persists the selected multi-agent mode, releases locks, and r
   const resumed=(accepted[0] as PromiseFulfilledResult<Awaited<ReturnType<PromptSessionsService['answerRun']>>>).value;
   assert.equal(resumed.id,first.id);assert.equal(resumed.status,'queued');
   await success;
-  assert.deepEqual(modes,['planning','bypass']);assert.deepEqual(agentModes,[true,true]);assert.equal(multipleAgents,true);assert.equal(status,'success');
+  assert.deepEqual(modes,['planning','bypass']);assert.deepEqual(agentModes,[true,true]);assert.equal(status,'success');
   await assert.rejects(()=>service.answerRun('card',runId,'user',{answer:'Sim novamente'}),statusIs(409));
   assert.deepEqual(events,['queued','running','waiting_answer','queued','running','success']);
 });

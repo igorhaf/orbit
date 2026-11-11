@@ -284,64 +284,6 @@ DELETE FROM notifications WHERE kind='due' AND due_at IS NULL;
 DROP INDEX IF EXISTS notifications_due_once_idx;
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_due_occurrence_idx ON notifications(user_id, card_id, kind, due_at) WHERE kind = 'due';
 CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications(user_id, created_at DESC);
-CREATE TABLE IF NOT EXISTS notification_email_deliveries (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  notification_id uuid NOT NULL UNIQUE REFERENCES notifications(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sending','sent','failed','cancelled')),
-  attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
-  available_at timestamptz NOT NULL DEFAULT now(),
-  sent_at timestamptz,
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS notification_email_deliveries_pending_idx ON notification_email_deliveries(available_at,created_at) WHERE status IN ('pending','sending');
-CREATE OR REPLACE FUNCTION queue_notification_email_delivery() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  INSERT INTO notification_email_deliveries(notification_id,user_id)
-  SELECT NEW.id,u.id FROM users u
-  WHERE u.id=NEW.user_id AND u.disabled=false AND u.email_verified=true
-    AND COALESCE((u.preferences->>'notifications')::boolean,true)
-    AND COALESCE((u.preferences->>'emailNotifications')::boolean,false)
-  ON CONFLICT(notification_id) DO NOTHING;
-  RETURN NEW;
-END $$;
-DROP TRIGGER IF EXISTS queue_notification_email_delivery_trigger ON notifications;
-CREATE TRIGGER queue_notification_email_delivery_trigger AFTER INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION queue_notification_email_delivery();
-CREATE TABLE IF NOT EXISTS notification_push_subscriptions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  endpoint text NOT NULL UNIQUE CHECK (length(endpoint) <= 2048 AND endpoint ~ '^https://'),
-  p256dh varchar(200) NOT NULL CHECK (p256dh ~ '^[A-Za-z0-9_-]+$'),
-  auth varchar(100) NOT NULL CHECK (auth ~ '^[A-Za-z0-9_-]+$'),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS notification_push_subscriptions_user_idx ON notification_push_subscriptions(user_id);
-CREATE TABLE IF NOT EXISTS notification_push_deliveries (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  notification_id uuid NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
-  subscription_id uuid NOT NULL REFERENCES notification_push_subscriptions(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sending','sent','failed','cancelled')),
-  attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-  available_at timestamptz NOT NULL DEFAULT now(),
-  sent_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(notification_id,subscription_id)
-);
-CREATE INDEX IF NOT EXISTS notification_push_deliveries_pending_idx ON notification_push_deliveries(available_at,created_at) WHERE status IN ('pending','sending');
-CREATE OR REPLACE FUNCTION queue_notification_push_delivery() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  INSERT INTO notification_push_deliveries(notification_id,subscription_id,user_id)
-  SELECT NEW.id,s.id,s.user_id FROM notification_push_subscriptions s JOIN users u ON u.id=s.user_id
-  WHERE s.user_id=NEW.user_id AND u.disabled=false AND COALESCE((u.preferences->>'notifications')::boolean,true)
-  ON CONFLICT(notification_id,subscription_id) DO NOTHING;
-  RETURN NEW;
-END $$;
-DROP TRIGGER IF EXISTS queue_notification_push_delivery_trigger ON notifications;
-CREATE TRIGGER queue_notification_push_delivery_trigger AFTER INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION queue_notification_push_delivery();
 CREATE TABLE IF NOT EXISTS focus_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title varchar(160) NOT NULL DEFAULT 'Focus time', starts_at timestamptz NOT NULL, ends_at timestamptz NOT NULL,
@@ -432,7 +374,6 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
   effort varchar(16) NOT NULL DEFAULT 'medium',
   prompt text NOT NULL,
   source varchar(16) NOT NULL DEFAULT 'description' CHECK(source IN ('description','comment')),
-  multiple_agents boolean NOT NULL DEFAULT false,
   codex_session_id text,
   output text,
   summary text,
@@ -451,10 +392,10 @@ CREATE TABLE IF NOT EXISTS card_ai_runs (
 );
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS effort varchar(16) NOT NULL DEFAULT 'medium';
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS codex_session_id text;
-ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS multiple_agents boolean NOT NULL DEFAULT false;
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_type varchar(30);
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_name varchar(100);
 ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS suggested_commit_summary varchar(360);
+ALTER TABLE card_ai_runs ADD COLUMN IF NOT EXISTS multiple_agents boolean NOT NULL DEFAULT false;
 ALTER TABLE card_ai_runs ALTER COLUMN status SET DEFAULT 'queued';
 ALTER TABLE card_ai_runs DROP CONSTRAINT IF EXISTS card_ai_runs_status_check;
 ALTER TABLE card_ai_runs ADD CONSTRAINT card_ai_runs_status_check CHECK(status IN ('queued','running','waiting_answer','success','error','cancelled'));
@@ -885,11 +826,12 @@ CREATE TABLE IF NOT EXISTS vault_backup_restores (
   PRIMARY KEY(owner_id,sha256)
 );
 
+-- Generic workspace-scoped webhooks; payloads contain only identifiers and metadata.
 CREATE TABLE IF NOT EXISTS webhook_subscriptions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   endpoint text NOT NULL CHECK (length(endpoint) BETWEEN 1 AND 2048),
-  event_types text[] NOT NULL CHECK (cardinality(event_types)>0 AND array_position(event_types,NULL) IS NULL AND array_to_string(event_types,',') ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+(,[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+)*$'),
+  event_types text[] NOT NULL CHECK (cardinality(event_types)>0 AND array_position(event_types,NULL) IS NULL AND array_to_string(event_types,',') ~ '^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+(,[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+)*$'),
   secret_ciphertext text NOT NULL,
   active boolean NOT NULL DEFAULT true,
   created_by uuid REFERENCES users(id) ON DELETE SET NULL,
@@ -904,7 +846,7 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   kind varchar(100) NOT NULL,
   state varchar(100) NOT NULL,
   revision integer NOT NULL CHECK (revision>0),
-  event_type text NOT NULL CHECK (event_type ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$'),
+  event_type text NOT NULL CHECK (event_type ~ '^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$'),
   event_version integer NOT NULL DEFAULT 1 CHECK (event_version>0),
   occurred_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(workspace_id,record_id,revision,event_type)
@@ -924,6 +866,7 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
 );
 CREATE INDEX IF NOT EXISTS webhook_deliveries_pending_idx ON webhook_deliveries(available_at,created_at) WHERE status IN ('pending','sending');
 
+-- Generic vector cache: only content hashes and embeddings are stored, never source text.
 CREATE TABLE IF NOT EXISTS orbit_knowledge_embeddings (
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   owner_plugin_id text NOT NULL CHECK(length(owner_plugin_id) BETWEEN 1 AND 120),
@@ -936,5 +879,4 @@ CREATE TABLE IF NOT EXISTS orbit_knowledge_embeddings (
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY(workspace_id,owner_plugin_id,collection_id,model,content_hash)
 );
-CREATE INDEX IF NOT EXISTS orbit_knowledge_embeddings_updated_at_idx
-  ON orbit_knowledge_embeddings(updated_at);
+CREATE INDEX IF NOT EXISTS orbit_knowledge_embeddings_updated_at_idx ON orbit_knowledge_embeddings(updated_at);

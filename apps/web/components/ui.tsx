@@ -19,14 +19,13 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import {
   api, send, AppNotification, Board, Card, SearchResults, ToolDiagnostics, User,
-  boardColors, cardUrl, clearSession, getProfileSimulation, getUser, initials, profileSimulationSocketAuth, setProfileSimulation, setUser,
+  boardColors, cardUrl, clearSession, getProfileSimulation, getUser, initials, orbitSocketAuth, watchOrbitProfileSimulation, setProfileSimulation, setUser,
 } from '@/lib/api';
 import { historyState, redo, remember, undo } from '@/lib/history';
 import { CodexLimitsBar } from './codex-limits';
 import { CardDialog } from './card-dialog';
 import { CardActivityIndicator } from './card-execution';
 import { io } from 'socket.io-client';
-import { BrandMark, useBranding } from '@/components/branding';
 
 const CollectionPanel=dynamic(()=>import('@/plugins/collections/CollectionPanel').then(module=>module.CollectionPanel));
 const subscribeAccountSnapshot=(callback:()=>void)=>{window.addEventListener('account:changed',callback);window.addEventListener('storage',callback);return()=>{window.removeEventListener('account:changed',callback);window.removeEventListener('storage',callback)}};
@@ -173,33 +172,25 @@ export function BoardTile({ board, onClick }: { board: Board; onClick: () => voi
 
 function NotificationPanel({ items, onRead, onReadAll, onClearAll, onChoose }: {
   items: AppNotification[];
-  onRead: (id: string) => void | Promise<void>;
+  onRead: (id: string) => void;
   onReadAll: () => void;
   onClearAll: () => void;
   onChoose: (item: AppNotification) => void;
 }) {
-  return <div id="notification-panel" role="region" aria-label="Notificações" className="absolute right-0 top-full z-40 w-[min(390px,calc(100vw-16px))] overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog">
-    <div className="flex items-center justify-between gap-2 border-b border-[#dfe1e6] px-4 py-3"><h3 className="font-bold">Notificações</h3><div className="flex items-center gap-3"><button onClick={onReadAll} disabled={!items.some(item => !item.read_at)} className="text-xs font-semibold text-[#0c66e4] hover:underline disabled:cursor-default disabled:opacity-50">Marcar todas como lidas</button><button onClick={onClearAll} disabled={items.length === 0} className="text-xs font-semibold text-[#ae2a19] hover:underline disabled:cursor-default disabled:opacity-50">Limpar todas</button></div></div>
+  return <div className="absolute right-0 top-full z-40 w-[min(390px,calc(100vw-16px))] overflow-hidden rounded-lg border border-[#dfe1e6] bg-white shadow-dialog">
+    <div className="flex items-center justify-between gap-2 border-b border-[#dfe1e6] px-4 py-3"><h3 className="font-bold">Notificações</h3><div className="flex items-center gap-3"><button onClick={onReadAll} disabled={!items.some(item => !item.read_at)} className="text-xs font-semibold text-[#0c66e4] hover:underline disabled:cursor-default disabled:opacity-50">Marcar todas como lidas</button><button onClick={onClearAll} disabled={items.length === 0} className="text-xs font-semibold text-[#c9372c] hover:underline disabled:cursor-default disabled:opacity-50">Limpar todas</button></div></div>
     <div className="scrollbar-thin max-h-[440px] overflow-y-auto">
       {items.length === 0 ? <div className="p-8 text-center text-sm text-[#626f86]"><Bell className="mx-auto mb-3" size={26}/> Nenhuma notificação por enquanto.</div> : items.map(item =>
-        <div key={item.id} className="flex w-full items-start border-b border-[#f1f2f4]">
-          <button type="button" data-notification-open onClick={() => onChoose(item)} className={`flex min-w-0 flex-1 gap-3 px-4 py-3 text-left hover:bg-[#f1f2f4] ${!item.read_at ? 'bg-[#e9f2ff]' : ''}`}>
-            <span aria-hidden="true" className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.read_at ? 'bg-transparent' : 'bg-[#0c66e4]'}`}/>
-            <span className="min-w-0 flex-1"><span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#626f86]">{item.plugin_id.replaceAll('_', ' ')}</span><strong className="block text-sm">{item.title}</strong><span className="mt-0.5 block truncate text-xs text-[#44546f]">{item.body}</span><span className="mt-1 block text-[11px] text-[#626f86]">{item.board_title ? `${item.board_title} · ` : ''}{new Date(item.created_at).toLocaleString('pt-BR')}</span></span>
-          </button>
-          {!item.read_at && <button type="button" aria-label={`Marcar notificação ${item.title} como lida`} title="Marcar como lida" onClick={event => {
-            const row = event.currentTarget.parentElement;
-            void Promise.resolve(onRead(item.id)).then(() => row?.querySelector<HTMLButtonElement>('[data-notification-open]')?.focus());
-          }} className="mr-3 mt-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded hover:bg-[#dfe1e6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
-            <Check size={15} aria-hidden="true"/>
-          </button>}
-        </div>)}
+        <button key={item.id} onClick={() => onChoose(item)} className={`flex w-full gap-3 border-b border-[#f1f2f4] px-4 py-3 text-left hover:bg-[#f1f2f4] ${!item.read_at ? 'bg-[#e9f2ff]' : ''}`}>
+          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.read_at ? 'bg-transparent' : 'bg-[#0c66e4]'}`}/>
+          <span className="min-w-0 flex-1"><span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#626f86]">{item.plugin_id.replaceAll('_', ' ')}</span><strong className="block text-sm">{item.title}</strong><span className="mt-0.5 block truncate text-xs text-[#44546f]">{item.body}</span><span className="mt-1 block text-[11px] text-[#626f86]">{item.board_title ? `${item.board_title} · ` : ''}{new Date(item.created_at).toLocaleString('pt-BR')}</span></span>
+          {!item.read_at && <span onClick={e => { e.stopPropagation(); onRead(item.id); }} title="Marcar como lida" className="self-start rounded p-1 hover:bg-[#dfe1e6]"><Check size={15}/></span>}
+        </button>)}
     </div>
   </div>;
 }
 
-export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: User | null; boards?: Board[]; onCreate?: (restoreFocusTo?: HTMLElement) => void; onSearch?: (s:string)=>void }) {
-  const brand=useBranding();
+export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: User | null; boards?: Board[]; onCreate?: () => void; onSearch?: (s:string)=>void }) {
   const [limitsVisible,setLimitsVisible]=useState(false);
   const [aiAvailable,setAiAvailable]=useState(false);
   const {enabled:pluginEnabled,processBoards:pluginBoards,navigation} = usePluginAvailability();
@@ -209,44 +200,20 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const accountSnapshot=useSyncExternalStore(subscribeAccountSnapshot,getAccountSnapshot,getServerAccountSnapshot);
   const [userState, updateUser] = useState<User | null>(initialUser);
   const user=useMemo(()=>userState??parseAccountSnapshot(accountSnapshot),[accountSnapshot,userState]);
-  const [simulationRoles,setSimulationRoles]=useState<Array<{id:string;name:string}>>([]);
-  const [selectedSimulation,setSelectedSimulation]=useState('');
-  const [activeSimulation,setActiveSimulation]=useState<string|null>(null);
-  const [simulationBusy,setSimulationBusy]=useState(false);
   const userId=user?.id;
   const [previousUser, setPreviousUser] = useState(initialUser);
   if (initialUser !== previousUser) {
     setPreviousUser(initialUser);
     updateUser(initialUser);
   }
-  useEffect(()=>{
-    if(!(user?.is_root_actor||user?.is_root))return;
-    let mounted=true;
-    void api<{roles:Array<{id:string;name:string}>;active:string|null}>('/access/profile-simulation').then(result=>{if(mounted){setSimulationRoles(result.roles);setActiveSimulation(result.active);setSelectedSimulation(result.active||getProfileSimulation()||'')}}).catch(()=>{if(mounted){const stored=getProfileSimulation();setActiveSimulation(stored);setSelectedSimulation(stored||'')}});
-    return()=>{mounted=false};
-  },[user?.id,user?.is_root_actor,user?.is_root]);
-  const enterSimulatedProfile=async()=>{
-    if(!selectedSimulation||simulationBusy)return;
-    const previous=getProfileSimulation();setSimulationBusy(true);setProfileSimulation(selectedSimulation);setActiveSimulation(selectedSimulation);
-    try{await api('/access/profile-simulation',{method:'POST'});window.location.reload()}
-    catch(error){setProfileSimulation(previous);setActiveSimulation(previous);setMessage((error as Error).message)}
-    finally{setSimulationBusy(false)}
-  };
-  const returnToRoot=async()=>{
-    if(simulationBusy)return;
-    const previous=getProfileSimulation();setSimulationBusy(true);setProfileSimulation(null);setActiveSimulation(null);setSelectedSimulation('');
-    try{await api('/access/profile-simulation',{method:'POST'});window.location.reload()}
-    catch(error){setProfileSimulation(previous);setActiveSimulation(previous);setMessage((error as Error).message)}
-    finally{setSimulationBusy(false)}
-  };
   const [panel, setPanel] = useState<'search'|'boards'|'create'|'notifications'|'account'|'mobile'|null>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
   const boardsMenuRef = useRef<HTMLDivElement>(null);
   const boardsTriggerRef = useRef<HTMLButtonElement>(null);
   const mobileNavigationTriggerRef = useRef<HTMLButtonElement>(null);
-  const createTriggerRef = useRef<HTMLButtonElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
+  const createTriggerRef = useRef<HTMLButtonElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
   const notificationsTriggerRef = useRef<HTMLButtonElement>(null);
   const [query, setQuery] = useState('');
@@ -262,6 +229,10 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   const [history, setHistory] = useState(historyState());
   const [message, setMessage] = useState('');
   const [toolStatus,setToolStatus]=useState<{userId:string;status:ToolDiagnostics['status']}|null>(null);
+  const [simulationRoles,setSimulationRoles]=useState<Array<{id:string;name:string}>>([]);
+  const [simulationSelection,setSimulationSelection]=useState('');
+  const [simulationActive,setSimulationActive]=useState('');
+  const [simulationBusy,setSimulationBusy]=useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const searchReturnFocusRef = useRef<HTMLElement | null>(null);
   const initializedNotifications = useRef(false);
@@ -296,6 +267,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     return()=>{active=false;window.removeEventListener('plugins:changed',refresh)};
   },[userId]);
 
+
   useEffect(() => {
     const accountChanged = () => updateUser(getUser());
     const historyChanged = () => setHistory(historyState());
@@ -310,6 +282,42 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       window.removeEventListener('sidebar:changed', pinChanged);
     };
   }, []);
+
+  useEffect(()=>{
+    const rootActor=Boolean(user?.is_root_actor||user?.is_root);
+    if(!rootActor)return;
+    let active=true;
+    const syncSelection=()=>{const role=getProfileSimulation();setSimulationActive(role);setSimulationSelection(role)};
+    syncSelection();
+    void api<Array<{id:string;name:string}>>('/access/simulation/roles').then(roles=>{if(active)setSimulationRoles(roles)}).catch(()=>{if(active)setSimulationRoles([])});
+    const changed=()=>{syncSelection();void api<User>('/auth/me').then(updateUser).catch(error=>setMessage((error as Error).message))};
+    window.addEventListener('profile-simulation:changed',changed);
+    return()=>{active=false;window.removeEventListener('profile-simulation:changed',changed)};
+  },[user?.is_root_actor,user?.is_root]);
+
+  const enterProfileSimulation=async()=>{
+    if(!simulationSelection||simulationBusy)return;
+    const previous=getProfileSimulation();
+    setSimulationBusy(true);
+    setProfileSimulation(simulationSelection);
+    try{
+      const effectiveUser=await api<User>('/auth/me');
+      if(!effectiveUser.is_root_actor||effectiveUser.is_root)throw new Error('O perfil selecionado não foi aplicado.');
+      window.location.reload();
+    }catch(error){
+      setProfileSimulation(previous);
+      setSimulationActive(previous||'');
+      setSimulationSelection(previous||'');
+      setMessage((error as Error).message);
+      setSimulationBusy(false);
+    }
+  };
+  const returnToRootProfile=()=>{
+    if(simulationBusy)return;
+    setSimulationBusy(true);
+    setProfileSimulation(null);
+    window.location.reload();
+  };
 
   useEffect(()=>{
     if(!user||!aiAvailable)return;
@@ -328,12 +336,12 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         if (active) syncNotifications(items);
       }).catch(() => undefined);
     };
-    const socket = io({ path: '/socket.io', auth: profileSimulationSocketAuth() });
+    const socket = io({ path: '/socket.io', auth: orbitSocketAuth() });const unwatchProfileSimulation=watchOrbitProfileSimulation(socket);
     socket.on('notification:changed', refresh);
     const pluginsChanged=()=>window.dispatchEvent(new Event('plugins:changed'));
     socket.on('plugins:changed',pluginsChanged);
     socket.on('connect',pluginsChanged);
-    return () => { active = false; socket.disconnect(); };
+    return () => { active = false; unwatchProfileSimulation();socket.disconnect(); };
   }, [user, syncNotifications]);
   useEffect(() => {
     if (panel !== 'search' || query.trim().length < 2) return;
@@ -481,9 +489,17 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
 
   return <>{notificationToast && <div role="status" aria-live="polite" className={`fixed right-4 top-4 z-[60] w-[min(360px,calc(100vw-32px))] rounded-lg border border-[#dfe1e6] bg-white p-3 shadow-dialog transition-all duration-500 ${toastFading ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100'}`}><div className="flex items-start gap-2"><Bell size={17} className="mt-0.5 shrink-0 text-[#0c66e4]"/><span className="min-w-0"><strong className="block truncate text-sm">{notificationToast.title}</strong>{notificationToast.body && <span className="mt-0.5 block truncate text-xs text-[#626f86]">{notificationToast.body}</span>}</span></div></div>}<header className="relative z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 py-1 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
-      <BrandMark className="h-7 w-7" />
-      <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">{brand.app_name}</span>
+      <span className="flex h-7 w-7 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={19} strokeWidth={2.8}/></span>
+      <span className="hidden text-[21px] font-extrabold tracking-[-1px] sm:inline">Orbit</span>
     </button>
+    {(user?.is_root_actor||user?.is_root)&&<div className="flex max-w-full flex-wrap items-center gap-1.5 rounded-md border border-amber-300/70 bg-amber-50 px-2 py-1 text-xs">
+      <label htmlFor="orbit-profile-simulation" className="font-semibold text-amber-950">Simular perfil</label>
+      <select id="orbit-profile-simulation" aria-label="Perfil para simulação ROOT" value={simulationSelection} onChange={event=>setSimulationSelection(event.target.value)} disabled={simulationBusy} className="min-h-9 max-w-40 rounded border border-amber-400 bg-white px-2 text-xs text-slate-900 disabled:opacity-60 sm:max-w-56">
+        <option value="">Selecione um perfil</option>{simulationRoles.map(role=><option key={role.id} value={role.id}>{role.name}</option>)}
+      </select>
+      <button type="button" disabled={!simulationSelection||simulationSelection===simulationActive||simulationBusy} onClick={()=>void enterProfileSimulation()} className="min-h-9 rounded bg-amber-700 px-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{simulationActive?'Trocar':'Entrar'}</button>
+      {simulationActive&&<><span className="max-w-40 truncate font-semibold text-amber-950" role="status" aria-live="polite">Simulando: {simulationRoles.find(role=>role.id===simulationActive)?.name||simulationActive}</span><button type="button" disabled={simulationBusy} onClick={returnToRootProfile} className="min-h-9 rounded border border-amber-700 px-2 font-semibold text-amber-950 disabled:opacity-50">Voltar a ROOT</button></>}
+    </div>}
     <nav className="ml-1 hidden items-center gap-1 lg:flex">
       <button onClick={() => router.push('/')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Home</button>
       <div ref={boardsMenuRef} className="relative" onMouseLeave={() => { if (panel === 'boards') setPanel(null); }}>
@@ -517,18 +533,17 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button ref={createTriggerRef} onClick={() => setPanel(panel === 'create' ? null : 'create')} aria-expanded={panel === 'create'} aria-controls="orbit-create-menu" className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
       {panel === 'create' && <div id="orbit-create-menu" role="region" aria-label="Ações de criação" className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-[#dfe1e6] bg-white p-2 shadow-dialog">
         {boardCreators.map(item=><button key={item.id} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-11 w-full items-center gap-2 rounded px-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/>{item.name}</button>)}
-        {canCreateBoard&&<button onClick={() => { const restoreFocusTo = createTriggerRef.current || undefined; setPanel(null); if (onCreate) { onCreate(restoreFocusTo); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>}
+        {canCreateBoard&&<button onClick={() => { setPanel(null); if (onCreate) { onCreate(); } else { router.push('/boards?create=1'); } }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LayoutDashboard size={16}/> Criar quadro</button>}
         {canCreateProject&&<button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>}
       </div>}
     </div>}
     {aiAvailable&&<button onClick={()=>setLimitsVisible(value=>!value)} aria-label={limitsVisible?'Recolher barra da fila':'Mostrar barra da fila'} aria-expanded={limitsVisible} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible?<Eye size={17}/>:<EyeClosed size={17}/>}{user?.is_root?'Limites':'Fila'}</button>}
-    {(user?.is_root_actor||user?.is_root)&&<div className="flex max-w-[min(48vw,28rem)] items-center gap-1.5 rounded-lg border border-[#6554c0]/40 bg-[#6554c0]/10 px-2 py-1"><label htmlFor="root-profile-simulation" className="sr-only">Simular perfil do sistema</label><select id="root-profile-simulation" aria-label="Perfil a simular" value={selectedSimulation} onChange={event=>setSelectedSimulation(event.target.value)} disabled={simulationBusy} className="min-w-0 max-w-36 rounded border border-[#dfe1e6] bg-white px-2 py-1.5 text-xs text-[#172b4d] sm:max-w-52"><option value="">{activeSimulation?'Escolha outro perfil…':'Simular perfil…'}</option>{simulationRoles.map(role=><option key={role.id} value={role.id}>{role.name}</option>)}</select>{activeSimulation?<><span className="hidden max-w-28 truncate text-[11px] font-semibold text-[#6554c0] lg:inline" title={simulationRoles.find(role=>role.id===activeSimulation)?.name}>Simulando</span><button onClick={()=>void enterSimulatedProfile()} disabled={!selectedSimulation||selectedSimulation===activeSimulation||simulationBusy} className="rounded bg-[#6554c0] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Trocar</button><button onClick={()=>void returnToRoot()} disabled={simulationBusy} className="whitespace-nowrap rounded border border-[#6554c0] px-2 py-1.5 text-xs font-semibold text-[#403294] disabled:opacity-50">Voltar a ROOT</button></>:<button onClick={()=>void enterSimulatedProfile()} disabled={!selectedSimulation||simulationBusy} className="whitespace-nowrap rounded bg-[#6554c0] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Entrar</button>}</div>}
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
     <button onClick={event => { searchReturnFocusRef.current = event.currentTarget; setPanel('search'); }} className="flex items-center gap-2 rounded border border-transparent p-2 text-[#44546f] hover:bg-[#f1f2f4] sm:w-44 sm:border-[#8590a2] sm:px-3 sm:py-1.5" aria-label="Pesquisar em todos os quadros" aria-expanded={panel === 'search'} aria-controls="global-search-panel"><Search size={17}/><span className="hidden text-sm text-[#626f86] sm:inline">Pesquisar</span></button>
     <div ref={notificationsMenuRef} className="relative" onMouseLeave={() => { if (panel === 'notifications') setPanel(null); }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPanel(null); }}>
-    <button ref={notificationsTriggerRef} onClick={() => setPanel(panel === 'notifications' ? null : 'notifications')} aria-label={unread > 0 ? `Notificações, ${unread} ${unread === 1 ? "não lida" : "não lidas"}` : "Notificações"} aria-expanded={panel === 'notifications'} aria-controls="notification-panel" className="relative rounded-full p-2 text-[#44546f] hover:bg-[#f1f2f4]" title="Notificações"><Bell size={19}/>{unread > 0 && <span aria-hidden="true" className="absolute right-0 top-0 min-w-4 rounded-full bg-[#d32f2f] px-0.5 text-[10px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}</button>
+    <button ref={notificationsTriggerRef} onClick={() => setPanel(panel === 'notifications' ? null : 'notifications')} aria-expanded={panel === 'notifications'} className="relative rounded-full p-2 text-[#44546f] hover:bg-[#f1f2f4]" title="Notificações"><Bell size={19}/>{unread > 0 && <span className="absolute right-0 top-0 min-w-4 rounded-full bg-[#e5484d] px-0.5 text-[10px] font-bold text-white">{unread > 9 ? '9+' : unread}</span>}</button>
     {panel === 'notifications' && <NotificationPanel items={notifications} onRead={id => markRead(id).catch(() => {})} onReadAll={() => markAll().catch(() => {})} onClearAll={() => clearAllNotifications().catch(() => {})} onChoose={chooseNotification}/>}
     </div>
     <div ref={accountMenuRef} className="relative" onMouseLeave={() => { if (panel === 'account') setPanel(null); }}>
@@ -569,7 +584,7 @@ function InboxPanel({boards,dropId='inbox:panel'}:{boards:Board[];dropId?:string
   const {setNodeRef:setInboxDropRef,isOver:isInboxOver}=useDroppable({id:dropId,data:{type:'inbox'}});
   const load=useCallback(async()=>{try{const [full,assigned]=await Promise.all([inboxId?api<Board>(`/boards/${inboxId}`):Promise.resolve(null),api<AssignedInboxCard[]>('/inbox/cards')]);setInbox(full);setAssigned(assigned);setError('')}catch(err){setError((err as Error).message)}},[inboxId]);
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);const refresh=()=>void load();window.addEventListener('data:changed',refresh);return()=>{window.clearTimeout(timer);window.removeEventListener('data:changed',refresh)}},[load]);
-  useEffect(()=>{const socket=io({path:'/socket.io',auth:profileSimulationSocketAuth()});socket.on('connect',()=>{if(inboxId)socket.emit('board:join',inboxId)});const refresh=()=>void load();socket.on('board:changed',refresh);socket.on('comment:changed',refresh);socket.on('prompt:progress',refresh);socket.on('notification:changed',refresh);socket.on('plugins:changed',refresh);socket.on('connect',refresh);return()=>{socket.disconnect()}},[inboxId,load]);
+  useEffect(()=>{const socket=io({path:'/socket.io',auth:orbitSocketAuth()});const unwatchProfileSimulation=watchOrbitProfileSimulation(socket);socket.on('connect',()=>{if(inboxId)socket.emit('board:join',inboxId)});const refresh=()=>void load();socket.on('board:changed',refresh);socket.on('comment:changed',refresh);socket.on('prompt:progress',refresh);socket.on('notification:changed',refresh);socket.on('plugins:changed',refresh);socket.on('connect',refresh);return()=>{unwatchProfileSimulation();socket.disconnect()}},[inboxId,load]);
   useEffect(()=>{
     const over=(event:DragEvent)=>{if(event.dataTransfer?.types.includes('application/x-orbit-inbox-card')&&event.dataTransfer?.types.includes('application/x-orbit-inbox-owned'))event.preventDefault()};
     const drop=async(event:DragEvent)=>{const source=event.dataTransfer?.getData('application/x-orbit-inbox-card'),owned=event.dataTransfer?.getData('application/x-orbit-inbox-owned');const target=(event.target as Element|null)?.closest('[data-orbit-list]')?.getAttribute('data-orbit-list');if(!source||owned!=='1'||!target)return;event.preventDefault();try{await send('/cards/move','POST',{card_ids:[source],list_id:target});await load();window.dispatchEvent(new Event('data:changed'))}catch(err){setError((err as Error).message)}};

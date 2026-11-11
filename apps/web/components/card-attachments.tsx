@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Download, Paperclip } from 'lucide-react';
-import { CardAttachment, getToken, profileSimulationHeaders } from '@/lib/api';
+import { CardAttachment, orbitApiHeaders } from '@/lib/api';
 import { Modal } from '@/components/ui';
 
 function AttachmentImage({ attachment }: { attachment: CardAttachment }) {
@@ -13,7 +13,7 @@ function AttachmentImage({ attachment }: { attachment: CardAttachment }) {
     let active = true;
     let objectUrl = '';
     void fetch(`/api/card-attachments/${attachment.id}/content`, {
-      headers: { Authorization: `Bearer ${getToken() || ''}`, ...profileSimulationHeaders() },
+      headers: orbitApiHeaders(),
     }).then(async response => {
       if (!response.ok) throw new Error('Imagem indisponível.');
       objectUrl = URL.createObjectURL(await response.blob());
@@ -45,7 +45,7 @@ export function CardAttachments({ attachments }: { attachments: CardAttachment[]
           {attachment.size_bytes !== null && <span className="text-[#626f86]">{attachment.size_bytes < 1_000_000 ? `${Math.max(1, Math.round(attachment.size_bytes / 1000))} KB` : `${(attachment.size_bytes / 1_000_000).toFixed(1)} MB`}</span>}
         </span>
         <button type="button" title={`Baixar ${attachment.name}`} aria-label={`Baixar ${attachment.name}`} onClick={async () => {
-          const response = await fetch(`/api/card-attachments/${attachment.id}/content`, { headers: { Authorization: `Bearer ${getToken() || ''}`, ...profileSimulationHeaders() } });
+          const response = await fetch(`/api/card-attachments/${attachment.id}/content`, { headers: orbitApiHeaders() });
           if (!response.ok) return;
           const url = URL.createObjectURL(await response.blob());
           const link = document.createElement('a');

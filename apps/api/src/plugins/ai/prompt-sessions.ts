@@ -33,9 +33,6 @@ const catalog=[
   {id:'gpt-6-luna',name:'Luna',version:'GPT-6'},
 ] as const;
 const fail=(message:string,status=400):never=>{throw new HttpException({message},status)};
-export function promptRunMultipleAgents(body:Payload,commentReply?:CommentReply,resume?:{multiple_agents?:boolean}){
-  return resume?resume.multiple_agents===true:commentReply?false:body.multiple_agents!==false;
-}
 const errorMessage=(error:unknown)=>{
   if(error instanceof HttpException){const response=error.getResponse();if(typeof response==='string')return response;if(response&&typeof response==='object'&&'message'in response)return String((response as {message:unknown}).message);}
   return error instanceof Error?error.message:'O GPT não conseguiu concluir a solicitação.';
@@ -109,7 +106,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const rawName=body.name;const name=rawName===undefined?existing.name:typeof rawName==='string'&&rawName.trim()&&rawName.trim().length<=120?rawName.trim():fail('Nome inválido.');
     const localPath=body.local_path===undefined?existing.local_path:await this.localPath(body.local_path);
     if(body.local_path!==undefined&&localPath!==existing.local_path&&await this.db.one('SELECT id FROM ai_projects WHERE owner_id=$1 AND local_path=$2 AND id<>$3',[userId,localPath,projectId]))fail('Esta pasta já está cadastrada como projeto.',409);
-    const isRoot=Boolean(await this.features.access?.isRootForAuthorization(userId));
+    const isRoot=this.features.access?await this.features.access.isRootBypass(userId):Boolean((await this.db.one<{is_root:boolean}>('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);
     if(has(body,'is_internal_orbit')&&!isRoot)fail('Somente o usuário root pode classificar um projeto como Orbit interno.',403);
     const isInternalOrbit=has(body,'is_internal_orbit')?body.is_internal_orbit===true:existing.is_internal_orbit;
     const model=!has(body,'ai_default_model')?existing.ai_default_model:body.ai_default_model===null||body.ai_default_model===''?null:selectedModel(body.ai_default_model);
@@ -136,7 +133,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     return pathIsWithin(roots.container,supplied)?resolve(roots.host,relative(roots.container,supplied)):supplied;
   }
   async projects(userId:string){
-    const root=Boolean(await this.features.access?.isRootForAuthorization(userId));const shared=await this.features.access?.sharedResources(userId,'projects')||[];
+    const root=this.features.access?await this.features.access.isRootBypass(userId):Boolean((await this.db.one('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root);const shared=await this.features.access?.sharedResources(userId,'projects')||[];
     const projects=await this.db.query<{local_path:string}>('SELECT id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_internal_orbit FROM ai_projects WHERE (owner_id=$1 OR id=ANY($2::uuid[]) OR $3) ORDER BY is_internal_orbit DESC,name',[userId,shared,root]);
     return projects.map(project=>this.exposeProjectPath(project));
   }
@@ -202,7 +199,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const localPath=await this.localPath(body.local_path,body.create_directory===true);
     const isInternalOrbit=body.is_internal_orbit===true;
     if(body.is_internal_orbit!==undefined&&typeof body.is_internal_orbit!=='boolean')fail('A classificação de projeto interno é inválida.');
-    if(isInternalOrbit&&!await this.features.access?.isRootForAuthorization(userId))fail('Somente o usuário root pode classificar um projeto como Orbit interno.',403);
+    if(isInternalOrbit&&!(this.features.access?await this.features.access.isRootBypass(userId):(await this.db.one<{is_root:boolean}>('SELECT is_root FROM users WHERE id=$1',[userId]))?.is_root===true))fail('Somente o usuário root pode classificar um projeto como Orbit interno.',403);
     const project=await this.db.one<{local_path:string}>('INSERT INTO ai_projects(owner_id,name,local_path,is_internal_orbit) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,local_path) DO NOTHING RETURNING id,name,local_path,ai_default_model,ai_default_effort,created_at,updated_at,is_internal_orbit',[userId,name.trim(),localPath,isInternalOrbit]);
     if(!project)throw new HttpException({message:'Esta pasta já está cadastrada como projeto.'},409);
     return this.exposeProjectPath(project);
@@ -409,10 +406,10 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       JOIN board_members bm ON bm.board_id=l.board_id AND bm.user_id=$1
       WHERE r.user_id=$1 AND r.status='waiting_answer' ORDER BY r.created_at,r.id`,[userId]);
   }
-  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents?:boolean}){
+  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents:boolean}){
     assertOrbitFields(body,orbitArchitecture.promptRunExecute);
     if(body.multiple_agents!==undefined&&typeof body.multiple_agents!=='boolean')fail('A opção de múltiplos agentes precisa ser booleana.');
-    const multipleAgents=promptRunMultipleAgents(body,commentReply,resume);
+    const multipleAgents=resume?.multiple_agents??(commentReply?false:body.multiple_agents!==false);
     if(!this.codex.isAvailable())fail('O plugin de IA está desativado.',409);
     await this.layouts?.assertExecutionAllowed(cardId,userId);
     const context=await this.card(cardId,userId);const card=context.card;const model=resume?.model||commentReply?.model||card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model;const effort=resume?.effort||commentReply?.effort||card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort;const projectId=resume?.project_id||commentReply?.project_id||card.ai_project_id||card.ai_default_project_id;
@@ -463,7 +460,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     const questionMode=Boolean(resume)||card.ai_execution_mode==='question';
     const initialQuestion=questionMode&&!resume;
     const modeGuidance=questionMode?`\n\n${questionGuidance(Boolean(resume))}${resume?`\n\nPERGUNTA ANTERIOR:\n${resume.output}`:''}`:'';
-    const delegationGuidance=multipleAgents?'\n\nDELEGAÇÃO PARA MÚLTIPLOS AGENTES: esta execução habilitou suporte nativo do Codex a subagentes, mas isso não exige delegação. Avalie se existem pelo menos duas frentes independentes, com interfaces e arquivos delimitados, que possam avançar em paralelo sem decisões serializadas ou edição concorrente. Delegue apenas se o ganho provável de tempo superar transferência de contexto, coordenação, integração e revisão, e houver forte expectativa de reduzir também o total de tokens. Se não houver vantagem clara, execute em sequência. Use a menor quantidade necessária, atribua escopos sem sobreposição, mantenha este agente como integrador e revise todo resultado. A delegação nunca amplia permissões, escopo de escrita, limites de tokens ou verificações obrigatórias do projeto.':'';
+    const delegationGuidance=multipleAgents?'\n\nDELEGAÇÃO PARA MÚLTIPLOS AGENTES: a execução iniciou com suporte nativo do Codex a subagentes. Primeiro avalie se há frentes independentes cuja divisão deve reduzir tanto o tempo total quanto o uso total de tokens, incluindo coordenação e integração. Se não houver essa vantagem clara, execute em sequência sem criar subagentes. Se delegar, use a menor quantidade necessária, atribua escopos de arquivos sem sobreposição e critérios claros, mantenha este agente como integrador, revise todo resultado e preserve integralmente o escopo de escrita e as verificações obrigatórias do projeto. A delegação nunca amplia permissões nem escopo.':'';
     const makePrompt=()=>(continuing
       ? `${executionGuidance}${delegationGuidance}\n\nContinue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir. ${commentReply?'A conversa completa já está nesta sessão; use-a como contexto e processe somente o comentário novo abaixo. ':''}Esta orientação substitui instruções anteriores da sessão que impeçam a implementação ou a validação local.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nDESCRIÇÃO ATUAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${commentReply?'':conversationPrompt}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}${summaryInstruction}`
       : `${executionGuidance}${delegationGuidance}\n\nVocê está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${conversationPrompt}${additional&&!initialCommentIsAlreadyInHistory?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}${summaryInstruction}`)+modeGuidance;
@@ -585,6 +582,6 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         }
       }
     })().catch(error=>console.error('Não foi possível finalizar a execução de prompt.',error));
-    return {id:run!.id,project_id:currentProject.id,model,effort,status:'queued' as const};
+    return {id:run!.id,project_id:currentProject.id,model,effort,multiple_agents:multipleAgents,status:'queued' as const};
   }
 }

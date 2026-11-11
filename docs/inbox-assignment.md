@@ -18,6 +18,6 @@ O Inbox reúne os cartões pessoais já existentes e os cartões atribuídos em 
 
 ## Verificações
 
-O teste `apps/api/src/inbox.integration.spec.ts` usa banco descartável para conferir persistência, idempotência, outros responsáveis, origem, contextos, hierarquia, privacidade e lote inválido sem alteração parcial. A jornada isolada SAFDOULAS cobre também a atribuição de um cartão de processo e a suspensão do plugin base. `apps/web/lib/board-drag.spec.ts` verifica os alvos de arraste e a resolução de espelhos sem abrir navegador.
+O teste `apps/api/src/inbox.integration.spec.ts` usa banco descartável para conferir persistência, idempotência, outros responsáveis, origem, contextos, hierarquia, privacidade e lote inválido sem alteração parcial. A jornada de processos verifica também a atribuição de um cartão especializado e a suspensão do plugin-base. `apps/web/lib/board-drag.spec.ts` verifica os alvos de arraste e a resolução de espelhos sem abrir navegador.
 
 A conferência visual com mouse e toque permanece pendente de execução manual em ambiente autorizado. Selenium e navegadores automatizados não foram executados no host.
