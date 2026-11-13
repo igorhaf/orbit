@@ -13,21 +13,32 @@ import AccessProfiles from "./AccessProfiles";
 import { FinancialNegotiationManagement } from "./FinancialNegotiation";
 import { SuindaWhatsAppSettings } from "./SuindaWhatsAppSettings";
 
-const areas: Array<[string, string]> = [
-  ["Configuração institucional", "institution_settings"],
-  ["Perfis de acesso", "access_profiles"],
-  ["Modelos de e-mail", "email_templates"],
-  ["Cursos", "course"], ["Turmas", "cohort"], ["Matrículas", "enrollment"], ["Trilhas", "learning_path"],
-  ["Desafios de aprendizagem", "learning_challenge"], ["Temporadas", "learning_season"],
-  ["Avisos de privacidade", "privacy_notice"], ["Solicitações de titular", "learner_privacy_request"],
-  ["Termos e documentos acadêmicos", "academic_term"], ["Assinaturas acadêmicas", "academic_signature"],
-  ["Módulos", "module"], ["Unidades de aprendizagem", "learning_unit"], ["Aulas e materiais", "lesson"], ["Encontros", "session"], ["Calendário acadêmico", "academic_calendar_event"], ["Solicitações de reposição", "makeup_request"], ["Frequência", "attendance"],
-  ["Banco de questões", "question_bank"], ["Avaliações", "assessment"], ["Entregas", "submission"], ["Práticas", "practice"], ["Certificados", "certificate"],
-  ["Crédito de práticas", "practice_credit"],
-  ["Negociação financeira", "financial_negotiation"],
-  ["Programas de bolsas", "scholarship"], ["Candidaturas", "scholarship_application"], ["Comunicados", "announcement"], ["Pesquisas", "survey"],
-  ["Equipe profissional", "staff_professional"],
-  ["WhatsApp", "whatsapp"],
+const areaGroups: Array<{ id: string; label: string; areas: Array<[string, string]> }> = [
+  { id: "institution", label: "Instituição e acesso", areas: [
+    ["Configuração institucional", "institution_settings"], ["Perfis de acesso", "access_profiles"],
+    ["Equipe profissional", "staff_professional"], ["Modelos de e-mail", "email_templates"],
+    ["Privacidade e retenção", "privacy_notice"], ["Solicitações de titulares", "learner_privacy_request"],
+    ["Termos acadêmicos", "academic_term"], ["Assinaturas acadêmicas", "academic_signature"],
+  ] },
+  { id: "offer", label: "Cursos e currículo", areas: [
+    ["Cursos", "course"], ["Turmas", "cohort"], ["Trilhas formativas", "learning_path"],
+    ["Desafios de aprendizagem", "learning_challenge"], ["Temporadas", "learning_season"],
+    ["Módulos", "module"], ["Unidades de aprendizagem", "learning_unit"], ["Aulas e materiais", "lesson"],
+  ] },
+  { id: "student-journey", label: "Matrículas e acompanhamento", areas: [
+    ["Matrículas", "enrollment"], ["Encontros", "session"], ["Calendário acadêmico", "academic_calendar_event"],
+    ["Frequência", "attendance"], ["Solicitações de reposição", "makeup_request"],
+    ["Práticas supervisionadas", "practice"], ["Crédito de práticas", "practice_credit"],
+    ["Comunicados", "announcement"], ["Pesquisas", "survey"],
+  ] },
+  { id: "assessment", label: "Avaliação e certificação", areas: [
+    ["Banco de questões", "question_bank"], ["Avaliações", "assessment"],
+    ["Entregas", "submission"], ["Certificados", "certificate"],
+  ] },
+  { id: "finance", label: "Bolsas e financeiro", areas: [
+    ["Negociação financeira", "financial_negotiation"], ["Programas de bolsas", "scholarship"],
+    ["Candidaturas a bolsas", "scholarship_application"], ["WhatsApp", "whatsapp"],
+  ] },
 ];
 
 const summaryCards: ExtensionSummaryCard[] = [
@@ -46,8 +57,11 @@ export default function SuindaManagement() {
   const selected = searchParams.get("kind") || "";
 
   return <>
-    <nav aria-label="Áreas acadêmicas" className="flex flex-wrap gap-2">
-      {areas.map(([label, kind]) => <Link key={kind} href={`/suinda?kind=${kind}`} aria-current={selected === kind ? "page" : undefined} className={`inline-flex min-h-10 items-center rounded-full border px-3 text-sm ${selected === kind ? "border-violet-400 bg-violet-950 text-violet-100" : "border-white/15 hover:bg-white/5"}`}>{label}</Link>)}
+    <nav aria-label="Áreas acadêmicas" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {areaGroups.map((group) => <section key={group.id} aria-labelledby={`suinda-area-${group.id}`} className="min-w-0 rounded-xl border border-[#3b4754] bg-[#24292e] p-3">
+        <h2 id={`suinda-area-${group.id}`} className="mb-2 px-2 text-xs font-bold uppercase tracking-wide text-[#9fadbc]">{group.label}</h2>
+        <ul className="grid gap-1 sm:grid-cols-2 xl:grid-cols-1">{group.areas.map(([label, kind]) => <li key={kind}><Link href={`/suinda/management?kind=${kind}`} aria-current={selected === kind ? "page" : undefined} className={`flex min-h-10 items-center rounded-lg px-3 py-2 text-sm ${selected === kind ? "bg-violet-950 font-semibold text-violet-100 ring-1 ring-violet-400/60" : "text-[#d4dee7] hover:bg-white/5"}`}>{label}</Link></li>)}</ul>
+      </section>)}
     </nav>
     {(selected === "module" || selected === "learning_unit" || selected === "lesson") && <CurriculumOrderEditor itemKind={selected} />}
     {selected === "survey" && <SurveyReminderSettings />}

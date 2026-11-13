@@ -1,6 +1,7 @@
 import {seedCollections} from './plugins/collections/collections.seed';
 import 'dotenv/config';
 import { Pool } from 'pg';
+import { ensureBootstrapRoot } from './access/bootstrap-root';
 
 export async function seedDatabase(pool: Pool) {
   const brandName=(process.env.ORBIT_APP_NAME||'Orbit').trim().slice(0,80)||'Orbit';
@@ -10,12 +11,7 @@ export async function seedDatabase(pool: Pool) {
   let loginBenefits=['Tarefas e prazos em destaque','Quadros, listas e cartões','Atividade e notificações em um lugar'];
   try{const parsed=JSON.parse(process.env.ORBIT_LOGIN_BENEFITS_JSON||'');if(Array.isArray(parsed)&&parsed.length>=1&&parsed.length<=5&&parsed.every((item)=>typeof item==='string'&&item.trim()&&item.length<=120))loginBenefits=parsed.map(item=>item.trim())}catch{/* Use the built-in Orbit copy when no valid list is configured. */}
   await pool.query(`INSERT INTO instance_branding(id,app_name,icon_kind,login_tagline,login_description,login_benefits) VALUES(true,$1,$2,$3,$4,$5::jsonb) ON CONFLICT(id) DO UPDATE SET login_tagline=EXCLUDED.login_tagline,login_description=EXCLUDED.login_description,login_benefits=EXCLUDED.login_benefits WHERE NOT instance_branding.login_content_customized`,[brandName,brandIcon,loginTagline,loginDescription,JSON.stringify(loginBenefits)]);
-  const { rows: [user] } = await pool.query(
-    `INSERT INTO users(name,email,password_hash,is_root) VALUES($1,$2,$3,true)
-     ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name
-     RETURNING id`,
-    ['Igor', 'igorhaf@gmail.com', '$2b$12$87GMGtpzEwEEjmfwVIjFMu0U5Bq8.5N9xI/NHO4JBHcorA7pHJDG2'],
-  );
+  const user = await ensureBootstrapRoot(pool);
   await pool.query(
     `INSERT INTO workspaces(owner_id,name)
      SELECT $1,'Meu espaço de trabalho'

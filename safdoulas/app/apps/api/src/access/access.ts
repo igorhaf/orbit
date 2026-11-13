@@ -5,11 +5,17 @@ import type {Request} from 'express';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {createHash} from 'node:crypto';
 import {Db} from '../db';
 
 export const permissions = corePrivileges.map(p=>p.id);
-export type AccessRequest = Request & {orbitActor?:string;orbitUser?:string};
-type ProfileSimulation={actorId:string;roleId:string;name:string;permissions:string[]};
+export type AccessRequest = Request & {orbitActor?:string;orbitUser?:string;profileSimulation?:boolean};
+type ProfileSimulation={actorId:string;roleId:string;name:string;permissions:string[];subjectId:string;workspaceId:string};
+function simulationUuid(roleId:string,kind:'subject'|'workspace'){
+ const hex=createHash('sha256').update(`orbit-safdoulas-profile-simulation:${kind}:${roleId}`).digest('hex').slice(0,32).split('');
+ hex[12]='4';hex[16]=((parseInt(hex[16],16)&3)|8).toString(16);
+ const value=hex.join('');return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
+}
 function deny(message='Acesso não autorizado.',status=403):never{throw new HttpException({message},status)}
 export function text(value:unknown,max=120){if(typeof value!=='string'||!value.trim()||value.trim().length>max)deny('Valor inválido.',400);return (value as string).trim()}
 export function id(value:unknown){const result=text(value,36);if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result))deny('ID inválido.',400);return result}
@@ -26,7 +32,7 @@ export class AccessService {
  }
  private requestContext=new AsyncLocalStorage<{actorId?:string;simulation?:ProfileSimulation}>();
  runRequestContext(next:()=>void){this.requestContext.run({},next)}
- setProfileSimulation(actorId:string,role:ProfileSimulation|null){const context=this.requestContext.getStore();if(context){context.actorId=actorId;context.simulation=role||undefined}}
+ setProfileSimulation(actorId:string,role:(Omit<ProfileSimulation,'subjectId'|'workspaceId'>&Partial<Pick<ProfileSimulation,'subjectId'|'workspaceId'>>)|null){const context=this.requestContext.getStore();if(context){context.actorId=actorId;context.simulation=role?{...role,subjectId:role.subjectId||simulationUuid(role.roleId,'subject'),workspaceId:role.workspaceId||simulationUuid(role.roleId,'workspace')}:undefined}}
  simulation(user:string){const context=this.requestContext.getStore();return context?.actorId===user?context.simulation:undefined}
  async isRoot(user:string){return Boolean((await this.account(user)).is_root&&!this.simulation(user))}
  private resourceAvailability:Array<(type:string)=>boolean>=[];
@@ -118,7 +124,8 @@ export class AccessService {
   if(row.workspace_id)return this.has(user,permission,'workspace',String(row.workspace_id));
   return Boolean(row.role);
  }
- async me(user:string){const simulation=this.simulation(user),account=await this.account(user);return {...account,is_root:Boolean(account.is_root&&!simulation),is_root_actor:Boolean(account.is_root),roles:simulation?[{role_id:simulation.roleId,name:simulation.name,permissions:simulation.permissions}]:await this.grants(user),permissions:await this.effective(user),is_admin:await this.isAdmin(user),profile_simulation:simulation?{role_id:simulation.roleId,name:simulation.name}:null}}
+ async me(user:string){const simulation=this.simulation(user),account=await this.account(user);if(simulation){const context=await this.simulationContext(user);return {id:context.persona.id,name:context.persona.name,email:context.persona.email,avatar_url:null,preferences:{},is_root:false,is_root_actor:true,is_demo:true,roles:[context.role],permissions:context.role.permissions,is_admin:await this.isAdmin(user),profile_simulation:{role_id:context.role.id,name:context.role.name,subject_id:context.persona.id,workspace_id:context.workspace.id,read_only:true}}}return {...account,is_root:Boolean(account.is_root),is_root_actor:Boolean(account.is_root),roles:await this.grants(user),permissions:await this.effective(user),is_admin:await this.isAdmin(user),profile_simulation:null}}
+ async simulationContext(actor:string){const simulation=this.simulation(actor);if(!simulation)deny('A simulação de perfil não está ativa.',409);const granted=await this.effective(actor);return {mode:'read_only_demo',product:'safdoulas',role:{id:simulation.roleId,name:simulation.name,permissions:granted},persona:{id:simulation.subjectId,name:`Demonstração · ${simulation.name}`,email:`${simulation.roleId}@simulation.invalid`},workspace:{id:simulation.workspaceId,name:`Espaço demonstrativo · ${simulation.name}`},records:[{id:'00000000-0000-4000-8000-000000000101',title:'[DEMO] Formação de Doulas — Instituto Aurora do Sertão',type:'accreditation_process',state:'assessment',description:'Processo demonstrativo aguardando análise técnica; protocolo SAF-DEMO/0001.',is_demo:true},{id:'00000000-0000-4000-8000-000000000102',title:'[DEMO] Formação de Doulas — Turma 2026',type:'course',state:'under_review',description:'Cadastro formativo sintético vinculado ao processo demonstrativo.',is_demo:true},{id:'00000000-0000-4000-8000-000000000103',title:'[DEMO] Análise documental — dimensão pedagógica',type:'evaluation_assignment',state:'assigned',description:'Atividade de avaliação demonstrativa atribuída para análise.',is_demo:true}],flows:[{id:'application',label:'Solicitação da instituição',permission:'plugin.safdoulas-processes.read'},{id:'assessment',label:'Análise e diligências',permission:'plugin.safdoulas-assessments.read'},{id:'decision',label:'Deliberação e publicação',permission:'plugin.safdoulas-accreditation.read'}].map(flow=>({...flow,available:granted.includes(flow.permission)})),message:'Demonstração isolada e somente leitura. Os exemplos são sintéticos e não consultam nem alteram registros reais do Safdoulas.'}}
 
  async audit(actor:string,action:string,target?:string,scope?:{type:string;id:string}){const type=scope?text(scope.type,80):null;const scopeId=scope?id(scope.id):null;await this.db.query('INSERT INTO access_audit(actor_id,action,target,scope_type,scope_id) VALUES($1,$2,$3,$4,$5)',[actor,action,target||null,type,scopeId])}
  async roles(){return this.db.query('SELECT * FROM access_roles ORDER BY name')}
@@ -144,9 +151,16 @@ export class AccessGuard implements CanActivate {
   const token=req.headers.authorization?.replace(/^Bearer /i,'');if(!token)deny('Faça login para continuar.',401);const account=await this.access.authenticate(token!);req.orbitActor=account.id;req.orbitUser=account.id;
   const simulationHeader=req.headers['x-orbit-profile-simulation'];if(Array.isArray(simulationHeader))deny('Perfil de simulação inválido.',400);
   const requestedSimulation=typeof simulationHeader==='string'?simulationHeader:undefined;
-  if(requestedSimulation){if(!account.is_root)deny('Somente ROOT pode simular perfis.',403);if(req.headers['x-orbit-act-as'])deny('Simulação de perfil não pode ser combinada com troca de identidade.',400);const roleId=text(requestedSimulation,61);if(!/^[a-z][a-z0-9_-]{1,60}$/.test(roleId))deny('Perfil de simulação inválido.',400);const role=await this.db.one<{id:string;name:string;permissions:string[]}>('SELECT id,name,permissions FROM access_roles WHERE id=$1',[roleId]);if(!role)deny('Perfil de simulação inexistente ou inativo.',404);this.access.setProfileSimulation(account.id,{actorId:account.id,roleId:role.id,name:role.name,permissions:role.permissions})}else this.access.setProfileSimulation(account.id,null);
+  if(requestedSimulation){if(!account.is_root)deny('Somente ROOT pode simular perfis.',403);if(req.headers['x-orbit-act-as'])deny('Simulação de perfil não pode ser combinada com troca de identidade.',400);const roleId=text(requestedSimulation,61);if(!/^[a-z][a-z0-9_-]{1,60}$/.test(roleId))deny('Perfil de simulação inválido.',400);const role=await this.db.one<{id:string;name:string;permissions:string[]}>('SELECT id,name,permissions FROM access_roles WHERE id=$1',[roleId]);if(!role)deny('Perfil de simulação inexistente ou inativo.',404);this.access.setProfileSimulation(account.id,{actorId:account.id,roleId:role.id,name:role.name,permissions:role.permissions,subjectId:simulationUuid(role.id,'subject'),workspaceId:simulationUuid(role.id,'workspace')});req.profileSimulation=true;req.orbitUser=simulationUuid(role.id,'subject')}else this.access.setProfileSimulation(account.id,null);
   const as=req.headers['x-orbit-act-as'];if(as){if(requestedSimulation||!account.is_root||typeof as!=='string')deny();await this.access.account(id(as));req.orbitUser=as;await this.access.audit(account.id,'root.act-as',as)}
   if(path==='/access/profile-simulation-roles'&&req.method==='GET'){await this.access.simulationRoles(account.id);return true}
+  if(requestedSimulation){
+   if(req.method==='GET'&&path==='/access/profile-simulation/context')return true;
+   if(['GET','HEAD'].includes(req.method)&&['/access/me','/auth/me','/plugins'].includes(path))return true;
+   // Existing Safdoulas handlers commonly key reads by orbitActor (ROOT). Keep
+   // those routes closed until they explicitly consume the synthetic subject.
+   deny('Este fluxo ainda não possui contexto demonstrativo isolado.',403);
+  }
   const resource=path.match(/^\/(vault|notebooks)\/([0-9a-f-]{36})(?:\/|$)/i)||path.match(/^\/ai\/(projects)\/([0-9a-f-]{36})(?:\/|$)/i);
   if(resource){const copying=path.endsWith('/copy-to-card'),reading=['GET','HEAD'].includes(req.method)||copying,root=await this.access.isRoot(account.id);const kind=resource[1],key=id(resource[2]),table=({vault:'vault_items',notebooks:'notebooks',projects:'ai_projects'} as Record<string,string>)[kind];const row=await this.db.one(`SELECT owner_id FROM ${table} WHERE id=$1`,[key]);if(!row)deny('Recurso não encontrado.',404);if(!root){await this.access.require(account.id,kind+'.'+(reading?'read':'write'));if(!reading)await this.access.require(account.id,kind+'.read');if(row.owner_id!==account.id&&!await this.access.sharedResource(account.id,kind,key,!reading))deny('Este recurso não está compartilhado com você.')}if(row.owner_id!==account.id)await this.access.audit(account.id,'shared.resource.request',req.method+' '+path);req.orbitUser=requestedSimulation?account.id:row.owner_id;
    if(!root&&path.endsWith('/restore-card')){await this.access.require(account.id,'boards.write');const target=await this.db.one('SELECT l.board_id FROM vault_items v JOIN cards c ON c.id=v.card_id JOIN lists l ON l.id=c.list_id WHERE v.id=$1',[key]);if(!target||!await this.access.boardPermission(target.board_id,account.id,'boards.write'))deny()}
@@ -182,6 +196,7 @@ export class AccessGuard implements CanActivate {
 export class AccessController {
  constructor(@Inject(AccessService) private access:AccessService,@Inject(Db) private db:Db){}
  @Get('me') me(@Req() req:AccessRequest){return this.access.me(req.orbitActor!)}
+ @Get('profile-simulation/context') simulationContext(@Req() req:AccessRequest){return this.access.simulationContext(req.orbitActor!)}
  @Get('users') users(){return this.access.users()}
  @Get('roles') roles(){return this.access.roles()}
  @Get('profile-simulation-roles') simulationRoles(@Req() req:AccessRequest){return this.access.simulationRoles(req.orbitActor!)}

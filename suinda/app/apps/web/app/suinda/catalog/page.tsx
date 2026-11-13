@@ -92,9 +92,6 @@ export default function SuindaCatalogPage() {
   const [sortOrder, setSortOrder] = useState<"personalized" | "alphabetical">("personalized");
 
   useEffect(() => {
-    const root = document.documentElement;
-    const previous = root.dataset.theme;
-    root.dataset.theme = "dark";
     const authenticated = Boolean(getToken());
     api<Course[]>("/public/suinda/courses")
       .then(setCourses)
@@ -106,10 +103,6 @@ export default function SuindaCatalogPage() {
     if (authenticated) api<{ recommendations: Array<Course & { reason: string }> }>("/extensions/suinda-learning/me/recommendations")
       .then((result) => setRecommendations(result.recommendations))
       .catch(() => undefined);
-    return () => {
-      if (previous) root.dataset.theme = previous;
-      else delete root.dataset.theme;
-    };
   }, []);
 
   async function generateAiRecommendations() {
@@ -207,16 +200,15 @@ export default function SuindaCatalogPage() {
   }
 
   return (
-    <main className="min-h-full bg-[#1d2125] text-[#dee4ea]">
-      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:px-10">
-        <section className="relative overflow-hidden rounded-[2rem] border border-[#3b4754] bg-[radial-gradient(ellipse_at_top_right,_rgba(34,211,238,0.18),_transparent_42%),linear-gradient(135deg,#111827,#0c1220_65%,#101a27)] px-6 py-10 sm:px-10 sm:py-14">
-          <div className="absolute -right-12 -top-24 size-72 rounded-full border border-cyan-200/10" aria-hidden="true" />
-          <div className="relative max-w-3xl">
-            <p className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100"><Sparkles size={14} aria-hidden="true" /> catálogo de aprendizagem</p>
-            <h1 className="mt-5 text-4xl font-semibold tracking-tight text-white sm:text-6xl">Conhecimento que abre caminhos.</h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-[#b6c2cf] sm:text-lg">Explore cursos, compare formatos e encontre a próxima habilidade para levar adiante.</p>
-          </div>
-          <div className="relative mt-8 grid gap-3 rounded-2xl border border-[#3b4754] bg-[#090e18]/75 p-3 shadow-2xl shadow-black/20 sm:grid-cols-2 lg:grid-cols-4 sm:p-4">
+    <main className="min-h-full text-[#dee4ea]">
+      <div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10">
+        <header className="mb-5 border-b border-[#3b4754] pb-5">
+          <p className="text-xs font-semibold uppercase tracking-[.14em] text-cyan-200">Suindá · aprendizagem</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white sm:text-3xl">Catálogo de cursos</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#b6c2cf]">Encontre formações por tema, modalidade, carga horária e instituição. Cada curso mantém currículo e matrículas versionados nos workspaces do Orbit.</p>
+        </header>
+        <section aria-label="Filtros do catálogo" className="mb-7 rounded-xl border border-[#3b4754] bg-[#22272b] p-3 sm:p-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="relative block lg:col-span-2">
               <span className="sr-only">Buscar cursos</span>
               <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#9fadbc]" aria-hidden="true" />
@@ -304,20 +296,20 @@ export default function SuindaCatalogPage() {
         )}
 
         <section className="mt-9" aria-labelledby="catalog-title">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-            <div><p className="text-sm text-cyan-200">Cursos em destaque</p><h2 id="catalog-title" className="mt-1 text-2xl font-semibold text-white">Escolha seu próximo passo</h2></div>
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div><h2 id="catalog-title" className="text-xl font-semibold text-white">Cursos disponíveis</h2></div>
             <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-[#9fadbc]" aria-live="polite">{loading ? "Carregando catálogo…" : `${filtered.length} ${filtered.length === 1 ? "curso" : "cursos"}`}</p><label className="text-sm text-[#9fadbc]">Ordenar <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as "personalized" | "alphabetical")} className="ml-1 min-h-10 rounded-xl border border-[#3b4754] bg-[#2c333a] px-3 text-sm text-[#b6c2cf] outline-none focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"><option value="personalized">{recommendations.length ? "Pelo meu histórico" : "Relevância"}</option><option value="alphabetical">Ordem alfabética</option></select></label>{signedIn && <button type="button" onClick={() => setFavoritesOnly((value) => !value)} aria-pressed={favoritesOnly} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#3b4754] px-3 text-sm text-amber-100 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200"><Star size={15} fill={favoritesOnly ? "currentColor" : "none"} aria-hidden="true" />{favoritesOnly ? "Ver todos os cursos" : `Minha lista (${favorites.size})`}</button>}<button type="button" onClick={clearFilters} className="min-h-10 rounded-xl border border-[#3b4754] px-3 text-sm text-[#b6c2cf] hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200">Limpar filtros</button></div>
           </div>
           {error && <div role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">{error}</div>}
           {!loading && !error && filtered.length === 0 && <div className="rounded-2xl border border-dashed border-white/15 px-5 py-14 text-center"><BookOpen className="mx-auto text-[#9fadbc]" size={28} aria-hidden="true" /><h3 className="mt-4 font-semibold text-white">Nenhum curso encontrado</h3><p className="mt-2 text-sm text-[#9fadbc]">Tente outro termo ou remova os filtros.</p></div>}
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {orderedFiltered.map((course) => (
-              <article key={`${course.workspace_id}:${course.id}`} className="group flex min-h-full flex-col overflow-hidden rounded-2xl border border-[#3b4754] bg-[#2c333a] transition hover:-translate-y-0.5 hover:border-cyan-200/30 hover:bg-[#131c29]">
-                <div className="relative flex h-40 items-end overflow-hidden bg-[radial-gradient(ellipse_at_25%_15%,rgba(34,211,238,.25),transparent_48%),linear-gradient(135deg,#172536,#111827_55%,#1b1730)] p-5">
-                  <div className="absolute inset-0 opacity-40" aria-hidden="true"><div className="absolute -right-4 top-4 size-32 rounded-full border border-cyan-100/20" /><div className="absolute right-10 top-14 size-20 rounded-full border border-violet-200/20" /></div>
-                  <div className="relative flex w-full items-center justify-between gap-2"><span className="rounded-full border border-white/15 bg-black/25 px-3 py-1.5 text-xs font-medium text-white">{stateLabels[course.state] || course.state}</span><div className="flex items-center gap-2"><span className="rounded-full bg-black/25 px-3 py-1.5 text-xs text-[#b6c2cf]">{course.payload.category || "Formação"}</span><button type="button" onClick={() => void toggleFavorite(course)} disabled={favoriteBusy === course.id} aria-pressed={favorites.has(course.id)} aria-label={favorites.has(course.id) ? `Remover ${course.title} da lista de desejos` : `Salvar ${course.title} na lista de desejos`} className="grid size-10 place-items-center rounded-full border border-white/15 bg-black/40 text-amber-100 transition hover:bg-black/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200 disabled:opacity-50"><Star size={17} fill={favorites.has(course.id) ? "currentColor" : "none"} aria-hidden="true" /></button></div></div>
+              <article key={`${course.workspace_id}:${course.id}`} className="group flex min-h-full flex-col overflow-hidden rounded-xl border border-[#3b4754] border-t-2 border-t-cyan-300/60 bg-[#2c333a] transition-colors hover:border-cyan-200/40 hover:bg-[#24292e]">
+                <div className="flex min-h-14 items-center justify-between gap-2 border-b border-white/[0.08] px-4 py-2.5">
+                  <span className="min-w-0 truncate text-xs font-medium text-[#b6c2cf]">{course.payload.category || "Formação"}</span>
+                  <div className="flex shrink-0 items-center gap-2"><span className="rounded-md border border-white/10 px-2 py-1 text-[11px] font-medium text-[#d4dee7]">{stateLabels[course.state] || course.state}</span><button type="button" onClick={() => void toggleFavorite(course)} disabled={favoriteBusy === course.id} aria-pressed={favorites.has(course.id)} aria-label={favorites.has(course.id) ? `Remover ${course.title} da lista de desejos` : `Salvar ${course.title} na lista de desejos`} className="grid size-9 place-items-center rounded-lg border border-white/10 text-amber-100 transition hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200 disabled:opacity-50"><Star size={17} fill={favorites.has(course.id) ? "currentColor" : "none"} aria-hidden="true" /></button></div>
                 </div>
-                <div className="flex flex-1 flex-col p-5">
+                <div className="flex flex-1 flex-col p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-[#9fadbc]">{course.workspace_name}</p>
                   <h3 className="mt-2 text-xl font-semibold leading-7 text-white">{course.title}</h3>
                   <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#9fadbc]">{course.payload.summary || course.payload.description || "Conheça os objetivos e conteúdos desta formação."}</p>

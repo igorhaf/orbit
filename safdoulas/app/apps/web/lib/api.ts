@@ -174,7 +174,7 @@ export const setSession = (token: string, user: User) => {
   setProfileSimulation(null);
   localStorage.setItem('orbit_token', token);
   localStorage.setItem('orbit_user', JSON.stringify(user));
-  applyTheme(user.preferences?.theme || 'light');
+  applyTheme(user.preferences?.theme || 'terroso');
   document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
   window.dispatchEvent(new Event('account:changed'));
 };
@@ -182,7 +182,7 @@ export const clearSession = () => {
   setProfileSimulation(null);
   localStorage.removeItem('orbit_token');
   localStorage.removeItem('orbit_user');
-  applyTheme('light');
+  applyTheme('terroso');
   document.documentElement.dataset.compactCards = 'false';
   window.dispatchEvent(new Event('account:changed'));
 };
@@ -193,7 +193,7 @@ export const getUser = (): User | null => {
 };
 export const setUser = (user: User) => {
   localStorage.setItem('orbit_user', JSON.stringify(user));
-  applyTheme(user.preferences?.theme || 'light');
+  applyTheme(user.preferences?.theme || 'terroso');
   document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
   window.dispatchEvent(new Event('account:changed'));
 };

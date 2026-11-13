@@ -77,6 +77,7 @@ html[data-theme="dark"] {
 }
 html[data-theme-forced="true"] .theme-preference-control { display: none; }
 html[data-theme="dark"] body { color: var(--orbit-text); background: #1d2125; }
+html[data-theme="dark"] #orbit-system-footer { color: var(--orbit-text); background-color: rgb(34 39 43 / 95%) !important; border-color: var(--orbit-border); }
 html[data-theme="dark"] button { color: var(--orbit-text); }
 html[data-theme="dark"] button:hover:not(:focus-visible) { outline: 1px solid var(--orbit-border); outline-offset: 1px; }
 html[data-theme="dark"] :is(.bg-white,[class~="bg-[#f7f8fa]"],[class~="bg-[#f8f9fb]"]) { background-color: var(--orbit-surface) !important; }

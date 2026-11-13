@@ -27,6 +27,7 @@ import {LoginAccount,LoginAttemptLimiter,authenticateLoginAccount} from './acces
 import {recordSuccessfulLogin} from './access/login-history';
 import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
 import {AccessService,AccessGuard,AccessController} from './access/access';
+import type {AccessRequest} from './access/access';
 import {WorkspacesService,WorkspacesController,workspacesPlugin} from './workspaces/workspaces.plugin';
 import {WorkspaceBrandingService,WorkspaceBrandingController,PublicWorkspaceBrandingController,workspaceBrandingPlugin} from './workspaces/workspace-branding';
 import {AiPluginModule,aiPluginDefinition} from './plugins/ai/ai.plugin';
@@ -1274,7 +1275,7 @@ class ApiController {
     return this.auth.requestAdministrativeEmailChange(actor,targetUser,body.email);
   }
   @Post('email/inbox') inboxEmail(@Req() req:Request,@Body() body:Payload) { return this.service.inboxEmail(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined); }
-  @Get('auth/me') me(@Req() req: Request) { return this.service.me(this.service.user(req)); }
+  @Get('auth/me') me(@Req() req: Request) { return (req as AccessRequest).orbitDemoUser||this.service.me(this.service.user(req)); }
   @Get('notebooks') notebooks(@Req() req:Request){return this.service.notebooks(this.service.user(req));}
   @Post('notebooks') createNotebook(@Req() req:Request,@Body() body:Payload){return this.service.createNotebook(this.service.user(req),body);}
   @Patch('notebooks/:id') updateNotebook(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateNotebook(id,this.service.user(req),body);}
@@ -1442,7 +1443,7 @@ async function bootstrap() {
   sockets.use((socket,next)=>{const access=app.get(AccessService);void access.runRequest(async()=>{const user=await access.authenticate(String(socket.handshake.auth.token||''));const profileSimulation=socket.handshake.auth.profileSimulation;if(profileSimulation!==undefined){if(!user.is_root_actor||typeof profileSimulation!=='string'||!/^[a-z][a-z0-9_-]{1,60}$/.test(profileSimulation))throw new Error('Simulação não autorizada.');await access.activateProfileSimulation(user.id,profileSimulation)}return user}).then(user=>{socket.data.userId=user.id;socket.data.profileSimulation=socket.handshake.auth.profileSimulation||'';next()}).catch(()=>next(new Error('Não autorizado.')))});
   sockets.on('connection',socket=>{
     if(!socket.data.profileSimulation)socket.join(`user:${String(socket.data.userId)}`);
-    socket.on('board:join',(boardId:unknown)=>{if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId)){const access=app.get(AccessService);void access.runRequest(async()=>{const user=await access.authenticate(String(socket.handshake.auth.token));const role=socket.handshake.auth.profileSimulation;if(role!==undefined){if(!user.is_root_actor||typeof role!=='string')throw new Error('Simulação não autorizada.');await access.activateProfileSimulation(user.id,role)}await features.member(boardId,user.id)}).then(()=>socket.join(`board:${boardId}`)).catch(()=>socket.leave(`board:${boardId}`));}});
+    socket.on('board:join',(boardId:unknown)=>{if(socket.data.profileSimulation)return;if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId)){const access=app.get(AccessService);void access.runRequest(async()=>{const user=await access.authenticate(String(socket.handshake.auth.token));await features.member(boardId,user.id)}).then(()=>socket.join(`board:${boardId}`)).catch(()=>socket.leave(`board:${boardId}`));}});
     socket.on('board:leave',(boardId:unknown)=>{if(typeof boardId==='string')socket.leave(`board:${boardId}`);});
   });
   const sessionTimer=setInterval(()=>{for(const socket of sockets.sockets.sockets.values())void app.get(AccessService).authenticate(String(socket.handshake.auth.token)).catch(()=>socket.disconnect(true))},2000);sessionTimer.unref();

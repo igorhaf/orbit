@@ -1,9 +1,19 @@
 import {readdirSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {inspectShared} from '../tools/orbit/shared.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const environments = ['dev', 'prod', 'safdoulas', 'suinda'];
 const errors = [];
+try {
+  const config = JSON.parse(readFileSync(resolve(root, 'orbit.workspace.json'), 'utf8'));
+  const shared = inspectShared({root, config});
+  for (const diagnostic of shared.diagnostics) errors.push(`${diagnostic.path || diagnostic.package}: ${diagnostic.message}`);
+  for (const projection of shared.projections) errors.push(`Projeção desatualizada: ${projection.path}`);
+  for (const lock of shared.locks) errors.push(`Lock compartilhado desatualizado: ${lock.path}`);
+} catch (error) {
+  errors.push(`Fontes compartilhadas: ${error.message}`);
+}
 const sharedFiles = [
   'apps/api/core-version.json',
   'apps/api/src/plugins/core-compatibility.ts',
@@ -103,6 +113,19 @@ for (const environment of environments) {
     } catch {
       errors.push(`${environment}: arquivo ausente ${relativePath}`);
     }
+  }
+
+  try {
+    const seed = readFileSync(resolve(app, 'apps/api/src/seed.ts'), 'utf8');
+    const example = readFileSync(resolve(app, '.env.example'), 'utf8');
+    if (!/await ensureBootstrapRoot\(pool\)/.test(seed) || /\$2[aby]\$\d{2}\$/.test(seed)) {
+      errors.push(`${environment}: seed deve usar bootstrap genérico sem credencial histórica`);
+    }
+    for (const key of ['ORBIT_BOOTSTRAP_ROOT_NAME', 'ORBIT_BOOTSTRAP_ROOT_EMAIL', 'ORBIT_BOOTSTRAP_ROOT_PASSWORD']) {
+      if (!example.includes(`${key}=`)) errors.push(`${environment}: exemplo de bootstrap sem ${key}`);
+    }
+  } catch {
+    errors.push(`${environment}: arquivos de bootstrap genérico ausentes`);
   }
 
   for (const [relativePath, pattern] of [

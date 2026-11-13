@@ -20,6 +20,7 @@ export type User = {
   is_root?: boolean;
   is_root_actor?: boolean;
   permissions?: string[];
+  roles?: Array<{ role_id: string; name: string; permissions: string[] }>;
 };
 export type Label = { id: string; name: string; color: string };
 export type CustomField = { id:string;board_id?:string;name:string;type:'text'|'number'|'date'|'dropdown'|'checkbox';options:string[];position:number;show_on_card:boolean };
@@ -174,7 +175,7 @@ export const setSession = (token: string, user: User) => {
   setProfileSimulation(null);
   localStorage.setItem('orbit_token', token);
   localStorage.setItem('orbit_user', JSON.stringify(user));
-  applyTheme(user.preferences?.theme || 'light');
+  applyTheme(user.preferences?.theme || 'dark');
   document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
   window.dispatchEvent(new Event('account:changed'));
 };
@@ -182,7 +183,7 @@ export const clearSession = () => {
   setProfileSimulation(null);
   localStorage.removeItem('orbit_token');
   localStorage.removeItem('orbit_user');
-  applyTheme('light');
+  applyTheme('dark');
   document.documentElement.dataset.compactCards = 'false';
   window.dispatchEvent(new Event('account:changed'));
 };
@@ -193,7 +194,7 @@ export const getUser = (): User | null => {
 };
 export const setUser = (user: User) => {
   localStorage.setItem('orbit_user', JSON.stringify(user));
-  applyTheme(user.preferences?.theme || 'light');
+  applyTheme(user.preferences?.theme || 'dark');
   document.documentElement.dataset.compactCards = String(Boolean(user.preferences?.compactCards));
   window.dispatchEvent(new Event('account:changed'));
 };

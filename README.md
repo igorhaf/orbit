@@ -12,10 +12,11 @@ Esta é a raiz do monorepo Orbit e da instalação local. Os ambientes e produto
 | Suindá | [`suinda/app`](suinda/app/) | `main` | `3003` / `4004` | Plataforma de cursos sobre Orbit |
 | CONTROL | [`control`](control/) | ferramentas operacionais | sem interface pública | Administração explícita dos ambientes |
 
-Cada ambiente possui configuração, banco e volumes próprios. Os diretórios `app/` ainda preservam as cópias de código atuais; a consolidação do Git não extraiu automaticamente uma base de código comum. Até a etapa de modularização, alterações compartilhadas precisam ser integradas nos caminhos aplicáveis e revisadas entre os ambientes.
+Cada ambiente possui configuração, banco e volumes próprios. As fontes comuns registradas em `orbit.workspace.json` ficam em `packages/` e são projetadas nas aplicações com versão e hash. Outros módulos ainda têm variantes locais e exigem revisão de integração entre os ambientes.
 
 ## Por onde começar
 
+- [Desenvolvimento acelerado: pacotes, geradores, catálogo, contexto, verificações e entregas](docs/acceleration/README.md)
 - [Arquitetura da instalação, isolamento, portas e operação](README-ARCHITECTURE.md)
 - [Ambiente Suindá, Compose e documentação específica](suinda/README.md)
 - [Decisões de domínio e plugins do Suindá](suinda/app/docs/suinda/ARQUITETURA.md)

@@ -1,0 +1,311 @@
+{
+  "name": "@orbit/ui-source",
+  "version": "1.1.3",
+  "private": true,
+  "description": "Canonical Orbit source distribution with reproducible isolated-runtime projections.",
+  "files": [
+    "src"
+  ],
+  "orbit": {
+    "format": 1,
+    "distribution": "source-projection",
+    "files": [
+      {
+        "source": "src/app/board/[id]/print/page.tsx",
+        "target": "apps/web/app/board/[id]/print/page.tsx"
+      },
+      {
+        "source": "src/app/card-types/page.tsx",
+        "target": "apps/web/app/card-types/page.tsx"
+      },
+      {
+        "source": "src/app/collections/page.tsx",
+        "target": "apps/web/app/collections/page.tsx"
+      },
+      {
+        "source": "src/app/extensions/[plugin]/page.tsx",
+        "target": "apps/web/app/extensions/[plugin]/page.tsx"
+      },
+      {
+        "source": "src/app/extensions/page.tsx",
+        "target": "apps/web/app/extensions/page.tsx"
+      },
+      {
+        "source": "src/app/monitoring/page.tsx",
+        "target": "apps/web/app/monitoring/page.tsx"
+      },
+      {
+        "source": "src/app/not-found.tsx",
+        "target": "apps/web/app/not-found.tsx"
+      },
+      {
+        "source": "src/app/notebooks/page.tsx",
+        "target": "apps/web/app/notebooks/page.tsx"
+      },
+      {
+        "source": "src/app/planner/page.tsx",
+        "target": "apps/web/app/planner/page.tsx"
+      },
+      {
+        "source": "src/app/queues/page.tsx",
+        "target": "apps/web/app/queues/page.tsx"
+      },
+      {
+        "source": "src/app/tools/page.tsx",
+        "target": "apps/web/app/tools/page.tsx"
+      },
+      {
+        "source": "src/app/trash/page.tsx",
+        "target": "apps/web/app/trash/page.tsx"
+      },
+      {
+        "source": "src/app/vault/page.tsx",
+        "target": "apps/web/app/vault/page.tsx"
+      },
+      {
+        "source": "src/app/workspaces/page.tsx",
+        "target": "apps/web/app/workspaces/page.tsx"
+      },
+      {
+        "source": "src/components/access-management.tsx",
+        "target": "apps/web/components/access-management.tsx"
+      },
+      {
+        "source": "src/components/access-shell.tsx",
+        "target": "apps/web/components/access-shell.tsx"
+      },
+      {
+        "source": "src/components/ai-model-fields.tsx",
+        "target": "apps/web/components/ai-model-fields.tsx"
+      },
+      {
+        "source": "src/components/bulk-card-actions.tsx",
+        "target": "apps/web/components/bulk-card-actions.tsx"
+      },
+      {
+        "source": "src/components/card-ai.tsx",
+        "target": "apps/web/components/card-ai.tsx"
+      },
+      {
+        "source": "src/components/card-checklists.tsx",
+        "target": "apps/web/components/card-checklists.tsx"
+      },
+      {
+        "source": "src/components/card-contexts.tsx",
+        "target": "apps/web/components/card-contexts.tsx"
+      },
+      {
+        "source": "src/components/card-custom-fields.tsx",
+        "target": "apps/web/components/card-custom-fields.tsx"
+      },
+      {
+        "source": "src/components/card-execution.tsx",
+        "target": "apps/web/components/card-execution.tsx"
+      },
+      {
+        "source": "src/components/card-extras.tsx",
+        "target": "apps/web/components/card-extras.tsx"
+      },
+      {
+        "source": "src/components/card-operations.tsx",
+        "target": "apps/web/components/card-operations.tsx"
+      },
+      {
+        "source": "src/components/card-sections.tsx",
+        "target": "apps/web/components/card-sections.tsx"
+      },
+      {
+        "source": "src/components/codex-limits.tsx",
+        "target": "apps/web/components/codex-limits.tsx"
+      },
+      {
+        "source": "src/components/git-card-panel.tsx",
+        "target": "apps/web/components/git-card-panel.tsx"
+      },
+      {
+        "source": "src/components/git-card-workflow.tsx",
+        "target": "apps/web/components/git-card-workflow.tsx"
+      },
+      {
+        "source": "src/components/git-project-settings.tsx",
+        "target": "apps/web/components/git-project-settings.tsx"
+      },
+      {
+        "source": "src/components/inbox-drag.tsx",
+        "target": "apps/web/components/inbox-drag.tsx"
+      },
+      {
+        "source": "src/components/modal.tsx",
+        "target": "apps/web/components/modal.tsx"
+      },
+      {
+        "source": "src/components/plugin-navigation.tsx",
+        "target": "apps/web/components/plugin-navigation.tsx"
+      },
+      {
+        "source": "src/components/profile-simulation-context.tsx",
+        "target": "apps/web/components/profile-simulation-context.tsx"
+      },
+      {
+        "source": "src/components/vault-constant-select.tsx",
+        "target": "apps/web/components/vault-constant-select.tsx"
+      },
+      {
+        "source": "src/components/vault-credential-fields.tsx",
+        "target": "apps/web/components/vault-credential-fields.tsx"
+      },
+      {
+        "source": "src/lib/board-drag.spec.ts",
+        "target": "apps/web/lib/board-drag.spec.ts"
+      },
+      {
+        "source": "src/lib/board-drag.ts",
+        "target": "apps/web/lib/board-drag.ts"
+      },
+      {
+        "source": "src/lib/card-description.spec.ts",
+        "target": "apps/web/lib/card-description.spec.ts"
+      },
+      {
+        "source": "src/lib/card-description.ts",
+        "target": "apps/web/lib/card-description.ts"
+      },
+      {
+        "source": "src/lib/clipboard-files.ts",
+        "target": "apps/web/lib/clipboard-files.ts"
+      },
+      {
+        "source": "src/lib/comment-replies.spec.ts",
+        "target": "apps/web/lib/comment-replies.spec.ts"
+      },
+      {
+        "source": "src/lib/comment-replies.ts",
+        "target": "apps/web/lib/comment-replies.ts"
+      },
+      {
+        "source": "src/lib/execution.ts",
+        "target": "apps/web/lib/execution.ts"
+      },
+      {
+        "source": "src/lib/history.ts",
+        "target": "apps/web/lib/history.ts"
+      },
+      {
+        "source": "src/lib/inbox.ts",
+        "target": "apps/web/lib/inbox.ts"
+      },
+      {
+        "source": "src/lib/plugin-navigation.spec.ts",
+        "target": "apps/web/lib/plugin-navigation.spec.ts"
+      },
+      {
+        "source": "src/lib/plugin-navigation.ts",
+        "target": "apps/web/lib/plugin-navigation.ts"
+      },
+      {
+        "source": "src/lib/use-hydrated.ts",
+        "target": "apps/web/lib/use-hydrated.ts"
+      },
+      {
+        "source": "src/plugins/ai/QueuesPage.tsx",
+        "target": "apps/web/plugins/ai/QueuesPage.tsx"
+      },
+      {
+        "source": "src/plugins/ai/card-renderers.tsx",
+        "target": "apps/web/plugins/ai/card-renderers.tsx"
+      },
+      {
+        "source": "src/plugins/board-views/BoardViewRenderer.tsx",
+        "target": "apps/web/plugins/board-views/BoardViewRenderer.tsx"
+      },
+      {
+        "source": "src/plugins/board-views/StructuredBoardView.tsx",
+        "target": "apps/web/plugins/board-views/StructuredBoardView.tsx"
+      },
+      {
+        "source": "src/plugins/board-views/contract.ts",
+        "target": "apps/web/plugins/board-views/contract.ts"
+      },
+      {
+        "source": "src/plugins/board-views/hierarchy.ts",
+        "target": "apps/web/plugins/board-views/hierarchy.ts"
+      },
+      {
+        "source": "src/plugins/card-layouts/CardBadges.tsx",
+        "target": "apps/web/plugins/card-layouts/CardBadges.tsx"
+      },
+      {
+        "source": "src/plugins/card-layouts/CardPlugins.tsx",
+        "target": "apps/web/plugins/card-layouts/CardPlugins.tsx"
+      },
+      {
+        "source": "src/plugins/card-layouts/CardSlot.tsx",
+        "target": "apps/web/plugins/card-layouts/CardSlot.tsx"
+      },
+      {
+        "source": "src/plugins/card-layouts/CardTypeSelector.tsx",
+        "target": "apps/web/plugins/card-layouts/CardTypeSelector.tsx"
+      },
+      {
+        "source": "src/plugins/card-layouts/CardTypesPage.tsx",
+        "target": "apps/web/plugins/card-layouts/CardTypesPage.tsx"
+      },
+      {
+        "source": "src/plugins/card-layouts/contract.ts",
+        "target": "apps/web/plugins/card-layouts/contract.ts"
+      },
+      {
+        "source": "src/plugins/collections/CollectionPanel.tsx",
+        "target": "apps/web/plugins/collections/CollectionPanel.tsx"
+      },
+      {
+        "source": "src/plugins/planner/PlannerPage.tsx",
+        "target": "apps/web/plugins/planner/PlannerPage.tsx"
+      },
+      {
+        "source": "src/plugins/process-board/ProcessBoard.tsx",
+        "target": "apps/web/plugins/process-board/ProcessBoard.tsx"
+      },
+      {
+        "source": "src/plugins/project-boards/CreateBoardModal.tsx",
+        "target": "apps/web/plugins/project-boards/CreateBoardModal.tsx"
+      },
+      {
+        "source": "src/plugins/project-boards/use-creation-availability.ts",
+        "target": "apps/web/plugins/project-boards/use-creation-availability.ts"
+      },
+      {
+        "source": "src/plugins/record-cards/RecordBoardContext.tsx",
+        "target": "apps/web/plugins/record-cards/RecordBoardContext.tsx"
+      },
+      {
+        "source": "src/plugins/record-cards/RecordBoardModels.tsx",
+        "target": "apps/web/plugins/record-cards/RecordBoardModels.tsx"
+      },
+      {
+        "source": "src/plugins/record-cards/RecordWorkOverview.tsx",
+        "target": "apps/web/plugins/record-cards/RecordWorkOverview.tsx"
+      },
+      {
+        "source": "src/plugins/software-development/card-renderers.tsx",
+        "target": "apps/web/plugins/software-development/card-renderers.tsx"
+      },
+      {
+        "source": "src/plugins/software-development/git-card-panel.tsx",
+        "target": "apps/web/plugins/software-development/git-card-panel.tsx"
+      },
+      {
+        "source": "src/plugins/vault/VaultPage.tsx",
+        "target": "apps/web/plugins/vault/VaultPage.tsx"
+      },
+      {
+        "source": "src/plugins/workspaces/WorkspaceBrandingSettings.tsx",
+        "target": "apps/web/plugins/workspaces/WorkspaceBrandingSettings.tsx"
+      },
+      {
+        "source": "src/plugins/workspaces/WorkspaceResources.tsx",
+        "target": "apps/web/plugins/workspaces/WorkspaceResources.tsx"
+      }
+    ]
+  }
+}

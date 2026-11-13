@@ -18,7 +18,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import Image from 'next/image';
 
-import { Eye, EyeClosed, Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut, Wrench, Menu, DatabaseBackup, Archive, Moon, Search, Settings, Star, Sun, Undo2, Redo2, UserRound, X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, FolderOpen, GripVertical, MoreHorizontal, Paintbrush } from 'lucide-react';
+import { Bell, CalendarDays, Check, ChevronDown, FolderKanban, Home, LayoutDashboard, LogOut, Wrench, Menu, DatabaseBackup, Archive, Moon, Search, Settings, Star, Sun, Undo2, Redo2, UserRound, X, Pin, PinOff, CreditCard, CheckSquare, Inbox, NotebookPen, Vault, FolderOpen, GripVertical, MoreHorizontal, Paintbrush } from 'lucide-react';
 
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 
@@ -31,6 +31,7 @@ import { api, send, AppNotification, Board, SearchResults, ToolDiagnostics, User
 import { historyState, redo, remember, undo } from '@/lib/history';
 
 import { CodexLimitsBar } from './codex-limits';
+import { ProfileSimulationContextLauncher } from './profile-simulation-context';
 
 import { io } from 'socket.io-client';
 
@@ -89,15 +90,18 @@ function NotificationPanel({ items, onRead, onReadAll, onClearAll, onChoose }: {
 }
 
 export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: User | null; boards?: Board[]; onCreate?: () => void; onSearch?: (s:string)=>void }) {
-  const [limitsVisible,setLimitsVisible]=useState(false);
   const [aiAvailable,setAiAvailable]=useState(false);
+  const [developmentAiAvailable,setDevelopmentAiAvailable]=useState(false);
   const {enabled:pluginEnabled,processBoards:pluginBoards,navigation} = usePluginAvailability();
   const collectionsAvailable=pluginEnabled('collections');
   const {canCreateBoard,canCreateProject,boardCreators}=useCreationAvailability();
   const router = useRouter();
+  const pathname = usePathname();
   const accountSnapshot=useSyncExternalStore(subscribeAccountSnapshot,getAccountSnapshot,getServerAccountSnapshot);
   const [userState, updateUser] = useState<User | null>(initialUser);
   const user=useMemo(()=>userState??parseAccountSnapshot(accountSnapshot),[accountSnapshot,userState]);
+  const footerHomeHref = '/';
+  const showSystemFooter = Boolean(user?.is_root_actor || user?.is_root) && pathname.replace(/\/$/, '') === footerHomeHref.replace(/\/$/, '');
   const userId=user?.id;
   const [previousUser, setPreviousUser] = useState(initialUser);
   if (initialUser !== previousUser) {
@@ -182,7 +186,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   useEffect(()=>{
     if(!userId)return;
     let active=true;
-    const refresh=()=>void api<{plugins:Array<{id:string;enabled:boolean}>}>('/plugins').then(({plugins})=>{if(active)setAiAvailable(plugins.some(plugin=>plugin.id==='ai'&&plugin.enabled))}).catch(()=>{if(active)setAiAvailable(false)});
+    const refresh=()=>void api<{plugins:Array<{id:string;enabled:boolean}>}>('/plugins').then(({plugins})=>{if(active){const ai=plugins.some(plugin=>plugin.id==='ai'&&plugin.enabled);setAiAvailable(ai);setDevelopmentAiAvailable(ai&&plugins.some(plugin=>plugin.id==='software-development'&&plugin.enabled))}}).catch(()=>{if(active){setAiAvailable(false);setDevelopmentAiAvailable(false)}});
     refresh();window.addEventListener('plugins:changed',refresh);
     return()=>{active=false;window.removeEventListener('plugins:changed',refresh)};
   },[userId]);
@@ -204,14 +208,14 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   }, []);
 
   useEffect(()=>{
-    if(!user||!aiAvailable)return;
+    if(!user||!developmentAiAvailable)return;
     let active=true;
     const refresh=()=>void api<ToolDiagnostics>('/tools/diagnostics').then(result=>{if(active)setToolStatus({userId:user.id,status:result.status})}).catch(()=>undefined);
     refresh();
     const timer=window.setInterval(refresh,15_000);
     return()=>{active=false;window.clearInterval(timer)};
-  },[user,aiAvailable]);
-  const currentToolStatus=aiAvailable&&toolStatus&&toolStatus.userId===user?.id?toolStatus.status:null;
+  },[user,developmentAiAvailable]);
+  const currentToolStatus=developmentAiAvailable&&toolStatus&&toolStatus.userId===user?.id?toolStatus.status:null;
   useEffect(() => {
     if (!user) return;
     let active = true;
@@ -328,8 +332,6 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     ...(canUse('notebooks.read')?[{label:'Cadernos',href:'/notebooks',icon:NotebookPen}]:[]),
     ...(pluginEnabled('vault','vault.read')?[{label:'Cofre',href:'/vault',icon:Vault}]:[]),
     ...(canUse('backups.read')?[{label:'Backups',href:'/backups',icon:DatabaseBackup}]:[]),
-    ...(aiAvailable?[{label:'Ferramentas',href:'/tools',icon:Wrench}]:[]),
-    ...(canUse('plugins.read')?[{label:'Plugins',href:'/plugins',icon:FolderKanban}]:[]),
     ...(user?.is_root||user?.permissions?.includes('access.manage')?[{label:'Acessos · RBAC',href:'/access',icon:Settings}]:[]),
     {label:'Perfil e configurações',href:'/profile',icon:Settings},
     {label:'Lixeira',href:'/trash',icon:Archive},
@@ -372,6 +374,29 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
     return () => document.removeEventListener('mousedown', closeOutside);
   }, [panel]);
 
+  useEffect(() => {
+    const previousPadding = document.body.style.paddingBottom;
+    const footer = document.getElementById('orbit-system-footer');
+    if (!footer) return;
+    const shell = footer.parentElement;
+    const previousShellHeight = shell?.style.height;
+    const syncLayout = () => {
+      const height = Math.ceil(footer.getBoundingClientRect().height);
+      document.body.style.paddingBottom = `${height}px`;
+      if (shell?.classList.contains('h-screen')) shell.style.height = `calc(100dvh - ${height}px)`;
+    };
+    syncLayout();
+    const observer = new ResizeObserver(syncLayout);
+    observer.observe(footer);
+    window.addEventListener('resize', syncLayout);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', syncLayout);
+      document.body.style.paddingBottom = previousPadding;
+      if (shell) shell.style.height = previousShellHeight || '';
+    };
+  }, [showSystemFooter]);
+
   return <>{notificationToast && <div role="status" aria-live="polite" className={`fixed right-4 top-4 z-[60] w-[min(360px,calc(100vw-32px))] rounded-lg border border-[#dfe1e6] bg-white p-3 shadow-dialog transition-all duration-500 ${toastFading ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100'}`}><div className="flex items-start gap-2"><Bell size={17} className="mt-0.5 shrink-0 text-[#0c66e4]"/><span className="min-w-0"><strong className="block truncate text-sm">{notificationToast.title}</strong>{notificationToast.body && <span className="mt-0.5 block truncate text-xs text-[#626f86]">{notificationToast.body}</span>}</span></div></div>}<header className="relative z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-1.5 border-b border-[#dfe1e6] bg-white px-3 py-1 sm:gap-2 sm:px-4">
     <button onClick={() => router.push('/')} className="flex items-center gap-2 rounded px-1 py-1 text-[#172b4d] hover:bg-[#f1f2f4]" title="Home">
       <span className="flex h-7 w-7 items-center justify-center rounded bg-[#0c66e4] text-white"><LayoutDashboard size={19} strokeWidth={2.8}/></span>
@@ -389,12 +414,10 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         </div>}
       </div>
       {canUse('calendar.read')&&<button onClick={() => router.push('/calendar')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><CalendarDays size={15} className="mr-1 inline"/>Calendário</button>}
-      {aiAvailable&&<button onClick={() => router.push('/tools')} title={currentToolStatus==='error'?'O último prompt falhou por causa de uma ferramenta.':currentToolStatus==='running'?'Aguardando o fim do prompt para verificar as ferramentas.':'Ferramentas sem falha detectada no último prompt.'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Wrench size={15}/>Ferramentas<span aria-hidden="true" className={`h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>}
       <PluginNavigation menus={navigation.menus} standalone={navigation.standalone}/>
       {canUse('notebooks.read')&&<button onClick={() => router.push('/notebooks')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><NotebookPen size={15} className="mr-1 inline"/>Cadernos</button>}
       {pluginEnabled('vault','vault.read')&&<button onClick={() => router.push('/vault')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]"><Vault size={15} className="mr-1 inline"/>Cofre</button>}
-      {(user?.is_root||user?.permissions?.includes('access.manage'))&&<button onClick={()=>router.push('/access')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Acessos {user?.is_root&&<span className="text-xs text-[#0c66e4]">ROOT</span>}</button>}
-      {canUse('plugins.read')&&<button onClick={() => router.push('/plugins')} className="rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">Plugins</button>}
+
     </nav>
 <button
   onClick={() => router.push('/boards')}
@@ -404,7 +427,6 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
   <LayoutDashboard size={19}/>
 </button>
 <button onClick={() => router.push('/')} className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Home"><Home size={19}/></button>
-{aiAvailable&&<button onClick={() => router.push('/tools')} className="relative min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4] lg:hidden" title="Ferramentas" aria-label="Ferramentas"><Wrench size={19}/><span aria-hidden="true" className={`absolute right-1 top-1 h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>}
 <div className="relative lg:hidden"><button ref={mobileNavigationTriggerRef} onClick={() => setPanel(panel==='mobile'?null:'mobile')} aria-label="Abrir navegação" aria-expanded={panel==='mobile'} aria-controls="orbit-mobile-navigation" className="min-h-11 min-w-11 rounded p-2 text-[#44546f] hover:bg-[#f1f2f4]"><Menu size={19}/></button>{panel==='mobile'&&<nav id="orbit-mobile-navigation" aria-label="Navegação principal" className="fixed left-2 right-2 top-[calc(3.5rem+env(safe-area-inset-top))] z-[60] grid max-h-[min(70dvh,560px)] w-auto translate-x-0 grid-cols-2 gap-1 overflow-y-auto rounded-xl border border-[#dfe1e6] bg-white p-2 shadow-dialog sm:grid-cols-3">{mobileLinks.map(item=><button key={`${item.href}:${item.label}`} onClick={()=>{setPanel(null);router.push(item.href)}} className="flex min-h-12 min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold hover:bg-[#f1f2f4]"><item.icon size={17} className="shrink-0 text-[#6554c0]"/><span className="min-w-0 break-words">{item.label}</span></button>)}<PluginNavigation menus={navigation.menus} standalone={navigation.standalone} mobile onNavigate={()=>setPanel(null)}/></nav>}</div>
     {(canCreateBoard||canCreateProject||boardCreators.length>0)&&<div ref={createMenuRef} className="relative ml-1">
       <button ref={createTriggerRef} onClick={() => setPanel(panel === 'create' ? null : 'create')} aria-expanded={panel === 'create'} aria-controls="orbit-create-menu" className="rounded bg-[#0c66e4] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0055cc]">Criar</button>
@@ -414,8 +436,8 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
         {canCreateProject&&<button onClick={() => { setPanel(null); router.push('/profile?tab=projects'); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-[#f1f2f4]"><FolderKanban size={16}/> Criar projeto</button>}
       </div>}
     </div>}
-    {aiAvailable&&<button onClick={()=>setLimitsVisible(value=>!value)} aria-label={limitsVisible?'Recolher barra da fila':'Mostrar barra da fila'} aria-expanded={limitsVisible} aria-controls="codex-limits-bar" className="flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-semibold hover:bg-[#f1f2f4]">{limitsVisible?<Eye size={17}/>:<EyeClosed size={17}/>}{user?.is_root?'Limites':'Fila'}</button>}
-    {rootActor&&<div className="flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-[#c3b6f7] bg-[#f0edff] px-2 py-1"><label htmlFor="orbit-profile-simulation" className="sr-only">Simular perfil do sistema</label><select id="orbit-profile-simulation" aria-label="Perfil a simular" value={simulationSelection} onChange={event=>setSimulationSelection(event.target.value)} disabled={simulationBusy} className="min-w-0 max-w-[34vw] rounded border border-[#c3b6f7] bg-white px-2 py-1.5 text-xs text-[#172b4d] sm:max-w-52"><option value="">{simulationActive?'Escolha outro perfil…':'Simular perfil…'}</option>{simulationRoles.map(role=><option key={role.id} value={role.id}>{role.name}</option>)}</select>{simulationActive?<><span className="max-w-32 truncate text-[11px] font-semibold text-[#403294]" role="status" aria-live="polite">Simulando: {simulationRoles.find(role=>role.id===simulationActive)?.name||simulationActive}</span><button onClick={()=>void enterProfileSimulation()} disabled={!simulationSelection||simulationSelection===simulationActive||simulationBusy} className="rounded bg-[#6554c0] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Trocar</button><button onClick={()=>void returnToRootProfile()} disabled={simulationBusy} className="whitespace-nowrap rounded border border-[#6554c0] px-2 py-1.5 text-xs font-semibold text-[#403294] disabled:opacity-50">Voltar a ROOT</button></>:<button onClick={()=>void enterProfileSimulation()} disabled={!simulationSelection||simulationBusy} className="whitespace-nowrap rounded bg-[#6554c0] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Entrar</button>}</div>}
+
+
     <div className="flex-1"/>
     <button onClick={() => undo().catch(error => setMessage((error as Error).message))} disabled={!history.canUndo} aria-label="Desfazer" aria-keyshortcuts="Control+Z Meta+Z" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.undoLabel ? `Desfazer: ${history.undoLabel}` : 'Desfazer'} (Ctrl/Cmd+Z)`}><Undo2 size={18}/></button>
     <button onClick={() => redo().catch(error => setMessage((error as Error).message))} disabled={!history.canRedo} aria-label="Refazer" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" className="rounded p-1.5 text-[#44546f] hover:bg-[#f1f2f4] disabled:cursor-not-allowed disabled:opacity-35" title={`${history.redoLabel ? `Refazer: ${history.redoLabel}` : 'Refazer'} (Ctrl/Cmd+Shift+Z ou Ctrl/Cmd+Y)`}><Redo2 size={18}/></button>
@@ -450,7 +472,7 @@ export function AppHeader({ user: initialUser, boards = [], onCreate }: { user: 
       <button onClick={() => {clearSession();setPanel(null);router.push('/');router.refresh();}} className="mt-1 flex w-full items-center gap-2 border-t border-[#dfe1e6] px-3 py-2 text-left text-sm hover:bg-[#f1f2f4]"><LogOut size={16}/> Sair</button>
     </div>}
     </div>
-  </header>{aiAvailable&&<CodexLimitsBar visible={limitsVisible} isRoot={user?.is_root===true}/>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
+  </header>{showSystemFooter&&<footer id="orbit-system-footer" aria-label="Controles do sistema" className="fixed inset-x-0 bottom-0 z-[70] max-h-[55dvh] overflow-x-hidden overflow-y-auto border-t border-[#dfe1e6] bg-white/95 px-3 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(9,30,66,0.12)] backdrop-blur sm:px-4"><div className="mx-auto flex min-h-12 w-full min-w-0 max-w-[1800px] flex-nowrap items-center gap-1 overflow-visible whitespace-nowrap">{rootActor&&<div className="flex min-w-0 flex-[1_1_9rem] max-w-[40rem] items-center gap-1.5 rounded-lg border border-[#c3b6f7] bg-[#f0edff] px-2 py-1"><label htmlFor="orbit-profile-simulation" className="sr-only">Simular perfil do sistema</label><select id="orbit-profile-simulation" aria-label="Perfil a simular" value={simulationSelection} onChange={event=>setSimulationSelection(event.target.value)} disabled={simulationBusy} className="min-w-0 w-0 max-w-full flex-[1_1_0%] rounded border border-[#c3b6f7] bg-white px-2 py-1.5 text-xs text-[#172b4d]"><option value="">{simulationActive?'Escolha outro perfil…':'Simular perfil…'}</option>{simulationRoles.map(role=><option key={role.id} value={role.id}>{role.name}</option>)}</select>{simulationActive?<><span className="hidden max-w-32 truncate text-[11px] font-semibold text-[#403294] lg:inline" role="status" aria-live="polite">Simulando: {simulationRoles.find(role=>role.id===simulationActive)?.name||simulationActive}</span><button onClick={()=>void enterProfileSimulation()} disabled={!simulationSelection||simulationSelection===simulationActive||simulationBusy} className="shrink-0 whitespace-nowrap rounded bg-[#6554c0] px-1.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><span className="hidden lg:inline">Trocar</span><span className="lg:hidden">OK</span></button><button onClick={()=>void returnToRootProfile()} disabled={simulationBusy} className="shrink-0 whitespace-nowrap rounded border border-[#6554c0] px-1.5 py-1.5 text-xs font-semibold text-[#403294] disabled:opacity-50"><span className="hidden lg:inline">Voltar a ROOT</span><span className="lg:hidden">ROOT</span></button></>:<button onClick={()=>void enterProfileSimulation()} disabled={!simulationSelection||simulationBusy} className="whitespace-nowrap rounded bg-[#6554c0] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><span className="hidden lg:inline">Entrar</span><span className="lg:hidden">Ir</span></button>}</div>}{Boolean(simulationActive)&&<ProfileSimulationContextLauncher active={Boolean(simulationActive)}/>}{developmentAiAvailable&&<button onClick={() => router.push('/tools')} title={currentToolStatus==='error'?'O último prompt falhou por causa de uma ferramenta.':currentToolStatus==='running'?'Aguardando o fim do prompt para verificar as ferramentas.':'Ferramentas sem falha detectada no último prompt.'} className="flex min-h-10 shrink-0 items-center gap-1 rounded px-1 text-xs font-semibold hover:bg-[#f1f2f4]"><Wrench size={15}/><span className="hidden lg:inline">Ferramentas</span><span aria-hidden="true" className={`h-2 w-2 rounded-full ${currentToolStatus==='error'?'bg-[#de350b]':currentToolStatus==='success'?'bg-[#22a06b]':currentToolStatus==='running'?'animate-pulse bg-[#579dff]':'bg-[#8590a2]'}`}/></button>}{canUse('plugins.read')&&<button onClick={()=>router.push('/plugins')} className="flex min-h-10 shrink-0 items-center gap-1 rounded px-1 text-xs font-semibold hover:bg-[#f1f2f4]"><FolderKanban size={15}/><span className="hidden lg:inline">Plugins</span></button>}{aiAvailable&&<CodexLimitsBar isRoot={user?.is_root===true}/>}</div></footer>}{message && <div role="alert" className="relative z-20 flex w-full shrink-0 items-center gap-2 border-b border-[#f5c2b7] bg-[#ffebe6] px-4 py-2 text-sm text-[#ae2a19] shadow-sm"><button className="shrink-0 rounded p-1 hover:bg-[#f5c2b7]" onClick={() => setMessage('')} aria-label="Fechar aviso"><X size={14}/></button><span className="min-w-0 break-words">{message}</span></div>}</>;
 }
 
 function SortableFavoriteBoard({ board, pinned, onChoose, onBackground, onToggleStar }: { board: Board; pinned: boolean; onChoose: (id: string) => void; onBackground: (id: string) => void; onToggleStar: (board: Board) => void }) {

@@ -5,10 +5,10 @@ import type {Request} from 'express';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 import {Db} from '../db';
-import {currentSimulatedProfile,profileSimulationContext} from './profile-simulation-context';
+import {currentSimulatedProfile,profileSimulationContext,simulatedDemoContext,simulatedSubjectId} from './profile-simulation-context';
 
 export const permissions = corePrivileges.map(p=>p.id);
-export type AccessRequest = Request & {orbitActor?:string;orbitUser?:string};
+export type AccessRequest = Request & {orbitActor?:string;orbitUser?:string;orbitDemoUser?:unknown};
 function deny(message='Acesso não autorizado.',status=403):never{throw new HttpException({message},status)}
 export function text(value:unknown,max=120){if(typeof value!=='string'||!value.trim()||value.trim().length>max)deny('Valor inválido.',400);return (value as string).trim()}
 export function id(value:unknown){const result=text(value,36);if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result))deny('ID inválido.',400);return result}
@@ -114,8 +114,8 @@ export class AccessService {
   if(row.workspace_id)return this.has(user,permission,'workspace',String(row.workspace_id));
   return Boolean(row.role);
  }
- async me(user:string){const simulation=currentSimulatedProfile(user),account=await this.account(user);return {...account,is_root:Boolean(account.is_root&&!simulation),is_root_actor:Boolean(account.is_root),roles:simulation?[{role_id:simulation.id,name:simulation.name,permissions:simulation.permissions}]:await this.grants(user),permissions:await this.effective(user),is_admin:simulation?['administrator','platform_admin'].includes(simulation.id):await this.isAdmin(user),profile_simulation:simulation?{role_id:simulation.id,role_name:simulation.name}:null}}
- async simulationRoles(actor:string){if(!(await this.account(actor)).is_root)deny();return {roles:await this.roles(),active:currentSimulatedProfile(actor)?.id||null}}
+ async me(user:string){const simulation=currentSimulatedProfile(user),account=await this.account(user);if(simulation){const effective=await this.effective(user),demo=simulatedDemoContext(simulation,effective);return {id:demo.persona.id,name:demo.persona.name,email:demo.persona.email,is_root:false,is_root_actor:true,roles:[{role_id:simulation.id,name:simulation.name,permissions:effective}],permissions:effective,is_admin:['administrator','platform_admin'].includes(simulation.id),profile_simulation:{role_id:simulation.id,role_name:simulation.name},is_demo:true}}return {...account,is_root:Boolean(account.is_root),is_root_actor:Boolean(account.is_root),roles:await this.grants(user),permissions:await this.effective(user),is_admin:await this.isAdmin(user),profile_simulation:null}}
+ async simulationRoles(actor:string){if(!(await this.account(actor)).is_root)deny();const profile=currentSimulatedProfile(actor),roles=await this.roles(),disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');const contextFor=(role:{id:string;name:string;permissions:string[]})=>simulatedDemoContext(role,evaluatePermissions(false,role.permissions||[],[],[],disabled.map(p=>p.permission_id),this.catalog()));return {roles:roles.map(role=>({...role,demo_context:contextFor(role)})),active:profile?.id||null,context:profile?contextFor(profile):null}}
  async recordSimulation(actor:string){if(!(await this.account(actor)).is_root)deny();const profile=currentSimulatedProfile(actor);await this.audit(actor,profile?'root.profile_simulation.started':'root.profile_simulation.returned',profile?.id);return {ok:true,active:profile?.id||null}}
 
  async audit(actor:string,action:string,target?:string,scope?:{type:string;id:string}){const type=scope?text(scope.type,80):null;const scopeId=scope?id(scope.id):null;await this.db.query('INSERT INTO access_audit(actor_id,action,target,scope_type,scope_id) VALUES($1,$2,$3,$4,$5)',[actor,action,target||null,type,scopeId])}
@@ -136,6 +136,7 @@ export class AccessService {
 export class AccessGuard implements CanActivate {
  constructor(@Inject(AccessService) private access:AccessService,@Inject(Db) private db:Db){}
  async canActivate(context:ExecutionContext){const req=context.switchToHttp().getRequest<AccessRequest>();const path=req.path;
+  if(req.headers['x-orbit-profile-simulation']!==undefined&&!((req.method==='GET'&&['/auth/me','/plugins','/access/me','/access/profile-simulation','/access/profile-simulation-roles','/access/profile-simulation/context'].includes(path))||(req.method==='POST'&&path==='/access/profile-simulation')))deny('A simulação de perfil não pode acessar esta rota.',409);
   if(path==='/health'||(path==='/branding'&&req.method==='GET')||(path==='/auth/social/providers'&&req.method==='GET')||(req.method==='POST'&&['/auth/login','/auth/register','/auth/recovery','/auth/complete','/auth/social/providers','/email/comments','/email/inbox','/integrations/alexa/orbit'].includes(path))||(path.startsWith('/auth/social/')&&((req.method==='POST'&&path.endsWith('/start'))||((req.method==='GET'||req.method==='POST')&&path.endsWith('/callback'))))||(/^\/(calendar\/(google|microsoft)|google\/drive|dropbox|mail\/(gmail|outlook_mail))\/oauth\/callback$/.test(path)&&req.method==='GET'))return true;
   if((path.startsWith('/public/')||path.startsWith('/.well-known/'))&&this.access.pluginRoute(path)&&this.access.pluginPermission(path,req.method)===null)return true;
   const token=req.headers.authorization?.replace(/^Bearer /i,'');if(!token)deny('Faça login para continuar.',401);const account=await this.access.authenticate(token!);req.orbitActor=account.id;req.orbitUser=account.id;
@@ -143,13 +144,27 @@ export class AccessGuard implements CanActivate {
   const as=req.headers['x-orbit-act-as'];if(as){if(!account.is_root||typeof as!=='string'||currentSimulatedProfile(account.id))deny();await this.access.account(id(as));req.orbitUser=as;await this.access.audit(account.id,'root.act-as',as)}
   const resource=path.match(/^\/(vault|notebooks)\/([0-9a-f-]{36})(?:\/|$)/i)||path.match(/^\/ai\/(projects)\/([0-9a-f-]{36})(?:\/|$)/i);
   const simulated=Boolean(currentSimulatedProfile(account.id));
+  if(simulated){
+   const profile=currentSimulatedProfile(account.id)!;
+   req.orbitUser=simulatedSubjectId(profile.id);
+   // No normal handler is backed by an isolated demo database. Fail closed so
+   // simulated reads cannot reveal ROOT-owned records and writes cannot mutate
+   // real records or trigger integrations. The context endpoint is static.
+   if(req.method==='GET'&&['/access/profile-simulation','/access/profile-simulation-roles'].includes(path))return true;
+   if(req.method==='GET'&&path==='/access/profile-simulation/context')return true;
+   if(req.method==='POST'&&path==='/access/profile-simulation')return true;
+   if(req.method==='GET'&&path==='/access/me')return true;
+   if(req.method==='GET'&&path==='/auth/me'){req.orbitDemoUser=await this.access.me(account.id);return true;}
+   if(req.method==='GET'&&path==='/plugins')return true;
+   deny('O contexto demonstrativo é somente leitura e esta rota ainda não oferece dados isolados.',409);
+  }
   if(resource){const copying=path.endsWith('/copy-to-card'),reading=['GET','HEAD'].includes(req.method)||copying;const kind=resource[1],key=id(resource[2]),table=({vault:'vault_items',notebooks:'notebooks',projects:'ai_projects'} as Record<string,string>)[kind];const row=await this.db.one(`SELECT owner_id FROM ${table} WHERE id=$1`,[key]);if(!row)deny('Recurso não encontrado.',404);if(!account.is_root||simulated){await this.access.require(account.id,kind+'.'+(reading?'read':'write'));if(!reading)await this.access.require(account.id,kind+'.read');if(row.owner_id!==account.id&&!await this.access.sharedResource(account.id,kind,key,!reading))deny('Este recurso não está compartilhado com você.')}if(row.owner_id!==account.id)await this.access.audit(account.id,'shared.resource.request',req.method+' '+path);req.orbitUser=row.owner_id;
    if((!account.is_root||simulated)&&path.endsWith('/restore-card')){await this.access.require(account.id,'boards.write');const target=await this.db.one('SELECT l.board_id FROM vault_items v JOIN cards c ON c.id=v.card_id JOIN lists l ON l.id=c.list_id WHERE v.id=$1',[key]);if(!target||!await this.access.boardPermission(target.board_id,account.id,'boards.write'))deny()}
    if((!account.is_root||simulated)&&resource[1]==='projects'&&req.body?.local_path!==undefined)await this.access.require(account.id,'projects.filesystem');
    if((!account.is_root||simulated)&&path.endsWith('/copy-to-card')){await this.access.require(account.id,'boards.write');const target=await this.db.one('SELECT board_id FROM lists WHERE id=$1',[id(req.body.list_id)]);if(!target||!await this.access.boardPermission(target.board_id,account.id,'boards.write'))deny()}
   }
   if(account.is_root&&!simulated){if(!['GET','HEAD'].includes(req.method))await this.access.audit(account.id,'root.request.attempt',req.method+' '+path);return true}
-  if(account.is_root&&simulated&&path==='/access/profile-simulation')return true;
+  if(account.is_root&&simulated&&['/access/profile-simulation','/access/profile-simulation-roles'].includes(path))return true;
   const permission=resource&&path.endsWith('/copy-to-card')?resource[1]+'.read':this.access.pluginPermission(path,req.method)||(this.access.pluginRoute(path)?null:this.access.permission(path,req.method));if(!permission)return true;
   if(permission.startsWith('boards.')){
    await this.access.require(account.id,permission);
@@ -179,6 +194,8 @@ export class AccessController {
  constructor(@Inject(AccessService) private access:AccessService,@Inject(Db) private db:Db){}
  @Get('me') me(@Req() req:AccessRequest){return this.access.me(req.orbitActor!)}
  @Get('profile-simulation') simulation(@Req() req:AccessRequest){return this.access.simulationRoles(req.orbitActor!)}
+ @Get('profile-simulation-roles') async simulationRolesForShell(@Req() req:AccessRequest){if(!(await this.access.account(req.orbitActor!)).is_root)deny();return (await this.access.roles()).map(role=>({id:role.id,name:role.name}))}
+ @Get('profile-simulation/context') async simulationContext(@Req() req:AccessRequest){const profile=currentSimulatedProfile(req.orbitActor!);return profile?simulatedDemoContext(profile,await this.access.effective(req.orbitActor!)):null}
  @Post('profile-simulation') recordSimulation(@Req() req:AccessRequest){return this.access.recordSimulation(req.orbitActor!)}
  @Get('users') users(){return this.access.users()}
  @Get('roles') roles(){return this.access.roles()}

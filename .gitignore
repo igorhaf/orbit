@@ -46,3 +46,7 @@ control/state/
 # Keep only inert placeholder/example files in Suindá's data tree.
 !suinda/data/backups/
 !suinda/data/backups/.gitkeep
+
+# Development tooling caches, private evidence, metrics and generated context
+.orbit/cache/
+.orbit/local/

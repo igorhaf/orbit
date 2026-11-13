@@ -1,0 +1,14 @@
+{
+  "multipleAgents": true,
+  "maxAgents": 3,
+  "singleAgentMinutes": 100,
+  "singleAgentTokens": 18000,
+  "coordinationMinutes": 10,
+  "coordinationTokens": 1500,
+  "tasks": [
+    { "id": "plugin", "files": ["products/escola/app/apps/api/src/plugins/escola/definition.ts"], "minutes": 40, "tokens": 5000 },
+    { "id": "interface", "files": ["products/escola/app/apps/web/plugins/escola/CoursePage.tsx"], "minutes": 40, "tokens": 5000 },
+    { "id": "integration", "dependsOn": ["plugin", "interface"], "files": ["products/escola/app/apps/api/src/main.ts"], "minutes": 15, "tokens": 3000 }
+  ],
+  "requiredChecks": ["plugin contract", "affected typechecks", "functional milestone"]
+}

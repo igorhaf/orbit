@@ -15,7 +15,7 @@ Uma funcionalidade comum recentemente promovida é a identidade visual/domínio 
 
 ## Safdoulas canônico
 
-O runtime mais atualizado do Safdoulas é `safdoulas/app`, consolidado a partir do antigo caminho `safdoulas-v2/app`. A pasta local antiga `safdoulas/` (apenas dados/runtime, sem código) foi preservada sem alterações em `safdoulas-legacy-data-local/`; ela não contém uma segunda versão da aplicação. Volumes, bancos, nomes de contêineres e imagens Docker com o sufixo histórico `v2` são mantidos para continuar usando os recursos persistentes existentes.
+O runtime mais atualizado do Safdoulas é `safdoulas/app`, consolidado a partir do antigo caminho `safdoulas-v2/app`. Não há uma segunda pasta de aplicação `safdoulas-v2` na raiz atual. O histórico remoto anterior foi preservado pela tag `backup/remote-before-monorepo-2026-11-10`. Volumes, bancos, nomes de contêineres e imagens Docker com o sufixo histórico `v2` são mantidos para continuar usando os recursos persistentes existentes. Dados locais não fazem parte do snapshot Git; não se deve presumir a existência de uma pasta de backup apenas pela documentação antiga.
 
 Compatibilidade entre todos os plugins é regra canônica. Plugins comuns e específicos devem respeitar contratos compatíveis de versões, dependências, permissões e integração nos quatro runtimes.
 
@@ -39,6 +39,8 @@ O `control/environments.json` local foi atualizado para `main`, preservando os c
 
 O commit raiz do repositório registra a árvore consolidada na branch `main`. A tag anotada `orbit-monorepo-baseline-2026-11-10` aponta para o snapshot que reúne os quatro runtimes e as alterações locais de código selecionadas. Ela não representa deploy nem validação funcional.
 
-## Próxima etapa arquitetural
+## Fontes compartilhadas e desenvolvimento de novos produtos
 
-A consolidação Git elimina a necessidade de sincronizar branches, mas ainda não elimina cópias de código. A evolução recomendada é identificar contratos comuns, extrair core e plugins Orbit para unidades compartilhadas e fazer cada produto declarar apenas perfil/configuração e plugins exclusivos. Cada mudança deve preservar o isolamento de deploy e banco por ambiente.
+A base reutilizável agora tem fontes canônicas em `packages/orbit-core` e `packages/orbit-ui`, consumidas como projeções versionadas nas posições locais dos runtimes. `orbit.workspace.json` declara os mapas; os locks de cada aplicação fixam versão e hashes. `shared check` e a verificação de compatibilidade detectam desvio. As cópias restantes que ainda têm variantes são preservadas e aparecem em `shared audit`; seu isolamento não equivale a comprovação de equivalência funcional.
+
+O CLI `node tools/orbit/cli.mjs` fornece catálogo, impacto, geradores de produto/plugin, stubs, codemod reversível, fontes compartilhadas, contexto local, planejamento de agentes, verificações com cache, métricas e marcos de entrega. Novos produtos usam `products/<id>` na mesma branch `main`, com perfil e banco isolados. Consulte `docs/acceleration/README.md` para comandos e regras. O fluxo não exige Docker para planejamento/geração e não altera automaticamente o ciclo de vida das instâncias existentes.

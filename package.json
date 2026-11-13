@@ -1,0 +1,18 @@
+{
+  "name": "orbit-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "orbit": "node tools/orbit/cli.mjs",
+    "check": "node tools/orbit/cli.mjs check",
+    "check:milestone": "node tools/orbit/cli.mjs check --milestone --run",
+    "test": "node --test --test-concurrency=1 tools/orbit/*.test.mjs",
+    "catalog": "node tools/orbit/cli.mjs catalog",
+    "impact": "node tools/orbit/cli.mjs impact",
+    "shared:check": "node tools/orbit/cli.mjs shared check",
+    "shared:sync": "node tools/orbit/cli.mjs shared sync --write"
+  }
+}

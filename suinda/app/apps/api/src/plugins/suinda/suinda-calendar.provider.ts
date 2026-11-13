@@ -99,7 +99,7 @@ export class SuindaCalendarProvider implements CalendarSourceProvider {
          AND enrollment.payload->>'course_revision'=cohort.payload->>'course_revision'
          AND enrollment.payload->>'cohort_record_id'=cohort.id::text AND enrollment.state=ANY($2::text[])
          AND (COALESCE(NULLIF(course.payload->>'price_amount','')::numeric,0)<=0 OR enrollment.payload->>'payment_status'=ANY(ARRAY['paid','waived']))
-       WHERE s.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id=$1)
+       WHERE s.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id=$1::uuid)
          AND s.plugin_id='suinda-learning' AND s.kind='session' AND s.state=ANY(ARRAY['scheduled','live'])
          AND NULLIF(s.payload->>'starts_at','')::timestamptz<$4::timestamptz
          AND NULLIF(s.payload->>'ends_at','')::timestamptz >= $3::timestamptz
@@ -156,7 +156,7 @@ export class SuindaCalendarProvider implements CalendarSourceProvider {
          AND course.plugin_id='suinda-learning' AND course.kind='course'
        LEFT JOIN extension_records room ON room.id::text=s.payload->>'room_record_id' AND room.workspace_id=s.workspace_id
          AND room.plugin_id='suinda-learning' AND room.kind='room'
-       WHERE request.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id=$1)
+       WHERE request.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id=$1::uuid)
          AND request.plugin_id='suinda-learning' AND request.kind='makeup_request' AND request.state='scheduled'
          AND request.payload->>'fee_status'=ANY(ARRAY['not_required','paid','waived']::text[])
          AND (COALESCE(NULLIF(enrollment.payload->>'amount_due','')::numeric,COALESCE(NULLIF(course.payload->>'price_amount','')::numeric,0))<=0
@@ -274,7 +274,7 @@ export class SuindaCalendarProvider implements CalendarSourceProvider {
            AND (COALESCE(NULLIF(course.payload->>'price_amount','')::numeric,0)<=0 OR e.payload->>'payment_status'=ANY(ARRAY['paid','waived']))
          ORDER BY e.updated_at DESC,e.id LIMIT 1
        ) eligible_enrollment ON true
-       WHERE a.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id=$1)
+       WHERE a.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id=$1::uuid)
          AND a.plugin_id='suinda-learning' AND a.kind='academic_calendar_event' AND a.state='published'
          AND NULLIF(a.payload->>'starts_at','')::timestamptz<$3::timestamptz
          AND NULLIF(a.payload->>'ends_at','')::timestamptz >= $2::timestamptz

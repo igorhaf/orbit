@@ -8,7 +8,7 @@ import {Db} from '../db';
 import {AsyncLocalStorage} from 'node:async_hooks';
 
 export const permissions = corePrivileges.map(p=>p.id);
-export type AccessRequest = Request & {orbitActor?:string;orbitUser?:string};
+export type AccessRequest = Request & {orbitActor?:string;orbitUser?:string;profileSimulation?:boolean;orbitDemoUser?:Record<string,unknown>};
 export type AccessRequestContext={path:string;method:string;params?:Record<string,string>;body?:Record<string,unknown>;active?:boolean;profileSimulation?:{actor:string;roleId:string;roleName:string;permissions:string[]}};
 function deny(message='Acesso não autorizado.',status=403):never{throw new HttpException({message},status)}
 export function text(value:unknown,max=120){if(typeof value!=='string'||!value.trim()||value.trim().length>max)deny('Valor inválido.',400);return (value as string).trim()}
@@ -82,6 +82,33 @@ export class AccessService {
  setProfileSimulation(actor:string,roleId:string,roleName:string,permissions:string[]){const context=this.requestContexts.getStore();if(context)context.profileSimulation={actor,roleId,roleName,permissions}}
  async isRoot(user:string){const account=await this.account(user);return account.is_root&&this.currentProfileSimulation()?.actor!==user}
  async simulateProfile(actor:string,roleId:string){const account=await this.account(actor);if(!account.is_root)deny('Somente ROOT pode simular perfis.');const role=await this.db.one<{id:string;name:string;permissions:string[]}>('SELECT id,name,permissions FROM access_roles WHERE id=$1',[text(roleId,61)]);if(!role)deny('Perfil inexistente ou inativo.',404);const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');const permissions=evaluatePermissions(false,Array.isArray(role.permissions)?role.permissions:[],[],[],disabled.map(row=>row.permission_id),this.catalog());this.setProfileSimulation(actor,role.id,role.name,permissions);return {id:role.id,name:role.name,permissions}}
+ profileSimulationContext(actor:string){
+  const simulation=this.currentProfileSimulation();if(!simulation||simulation.actor!==actor)return null;
+  const permissions=simulation.permissions,canRead=permissions.includes('plugin.suinda-learning.read'),canWrite=permissions.includes('plugin.suinda-learning.write'),canManage=permissions.includes('plugin.suinda-learning.manage');
+  const persona=canManage?{id:`demo:persona:${simulation.roleId}`,name:'Coordenação acadêmica demonstrativa',email:'coordenacao-demo@example.invalid'}:canWrite?{id:`demo:persona:${simulation.roleId}`,name:'Docente demonstrativo',email:'docente-demo@example.invalid'}:canRead?{id:`demo:persona:${simulation.roleId}`,name:'Estudante demonstrativo',email:'estudante-demo@example.invalid'}:{id:`demo:persona:${simulation.roleId}`,name:'Pessoa demonstrativa',email:'pessoa-demo@example.invalid'};
+  const demoRecords=canManage?[
+   {id:'demo:cohort:fundamentos-2026',type:'cohort',title:'Turma demonstrativa · Fundamentos de cuidado',state:'active',description:'18 estudantes · frequência fictícia de 92%',is_demo:true},
+   {id:'demo:assessment:acolhimento',type:'assessment_review',title:'Avaliações pendentes',state:'pending',description:'2 entregas ilustrativas aguardam revisão',is_demo:true},
+   {id:'demo:unit:operacao',type:'unit_snapshot',title:'Resumo da unidade de exemplo',state:'illustrative',description:'Uma solicitação de documento e uma justificativa de falta para análise',is_demo:true},
+  ]:canWrite?[
+   {id:'demo:cohort:fundamentos-2026',type:'cohort',title:'Turma demonstrativa · Fundamentos de cuidado',state:'active',description:'Próxima aula: avaliação inicial',is_demo:true},
+   {id:'demo:submission:estudo-de-caso',type:'submission',title:'Estudo de caso · Acolhimento e escuta',state:'pending',description:'Entrega fictícia para orientar; nenhuma nota será registrada',is_demo:true},
+   {id:'demo:session:avaliacao-inicial',type:'session',title:'Aula demonstrativa',state:'scheduled',description:'Agenda de exemplo sem sala ou integração externa',is_demo:true},
+  ]:canRead?[
+   {id:'demo:course:fundamentos-de-cuidado',type:'course',title:'Fundamentos de cuidado',state:'active',description:'Trilha introdutória · 4 de 8 módulos concluídos',is_demo:true},
+   {id:'demo:lesson:acolhimento',type:'lesson',title:'Acolhimento e escuta inicial',state:'available',description:'Aula demonstrativa com reflexão local, sem salvar progresso',is_demo:true},
+   {id:'demo:activity:estudo-de-caso',type:'activity',title:'Estudo de caso: primeiro atendimento',state:'pending',description:'Exercício fictício para praticar perguntas abertas',is_demo:true},
+  ]:[
+   {id:'demo:course:suinda',type:'course_example',title:'Exemplo de aprendizagem Suindá',state:'illustrative',description:'Cursos, aulas e trilhas aparecem conforme as permissões do perfil',is_demo:true},
+   {id:'demo:cohort:suinda',type:'cohort_example',title:'Exemplo de turma',state:'illustrative',description:'Turma e agenda acadêmica demonstrativas, sem dados de estudantes reais',is_demo:true},
+  ];
+  const flows=[
+   {id:'learning_course',label:'Aprendizagem',description:'Entrar em uma aula e atividade demonstrativas',permission:'plugin.suinda-learning.read'},
+   {id:'teaching_cohort',label:'Trabalho da turma',description:'Consultar agenda e contexto didático de exemplo',permission:'plugin.suinda-learning.write'},
+   {id:'academic_operations',label:'Acompanhamento acadêmico',description:'Revisar filas e indicadores fictícios da unidade',permission:'plugin.suinda-learning.manage'},
+  ].map(flow=>({id:flow.id,label:flow.label,available:permissions.includes(flow.permission),permission:flow.permission,description:flow.description}));
+  return {mode:'read_only_demo',product:'Suindá',role:{id:simulation.roleId,name:simulation.roleName,permissions},persona,workspace:{id:'demo:suinda-academia',name:'Unidade demonstrativa Suindá'},records:demoRecords,flows,message:'Contexto fictício e somente de leitura. Nenhum registro real é consultado ou alterado.'};
+ }
  private async requestPermission(user:string,permission:string,type:string,scope:string){
   const request=this.requestContexts.getStore();if(!request||request.active===false)return null;
   for(const provider of this.requestPermissionProviders){
@@ -141,7 +168,7 @@ export class AccessService {
   if(row.workspace_id)return this.has(user,permission,'workspace',String(row.workspace_id));
   return Boolean(row.role);
  }
- async me(user:string){const simulation=this.currentProfileSimulation(),account=await this.account(user);return {...account,is_root:Boolean(account.is_root&&simulation?.actor!==user),is_root_actor:Boolean(account.is_root),roles:simulation?.actor===user?[{role_id:simulation.roleId,name:simulation.roleName,permissions:simulation.permissions}]:await this.grants(user),permissions:await this.effective(user),is_admin:await this.isAdmin(user)}}
+ async me(user:string){const simulation=this.currentProfileSimulation(),account=await this.account(user);if(simulation?.actor===user){const demo=this.profileSimulationContext(user)!;return {...account,id:demo.persona.id,name:demo.persona.name,email:demo.persona.email,is_root:false,is_root_actor:true,is_demo:true,roles:[{role_id:simulation.roleId,name:simulation.roleName,permissions:simulation.permissions}],permissions:simulation.permissions,is_admin:await this.isAdmin(user),profile_simulation:{role_id:simulation.roleId,role_name:simulation.roleName}}}return {...account,is_root:Boolean(account.is_root),is_root_actor:Boolean(account.is_root),roles:await this.grants(user),permissions:await this.effective(user),is_admin:await this.isAdmin(user),profile_simulation:null}}
 
  async audit(actor:string,action:string,target?:string,scope?:{type:string;id:string}){const type=scope?text(scope.type,80):null;const scopeId=scope?id(scope.id):null;await this.db.query('INSERT INTO access_audit(actor_id,action,target,scope_type,scope_id) VALUES($1,$2,$3,$4,$5)',[actor,action,target||null,type,scopeId])}
  async roles(){return this.db.query('SELECT * FROM access_roles ORDER BY name')}
@@ -168,6 +195,14 @@ export class AccessGuard implements CanActivate {
   if(simulationHeader!==undefined&&req.headers['x-orbit-act-as']!==undefined)deny('A simulação de perfil não pode ser combinada com troca de identidade.');
   if(simulationHeader!==undefined){if(typeof simulationHeader!=='string'||!account.is_root)deny('Somente uma conta ROOT autenticada pode simular perfis.');const simulation=await this.access.simulateProfile(account.id,simulationHeader);await this.access.audit(account.id,'root.profile_simulation.request',`${simulation.id} ${req.method} ${path}`)}
   if(path==='/access/simulation/roles'){if(!account.is_root)deny('Somente ROOT pode consultar perfis de simulação.');return true}
+  if(path==='/access/profile-simulation/context'){if(!account.is_root||simulationHeader===undefined||!this.access.currentProfileSimulation())deny('O contexto exige uma simulação ROOT ativa.');return true}
+  if(simulationHeader!==undefined){
+   req.profileSimulation=true;
+   req.orbitDemoUser=await this.access.me(account.id);
+   req.orbitUser=String(req.orbitDemoUser.id||'');
+   if(['GET /auth/me','GET /plugins','GET /access/me','GET /access/profile-simulation/context'].includes(`${req.method} ${path}`))return true;
+   deny('Este fluxo ainda não possui contexto demonstrativo isolado.',409);
+  }
   if(publicRoute)return true;
   const root=await this.access.isRoot(account.id);
   const resource=path.match(/^\/(vault|notebooks)\/([0-9a-f-]{36})(?:\/|$)/i)||path.match(/^\/ai\/(projects)\/([0-9a-f-]{36})(?:\/|$)/i);
@@ -208,6 +243,7 @@ export class AccessController {
  @Get('users') users(){return this.access.users()}
  @Get('roles') roles(){return this.access.roles()}
  @Get('simulation/roles') async simulationRoles(@Req() req:AccessRequest){if(!(await this.access.account(req.orbitActor!)).is_root)deny('Somente ROOT pode consultar perfis de simulação.');return this.access.roles()}
+ @Get('profile-simulation/context') profileSimulationContext(@Req() req:AccessRequest){const context=this.access.profileSimulationContext(req.orbitActor!);if(!context)deny('O contexto exige uma simulação ROOT ativa.');return context}
  @Get('permissions') permissions(){return this.access.catalog()}
  @Get('scopes/:type/:scope/assignments') scopedAssignments(@Req() req:AccessRequest,@Param('type') type:string,@Param('scope') scope:string){return this.access.scopedAssignments(req.orbitActor!,type,scope)}
  @Put('scopes/:type/:scope/users/:user/roles') scopedRoles(@Req() req:AccessRequest,@Param('type') type:string,@Param('scope') scope:string,@Param('user') user:string,@Body() body:Record<string,unknown>){return this.access.assignScopedRoles(req.orbitActor!,user,type,scope,body.roles)}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Award, BellRing, BookOpen, BriefcaseBusiness, CalendarClock, Clock3, Download, FileText, Flame, Link2, ListTodo, RefreshCw, Target, Trophy, UserRound } from "lucide-react";
-import { api, apiBlob, getToken } from "@/lib/api";
+import { api, apiBlob, getToken, setUser, type User } from "@/lib/api";
 import { LearnerPracticeCredit } from "@/plugins/suinda/PracticeCredit";
 import { PaymentCheckout } from "@/plugins/suinda/PaymentCheckout";
 import { FinancialNegotiationForEnrollment } from "@/plugins/suinda/FinancialNegotiation";
@@ -170,6 +170,7 @@ export default function SuindaStudentDashboard() {
   const [calendarSubscriptionUrl, setCalendarSubscriptionUrl] = useState("");
   const [calendarCopied, setCalendarCopied] = useState(false);
   const [calendarError, setCalendarError] = useState("");
+  const [simulationContext, setSimulationContext] = useState<User | null>(null);
   const pendingActions = pendingActionsFor(enrollments, documentsByEnrollment);
 
   useEffect(() => {
@@ -178,30 +179,35 @@ export default function SuindaStudentDashboard() {
       Promise.resolve().then(() => setLoading(false));
       return;
     }
-    api<Enrollment[]>("/extensions/suinda-learning/me/dashboard")
-      .then(async (items) => {
-        setEnrollments(items);
-        const summaries = await Promise.allSettled(items.map(async (enrollment) => {
-          const result = await api<{ checklist: DocumentChecklistItem[] }>(`/extensions/suinda-learning/me/enrollments/${encodeURIComponent(enrollment.id)}/documents`);
-          return [enrollment.id, result.checklist] as const;
-        }));
-        setDocumentsByEnrollment(Object.fromEntries(summaries.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])));
+    let active = true;
+    api<User>("/auth/me")
+      .then((account) => {
+        if (!active) return;
+        setUser(account);
+        if (account.is_root_actor && !account.is_root) {
+          setSimulationContext(account);
+          return;
+        }
+        // All learner data requests begin only after the server confirms this is not a simulation.
+        Promise.all([
+          api<Enrollment[]>("/extensions/suinda-learning/me/dashboard").then(async (items) => {
+          if (!active) return;
+          setEnrollments(items);
+          const summaries = await Promise.allSettled(items.map(async (enrollment) => {
+            const result = await api<{ checklist: DocumentChecklistItem[] }>(`/extensions/suinda-learning/me/enrollments/${encodeURIComponent(enrollment.id)}/documents`);
+            return [enrollment.id, result.checklist] as const;
+          }));
+          if (active) setDocumentsByEnrollment(Object.fromEntries(summaries.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])));
+          }).catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Não foi possível carregar suas inscrições."); }),
+          api<{ entries: TranscriptEntry[] }>("/extensions/suinda-learning/me/transcript").then((result) => setTranscript(result.entries)).catch((reason: unknown) => setTranscriptError(reason instanceof Error ? reason.message : "Não foi possível carregar seu histórico de notas.")),
+        api<{ seasons: LearningSeason[] }>("/extensions/suinda-learning/me/seasons").then((result) => setSeasons(result.seasons)).catch(() => undefined),
+        api<{ paths: LearningPath[]; profile_selection_required?: boolean }>("/extensions/suinda-learning/me/learning-paths").then((result) => { setLearningPaths(result.paths); setProfileSelectionRequired(result.profile_selection_required === true); }).catch(() => undefined),
+        api<{ active: boolean }>("/extensions/suinda-learning/me/calendar-subscription").then((result) => setCalendarSubscriptionActive(result.active)).catch(() => undefined),
+        ]);
       })
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Não foi possível carregar suas inscrições."))
-      .finally(() => setLoading(false));
-    api<{ entries: TranscriptEntry[] }>("/extensions/suinda-learning/me/transcript")
-      .then((result) => setTranscript(result.entries))
-      .catch((reason: unknown) => setTranscriptError(reason instanceof Error ? reason.message : "Não foi possível carregar seu histórico de notas."))
-      .finally(() => setTranscriptLoading(false));
-    api<{ seasons: LearningSeason[] }>("/extensions/suinda-learning/me/seasons")
-      .then((result) => setSeasons(result.seasons))
-      .catch(() => undefined);
-    api<{ paths: LearningPath[]; profile_selection_required?: boolean }>("/extensions/suinda-learning/me/learning-paths")
-      .then((result) => { setLearningPaths(result.paths); setProfileSelectionRequired(result.profile_selection_required === true); })
-      .catch(() => undefined);
-    api<{ active: boolean }>("/extensions/suinda-learning/me/calendar-subscription")
-      .then((result) => setCalendarSubscriptionActive(result.active))
-      .catch(() => undefined);
+      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Não foi possível carregar sua conta."); })
+      .finally(() => { if (active) { setLoading(false); setTranscriptLoading(false); } });
+    return () => { active = false; };
   }, []);
 
   async function exportCalendar() {
@@ -258,6 +264,8 @@ export default function SuindaStudentDashboard() {
     }
   }
 
+  if (simulationContext) return <SuindaRoleSimulationContext account={simulationContext} />;
+
   return (
     <main className="min-h-full bg-[#1d2125] text-[#dee4ea]">
       <div className="mx-auto max-w-6xl px-5 py-9 sm:px-8 lg:py-12">
@@ -304,6 +312,51 @@ export default function SuindaStudentDashboard() {
       </div>
     </main>
   );
+}
+
+function SuindaRoleSimulationContext({ account }: { account: User }) {
+  const [activeExample, setActiveExample] = useState<number | null>(null);
+  const role = account.roles?.[0];
+  const permissions = role?.permissions || account.permissions || [];
+  const canRead = permissions.includes("plugin.suinda-learning.read");
+  const canWrite = permissions.includes("plugin.suinda-learning.write");
+  const canManage = permissions.includes("plugin.suinda-learning.manage");
+  const title = role?.name || role?.role_id || "Perfil selecionado";
+  const audience = canManage ? "Coordenação acadêmica" : canWrite ? "Docência" : canRead ? "Estudante" : "Acesso institucional";
+  const examples = canManage
+    ? [
+        ["Operação acadêmica", "Turma de exemplo · 18 estudantes · 2 avaliações aguardando revisão", "Gestão"],
+        ["Acompanhamento", "Uma solicitação de documento e uma justificativa de falta para análise", "Fila de trabalho"],
+        ["Indicador da unidade", "Frequência média de exemplo: 92% · dados ilustrativos", "Resumo"],
+      ]
+    : canWrite
+      ? [
+          ["Turma demonstrativa", "Fundamentos de cuidado · próxima aula: avaliação inicial", "Docência"],
+          ["Atividades", "2 entregas aguardando orientação · nenhuma alteração será salva", "Revisão"],
+          ["Acompanhamento", "Presença e progresso aparecem conforme o escopo autorizado", "Turma"],
+        ]
+      : canRead
+        ? [
+            ["Curso demonstrativo", "Fundamentos de cuidado · trilha introdutória", "Em andamento"],
+            ["Próxima atividade", "Estudo de caso: acolhimento e escuta · prazo ilustrativo", "Aprendizagem"],
+            ["Progresso", "4 de 8 módulos concluídos · amostra fictícia", "50%"],
+          ]
+        : [
+            ["Exemplo de aprendizagem", "Curso introdutório de práticas de cuidado", "Contexto"],
+            ["Exemplo de turma", "Grupo demonstrativo com agenda e materiais acadêmicos", "Contexto"],
+            ["Exemplo de operação", "Inscrições, avaliações e documentos dependem das permissões do perfil", "Contexto"],
+          ];
+
+  return <main className="min-h-full bg-[#1d2125] text-[#dee4ea]"><div className="mx-auto max-w-6xl px-5 py-9 sm:px-8 lg:py-12">
+    <section className="rounded-[2rem] border border-violet-200/20 bg-[radial-gradient(ellipse_at_top_right,_rgba(167,139,250,0.15),_transparent_42%),linear-gradient(135deg,#111827,#0c1220_65%,#101a27)] p-7 sm:p-10">
+      <p className="text-sm font-medium text-violet-200">Suindá · contexto de simulação</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">{audience}</h1>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-[#c4b5fd]">Perfil simulado: <strong>{title}</strong>. Este espaço apresenta exemplos acadêmicos fictícios para demonstrar a experiência desse perfil.</p>
+      <p className="mt-4 inline-flex rounded-full border border-violet-200/20 bg-violet-200/[0.06] px-3 py-1.5 text-xs text-violet-100">Amostra isolada · somente leitura · nenhum registro real consultado</p>
+    </section>
+    <section className="mt-7" aria-labelledby="simulation-examples-heading"><div className="mb-4"><p className="text-sm text-cyan-200">Experiência por perfil</p><h2 id="simulation-examples-heading" className="mt-1 text-xl font-semibold text-white">Exemplos do Suindá</h2></div><div className="grid gap-4 md:grid-cols-3">{examples.map(([heading, detail, tag], index) => <article key={heading} className="rounded-2xl border border-[#3b4754] bg-[#2c333a] p-5"><p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-100">{tag}</p><h3 className="mt-2 font-semibold text-white">{heading}</h3><p className="mt-2 text-sm leading-6 text-[#b6c2cf]">{detail}</p><button type="button" aria-expanded={activeExample === index} onClick={() => setActiveExample(activeExample === index ? null : index)} className="mt-4 min-h-10 rounded-lg border border-cyan-200/20 px-3 text-sm font-medium text-cyan-100 hover:bg-cyan-200/[0.06]">{activeExample === index ? "Fechar exemplo" : canRead && !canWrite ? "Abrir aula demonstrativa" : canWrite ? "Abrir contexto de trabalho" : "Ver exemplo"}</button></article>)}</div></section>
+    {activeExample !== null && <section className="mt-5 rounded-2xl border border-cyan-200/15 bg-[#202a32] p-5 sm:p-7" aria-live="polite"><p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Conteúdo demonstrativo · sem gravação</p>{canManage ? <><h2 className="mt-2 text-xl font-semibold text-white">Análise de acompanhamento acadêmico</h2><p className="mt-3 text-sm leading-6 text-[#cbd5df]">Caso fictício: a estudante Joana concluiu 4 de 5 módulos da trilha de fundamentos e está com uma avaliação pendente. A coordenação pode conferir o progresso, a frequência e a necessidade de orientação antes de encaminhar o caso à equipe responsável.</p><div className="mt-4 grid gap-3 sm:grid-cols-3">{[["Trilha", "Fundamentos de cuidado"], ["Frequência", "9 de 10 encontros"], ["Próximo passo", "Revisar avaliação pendente"]].map(([label, value]) => <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-[#9fadbc]">{label}</p><p className="mt-1 text-sm font-medium text-white">{value}</p></div>)}</div></> : canWrite ? <><h2 className="mt-2 text-xl font-semibold text-white">Orientação de atividade</h2><p className="mt-3 text-sm leading-6 text-[#cbd5df]">Entrega fictícia de Joana · estudo de caso sobre acolhimento. A estudante identificou a necessidade de escuta inicial; uma boa devolutiva pediria que ela relacionasse a conduta ao protocolo de atendimento e justificasse a prioridade das perguntas.</p><blockquote className="mt-4 border-l-2 border-cyan-200/50 pl-4 text-sm leading-6 text-[#b6c2cf]">“Que informação você buscaria primeiro para compreender a necessidade da pessoa atendida? Explique como sua escolha orienta o próximo passo.”</blockquote><p className="mt-3 text-xs text-[#9fadbc]">Amostra para revisão. Nenhuma nota ou comentário será enviado.</p></> : canRead ? <><h2 className="mt-2 text-xl font-semibold text-white">Aula 1 · Acolhimento e escuta inicial</h2><p className="mt-3 text-sm leading-6 text-[#cbd5df]">No primeiro contato, acolher é criar espaço para que a pessoa explique sua necessidade com segurança. Comece com perguntas abertas, confirme o que entendeu e só então combine o próximo passo.</p><div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4"><p className="text-sm font-semibold text-white">Para refletir</p><p className="mt-2 text-sm leading-6 text-[#b6c2cf]">Uma pessoa chega apreensiva e não sabe explicar o que precisa. Que pergunta aberta você faria para iniciar a conversa?</p><p className="mt-3 text-xs text-[#9fadbc]">Exercício ilustrativo · progresso não é salvo nesta simulação.</p></div></> : <><h2 className="mt-2 text-xl font-semibold text-white">Como o Suindá organiza a aprendizagem</h2><p className="mt-3 text-sm leading-6 text-[#cbd5df]">Cursos reúnem trilhas, aulas, atividades e acompanhamento de turmas. O conteúdo e as operações disponíveis variam conforme as permissões efetivas deste perfil.</p></>}</section>}
+    <section className="mt-7 rounded-2xl border border-[#3b4754] bg-[#2c333a] p-5"><h2 className="font-semibold text-white">Acesso aplicado nesta simulação</h2><p className="mt-1 text-xs text-[#9fadbc]">O ROOT continua como ator autenticado e responsável pelos registros de auditoria; as verificações de permissão usam o perfil selecionado.</p><div className="mt-4 flex flex-wrap gap-2">{permissions.length ? permissions.map((permission) => <span key={permission} className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs text-[#c4b5fd]">{permission}</span>) : <span className="text-sm text-[#9fadbc]">Este perfil não possui permissões globais atribuídas.</span>}</div></section>
+  </div></main>;
 }
 
 type ScholarshipCounterparty = { id: string; revision: number; enrollment_id: string; enrollment_title: string; program_title: string; requirement_text: string; state: string; evidence_text?: string | null; submitted_at?: string | null; review_feedback?: string | null; files: Array<{ attachment_id: string; revision: number; file_name: string; mime_type: string; size_bytes: number }> };

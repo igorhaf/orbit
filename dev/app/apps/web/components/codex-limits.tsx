@@ -9,7 +9,7 @@ type Window = {usedPercent:number;windowDurationMins:number;resetsAt:number};
 type Snapshot = {primary?:Window|null;secondary?:Window|null};
 type Limits = {rateLimits?:Snapshot;rateLimitsByLimitId?:Record<string,Snapshot>};
 
-export function CodexLimitsBar({visible,isRoot}:{visible:boolean;isRoot:boolean}){
+export function CodexLimitsBar({isRoot}:{isRoot:boolean}){
   const [waitingAnswers,setWaitingAnswers]=useState<WaitingAnswer[]>([]);
   const [autoPaused,setAutoPaused]=useState(false);
   const [autoResume,setAutoResume]=useState(false);
@@ -40,6 +40,10 @@ export function CodexLimitsBar({visible,isRoot}:{visible:boolean;isRoot:boolean}
     if(!value)return 'Não informado pelo Codex';
     return `${Math.max(0,Math.min(100,100-value.usedPercent)).toLocaleString('pt-BR')}% disponível · renova ${new Date(value.resetsAt*1000).toLocaleString('pt-BR')}`;
   };
+  const available=(minutes:number)=>{
+    const value=windows.find(item=>item?.windowDurationMins===minutes);
+    return value?`${Math.max(0,Math.min(100,100-value.usedPercent)).toLocaleString('pt-BR')}%`:'—';
+  };
   const toggle=async()=>{
     if(paused===null)return;
     setBusy(true);
@@ -48,22 +52,33 @@ export function CodexLimitsBar({visible,isRoot}:{visible:boolean;isRoot:boolean}
     finally{setBusy(false)}
   };
   const toggleAutoResume=async(checked:boolean)=>{setBusy(true);try{const result=await send<{autoResume:boolean}>('/codex/queue','PATCH',{autoResume:checked});setAutoResume(result.autoResume);setQueueError('');window.dispatchEvent(new Event('queues:changed'))}catch(cause){setQueueError((cause as Error).message)}finally{setBusy(false)}};
-  if(!visible)return null;
-  return <div id="codex-limits-bar" role="status" className={`relative z-20 flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 text-sm text-white ${isRoot?'bg-[#c9372c]':'bg-[#44546f]'}`}>
-    {autoPaused&&<span><strong>{isRoot?'Fila pausada automaticamente: cota em 1% ou menos.':'Fila pausada automaticamente.'}</strong></span>}
-    {isRoot&&(error?<span>{error}</span>:limits?<><span><strong>5 horas:</strong> {describe(300)}</span><span><strong>Semanal:</strong> {describe(10080)}</span></>:<span>Consultando limites do Codex…</span>)}
-    <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
-    <div className="flex min-h-11 items-center gap-2 text-sm" title="Retoma pausas por cota quando a janela renovar. Pausas manuais são mantidas.">
-      <button type="button" role="switch" aria-checked={autoResume} aria-label="Retomada automática da fila" disabled={busy||paused===null} onClick={()=>void toggleAutoResume(!autoResume)} className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-white/60 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${autoResume?'bg-emerald-500':'bg-slate-700'}`}>
-        <span aria-hidden="true" className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoResume?'translate-x-6':'translate-x-1'}`}/>
-      </button>
-      <span>Retomada automática</span>
-      <span className="rounded bg-white/15 px-1.5 py-0.5 text-xs font-semibold">{autoResume?'Ligado':'Desligado'}</span>
+  return <div id="codex-limits-bar" role="status" className={`relative z-20 flex min-w-0 flex-[0_1_auto] items-center whitespace-nowrap px-1 py-1 text-[10px] sm:text-xs ${isRoot?'text-[#9f2d25]':'text-[#44546f]'}`}>
+    <div className="hidden min-w-0 items-center gap-3 lg:flex">
+      {autoPaused&&<span className="shrink-0 font-semibold" title={isRoot?'Fila pausada automaticamente: cota em 1% ou menos.':'Fila pausada automaticamente.'}>Fila pausada</span>}
+      {isRoot&&(error?<span className="shrink-0" title={error}>Erro</span>:limits?<><span className="shrink-0" title={describe(300)}><strong>5 horas</strong> {available(300)}</span><span className="shrink-0" title={describe(10080)}><strong>Semanal</strong> {available(10080)}</span></>:<span className="shrink-0">Consultando limites…</span>)}
+      <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+        <div className="flex min-h-9 shrink-0 items-center gap-1" title="Retoma pausas por cota quando a janela renovar. Pausas manuais são mantidas.">
+          <button type="button" role="switch" aria-checked={autoResume} aria-label="Retomada automática da fila" disabled={busy||paused===null} onClick={()=>void toggleAutoResume(!autoResume)} className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-[#8590a2] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${autoResume?'bg-emerald-500':'bg-slate-500'}`}>
+            <span aria-hidden="true" className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoResume?'translate-x-6':'translate-x-1'}`}/>
+          </button>
+          <span className="whitespace-nowrap">Auto-retoma</span>
+        </div>
+        <button disabled={busy||paused===null} onClick={()=>void toggle()} title="A pausa mantém os prompts atuais em execução e aguarda para iniciar os próximos." aria-label={busy?'Aguarde':paused?'Retomar fila':'Pausar fila'} className="flex min-h-9 shrink-0 items-center gap-1 rounded border border-[#8590a2] px-1.5 py-1 font-semibold hover:bg-[#f1f2f4] disabled:opacity-50">{paused?<Play size={14}/>:<Pause size={14}/>}<span>{busy?'Aguarde…':paused?'Retomar':'Pausar fila'}</span></button>
+        <Link href="/queues" aria-label="Gerenciar filas" title="Gerenciar filas" className="inline-flex min-h-9 shrink-0 items-center px-1 font-semibold underline underline-offset-4">Filas</Link>
+      </div>
+      {waitingAnswers.length>0&&<details className="relative shrink-0"><summary title={`Perguntas aguardando resposta: ${waitingAnswers.length}`} className="min-h-9 cursor-pointer rounded px-1 py-2 font-semibold">Perguntas ({waitingAnswers.length})</summary><div className="absolute bottom-full left-0 z-[90] mb-2 flex max-h-[45dvh] w-[min(28rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto rounded-lg border border-[#dfe1e6] bg-white p-2 text-[#172b4d] shadow-dialog">{waitingAnswers.map(run=><Link key={run.id} href={`/board/${run.board_id}?card=${run.card_id}`} className="max-w-full truncate rounded px-3 py-2 hover:bg-[#f1f2f4]">{run.card_title}</Link>)}</div></details>}
+      {queueError&&<span role="alert" className="shrink-0 text-[#ae2a19]" title={queueError}>Erro</span>}
     </div>
-    <button disabled={busy||paused===null} onClick={()=>void toggle()} title="A pausa mantém os prompts atuais em execução e aguarda para iniciar os próximos." className="flex min-h-11 items-center gap-2 rounded border border-white/60 px-3 py-1 font-semibold hover:bg-white/15 disabled:opacity-50">{paused?<Play size={16}/>:<Pause size={16}/>} {busy?'Aguarde…':paused?'Retomar fila':'Pausar fila'}</button>
-    <Link href="/queues" className="inline-flex min-h-11 items-center px-2 font-semibold underline underline-offset-4">Gerenciar filas</Link>
+    <div className="flex min-w-0 items-center gap-1 lg:hidden">
+      {autoPaused&&<span className="shrink-0 font-semibold" title="Fila pausada automaticamente">Pausa</span>}
+      {isRoot&&(error?<span className="shrink-0" title={error}>!</span>:limits?<><span className="shrink-0" title={describe(300)}>5h {available(300)}</span><span className="shrink-0" title={describe(10080)}>S {available(10080)}</span></>:<span className="shrink-0">…</span>)}
+      <details className="relative shrink-0"><summary className="min-h-9 cursor-pointer rounded px-1 py-2 font-semibold">Fila</summary><div className="absolute bottom-full right-0 z-[90] mb-2 flex max-h-[50dvh] w-[min(92vw,24rem)] flex-col gap-2 overflow-y-auto rounded-lg border border-[#dfe1e6] bg-white p-3 text-[#172b4d] shadow-dialog">
+        <div className="flex items-center justify-between gap-3"><span className="text-sm font-semibold">Retomada automática</span><button type="button" role="switch" aria-checked={autoResume} aria-label="Retomada automática da fila" disabled={busy||paused===null} onClick={()=>void toggleAutoResume(!autoResume)} className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-[#8590a2] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${autoResume?'bg-emerald-500':'bg-slate-500'}`}><span aria-hidden="true" className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoResume?'translate-x-6':'translate-x-1'}`}/></button></div>
+        <button disabled={busy||paused===null} onClick={()=>void toggle()} title="A pausa mantém os prompts atuais em execução e aguarda para iniciar os próximos." aria-label={busy?'Aguarde':paused?'Retomar fila':'Pausar fila'} className="flex min-h-10 items-center gap-2 rounded border border-[#8590a2] px-3 py-2 text-left font-semibold hover:bg-[#f1f2f4] disabled:opacity-50">{paused?<Play size={16}/>:<Pause size={16}/>}{busy?'Aguarde…':paused?'Retomar fila':'Pausar fila'}</button>
+        <Link href="/queues" className="min-h-10 rounded px-3 py-2 font-semibold underline underline-offset-4">Gerenciar filas</Link>
+        {waitingAnswers.length>0&&<div className="border-t border-[#dfe1e6] pt-2"><p className="mb-1 text-sm font-semibold">Perguntas aguardando resposta</p>{waitingAnswers.map(run=><Link key={run.id} href={`/board/${run.board_id}?card=${run.card_id}`} className="block min-h-10 truncate rounded px-2 py-2 text-sm hover:bg-[#f1f2f4]">{run.card_title}</Link>)}</div>}
+        {queueError&&<p role="alert" className="text-sm text-[#ae2a19]">{queueError}</p>}
+      </div></details>
     </div>
-    {waitingAnswers.length>0&&<details className="w-full"><summary className="cursor-pointer font-semibold">Fila de perguntas ({waitingAnswers.length})</summary><div className="mt-2 flex flex-wrap gap-2">{waitingAnswers.map(run=><Link key={run.id} href={`/board/${run.board_id}?card=${run.card_id}`} className="max-w-full truncate rounded border border-white/60 px-3 py-2">{run.card_title}</Link>)}</div></details>}
-    {queueError&&<span role="alert">{queueError}</span>}
   </div>;
 }

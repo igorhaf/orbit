@@ -23,7 +23,8 @@ import {SocialLoginService} from './access/social-login';
 import {recordSuccessfulLogin} from './access/login-history';
 import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
 import {AccessService,AccessGuard,AccessController} from './access/access';
-import {profileSimulationContext,profileSimulationMiddleware} from './access/profile-simulation-context';
+import type {AccessRequest} from './access/access';
+import {profileSimulationMiddleware} from './access/profile-simulation-context';
 import {WorkspacesService,WorkspacesController,workspacesPlugin} from './workspaces/workspaces.plugin';
 import {WorkspaceBrandingService,WorkspaceBrandingController,PublicWorkspaceBrandingController,workspaceBrandingPlugin} from './workspaces/workspace-branding';
 import {AiPluginModule,aiPluginDefinition} from './plugins/ai/ai.plugin';
@@ -1231,7 +1232,7 @@ class ApiController {
     return this.auth.invite(actor,body);
   }
   @Post('email/inbox') inboxEmail(@Req() req:Request,@Body() body:Payload) { return this.service.inboxEmail(body,typeof req.headers['x-orbit-email-token']==='string'?req.headers['x-orbit-email-token']:undefined); }
-  @Get('auth/me') me(@Req() req: Request) { return this.service.me(this.service.user(req)); }
+  @Get('auth/me') me(@Req() req: Request) { return (req as AccessRequest).orbitDemoUser||this.service.me(this.service.user(req)); }
   @Get('notebooks') notebooks(@Req() req:Request){return this.service.notebooks(this.service.user(req));}
   @Post('notebooks') createNotebook(@Req() req:Request,@Body() body:Payload){return this.service.createNotebook(this.service.user(req),body);}
   @Patch('notebooks/:id') updateNotebook(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){return this.service.updateNotebook(id,this.service.user(req),body);}
@@ -1398,7 +1399,7 @@ async function bootstrap() {
   sockets.use((socket,next)=>{void (async()=>{const access=app.get(AccessService),user=await access.authenticate(String(socket.handshake.auth.token||''));socket.data.userId=user.id;const selected=socket.handshake.auth.profileSimulation;if(selected!==undefined){if(!user.is_root||typeof selected!=='string')throw new Error('Não autorizado.');const {roles}=await access.simulationRoles(user.id);const role=roles.find((item: {id:string})=>item.id===selected) as {id:string;name:string;permissions:string[]}|undefined;if(!role)throw new Error('Não autorizado.');socket.data.profileSimulation={id:role.id,name:role.name,permissions:role.permissions||[]};}next()})().catch(()=>next(new Error('Não autorizado.')))});
   sockets.on('connection',socket=>{
     if(!socket.data.profileSimulation)socket.join(`user:${String(socket.data.userId)}`);
-    socket.on('board:join',(boardId:unknown)=>{if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId)){const access=app.get(AccessService),userId=String(socket.data.userId),profile=socket.data.profileSimulation as {id:string;name:string;permissions:string[]}|undefined;void access.authenticate(String(socket.handshake.auth.token)).then(()=>profile?profileSimulationContext.run({actorId:userId,profile},()=>features.member(boardId,userId)):features.member(boardId,userId)).then(()=>socket.join(`board:${boardId}`)).catch(()=>undefined);}});
+    socket.on('board:join',(boardId:unknown)=>{if(socket.data.profileSimulation)return;if(typeof boardId==='string'&&/^[0-9a-f-]{36}$/i.test(boardId)){const access=app.get(AccessService),userId=String(socket.data.userId);void access.authenticate(String(socket.handshake.auth.token)).then(()=>features.member(boardId,userId)).then(()=>socket.join(`board:${boardId}`)).catch(()=>undefined);}});
     socket.on('board:leave',(boardId:unknown)=>{if(typeof boardId==='string')socket.leave(`board:${boardId}`);});
   });
   const sessionTimer=setInterval(()=>{for(const socket of sockets.sockets.sockets.values())void (async()=>{try{await app.get(AccessService).authenticate(String(socket.handshake.auth.token));const simulation=socket.data.profileSimulation as {id:string;name:string;permissions:string[]}|undefined;if(simulation){const current=await app.get(Db).one<{id:string;name:string;permissions:string[]}>('SELECT id,name,permissions FROM access_roles WHERE id=$1',[simulation.id]);if(!current||current.name!==simulation.name||JSON.stringify(current.permissions||[])!==JSON.stringify(simulation.permissions||[]))socket.disconnect(true)}}catch{socket.disconnect(true)}})()},2000);sessionTimer.unref();

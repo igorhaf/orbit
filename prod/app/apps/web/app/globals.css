@@ -77,6 +77,7 @@ html[data-theme="dark"] {
 }
 html[data-theme-forced="true"] .theme-preference-control { display: none; }
 html[data-theme="dark"] body { color: var(--orbit-text); background: #1d2125; }
+html[data-theme="dark"] #orbit-system-footer { color: var(--orbit-text); background-color: rgb(34 39 43 / 95%) !important; border-color: var(--orbit-border); }
 html[data-theme="dark"] button { color: var(--orbit-text); }
 /* Keep pointer hover discernible while giving keyboard focus its own stronger cue. */
 html[data-theme="dark"] button:not(:disabled):hover { outline: 2px solid #80909d; outline-offset: 2px; }

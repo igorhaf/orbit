@@ -3697,6 +3697,8 @@ export const suindaPlugin: PluginDefinition = {
     navigation: [
       { id: "suinda", label: "Minha aprendizagem", href: "/suinda", permission: "plugin.suinda-learning.read", order: 5, group: { id: "learning", label: "Aprendizagem", order: 5 } },
       { id: "suinda-catalog", label: "Catálogo de cursos", href: "/suinda/catalog", permission: "plugin.suinda-learning.read", order: 6, group: { id: "learning", label: "Aprendizagem", order: 5 } },
+      { id: "suinda-teaching", label: "Painel docente", href: "/suinda/teaching", permission: "plugin.suinda-learning.read", order: 60, group: { id: "teaching", label: "Ensino", order: 60 } },
+      { id: "suinda-management", label: "Gestão acadêmica", href: "/suinda/management", permission: "plugin.suinda-learning.manage", order: 70, group: { id: "suinda-management", label: "Gestão acadêmica", order: 70 } },
     ],
     recordKinds: suindaRecordKinds,
   },

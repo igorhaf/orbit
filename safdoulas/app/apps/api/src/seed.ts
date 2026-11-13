@@ -1,14 +1,10 @@
 import {seedCollections} from './plugins/collections/collections.seed';
 import 'dotenv/config';
 import { Pool } from 'pg';
+import { ensureBootstrapRoot } from './access/bootstrap-root';
 
 export async function seedDatabase(pool: Pool) {
-  const { rows: [user] } = await pool.query(
-    `INSERT INTO users(name,email,password_hash,is_root) VALUES($1,$2,$3,true)
-     ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name
-     RETURNING id`,
-    ['Igor', 'igorhaf@gmail.com', '$2b$12$87GMGtpzEwEEjmfwVIjFMu0U5Bq8.5N9xI/NHO4JBHcorA7pHJDG2'],
-  );
+  const user = await ensureBootstrapRoot(pool);
   await pool.query(
     `INSERT INTO workspaces(owner_id,name)
      SELECT $1,'Meu espaço de trabalho'

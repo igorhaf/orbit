@@ -1,0 +1,1035 @@
+{
+  "schemaVersion": 1,
+  "runtimes": [
+    {
+      "id": "dev",
+      "app": "dev/app",
+      "webPort": 3001,
+      "apiPort": 4001
+    },
+    {
+      "id": "prod",
+      "app": "prod/app",
+      "webPort": 3000,
+      "apiPort": 4000
+    },
+    {
+      "id": "safdoulas",
+      "app": "safdoulas/app",
+      "webPort": 3002,
+      "apiPort": 4003
+    },
+    {
+      "id": "suinda",
+      "app": "suinda/app",
+      "webPort": 3003,
+      "apiPort": 4004
+    }
+  ],
+  "sharedPackages": [
+    {
+      "id": "@orbit/core-source",
+      "path": "packages/orbit-core",
+      "version": "1.3.0",
+      "files": [
+        {
+          "source": "core-version.json",
+          "target": "apps/api/core-version.json"
+        },
+        {
+          "source": "src/access/bootstrap-root.spec.ts",
+          "target": "apps/api/src/access/bootstrap-root.spec.ts"
+        },
+        {
+          "source": "src/access/bootstrap-root.ts",
+          "target": "apps/api/src/access/bootstrap-root.ts"
+        },
+        {
+          "source": "src/access/management.ts",
+          "target": "apps/api/src/access/management.ts"
+        },
+        {
+          "source": "src/access/request-rate-limits.spec.ts",
+          "target": "apps/api/src/access/request-rate-limits.spec.ts"
+        },
+        {
+          "source": "src/access/request-rate-limits.ts",
+          "target": "apps/api/src/access/request-rate-limits.ts"
+        },
+        {
+          "source": "src/access/social-login.ts",
+          "target": "apps/api/src/access/social-login.ts"
+        },
+        {
+          "source": "src/alexa-orbit/alexa-orbit.plugin.ts",
+          "target": "apps/api/src/alexa-orbit/alexa-orbit.plugin.ts"
+        },
+        {
+          "source": "src/alexa-orbit/alexa-orbit.service.ts",
+          "target": "apps/api/src/alexa-orbit/alexa-orbit.service.ts"
+        },
+        {
+          "source": "src/alexa-orbit/alexa-orbit.spec.ts",
+          "target": "apps/api/src/alexa-orbit/alexa-orbit.spec.ts"
+        },
+        {
+          "source": "src/alexa-orbit/body-parser.ts",
+          "target": "apps/api/src/alexa-orbit/body-parser.ts"
+        },
+        {
+          "source": "src/alexa-orbit/interpretation.ts",
+          "target": "apps/api/src/alexa-orbit/interpretation.ts"
+        },
+        {
+          "source": "src/alexa-orbit/model.ts",
+          "target": "apps/api/src/alexa-orbit/model.ts"
+        },
+        {
+          "source": "src/alexa-orbit/security.ts",
+          "target": "apps/api/src/alexa-orbit/security.ts"
+        },
+        {
+          "source": "src/attachment-backup.spec.ts",
+          "target": "apps/api/src/attachment-backup.spec.ts"
+        },
+        {
+          "source": "src/attachment-backup.ts",
+          "target": "apps/api/src/attachment-backup.ts"
+        },
+        {
+          "source": "src/backup-destinations.ts",
+          "target": "apps/api/src/backup-destinations.ts"
+        },
+        {
+          "source": "src/backup-service.ts",
+          "target": "apps/api/src/backup-service.ts"
+        },
+        {
+          "source": "src/calendar/calendar.browser.spec.ts",
+          "target": "apps/api/src/calendar/calendar.browser.spec.ts"
+        },
+        {
+          "source": "src/calendar/calendar.integration.spec.ts",
+          "target": "apps/api/src/calendar/calendar.integration.spec.ts"
+        },
+        {
+          "source": "src/calendar/microsoft-subscriptions.ts",
+          "target": "apps/api/src/calendar/microsoft-subscriptions.ts"
+        },
+        {
+          "source": "src/calendar/microsoft-teams.plugin.ts",
+          "target": "apps/api/src/calendar/microsoft-teams.plugin.ts"
+        },
+        {
+          "source": "src/calendar/microsoft-timezones.ts",
+          "target": "apps/api/src/calendar/microsoft-timezones.ts"
+        },
+        {
+          "source": "src/calendar/orbit-card-provider.ts",
+          "target": "apps/api/src/calendar/orbit-card-provider.ts"
+        },
+        {
+          "source": "src/calendar/source-registry.ts",
+          "target": "apps/api/src/calendar/source-registry.ts"
+        },
+        {
+          "source": "src/card-contexts.integration.spec.ts",
+          "target": "apps/api/src/card-contexts.integration.spec.ts"
+        },
+        {
+          "source": "src/card-contexts.spec.ts",
+          "target": "apps/api/src/card-contexts.spec.ts"
+        },
+        {
+          "source": "src/card-contexts.ts",
+          "target": "apps/api/src/card-contexts.ts"
+        },
+        {
+          "source": "src/card-extensions.ts",
+          "target": "apps/api/src/card-extensions.ts"
+        },
+        {
+          "source": "src/card-rules.spec.ts",
+          "target": "apps/api/src/card-rules.spec.ts"
+        },
+        {
+          "source": "src/card-rules.ts",
+          "target": "apps/api/src/card-rules.ts"
+        },
+        {
+          "source": "src/cloudflare-tunnel/cloudflare-tunnel.plugin.ts",
+          "target": "apps/api/src/cloudflare-tunnel/cloudflare-tunnel.plugin.ts"
+        },
+        {
+          "source": "src/cloudflare-tunnel/cloudflare-tunnel.spec.ts",
+          "target": "apps/api/src/cloudflare-tunnel/cloudflare-tunnel.spec.ts"
+        },
+        {
+          "source": "src/cloudflare-tunnel/cloudflared-adapter.ts",
+          "target": "apps/api/src/cloudflare-tunnel/cloudflared-adapter.ts"
+        },
+        {
+          "source": "src/cloudflare-tunnel/configuration.ts",
+          "target": "apps/api/src/cloudflare-tunnel/configuration.ts"
+        },
+        {
+          "source": "src/cloudflare-tunnel/integration.ts",
+          "target": "apps/api/src/cloudflare-tunnel/integration.ts"
+        },
+        {
+          "source": "src/cloudflare-tunnel/process-manager.ts",
+          "target": "apps/api/src/cloudflare-tunnel/process-manager.ts"
+        },
+        {
+          "source": "src/cloudflare-tunnel/redaction.ts",
+          "target": "apps/api/src/cloudflare-tunnel/redaction.ts"
+        },
+        {
+          "source": "src/codex-ai.ts",
+          "target": "apps/api/src/codex-ai.ts"
+        },
+        {
+          "source": "src/codex-home.ts",
+          "target": "apps/api/src/codex-home.ts"
+        },
+        {
+          "source": "src/codex-limits.spec.ts",
+          "target": "apps/api/src/codex-limits.spec.ts"
+        },
+        {
+          "source": "src/codex-limits.ts",
+          "target": "apps/api/src/codex-limits.ts"
+        },
+        {
+          "source": "src/config-backup.spec.ts",
+          "target": "apps/api/src/config-backup.spec.ts"
+        },
+        {
+          "source": "src/config-backup.ts",
+          "target": "apps/api/src/config-backup.ts"
+        },
+        {
+          "source": "src/data-protector.ts",
+          "target": "apps/api/src/data-protector.ts"
+        },
+        {
+          "source": "src/database-backup.spec.ts",
+          "target": "apps/api/src/database-backup.spec.ts"
+        },
+        {
+          "source": "src/db.ts",
+          "target": "apps/api/src/db.ts"
+        },
+        {
+          "source": "src/delivery/contracts.ts",
+          "target": "apps/api/src/delivery/contracts.ts"
+        },
+        {
+          "source": "src/delivery/controller.ts",
+          "target": "apps/api/src/delivery/controller.ts"
+        },
+        {
+          "source": "src/delivery/delivery.integration.spec.ts",
+          "target": "apps/api/src/delivery/delivery.integration.spec.ts"
+        },
+        {
+          "source": "src/delivery/delivery.spec.ts",
+          "target": "apps/api/src/delivery/delivery.spec.ts"
+        },
+        {
+          "source": "src/delivery/executors.ts",
+          "target": "apps/api/src/delivery/executors.ts"
+        },
+        {
+          "source": "src/delivery/git-service.ts",
+          "target": "apps/api/src/delivery/git-service.ts"
+        },
+        {
+          "source": "src/delivery/handlers.ts",
+          "target": "apps/api/src/delivery/handlers.ts"
+        },
+        {
+          "source": "src/delivery/management.ts",
+          "target": "apps/api/src/delivery/management.ts"
+        },
+        {
+          "source": "src/delivery/runner.ts",
+          "target": "apps/api/src/delivery/runner.ts"
+        },
+        {
+          "source": "src/dropbox/dropbox.client.ts",
+          "target": "apps/api/src/dropbox/dropbox.client.ts"
+        },
+        {
+          "source": "src/dropbox/dropbox.plugin.ts",
+          "target": "apps/api/src/dropbox/dropbox.plugin.ts"
+        },
+        {
+          "source": "src/dropbox/dropbox.spec.ts",
+          "target": "apps/api/src/dropbox/dropbox.spec.ts"
+        },
+        {
+          "source": "src/execution/codex-executor.ts",
+          "target": "apps/api/src/execution/codex-executor.ts"
+        },
+        {
+          "source": "src/execution/config.ts",
+          "target": "apps/api/src/execution/config.ts"
+        },
+        {
+          "source": "src/execution/context-builder.ts",
+          "target": "apps/api/src/execution/context-builder.ts"
+        },
+        {
+          "source": "src/execution/development-policy.ts",
+          "target": "apps/api/src/execution/development-policy.ts"
+        },
+        {
+          "source": "src/execution/execution.browser.spec.ts",
+          "target": "apps/api/src/execution/execution.browser.spec.ts"
+        },
+        {
+          "source": "src/execution/execution.controller.ts",
+          "target": "apps/api/src/execution/execution.controller.ts"
+        },
+        {
+          "source": "src/execution/execution.integration.spec.ts",
+          "target": "apps/api/src/execution/execution.integration.spec.ts"
+        },
+        {
+          "source": "src/execution/execution.service.ts",
+          "target": "apps/api/src/execution/execution.service.ts"
+        },
+        {
+          "source": "src/execution/execution.spec.ts",
+          "target": "apps/api/src/execution/execution.spec.ts"
+        },
+        {
+          "source": "src/execution/file-scope.spec.ts",
+          "target": "apps/api/src/execution/file-scope.spec.ts"
+        },
+        {
+          "source": "src/execution/file-scope.ts",
+          "target": "apps/api/src/execution/file-scope.ts"
+        },
+        {
+          "source": "src/execution/managed-process.spec.ts",
+          "target": "apps/api/src/execution/managed-process.spec.ts"
+        },
+        {
+          "source": "src/execution/managed-process.ts",
+          "target": "apps/api/src/execution/managed-process.ts"
+        },
+        {
+          "source": "src/execution/plugin-action-executor.ts",
+          "target": "apps/api/src/execution/plugin-action-executor.ts"
+        },
+        {
+          "source": "src/execution/project-checks.spec.ts",
+          "target": "apps/api/src/execution/project-checks.spec.ts"
+        },
+        {
+          "source": "src/execution/project-checks.ts",
+          "target": "apps/api/src/execution/project-checks.ts"
+        },
+        {
+          "source": "src/execution/project-registry.ts",
+          "target": "apps/api/src/execution/project-registry.ts"
+        },
+        {
+          "source": "src/execution/registries.ts",
+          "target": "apps/api/src/execution/registries.ts"
+        },
+        {
+          "source": "src/execution/run-repository.ts",
+          "target": "apps/api/src/execution/run-repository.ts"
+        },
+        {
+          "source": "src/execution/security.ts",
+          "target": "apps/api/src/execution/security.ts"
+        },
+        {
+          "source": "src/execution/types.ts",
+          "target": "apps/api/src/execution/types.ts"
+        },
+        {
+          "source": "src/git/draft.spec.ts",
+          "target": "apps/api/src/git/draft.spec.ts"
+        },
+        {
+          "source": "src/git/git.integration.spec.ts",
+          "target": "apps/api/src/git/git.integration.spec.ts"
+        },
+        {
+          "source": "src/git/git.plugin.ts",
+          "target": "apps/api/src/git/git.plugin.ts"
+        },
+        {
+          "source": "src/git/path.spec.ts",
+          "target": "apps/api/src/git/path.spec.ts"
+        },
+        {
+          "source": "src/git/pipeline.spec.ts",
+          "target": "apps/api/src/git/pipeline.spec.ts"
+        },
+        {
+          "source": "src/git/pipeline.ts",
+          "target": "apps/api/src/git/pipeline.ts"
+        },
+        {
+          "source": "src/git/review.spec.ts",
+          "target": "apps/api/src/git/review.spec.ts"
+        },
+        {
+          "source": "src/git/review.ts",
+          "target": "apps/api/src/git/review.ts"
+        },
+        {
+          "source": "src/git/rules.spec.ts",
+          "target": "apps/api/src/git/rules.spec.ts"
+        },
+        {
+          "source": "src/git/rules.ts",
+          "target": "apps/api/src/git/rules.ts"
+        },
+        {
+          "source": "src/git/workflow.spec.ts",
+          "target": "apps/api/src/git/workflow.spec.ts"
+        },
+        {
+          "source": "src/github/github.client.ts",
+          "target": "apps/api/src/github/github.client.ts"
+        },
+        {
+          "source": "src/github/github.plugin.ts",
+          "target": "apps/api/src/github/github.plugin.ts"
+        },
+        {
+          "source": "src/github/github.spec.ts",
+          "target": "apps/api/src/github/github.spec.ts"
+        },
+        {
+          "source": "src/google-drive-backup.ts",
+          "target": "apps/api/src/google-drive-backup.ts"
+        },
+        {
+          "source": "src/google/backup.spec.ts",
+          "target": "apps/api/src/google/backup.spec.ts"
+        },
+        {
+          "source": "src/google/drive-backup.plugin.ts",
+          "target": "apps/api/src/google/drive-backup.plugin.ts"
+        },
+        {
+          "source": "src/inbox.integration.spec.ts",
+          "target": "apps/api/src/inbox.integration.spec.ts"
+        },
+        {
+          "source": "src/keyring-crypto.spec.ts",
+          "target": "apps/api/src/keyring-crypto.spec.ts"
+        },
+        {
+          "source": "src/keyring-crypto.ts",
+          "target": "apps/api/src/keyring-crypto.ts"
+        },
+        {
+          "source": "src/mail/connection-client.ts",
+          "target": "apps/api/src/mail/connection-client.ts"
+        },
+        {
+          "source": "src/mail/gmail.plugin.ts",
+          "target": "apps/api/src/mail/gmail.plugin.ts"
+        },
+        {
+          "source": "src/mail/mail.service.ts",
+          "target": "apps/api/src/mail/mail.service.ts"
+        },
+        {
+          "source": "src/mail/mail.spec.ts",
+          "target": "apps/api/src/mail/mail.spec.ts"
+        },
+        {
+          "source": "src/mail/outlook-mail.plugin.ts",
+          "target": "apps/api/src/mail/outlook-mail.plugin.ts"
+        },
+        {
+          "source": "src/mail/provider-registry.ts",
+          "target": "apps/api/src/mail/provider-registry.ts"
+        },
+        {
+          "source": "src/mail/security.ts",
+          "target": "apps/api/src/mail/security.ts"
+        },
+        {
+          "source": "src/mail/types.ts",
+          "target": "apps/api/src/mail/types.ts"
+        },
+        {
+          "source": "src/managed-backup.ts",
+          "target": "apps/api/src/managed-backup.ts"
+        },
+        {
+          "source": "src/migrate-integration-credentials.ts",
+          "target": "apps/api/src/migrate-integration-credentials.ts"
+        },
+        {
+          "source": "src/monitoring.spec.ts",
+          "target": "apps/api/src/monitoring.spec.ts"
+        },
+        {
+          "source": "src/notebook-markdown.spec.ts",
+          "target": "apps/api/src/notebook-markdown.spec.ts"
+        },
+        {
+          "source": "src/notebook-markdown.ts",
+          "target": "apps/api/src/notebook-markdown.ts"
+        },
+        {
+          "source": "src/notebook-sanitizer.spec.ts",
+          "target": "apps/api/src/notebook-sanitizer.spec.ts"
+        },
+        {
+          "source": "src/notebook-sanitizer.ts",
+          "target": "apps/api/src/notebook-sanitizer.ts"
+        },
+        {
+          "source": "src/orbit-events.ts",
+          "target": "apps/api/src/orbit-events.ts"
+        },
+        {
+          "source": "src/pending-fixes.browser.spec.ts",
+          "target": "apps/api/src/pending-fixes.browser.spec.ts"
+        },
+        {
+          "source": "src/pending-fixes.spec.ts",
+          "target": "apps/api/src/pending-fixes.spec.ts"
+        },
+        {
+          "source": "src/planner/planner.integration.spec.ts",
+          "target": "apps/api/src/planner/planner.integration.spec.ts"
+        },
+        {
+          "source": "src/planner/planner.plugin.ts",
+          "target": "apps/api/src/planner/planner.plugin.ts"
+        },
+        {
+          "source": "src/plugins/ai-port.ts",
+          "target": "apps/api/src/plugins/ai-port.ts"
+        },
+        {
+          "source": "src/plugins/ai/card-service.ts",
+          "target": "apps/api/src/plugins/ai/card-service.ts"
+        },
+        {
+          "source": "src/plugins/ai/embeddings.ts",
+          "target": "apps/api/src/plugins/ai/embeddings.ts"
+        },
+        {
+          "source": "src/plugins/ai/routes.ts",
+          "target": "apps/api/src/plugins/ai/routes.ts"
+        },
+        {
+          "source": "src/plugins/board-views/board-view.plugins.ts",
+          "target": "apps/api/src/plugins/board-views/board-view.plugins.ts"
+        },
+        {
+          "source": "src/plugins/board-views/board-views.spec.ts",
+          "target": "apps/api/src/plugins/board-views/board-views.spec.ts"
+        },
+        {
+          "source": "src/plugins/board-views/board-views.ts",
+          "target": "apps/api/src/plugins/board-views/board-views.ts"
+        },
+        {
+          "source": "src/plugins/board-views/required-views.ts",
+          "target": "apps/api/src/plugins/board-views/required-views.ts"
+        },
+        {
+          "source": "src/plugins/card-layout-values.ts",
+          "target": "apps/api/src/plugins/card-layout-values.ts"
+        },
+        {
+          "source": "src/plugins/card-layouts.spec.ts",
+          "target": "apps/api/src/plugins/card-layouts.spec.ts"
+        },
+        {
+          "source": "src/plugins/card-layouts.ts",
+          "target": "apps/api/src/plugins/card-layouts.ts"
+        },
+        {
+          "source": "src/plugins/collections/collections.plugin.ts",
+          "target": "apps/api/src/plugins/collections/collections.plugin.ts"
+        },
+        {
+          "source": "src/plugins/collections/collections.seed.ts",
+          "target": "apps/api/src/plugins/collections/collections.seed.ts"
+        },
+        {
+          "source": "src/plugins/collections/collections.spec.ts",
+          "target": "apps/api/src/plugins/collections/collections.spec.ts"
+        },
+        {
+          "source": "src/plugins/common/identifiers.ts",
+          "target": "apps/api/src/plugins/common/identifiers.ts"
+        },
+        {
+          "source": "src/plugins/contract.ts",
+          "target": "apps/api/src/plugins/contract.ts"
+        },
+        {
+          "source": "src/plugins/core-compatibility.ts",
+          "target": "apps/api/src/plugins/core-compatibility.ts"
+        },
+        {
+          "source": "src/plugins/process-board/process-board.plugin.ts",
+          "target": "apps/api/src/plugins/process-board/process-board.plugin.ts"
+        },
+        {
+          "source": "src/plugins/project-boards/project-boards.plugin.ts",
+          "target": "apps/api/src/plugins/project-boards/project-boards.plugin.ts"
+        },
+        {
+          "source": "src/plugins/record-cards/record-cards.plugin.ts",
+          "target": "apps/api/src/plugins/record-cards/record-cards.plugin.ts"
+        },
+        {
+          "source": "src/plugins/record-cards/record-cards.spec.ts",
+          "target": "apps/api/src/plugins/record-cards/record-cards.spec.ts"
+        },
+        {
+          "source": "src/plugins/records/audit.ts",
+          "target": "apps/api/src/plugins/records/audit.ts"
+        },
+        {
+          "source": "src/plugins/records/catalog.ts",
+          "target": "apps/api/src/plugins/records/catalog.ts"
+        },
+        {
+          "source": "src/plugins/records/documents.ts",
+          "target": "apps/api/src/plugins/records/documents.ts"
+        },
+        {
+          "source": "src/plugins/records/ownership.spec.ts",
+          "target": "apps/api/src/plugins/records/ownership.spec.ts"
+        },
+        {
+          "source": "src/plugins/records/ownership.ts",
+          "target": "apps/api/src/plugins/records/ownership.ts"
+        },
+        {
+          "source": "src/plugins/records/records.controller.ts",
+          "target": "apps/api/src/plugins/records/records.controller.ts"
+        },
+        {
+          "source": "src/plugins/records/records.service.ts",
+          "target": "apps/api/src/plugins/records/records.service.ts"
+        },
+        {
+          "source": "src/plugins/records/rules.ts",
+          "target": "apps/api/src/plugins/records/rules.ts"
+        },
+        {
+          "source": "src/plugins/sdk.ts",
+          "target": "apps/api/src/plugins/sdk.ts"
+        },
+        {
+          "source": "src/plugins/software-development/software-development.plugin.ts",
+          "target": "apps/api/src/plugins/software-development/software-development.plugin.ts"
+        },
+        {
+          "source": "src/plugins/vault/vault.controller.ts",
+          "target": "apps/api/src/plugins/vault/vault.controller.ts"
+        },
+        {
+          "source": "src/plugins/vault/vault.integration.spec.ts",
+          "target": "apps/api/src/plugins/vault/vault.integration.spec.ts"
+        },
+        {
+          "source": "src/plugins/vault/vault.plugin.ts",
+          "target": "apps/api/src/plugins/vault/vault.plugin.ts"
+        },
+        {
+          "source": "src/plugins/vault/vault.spec.ts",
+          "target": "apps/api/src/plugins/vault/vault.spec.ts"
+        },
+        {
+          "source": "src/prompt-question.ts",
+          "target": "apps/api/src/prompt-question.ts"
+        },
+        {
+          "source": "src/prompt-result.spec.ts",
+          "target": "apps/api/src/prompt-result.spec.ts"
+        },
+        {
+          "source": "src/prompt-result.ts",
+          "target": "apps/api/src/prompt-result.ts"
+        },
+        {
+          "source": "src/prompt-sessions.ts",
+          "target": "apps/api/src/prompt-sessions.ts"
+        },
+        {
+          "source": "src/public-api-url.ts",
+          "target": "apps/api/src/public-api-url.ts"
+        },
+        {
+          "source": "src/secrets.ts",
+          "target": "apps/api/src/secrets.ts"
+        },
+        {
+          "source": "src/tool-diagnostics.spec.ts",
+          "target": "apps/api/src/tool-diagnostics.spec.ts"
+        },
+        {
+          "source": "src/tool-diagnostics.ts",
+          "target": "apps/api/src/tool-diagnostics.ts"
+        },
+        {
+          "source": "src/trello-sync.ts",
+          "target": "apps/api/src/trello-sync.ts"
+        },
+        {
+          "source": "src/turndown-plugin-gfm.d.ts",
+          "target": "apps/api/src/turndown-plugin-gfm.d.ts"
+        },
+        {
+          "source": "src/vault-backup.ts",
+          "target": "apps/api/src/vault-backup.ts"
+        },
+        {
+          "source": "src/vault-credentials.spec.ts",
+          "target": "apps/api/src/vault-credentials.spec.ts"
+        },
+        {
+          "source": "src/vault-credentials.ts",
+          "target": "apps/api/src/vault-credentials.ts"
+        },
+        {
+          "source": "src/vault-crypto.ts",
+          "target": "apps/api/src/vault-crypto.ts"
+        },
+        {
+          "source": "src/vault-integration-credentials.ts",
+          "target": "apps/api/src/vault-integration-credentials.ts"
+        },
+        {
+          "source": "src/workspaces/workspace-branding.spec.ts",
+          "target": "apps/api/src/workspaces/workspace-branding.spec.ts"
+        },
+        {
+          "source": "src/workspaces/workspace-branding.ts",
+          "target": "apps/api/src/workspaces/workspace-branding.ts"
+        }
+      ]
+    },
+    {
+      "id": "@orbit/ui-source",
+      "path": "packages/orbit-ui",
+      "version": "1.1.3",
+      "files": [
+        {
+          "source": "src/app/board/[id]/print/page.tsx",
+          "target": "apps/web/app/board/[id]/print/page.tsx"
+        },
+        {
+          "source": "src/app/card-types/page.tsx",
+          "target": "apps/web/app/card-types/page.tsx"
+        },
+        {
+          "source": "src/app/collections/page.tsx",
+          "target": "apps/web/app/collections/page.tsx"
+        },
+        {
+          "source": "src/app/extensions/[plugin]/page.tsx",
+          "target": "apps/web/app/extensions/[plugin]/page.tsx"
+        },
+        {
+          "source": "src/app/extensions/page.tsx",
+          "target": "apps/web/app/extensions/page.tsx"
+        },
+        {
+          "source": "src/app/monitoring/page.tsx",
+          "target": "apps/web/app/monitoring/page.tsx"
+        },
+        {
+          "source": "src/app/not-found.tsx",
+          "target": "apps/web/app/not-found.tsx"
+        },
+        {
+          "source": "src/app/notebooks/page.tsx",
+          "target": "apps/web/app/notebooks/page.tsx"
+        },
+        {
+          "source": "src/app/planner/page.tsx",
+          "target": "apps/web/app/planner/page.tsx"
+        },
+        {
+          "source": "src/app/queues/page.tsx",
+          "target": "apps/web/app/queues/page.tsx"
+        },
+        {
+          "source": "src/app/tools/page.tsx",
+          "target": "apps/web/app/tools/page.tsx"
+        },
+        {
+          "source": "src/app/trash/page.tsx",
+          "target": "apps/web/app/trash/page.tsx"
+        },
+        {
+          "source": "src/app/vault/page.tsx",
+          "target": "apps/web/app/vault/page.tsx"
+        },
+        {
+          "source": "src/app/workspaces/page.tsx",
+          "target": "apps/web/app/workspaces/page.tsx"
+        },
+        {
+          "source": "src/components/access-management.tsx",
+          "target": "apps/web/components/access-management.tsx"
+        },
+        {
+          "source": "src/components/access-shell.tsx",
+          "target": "apps/web/components/access-shell.tsx"
+        },
+        {
+          "source": "src/components/ai-model-fields.tsx",
+          "target": "apps/web/components/ai-model-fields.tsx"
+        },
+        {
+          "source": "src/components/bulk-card-actions.tsx",
+          "target": "apps/web/components/bulk-card-actions.tsx"
+        },
+        {
+          "source": "src/components/card-ai.tsx",
+          "target": "apps/web/components/card-ai.tsx"
+        },
+        {
+          "source": "src/components/card-checklists.tsx",
+          "target": "apps/web/components/card-checklists.tsx"
+        },
+        {
+          "source": "src/components/card-contexts.tsx",
+          "target": "apps/web/components/card-contexts.tsx"
+        },
+        {
+          "source": "src/components/card-custom-fields.tsx",
+          "target": "apps/web/components/card-custom-fields.tsx"
+        },
+        {
+          "source": "src/components/card-execution.tsx",
+          "target": "apps/web/components/card-execution.tsx"
+        },
+        {
+          "source": "src/components/card-extras.tsx",
+          "target": "apps/web/components/card-extras.tsx"
+        },
+        {
+          "source": "src/components/card-operations.tsx",
+          "target": "apps/web/components/card-operations.tsx"
+        },
+        {
+          "source": "src/components/card-sections.tsx",
+          "target": "apps/web/components/card-sections.tsx"
+        },
+        {
+          "source": "src/components/codex-limits.tsx",
+          "target": "apps/web/components/codex-limits.tsx"
+        },
+        {
+          "source": "src/components/git-card-panel.tsx",
+          "target": "apps/web/components/git-card-panel.tsx"
+        },
+        {
+          "source": "src/components/git-card-workflow.tsx",
+          "target": "apps/web/components/git-card-workflow.tsx"
+        },
+        {
+          "source": "src/components/git-project-settings.tsx",
+          "target": "apps/web/components/git-project-settings.tsx"
+        },
+        {
+          "source": "src/components/inbox-drag.tsx",
+          "target": "apps/web/components/inbox-drag.tsx"
+        },
+        {
+          "source": "src/components/modal.tsx",
+          "target": "apps/web/components/modal.tsx"
+        },
+        {
+          "source": "src/components/plugin-navigation.tsx",
+          "target": "apps/web/components/plugin-navigation.tsx"
+        },
+        {
+          "source": "src/components/profile-simulation-context.tsx",
+          "target": "apps/web/components/profile-simulation-context.tsx"
+        },
+        {
+          "source": "src/components/vault-constant-select.tsx",
+          "target": "apps/web/components/vault-constant-select.tsx"
+        },
+        {
+          "source": "src/components/vault-credential-fields.tsx",
+          "target": "apps/web/components/vault-credential-fields.tsx"
+        },
+        {
+          "source": "src/lib/board-drag.spec.ts",
+          "target": "apps/web/lib/board-drag.spec.ts"
+        },
+        {
+          "source": "src/lib/board-drag.ts",
+          "target": "apps/web/lib/board-drag.ts"
+        },
+        {
+          "source": "src/lib/card-description.spec.ts",
+          "target": "apps/web/lib/card-description.spec.ts"
+        },
+        {
+          "source": "src/lib/card-description.ts",
+          "target": "apps/web/lib/card-description.ts"
+        },
+        {
+          "source": "src/lib/clipboard-files.ts",
+          "target": "apps/web/lib/clipboard-files.ts"
+        },
+        {
+          "source": "src/lib/comment-replies.spec.ts",
+          "target": "apps/web/lib/comment-replies.spec.ts"
+        },
+        {
+          "source": "src/lib/comment-replies.ts",
+          "target": "apps/web/lib/comment-replies.ts"
+        },
+        {
+          "source": "src/lib/execution.ts",
+          "target": "apps/web/lib/execution.ts"
+        },
+        {
+          "source": "src/lib/history.ts",
+          "target": "apps/web/lib/history.ts"
+        },
+        {
+          "source": "src/lib/inbox.ts",
+          "target": "apps/web/lib/inbox.ts"
+        },
+        {
+          "source": "src/lib/plugin-navigation.spec.ts",
+          "target": "apps/web/lib/plugin-navigation.spec.ts"
+        },
+        {
+          "source": "src/lib/plugin-navigation.ts",
+          "target": "apps/web/lib/plugin-navigation.ts"
+        },
+        {
+          "source": "src/lib/use-hydrated.ts",
+          "target": "apps/web/lib/use-hydrated.ts"
+        },
+        {
+          "source": "src/plugins/ai/QueuesPage.tsx",
+          "target": "apps/web/plugins/ai/QueuesPage.tsx"
+        },
+        {
+          "source": "src/plugins/ai/card-renderers.tsx",
+          "target": "apps/web/plugins/ai/card-renderers.tsx"
+        },
+        {
+          "source": "src/plugins/board-views/BoardViewRenderer.tsx",
+          "target": "apps/web/plugins/board-views/BoardViewRenderer.tsx"
+        },
+        {
+          "source": "src/plugins/board-views/StructuredBoardView.tsx",
+          "target": "apps/web/plugins/board-views/StructuredBoardView.tsx"
+        },
+        {
+          "source": "src/plugins/board-views/contract.ts",
+          "target": "apps/web/plugins/board-views/contract.ts"
+        },
+        {
+          "source": "src/plugins/board-views/hierarchy.ts",
+          "target": "apps/web/plugins/board-views/hierarchy.ts"
+        },
+        {
+          "source": "src/plugins/card-layouts/CardBadges.tsx",
+          "target": "apps/web/plugins/card-layouts/CardBadges.tsx"
+        },
+        {
+          "source": "src/plugins/card-layouts/CardPlugins.tsx",
+          "target": "apps/web/plugins/card-layouts/CardPlugins.tsx"
+        },
+        {
+          "source": "src/plugins/card-layouts/CardSlot.tsx",
+          "target": "apps/web/plugins/card-layouts/CardSlot.tsx"
+        },
+        {
+          "source": "src/plugins/card-layouts/CardTypeSelector.tsx",
+          "target": "apps/web/plugins/card-layouts/CardTypeSelector.tsx"
+        },
+        {
+          "source": "src/plugins/card-layouts/CardTypesPage.tsx",
+          "target": "apps/web/plugins/card-layouts/CardTypesPage.tsx"
+        },
+        {
+          "source": "src/plugins/card-layouts/contract.ts",
+          "target": "apps/web/plugins/card-layouts/contract.ts"
+        },
+        {
+          "source": "src/plugins/collections/CollectionPanel.tsx",
+          "target": "apps/web/plugins/collections/CollectionPanel.tsx"
+        },
+        {
+          "source": "src/plugins/planner/PlannerPage.tsx",
+          "target": "apps/web/plugins/planner/PlannerPage.tsx"
+        },
+        {
+          "source": "src/plugins/process-board/ProcessBoard.tsx",
+          "target": "apps/web/plugins/process-board/ProcessBoard.tsx"
+        },
+        {
+          "source": "src/plugins/project-boards/CreateBoardModal.tsx",
+          "target": "apps/web/plugins/project-boards/CreateBoardModal.tsx"
+        },
+        {
+          "source": "src/plugins/project-boards/use-creation-availability.ts",
+          "target": "apps/web/plugins/project-boards/use-creation-availability.ts"
+        },
+        {
+          "source": "src/plugins/record-cards/RecordBoardContext.tsx",
+          "target": "apps/web/plugins/record-cards/RecordBoardContext.tsx"
+        },
+        {
+          "source": "src/plugins/record-cards/RecordBoardModels.tsx",
+          "target": "apps/web/plugins/record-cards/RecordBoardModels.tsx"
+        },
+        {
+          "source": "src/plugins/record-cards/RecordWorkOverview.tsx",
+          "target": "apps/web/plugins/record-cards/RecordWorkOverview.tsx"
+        },
+        {
+          "source": "src/plugins/software-development/card-renderers.tsx",
+          "target": "apps/web/plugins/software-development/card-renderers.tsx"
+        },
+        {
+          "source": "src/plugins/software-development/git-card-panel.tsx",
+          "target": "apps/web/plugins/software-development/git-card-panel.tsx"
+        },
+        {
+          "source": "src/plugins/vault/VaultPage.tsx",
+          "target": "apps/web/plugins/vault/VaultPage.tsx"
+        },
+        {
+          "source": "src/plugins/workspaces/WorkspaceBrandingSettings.tsx",
+          "target": "apps/web/plugins/workspaces/WorkspaceBrandingSettings.tsx"
+        },
+        {
+          "source": "src/plugins/workspaces/WorkspaceResources.tsx",
+          "target": "apps/web/plugins/workspaces/WorkspaceResources.tsx"
+        }
+      ]
+    }
+  ],
+  "productsDirectory": "products",
+  "verification": {
+    "concurrency": 1,
+    "cache": ".orbit/cache/checks",
+    "requireMilestoneFunctionalReview": true
+  }
+}

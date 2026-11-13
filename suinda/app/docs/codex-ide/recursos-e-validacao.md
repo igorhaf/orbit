@@ -37,7 +37,7 @@ Revisão: 22/10/2026. Plugin `codex-ide`, dependente de `ai`, ativável por inst
 Não é a extensão oficial do VS Code embutida. O painel implementa seu próprio cliente do protocolo público.
 Recursos de Goal autônomo, Sketch, ditado, compartilhamento público, feedback à OpenAI e controle de plugins externos não foram implementados nesta etapa.
 A opção de velocidade adicional depende do modelo/plano e ainda não é exposta pelo painel.
-O contexto usa o projeto selecionado, AGENTS.md e skills configuradas; não recebe seleção ou arquivos abertos de um VS Code externo.
+O contexto usa o projeto selecionado, `AGENTS.md`, skills configuradas e o contrato `orbitArchitecturePrompt` enviado como `developerInstructions` ao iniciar ou retomar a conversa e atualizado antes de cada novo turno; não recebe seleção ou arquivos abertos de um VS Code externo. Regras persistentes de arquitetura, experiência de produto, compatibilidade e desenvolvimento do Orbit também precisam ser sincronizadas nesse contrato nos quatro runtimes. As execuções de cartão usam o mesmo contrato.
 Não há promessa de porcentagem exata da janela de contexto sem uma medição correspondente do runtime.
 Não se oferece aprovação automática de segurança com o rótulo “Aprove por mim”: isso exige um revisor efetivamente disponível no runtime; o modo do projeto usa aprovação humana nas ampliações de acesso.
 
