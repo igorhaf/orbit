@@ -1,0 +1,10 @@
+export const lexicalAlgorithm:'orbit-bm25-lexical/1';
+export const lexicalChunkAlgorithm:'orbit-structural-chunks/1';
+export function lexicalWords(text:string):string[];
+export type LexicalDocument={id:string;text?:string;label?:string;tokens?:string[]};
+export type LexicalRanked<T extends LexicalDocument>={document:T;score:number;matchedTerms:string[]};
+export function rankLexical<T extends LexicalDocument>(query:string,documents:T[],options?:{tieBreak?:(left:T,right:T)=>number}):LexicalRanked<T>[];
+export type LexicalChunkLocation={startLine:number;endLine:number;startOffset:number;endOffset:number;heading:string|null;kind:'paragraph'|'code'|'heading'};
+export type LexicalChunk=LexicalChunkLocation&{text:string};
+export type LexicalChunkOmission=LexicalChunkLocation&{reason:'oversized_block'|'chunk_limit'};
+export function chunkLexical(text:string,options?:{maxBytes?:number;maxChunks?:number}):{algorithm:typeof lexicalChunkAlgorithm;chunks:LexicalChunk[];omissions:LexicalChunkOmission[]};

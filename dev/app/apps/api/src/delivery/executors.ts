@@ -1,3 +1,6 @@
+import {currentIsolatedExecution} from '../execution/isolated-execution-policy';
+import {currentWorkspaceWriteLease} from '../execution/workspace-coordinator';
+import {runManagedProcess} from '../execution/managed-process';
 import {Inject,Injectable} from '@nestjs/common';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -21,12 +24,13 @@ const result=(started:number,exitCode:number,stdout:string,stderr:string,secrets
 export class LocalCommandExecutor implements CommandExecutor {
   id='local';
   async execute(input:CommandRequest):Promise<CommandResult>{
+    if(currentIsolatedExecution())throw new Error('Delivery local ou remoto não é autorizado por uma worktree isolada.');
     if(!input.projectRoot)throw new Error('Projeto local obrigatório.');
     const root=await realpath(input.projectRoot),cwd=await realpath(isAbsolute(input.cwd)?input.cwd:resolve(root,input.cwd));
     const rel=relative(root,cwd);if(rel==='..'||rel.startsWith('..'+sep)||isAbsolute(rel))throw new Error('Pasta fora do projeto.');
     const file=input.file||'/bin/sh',args=input.file?(input.args||[]):['-lc',input.command||''];
     const started=Date.now();
-    try{const output=await runFile(file,args,{cwd,env:{...process.env,...input.env,GIT_TERMINAL_PROMPT:'0'},timeout:input.timeoutMs,maxBuffer:1024*1024});return result(started,0,output.stdout,output.stderr,Object.values(input.env||{}))}
+    try{const lease=currentWorkspaceWriteLease();if(lease){const output=await runManagedProcess(file,args,{cwd,timeoutMs:input.timeoutMs,maxOutputBytes:1024*1024,signal:lease.signal,env:{...process.env,...input.env,GIT_TERMINAL_PROMPT:'0'}});return result(started,output.code??1,output.stdout,output.stderr,Object.values(input.env||{}));}const output=await runFile(file,args,{cwd,env:{...process.env,...input.env,GIT_TERMINAL_PROMPT:'0'},timeout:input.timeoutMs,maxBuffer:1024*1024});return result(started,0,output.stdout,output.stderr,Object.values(input.env||{}))}
     catch(error){const failure=error as Error&{code?:number;stdout?:string;stderr?:string;killed?:boolean};return result(started,typeof failure.code==='number'?failure.code:failure.killed?124:1,failure.stdout||'',failure.stderr||failure.message,Object.values(input.env||{}))}
   }
 }
@@ -55,6 +59,8 @@ export class SshCommandExecutor implements CommandExecutor {
   protected createClient(){return new Client()}
   async server(serverId:string,userId:string){const row=await this.db.one<Server>('SELECT id,host,port,username,credential_id,host_fingerprint FROM delivery_servers WHERE id=$1 AND owner_id=$2',[serverId,userId]);if(!row)throw new Error('Servidor não autorizado.');return row}
   async execute(input:CommandRequest):Promise<CommandResult>{
+    if(currentIsolatedExecution())throw new Error('Delivery local ou remoto não é autorizado por uma worktree isolada.');
+    if(currentWorkspaceWriteLease())throw new Error('Execução remota não possui autoridade física compartilhada; não pode integrar esta execução protegida.');
     if(!input.serverId)throw new Error('Servidor obrigatório.');
     const server=await this.server(input.serverId,input.userId);
     if(!/^[a-f0-9]{64}$/i.test(server.host_fingerprint))throw new Error('Fingerprint SHA-256 do host obrigatório.');

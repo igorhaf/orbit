@@ -1,3 +1,5 @@
+import {currentIsolatedExecution,assertIsolatedExecutionRoot} from './isolated-execution-policy';
+import {currentWorkspaceWriteLease} from './workspace-coordinator';
 import {assertCoreCompatibility} from '../plugins/core-compatibility';
 import Ajv from 'ajv';
 import {Executor,ExecutionInput,Integration,Output,Plugin,PluginAction} from './types';
@@ -156,7 +158,15 @@ export class PluginRegistry {
     return action as PluginAction;
   }
   async execute(integration:Integration,input:ExecutionInput,services?:PluginActionContext['services']):Promise<Output>{
-    const action=this.validate(integration,input.permissions);await this.authorizeAction?.(integration.plugin,integration.action,input.userId);const output=await action.execute(integration.config||{},{userId:input.userId,projectId:input.projectId,cardId:input.cardId,runId:input.runId,connectionId:integration.connection_id,execution:input,services,logger:{info(){},warn(){}}});
+    const lease=currentWorkspaceWriteLease();await lease?.assertActive();
+    if(currentIsolatedExecution()){
+      await assertIsolatedExecutionRoot(input.projectRoot);
+      if(integration.plugin!=='filesystem'||integration.action!=='read')throw new Error('Esta action não possui autoridade de efeitos isolados homologada pelo host.');
+    }
+    // Delivery attestation belongs to the host/adapter, never to a plugin action.
+    const {contextDelivery:hostDelivery,contextBridge:hostBridge,...execution}=input;
+    const action=this.validate(integration,input.permissions);await this.authorizeAction?.(integration.plugin,integration.action,input.userId);const output=await action.execute(integration.config||{},{userId:input.userId,projectId:input.projectId,cardId:input.cardId,runId:input.runId,connectionId:integration.connection_id,execution,services,logger:{info(){},warn(){}}});
+    await lease?.assertActive();
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;
   }
   catalog(){return this.list().map(p=>({id:p.id,name:p.name,version:p.version,description:p.description,parentPlugin:p.parentPlugin,children:this.list().filter(child=>child.parentPlugin===p.id).map(child=>child.id),blockedBy:this.blockedBy(p.id),dependents:this.dependents(p.id),status:this.disabled.has(p.id)?"disabled":this.isEnabled(p.id)?"active":"blocked",dependencies:p.dependencies||[],configuredEnabled:!this.disabled.has(p.id),enabled:this.isEnabled(p.id),configurable:Boolean(p.configurable||p.configuration?.length),capabilities:p.capabilities,actions:(p.actions||[]).map(({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})=>({id,name,permissions,requiredCapabilities,inputSchema,outputSchema})),connectionProvider:p.connectionProvider,contributions:p.contributions||{}}))}

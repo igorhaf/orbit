@@ -1574,21 +1574,23 @@ export class ExtensionRecords implements OnModuleInit {
     for (const effect of effects) {
       const userId = id(effect.userId), recordId = id(effect.recordId), roleId = text(effect.roleId, 80);
       if (!/^[a-z][a-z0-9_-]{1,79}$/.test(roleId) || !["grant", "revoke"].includes(effect.effect)) invalid("Efeito de papel de registro inválido.");
-      const [target, role, resource] = await Promise.all([
-        client.query<{ id: string; is_root: boolean }>("SELECT id,is_root FROM users WHERE id=$1 AND NOT disabled", [userId]),
-        client.query("SELECT id FROM access_roles WHERE id=$1", [roleId]),
-        client.query<{ id: string; plugin_id: string; kind: string }>(`SELECT r.id,r.plugin_id,r.kind FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
-          WHERE r.id=$1 AND r.workspace_id=$2 AND v.revision=r.revision`, [recordId, workspace]),
-      ]);
-      if (!target.rows[0] || target.rows[0].is_root || !role.rows[0] || !resource.rows[0]) invalid("O destino, o papel ou o registro do acesso não está disponível.", 409);
-      if (!this.registry.isEnabled(resource.rows[0].plugin_id) || this.definition(resource.rows[0].plugin_id, resource.rows[0].kind).resourceScoped !== true)
+      const { rows: [target] } = await client.query<{ id: string; is_root: boolean }>(
+        "SELECT id,is_root FROM users WHERE id=$1 AND NOT disabled", [userId]);
+      const { rows: [role] } = await client.query("SELECT id FROM access_roles WHERE id=$1", [roleId]);
+      const { rows: [resource] } = await client.query<{ id: string; plugin_id: string; kind: string }>(
+        `SELECT r.id,r.plugin_id,r.kind FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
+         WHERE r.id=$1 AND r.workspace_id=$2 AND v.revision=r.revision`, [recordId, workspace]);
+      if (!target || target.is_root || !role || !resource) invalid("O destino, o papel ou o registro do acesso não está disponível.", 409);
+      if (!this.registry.isEnabled(resource.plugin_id) || this.definition(resource.plugin_id, resource.kind).resourceScoped !== true)
         invalid("O acesso automático só pode ser aplicado a um registro com escopo individual habilitado.", 409);
+      // Take the users write lock before access_grants, in editorial lock order.
+      // Both changes and the audit remain part of the same record transaction.
+      await client.query("UPDATE users SET session_version=session_version+1 WHERE id=$1", [userId]);
       if (effect.effect === "grant") {
         await client.query("INSERT INTO access_grants(user_id,role_id,scope_type,scope_id) VALUES($1,$2,'extension_record',$3) ON CONFLICT DO NOTHING", [userId, roleId, recordId]);
       } else {
         await client.query("DELETE FROM access_grants WHERE user_id=$1 AND role_id=$2 AND scope_type='extension_record' AND scope_id=$3", [userId, roleId, recordId]);
       }
-      await client.query("UPDATE users SET session_version=session_version+1 WHERE id=$1", [userId]);
       await client.query("INSERT INTO access_audit(actor_id,action,target,scope_type,scope_id) VALUES($1,$2,$3,'extension_record',$4)", [actor, `role.scope.${effect.effect}`, `${roleId}:${userId}`, recordId]);
     }
   }

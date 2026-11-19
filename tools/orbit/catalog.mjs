@@ -195,6 +195,11 @@ function serializable(value) {
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serializable(item)]).filter(([, item]) => item !== undefined));
   return value;
 }
+function unresolvedPaths(value, path = '') {
+  if (value === UNKNOWN) return [path];
+  if (!value || typeof value !== 'object' || value.callable) return [];
+  return Object.entries(value).flatMap(([key, item]) => unresolvedPaths(item, path ? `${path}.${key}` : key));
+}
 function pluginMetadata(value, fallback, symbol) {
   if (!value || typeof value.id !== 'string' || typeof value.version !== 'string') return null;
   const capabilities = serializable(value.capabilities) || [];
@@ -217,6 +222,7 @@ function pluginMetadata(value, fallback, symbol) {
     parentPlugin: typeof value.parentPlugin === 'string' ? value.parentPlugin : undefined,
     dependencies: serializable(value.dependencies) || [], coreCompatibility: serializable(value.coreCompatibility),
     capabilities, permissions, actions, events: serializable(value.recordEvents?.events) || [],
+    unresolvedContracts: unresolvedPaths({ dependencies: value.dependencies, coreCompatibility: value.coreCompatibility, capabilities: value.capabilities, actions: value.actions, contributions: value.contributions }),
     contributions, path: value[ORIGIN]?.path || fallback, line: value[ORIGIN]?.line, symbol,
   };
 }
@@ -288,11 +294,11 @@ function metadataCache(root, runtime, sources, versionPath) {
   };
 }
 
-export function catalogRuntime(root, runtime, existingScan) {
+export function catalogRuntime(root, runtime, existingScan, options = {}) {
   const app = resolve(root, runtime.app), base = join(app, 'apps/api/src');
   const sources = walk(base, path => /\.[cm]?tsx?$/.test(path) && !/\.(?:spec|test)\.tsx?$/.test(path));
   const versionPath = join(app, 'apps/api/core-version.json');
-  const cache = metadataCache(root, runtime, sources, versionPath);
+  const cache = options.cache === false ? { save() {} } : metadataCache(root, runtime, sources, versionPath);
   if (cache.cached) return {...cache.cached, cache:{hit:true, fingerprint:cache.fingerprint}};
   const scan = existingScan || scanner(root), {ts} = scan;
   const plugins = [], seen = new Map(), diagnostics = [];
@@ -358,10 +364,10 @@ export function catalogRuntime(root, runtime, existingScan) {
 }
 
 function stable(value) { if (Array.isArray(value)) return value.map(stable); if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])); return value; }
-export function buildCatalog(root, config, runtimeId) {
+export function buildCatalog(root, config, runtimeId, options = {}) {
   const selected = config.runtimes.filter(runtime => !runtimeId || runtime.id === runtimeId);
   if (runtimeId && !selected.length) throw new Error(`Unknown runtime: ${runtimeId}`);
-  const runtimes = selected.map(runtime => catalogRuntime(root, runtime));
+  const runtimes = selected.map(runtime => catalogRuntime(root, runtime, undefined, options));
   const diagnostics = runtimes.flatMap(runtime => runtime.diagnostics.map(item => ({ runtime: runtime.id, ...item })));
   const versions = new Map();
   for (const runtime of runtimes) for (const plugin of runtime.plugins) {
@@ -484,4 +490,14 @@ export async function execute(command, args, context) {
   if (command === 'catalog') return buildCatalog(context.root, context.config, option(args, '--runtime'));
   if (command === 'impact') return analyzeImpact(context.root, context.config, changedFiles(context.root, args));
   throw new Error(`Unsupported catalog command: ${command}`);
+}
+
+/** Static import edges only; never imports application modules or writes catalog caches. */
+export function runtimeImports(root, runtime) {
+  const ts = parser(root);
+  return walk(resolve(root, runtime.app, 'apps/api/src'), path => /\.[cm]?[jt]sx?$/.test(path) && !/\.(?:spec|test)\.[jt]sx?$/.test(path)).flatMap(file =>
+    ts.preProcessFile(readFileSync(file, 'utf8'), true, true).importedFiles.map(item => ({
+      from: slash(relative(root, file)), specifier: item.fileName,
+      to: resolveImport(file, item.fileName, root),
+    })).filter(edge => edge.to).map(edge => ({ ...edge, to: slash(relative(root, edge.to)) })));
 }

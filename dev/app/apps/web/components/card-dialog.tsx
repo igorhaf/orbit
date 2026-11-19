@@ -22,6 +22,8 @@ import {
   CardDetails,
   CardAttachment,
   PromptRun,
+  runRevisionFreshness,
+  runRevisionLabel,
   getUser,
   labelColors,
   labelTextColor,
@@ -90,6 +92,7 @@ function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecu
   const [run, setRun] = useState<PromptRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const runStatus = run?.status;
   useEffect(() => {
     let live = true;
     const refresh = async () => {
@@ -99,9 +102,9 @@ function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecu
       } catch { /* Mantém o último resumo carregado. */ }
     };
     void refresh();
-    const timer = window.setInterval(() => { if (run && ["queued", "running"].includes(run.status)) void refresh(); }, 1200);
+    const timer = window.setInterval(() => { if (["queued", "running"].includes(runStatus || "")) void refresh(); }, 1200);
     return () => { live = false; window.clearInterval(timer); };
-  }, [card.id, run]);
+  }, [card.id, card.card_revision, runStatus]);
   if (!run || (!run.summary && !run.prompt?.includes("[[ORBIT_SUMMARY]]"))) return null;
   async function perform(action: () => Promise<unknown>, startsExecution = false) {
     setBusy(true);
@@ -122,12 +125,14 @@ function CardPromptSummary({ card, onOpenExecution, onChanged, aiLocked, onExecu
     }
   }
   const summary = run.summary || "";
+  const freshness = runRevisionFreshness(run, card.card_revision);
   return <section aria-label="Resultado do último prompt da descrição" className="mt-3 rounded-lg border border-[#c3b6f7] bg-[#f7f5ff] p-3 dark:border-[#594b86] dark:bg-[#302a43]">
     <h3 className="text-sm font-semibold text-[#403294] dark:text-[#d4c7ff]">Resultado do último prompt</h3>
+    <p role="status" className={`mt-2 text-xs leading-5 ${freshness==='stale'?'font-semibold text-[#974f0c] dark:text-[#f5cd47]':'text-[#626f86] dark:text-[#c4bce0]'}`}>{runRevisionLabel(run, card.card_revision)}</p>
     {run.summary ? <>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#172b4d] dark:text-[#e6e0ff]">{summary}</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" disabled={busy} onClick={() => void perform(() => send<Card>(`/cards/${card.id}`, "PATCH", { description: summary }))} className="rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50">Sobrescrever como descrição</button>
+        <button type="button" disabled={busy || freshness!=="current"} title={freshness!=="current"?"Reexecute a demanda atual antes de sobrescrever a descrição com este resultado.":undefined} onClick={() => void perform(() => send<Card>(`/cards/${card.id}`, "PATCH", { description: summary, expected_card_revision: run.card_revision }))} className="rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50">Sobrescrever como descrição</button>
         <button type="button" disabled={busy} onClick={() => void perform(() => send(`/cards/${card.id}/comments`, "POST", { body: summary }))} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><MessageSquare size={14} /> Adicionar como comentário</button>
         <button type="button" disabled={busy || aiLocked} onClick={() => { onOpenExecution(); void perform(() => send(`/cards/${card.id}/prompt-runs`, "POST", { multiple_agents: run.multiple_agents === true }), true); }} className="flex items-center gap-1 rounded border border-[#c3b6f7] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#403294] hover:bg-[#eeeaff] disabled:opacity-50"><RotateCcw size={14} /> Reexecutar</button>
       </div>

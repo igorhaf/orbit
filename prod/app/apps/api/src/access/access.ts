@@ -1,3 +1,4 @@
+import {discoveryEditorialPermissions} from './editorial-permissions';
 import type {PluginDefinition} from '../plugins/contract';
 import {corePrivileges,permissionForRoute,evaluatePermissions,Privilege} from './privileges';
 import {Body,CanActivate,Controller,ExecutionContext,Get,HttpException,Inject,Injectable,Param,Patch,Post,Put,Query,Req} from '@nestjs/common';
@@ -65,7 +66,7 @@ export class AccessService {
  registerBoardPolicy(policy:(board:string,user:string,permission:string,snapshot?:{is_collection?:boolean})=>Promise<boolean>){this.boardPolicies.push(policy)}
  async availableBoards<T extends {id:string;is_collection?:boolean}>(boards:T[],user:string){const allowed=await Promise.all(boards.map(async board=>(await Promise.all(this.boardPolicies.map(policy=>policy(board.id,user,'boards.read',board)))).every(Boolean)&& (await Promise.all(this.boardListingPolicies.map(policy=>policy(board.id,user)))).every(Boolean)));return boards.filter((_board,index)=>allowed[index])}
 
- private registeredPermissions=new Map<string,Privilege>(corePrivileges.map(p=>[p.id,p]));
+ private registeredPermissions=new Map<string,Privilege>([...corePrivileges,...discoveryEditorialPermissions.map(id=>({id,label:id,source:'core'}))].map(p=>[p.id,p]));
  private routePlugins=new Map<string,string>();
  private pluginDefinitions=new Map<string,PluginDefinition>();
  private pluginRoutes=new Set<string>();
@@ -97,10 +98,35 @@ export class AccessService {
  async authenticate(token:string){let payload:jwt.JwtPayload;try{payload=jwt.verify(token,process.env.JWT_SECRET!) as jwt.JwtPayload}catch{return deny('Sessão expirada.',401)}const user=await this.account(id(payload.sub));if(Number(payload.version||0)!==user.session_version)deny('Sessão revogada. Entre novamente.',401);return user}
  async grants(user:string,type='global',scope='*'){return this.db.query<{role_id:string;name:string;permissions:string[]}>('SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id WHERE g.user_id=$1 AND g.scope_type=$2 AND g.scope_id=$3',[user,type,scope])}
  async isAdmin(user:string){const simulation=this.simulation(user);if(simulation)return ['administrator','platform_admin'].includes(simulation.role.id);return Boolean(await this.db.one("SELECT user_id FROM access_grants WHERE user_id=$1 AND scope_type='global' AND role_id IN ('administrator','platform_admin')",[user]))}
- async initializeDefaults(){const read=this.catalog().filter(p=>p.endsWith('.read')&&!p.startsWith('settings.'));if(this.catalog().includes('views.board.use'))read.push('views.board.use');await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id='user' AND NOT defaults_initialized",[read]);await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id IN ('administrator','platform_admin') AND NOT defaults_initialized",[this.catalog()])}
- async effective(user:string,type='global',scope='*'){const account=await this.account(user);const simulation=this.simulation(user);if(account.is_root&&!simulation)return ['*'];if(simulation){const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');return evaluatePermissions(false,simulation.role.permissions,[],[],disabled.map(permission=>permission.permission_id),this.catalog())}const roles=type==='global'?await this.grants(user):await this.db.query<{role_id:string;name:string;permissions:string[]}>(`SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id
+ async initializeDefaults(){const read=this.catalog().filter(p=>!p.startsWith('discovery_review.')&&p.endsWith('.read')&&!p.startsWith('settings.'));if(this.catalog().includes('views.board.use'))read.push('views.board.use');await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id='user' AND NOT defaults_initialized",[read]);await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id IN ('administrator','platform_admin') AND NOT defaults_initialized",[this.catalog().filter(p=>!p.startsWith('discovery_review.'))])}
+ async effective(user:string,type='global',scope='*',explicitOnly=false){const account=await this.account(user);const simulation=this.simulation(user);if(account.is_root&&!simulation&&!explicitOnly)return ['*'];if(simulation){const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');return evaluatePermissions(false,simulation.role.permissions,[],[],disabled.map(permission=>permission.permission_id),this.catalog())}const roles=type==='global'?await this.grants(user):await this.db.query<{role_id:string;name:string;permissions:string[]}>(`SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id
    WHERE g.user_id=$1 AND ((g.scope_type='global' AND g.scope_id='*') OR (g.scope_type=$2 AND g.scope_id=$3))`,[user,type,scope]);const grouped=await this.db.query<{permissions:string[]}>('SELECT g.permissions FROM access_groups g JOIN access_group_members m ON m.group_id=g.id WHERE m.user_id=$1',[user]);const exceptions=await this.db.query<{permission_id:string;effect:string}>('SELECT permission_id,effect FROM access_user_exceptions WHERE user_id=$1',[user]);const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');const rolePermissions=roles.flatMap(r=>r.permissions);return evaluatePermissions(false,rolePermissions,grouped.flatMap(g=>g.permissions),exceptions,disabled.map(p=>p.permission_id),this.catalog())}
+ /** Narrow transactional entry: reuse real grants/groups/exceptions evaluation without ROOT bypass.
+  * Callback providers have no transaction contract, so they are not silently bypassed. */
+ async editorialPermissions(db:{query:(sql:string,p?:any[])=>Promise<any>},user:string){
+  if(this.simulation(user))deny();
+  const proxy=new AccessService({query:async(sql:string,p:any[]=[])=>{const r=await db.query(sql,p);return Array.isArray(r)?r:r.rows},one:async(sql:string,p:any[]=[])=>{const r=await db.query(sql,p);return (Array.isArray(r)?r:r.rows)[0]??null}} as Db);
+  proxy.registeredPermissions=this.registeredPermissions;
+  return proxy.effective(user,'global','*',true);
+ }
+ editorialScopeProvidersPresent(){return this.boardPolicies.length>0||this.boardAccessProviders.length>0||this.scopes.size>0||this.memberships.size>0||this.recordPermissionProviders.length>0||this.resourceAvailability.length>0||this.resourceProviders.length>0||this.boardListProviders.length>0||this.boardScopeProviders.length>0||this.boardMemberProviders.length>0||this.boardListingPolicies.length>0}
+ editorialProviderInventory(){
+  return [
+   {family:'scope',count:this.scopes.size,ids:[...this.scopes.keys()]},
+   {family:'membership',count:this.memberships.size,ids:[...this.memberships.keys()]},
+   {family:'board_policy',count:this.boardPolicies.length},
+   {family:'board_access',count:this.boardAccessProviders.length},
+   {family:'board_list',count:this.boardListProviders.length},
+   {family:'board_scope',count:this.boardScopeProviders.length},
+   {family:'board_members',count:this.boardMemberProviders.length},
+   {family:'board_listing_policy',count:this.boardListingPolicies.length},
+   {family:'record_permission',count:this.recordPermissionProviders.length},
+   {family:'resource_availability',count:this.resourceAvailability.length},
+   {family:'resources',count:this.resourceProviders.length},
+  ];
+ }
  async has(user:string,permission:string,type='global',scope='*'){
+  if(permission.startsWith('discovery_review.'))return type==='global'&&!(this.simulation(user))&&(await this.effective(user,'global','*',true)).includes(permission);
   const account=await this.account(user);if(account.is_root)return true;
   const granted=(await this.effective(user,type,scope)).includes(permission);if(!granted)return false;
   if(type==='global')return true;
@@ -109,6 +135,7 @@ export class AccessService {
 
  /** Strict resource authorization: only a grant on this exact scope can authorize access. */
  async hasScoped(user:string,permission:string,type:string,scope:string){
+  if(permission.startsWith('discovery_review.'))return false;
   const account=await this.account(user);if(account.is_root)return true;
   const provider=this.scopes.get(type),membership=this.memberships.get(type);if(!provider||!membership||!await provider(scope))return false;
   const roles=await this.grants(user,type,scope);

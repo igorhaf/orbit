@@ -1,5 +1,6 @@
 import {Inject,Injectable,HttpException} from '@nestjs/common';
 import type {Request} from 'express';
+import type {PoolClient} from 'pg';
 import {Db} from '../../db';
 import {FeaturesService} from '../../features';
 import {PluginRegistry} from '../../execution/registries';
@@ -63,6 +64,25 @@ export class VaultService{
     const row=await this.db.one<{id:string}>('INSERT INTO vault_items(owner_id,title,category,secret_data) VALUES($1,$2,$3,$4) RETURNING id',[userId,title,category,this.encryptVault({content_html,credentials:credentials(body.credentials)})]);
     return this.vaultItem(row!.id,userId);
   }
+  private async lockVaultItemForMutation(client:PoolClient,id:string,userId:string) {
+    const params=[id,userId];
+    const {rows:[candidate]}=await client.query<{card_id:string|null}>(
+      'SELECT card_id FROM vault_items WHERE id=$1 AND owner_id=$2',params);
+    if(!candidate) return fail('Item do cofre não encontrado.',404);
+
+    if(candidate.card_id){
+      // The editorial reader takes cards before vault_items. Acquire the
+      // future write lock now to avoid a later upgrade while holding vault_items.
+      await client.query('LOCK TABLE cards IN ROW EXCLUSIVE MODE');
+      await client.query('SELECT id FROM cards WHERE id=$1 FOR UPDATE',[candidate.card_id]);
+    }
+
+    const {rows:[row]}=await client.query<{card_id:string|null;secret_data:string}>(
+      'SELECT card_id,secret_data FROM vault_items WHERE id=$1 AND owner_id=$2 FOR UPDATE',params);
+    if(!row) return fail('Item do cofre não encontrado.',404);
+    if(row.card_id!==candidate.card_id) return fail('O vínculo com o cartão mudou. Recarregue o item e tente novamente.',409);
+    return row;
+  }
   async updateVaultItem(id:string,userId:string,body:Payload) {this.assertEnabled();
     uuid(id);const existing=await this.vaultItem(id,userId);
     const title=body.title===undefined?null:value(body.title,'Título',300);const category=body.category===undefined?null:value(body.category,'Categoria',48);
@@ -71,8 +91,7 @@ export class VaultService{
     const client=await this.db.pool.connect();
     try{
       await client.query('BEGIN');
-      const row=(await client.query('SELECT card_id,secret_data FROM vault_items WHERE id=$1 AND owner_id=$2 FOR UPDATE',[id,userId])).rows[0];
-      if(!row)fail('Item do cofre não encontrado.',404);
+      const row=await this.lockVaultItemForMutation(client,id,userId);
       const fields=credentials(body.credentials===undefined?this.decryptVault(row.secret_data).credentials:body.credentials);
       await assertVaultReferencesRetained(this.db,userId,id,fields);
       await client.query("UPDATE vault_items SET title=$3,category=COALESCE($4,category),notes='',secret_data=$5,updated_at=now() WHERE id=$1 AND owner_id=$2",[id,userId,title??existing.title,category,this.encryptVault({content_html,credentials:fields})]);
@@ -85,8 +104,8 @@ export class VaultService{
     uuid(id);await assertVaultReferencesRetained(this.db,userId,id,[]);const client=await this.db.pool.connect();
     try{
       await client.query('BEGIN');
-      const item=(await client.query('DELETE FROM vault_items WHERE id=$1 AND owner_id=$2 RETURNING card_id',[id,userId])).rows[0];
-      if(!item)fail('Item do cofre não encontrado.',404);
+      const item=await this.lockVaultItemForMutation(client,id,userId);
+      await client.query('DELETE FROM vault_items WHERE id=$1 AND owner_id=$2',[id,userId]);
       if(item.card_id)await client.query('DELETE FROM cards WHERE id=$1',[item.card_id]);
       await client.query('COMMIT');return {ok:true};
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}

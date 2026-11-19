@@ -8,7 +8,7 @@ export type ExecutionConfig={project_id:string|null;enabled:boolean;agent:string
 export type ExecutionDefaults=Omit<ExecutionConfig,'project_id'|'enabled'>;
 export type Output={type:string;label?:string;value:unknown};
 export type ExecutionResult={summary:string;outputs:Output[]};
-export type ExecutionInput={runId:string;cardId:string;userId:string;projectId:string;title:string;prompt:string;workingDirectory:string;projectRoot:string;permissions:string[];action:string;integrations:Integration[];signal:AbortSignal;writeScope?:string[]};
+export type ExecutionInput={runId:string;cardId:string;userId:string;projectId:string;title:string;prompt:string;workingDirectory:string;projectRoot:string;permissions:string[];action:string;integrations:Integration[];signal:AbortSignal;writeScope?:string[];contextDelivery?:import('./context-delivery').ContextDeliveryContract;contextBridge?:import('./context-bridge-host').ContextBridgeExecutorHandle};
 export type Capability={id:string;name:string;permissions:string[]};
 export interface Executor {id:string;name:string;actions:Capability[];execute(input:ExecutionInput):Promise<ExecutionResult>}
 export type PluginAction=import('../plugins/contract').ActionDefinition&{execute:(config:Record<string,unknown>,context:import('../plugins/contract').PluginActionContext)=>Promise<Output>};

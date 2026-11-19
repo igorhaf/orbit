@@ -27,6 +27,7 @@ export const workspaces: PluginDefinition = {id:'workspaces', name:'Workspaces',
 export const external: PluginDefinition = {id:'external', name:'External', version:'1.0.0'};
 `);
   write('dev/app/apps/api/src/plugins/contract.ts', 'export type PluginDefinition = Record<string, unknown>;');
+  write('dev/app/apps/api/src/orbit-architecture.ts', "export const orbitContextRuntime='dev';\nexport const policy='fixture';\n");
   write('dev/app/apps/api/src/main.ts', "import { boardView, workspaces, external } from './plugins/example'; const registry = { register(plugin:unknown) {} }; registry.register(boardView); registry.register(workspaces); registry.register(external);");
   write('dev/app/.env.example', 'DATABASE_URL=old\nAPI_PORT=4001\nJWT_SECRET=\n');
   write('dev/app/.env', 'SECRET=do-not-copy');
@@ -78,6 +79,8 @@ test('product generation uses canonical source, isolated profile and explicit wr
     assert.deepEqual(profile.plugins.enabled, ['board-view', 'workspaces']);
     assert.deepEqual(profile.plugins.disabled, ['external']);
     assert.equal(profile.database.name, 'orbit_academy');
+    assert.match(readFileSync(resolve(base,'app/apps/api/src/orbit-architecture.ts'),'utf8'),/orbitContextRuntime="academy"/);
+    assert.match(readFileSync(resolve(context.root,'dev/app/apps/api/src/orbit-architecture.ts'),'utf8'),/orbitContextRuntime='dev'/);
     assert.notEqual(profile.ports.web, context.config.runtimes[0].webPort);
     assert.equal(readFileSync(resolve(base, 'app/apps/web/components/shared.tsx'), 'utf8'), 'export const Canonical = true;');
     const shared = inspectShared({ root: context.root, config: { ...context.config, runtimes: [{ id: 'academy', app: 'products/academy/app' }] } });
@@ -97,6 +100,7 @@ test('product generation uses canonical source, isolated profile and explicit wr
     assert.match(generatedMigration, /ALTER TABLE users ADD COLUMN is_root boolean NOT NULL DEFAULT false;/);
     const provenance = JSON.parse(readFileSync(resolve(base, 'generation.manifest.json'), 'utf8'));
     assert.equal(provenance.source.mode, 'working-tree');
+    assert.ok(provenance.transformations.some(item=>item.id==='context-runtime-identity'));
     assert.equal(provenance.transformations[0].source.sha256, createHash('sha256').update(sourceMigration).digest('hex'));
     assert.equal(provenance.transformations[0].result.sha256, createHash('sha256').update(generatedMigration).digest('hex'));
     for (const script of ['runtime.mjs', 'apply-profile.mjs', 'database.mjs']) execFileSync(process.execPath, ['--check', resolve(base, script)]);

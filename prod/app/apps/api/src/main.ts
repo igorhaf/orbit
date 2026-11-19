@@ -321,7 +321,7 @@ class Service {
       slot.mirror_source_id AS source_card_id,slot.mirror_expanded,c.kind AS source_kind,
       source_board.id AS source_board_id,source_board.title AS source_board_title,
       (SELECT title FROM boards WHERE id=slot.target_board_id) AS target_board_title,
-      c.title,c.description,slot.url_token,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,false AS completed,c.ai_project_id,c.ai_model,c.ai_effort,c.ai_execution_mode,p.ai_default_model AS ai_project_default_model,p.ai_default_effort AS ai_project_default_effort,u.ai_default_model AS ai_global_model,u.ai_default_effort AS ai_global_effort,c.created_at,c.updated_at,
+      c.card_revision,c.title,c.description,slot.url_token,c.start_date,c.due_date,c.reminder_minutes,c.recurrence,false AS completed,c.ai_project_id,c.ai_model,c.ai_effort,c.ai_execution_mode,p.ai_default_model AS ai_project_default_model,p.ai_default_effort AS ai_project_default_effort,u.ai_default_model AS ai_global_model,u.ai_default_effort AS ai_global_effort,c.created_at,c.updated_at,
       c.schedule_start_at,c.schedule_end_at,c.schedule_all_day,c.schedule_time_zone,
       CASE WHEN c.schedule_start_at IS NULL THEN NULL ELSE json_build_object('startAt',c.schedule_start_at,'endAt',c.schedule_end_at,'allDay',c.schedule_all_day,'timeZone',c.schedule_time_zone) END AS schedule,
       (SELECT json_build_object('enabled',e.enabled,'project_id',e.project_id,'agent',e.agent,'executor',e.executor) FROM card_execution_configs e WHERE e.card_id=c.id AND e.enabled) AS execution,
@@ -877,6 +877,11 @@ class Service {
     await this.features.record(userId,boardId,null,'card_created',titles.length===1?`criou o cartão ${titles[0]}`:`criou ${titles.length} cartões na lista`);
     return created;
   }
+  async cardRevisions(id:string,userId:string){
+    await this.cardBoard(id,userId);
+    if(await this.db.one('SELECT 1 FROM vault_items WHERE card_id=$1',[id]))fail('Histórico indisponível para cartões no cofre.',409);
+    return this.db.query('SELECT card_id,revision,snapshot,content_hash,created_at FROM card_revisions WHERE card_id=$1 ORDER BY revision DESC LIMIT 100',[id]);
+  }
   async updateCard(id: string,userId: string,body: Payload): Promise<Payload | null> {
     assertOrbitFields(body,orbitArchitecture.cardUpdate);
     const boardId = await this.cardBoard(id,userId);
@@ -893,6 +898,8 @@ class Service {
       if(typeof expanded!=='boolean')fail('Estado do espelho inválido.');
       return this.db.one('UPDATE cards SET list_id=$2,position=$3,mirror_expanded=$4,updated_at=now() WHERE id=$1 RETURNING *',[id,listId,position,expanded]);
     }
+    const expectedRevision=body.expected_card_revision;
+    if(expectedRevision!==undefined&&(!Number.isInteger(expectedRevision)||Number(expectedRevision)<1||Number(expectedRevision)>2147483647))fail('Revisão esperada inválida.');
     const title=body.title===undefined?original.title as string:value(body.title,'Título',300);
     this.assertCardTextSafe(title);
     const special=body.title===undefined||original.kind==='template'?null:await this.classifyTitle(title,userId);
@@ -952,7 +959,8 @@ class Service {
     const card=await this.db.one(`UPDATE cards SET title=$2,description=$3,start_date=$4,due_date=$5,reminder_minutes=$6,
       recurrence=$7,completed=false,list_id=$8,position=$9,kind=$10,target_board_id=$11,link_url=$12,
       schedule_start_at=$13,schedule_end_at=$14,schedule_all_day=$15,schedule_time_zone=$16,updated_at=now()
-      WHERE id=$1 RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url,scheduleStart,scheduleEnd,scheduleAllDay,scheduleTimeZone]);
+      WHERE id=$1 AND ($17::integer IS NULL OR card_revision=$17) RETURNING *`,[id,title,description,startDate,dueDate,reminder,recurrence,listId,position,kind,special?special.targetBoardId:original.target_board_id,special?special.linkUrl:original.link_url,scheduleStart,scheduleEnd,scheduleAllDay,scheduleTimeZone,expectedRevision??null]);
+    if(!card)fail('O cartão mudou. Atualize antes de substituir a descrição.',409);
     const moved=listId!==original.list_id;
     if (body.title!==undefined || body.description!==undefined || body.due_date!==undefined || body.start_date!==undefined || body.schedule!==undefined || body.schedule_start_at!==undefined || body.schedule_end_at!==undefined || moved) {
       const action=moved?'moveu um cartão':body.title!==undefined?`renomeou o cartão para ${title}`:body.due_date!==undefined||scheduleAssigned?'alterou a data de um cartão':'atualizou um cartão';
@@ -1346,6 +1354,7 @@ class ApiController {
   @Post('lists/:id/cards') createCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.createCard(id,this.service.user(req),body); }
   @Patch('cards/:id') updateCard(@Req() req: Request,@Param('id') id: string,@Body() body: Payload) { return this.service.updateCard(id,this.service.user(req),body); }
   @Delete('cards/:id') deleteCard(@Req() req: Request,@Param('id') id: string) { return this.service.deleteCard(id,this.service.user(req)); }
+  @Get('cards/:id/revisions') cardRevisions(@Req() req:Request,@Param('id') id:string){return this.service.cardRevisions(id,this.service.user(req));}
   @Get('cards/:id/details') cardDetails(@Req() req: Request,@Param('id') id: string) { return this.service.cardDetails(id,this.service.user(req)); }
   @Post('cards/:id/comments') async comment(@Req() req: Request,@Res({passthrough:true}) response:Response,@Param('id') id: string,@Body() body: Payload) {
     const actor=this.service.user(req);

@@ -1,15 +1,32 @@
+import {discoveryConfiguration} from '../../execution/discovery-journal';
+import {captureExecutionDiscoveries} from '../../execution/discovery-journal-host';
+import {knowledgePolicyFromHost,knowledgePolicyForManifest,prepareProjectKnowledge} from '../../execution/knowledge-host';
+import {knowledgeRetrievalMetadata,type KnowledgeRetrievalPolicy} from '../../execution/knowledge-retrieval';
+import {contextBridgePolicyFromHost,contextBridgePolicyForManifest,bridgeConfiguration,openContextBridge,type ContextBridgeHostPolicy} from '../../execution/context-bridge-host';
+import {compileContext,compilationMetadata,type ContextCompileBlock,type ContextCompilerPolicy} from '../../execution/context-compiler';
+import {contextCompilerPolicyFromHost,compilerPolicyForManifest} from '../../execution/context-compiler-host';
+import {ContextManifestRepository,ContextManifest,ContextSource,StoredContextManifest,compareContextManifest,hashContextValue,hashContextText} from '../../execution/context-manifest';
+import {contextTechnicalState,executionContextIdentity,manifestForExecution,observedContextSource,relevantPluginSources,currentContext,verifyRunContext,finalRunContext,contextJson} from '../../execution/context-runtime';
+import {PluginRegistry} from '../../execution/registries';
+import {orbitArchitecturePrompt} from '../../orbit-architecture';
+import {relative as relativeContextPath} from 'node:path';
+import {captureIsolationRequest,validateIsolationRequest,withIsolatedCheckout,IsolatedCheckoutRequest} from '../../execution/isolated-checkout';
+import {withIsolatedExecution} from '../../execution/isolated-execution-policy';
+import type {WorkspaceWriteLease} from '../../execution/workspace-coordinator';
+import {withWorkspaceWriteLease} from '../../execution/workspace-coordinator';
+import {cardRevisionFreshnessSql} from '../../card-versions';
 import {CardLayoutsService} from '../../plugins/card-layouts';
 import { orbitDevelopmentGuidance } from '../../execution/development-policy';
 import { assertOrbitFields, orbitArchitecture } from '../../orbit-architecture';
 import { extractPromptQuestion, questionGuidance } from '../../prompt-question';
 import {validateProjectChecks} from '../../execution/project-checks';
-import {redact,redactFileChanges} from '../../execution/security';
+import {redact,redactContext,redactFileChanges} from '../../execution/security';
 import { enforceCodexQuota } from '../../codex-limits';
 import { HttpException, Inject, Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { access, mkdir, realpath, stat, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { constants } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { PoolClient } from 'pg';
@@ -24,7 +41,7 @@ import { ProjectRegistry } from '../../execution/project-registry';
 
 type Payload = Record<string, unknown>;
 type Effort = 'low'|'medium'|'high'|'xhigh';
-type CardContext = { id:string; title:string; description:string; ai_project_id:string|null; ai_model:string|null; ai_effort:Effort|null; ai_execution_mode:'planning'|'bypass'|'question'; ai_default_project_id:string|null; ai_default_model:string|null; ai_default_effort:Effort|null; project_ai_default_model:string|null; project_ai_default_effort:Effort|null; user_ai_default_model:string|null; user_ai_default_effort:Effort|null };
+type CardContext = { workspace_id?:string; card_revision:number; id:string; title:string; description:string; ai_project_id:string|null; ai_model:string|null; ai_effort:Effort|null; ai_execution_mode:'planning'|'bypass'|'question'; ai_default_project_id:string|null; ai_default_model:string|null; ai_default_effort:Effort|null; project_ai_default_model:string|null; project_ai_default_effort:Effort|null; user_ai_default_model:string|null; user_ai_default_effort:Effort|null };
 type CommentSettings = {projectId:string;model:string;effort:Effort};
 type CommentJob = {comment_id:string;card_id:string;user_id:string;project_id:string;model:string;effort:Effort};
 type CommentReply = CommentJob & {authorLabel:string};
@@ -57,7 +74,9 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   private commentQueueWorkers=new Map<string,Promise<void>>();
   private staleRunTimer:ReturnType<typeof setInterval>|null=null;
   private readonly workerId=`${process.env.ORBIT_ENV||'main'}:${process.pid}:${randomUUID()}`;
-  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents,@Optional() @Inject(ProjectRegistry) private projectRegistry?:ProjectRegistry,@Optional() @Inject(CardLayoutsService) private layouts?:CardLayoutsService){}
+  constructor(@Inject(Db) private db:Db,@Inject(FeaturesService) private features:FeaturesService,@Inject(CodexAiService) private codex:CodexAiService,@Inject(OrbitEvents) private events:OrbitEvents,@Optional() @Inject(ProjectRegistry) private projectRegistry?:ProjectRegistry,@Optional() @Inject(CardLayoutsService) private layouts?:CardLayoutsService,@Optional() @Inject(PluginRegistry) private pluginRegistry?:PluginRegistry){}
+  private traceContextAvailable(){if(!this.projectRegistry||!this.pluginRegistry)fail('O host precisa fornecer os registries de projeto e plugins para capturar o contexto.',409);return true;}
+  private async quota(force=false){return enforceCodexQuota(this.db,force)}
   private async member(boardId:string,userId:string){if(!await this.db.one('SELECT board_id FROM board_members WHERE board_id=$1 AND user_id=$2',[boardId,userId]))fail('Quadro não encontrado.',404);}
   async onModuleInit(){
     this.staleRunTimer=setInterval(()=>void this.maintainAiQueues().catch(error=>console.error('Não foi possível atualizar as filas de IA.',error)),5_000);
@@ -68,7 +87,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   }
   private async maintainAiQueues(){
     if(!this.codex.isAvailable())return;
-    await enforceCodexQuota(this.db);
+    await this.quota();
     await this.recoverStaleRuns();
     const queued=await this.db.query<{card_id:string}>('SELECT DISTINCT card_id FROM card_ai_comment_jobs WHERE status=$1',['queued']);
     for(const job of queued)void this.drainCommentQueue(job.card_id).catch((error:unknown)=>console.error('Não foi possível retomar a fila de comentários do GPT.',error));
@@ -237,7 +256,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   }
   private async card(cardId:string,userId:string):Promise<{boardId:string;card:CardContext}>{
     const boardId=await this.features.cardBoard(cardId,userId);
-    const card=await this.db.one<CardContext>('SELECT c.id,c.title,c.description,c.ai_project_id,c.ai_model,c.ai_effort,c.ai_execution_mode,b.ai_default_project_id,b.ai_default_model,b.ai_default_effort,p.ai_default_model AS project_ai_default_model,p.ai_default_effort AS project_ai_default_effort,u.ai_default_model AS user_ai_default_model,u.ai_default_effort AS user_ai_default_effort FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN users u ON u.id=$2 LEFT JOIN ai_projects p ON p.id=COALESCE(c.ai_project_id,b.ai_default_project_id) WHERE c.id=$1',[cardId,userId]);
+    const card=await this.db.one<CardContext>('SELECT c.id,b.workspace_id,c.card_revision,c.title,c.description,c.ai_project_id,c.ai_model,c.ai_effort,c.ai_execution_mode,b.ai_default_project_id,b.ai_default_model,b.ai_default_effort,p.ai_default_model AS project_ai_default_model,p.ai_default_effort AS project_ai_default_effort,u.ai_default_model AS user_ai_default_model,u.ai_default_effort AS user_ai_default_effort FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN users u ON u.id=$2 LEFT JOIN ai_projects p ON p.id=COALESCE(c.ai_project_id,b.ai_default_project_id) WHERE c.id=$1',[cardId,userId]);
     if(!card)fail('Cartão não encontrado.',404);return {boardId,card:card as CardContext};
   }
   async settingsForCard(cardId:string,userId:string){const {card}=await this.card(cardId,userId);return {projectId:card.ai_project_id||card.ai_default_project_id||null,model:card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model||null,effort:card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort||null};}
@@ -290,7 +309,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
   }
   private async queuePaused(userId:string){
     if(!this.codex.isAvailable())return true;
-    await enforceCodexQuota(this.db);
+    await this.quota();
     const row=await this.db.one<{paused:boolean}>("SELECT COALESCE(preferences->>'codexQueuePaused','false')='true' AS paused FROM users WHERE id=$1",[userId]);
     return row?.paused||false;
   }
@@ -303,7 +322,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         if(!this.codex.isAvailable())break;
         const active=await this.db.one<{active:boolean}>('SELECT EXISTS(SELECT 1 FROM card_runs WHERE card_id=$1 AND status IN (\'queued\',\'running\')) OR EXISTS(SELECT 1 FROM card_ai_runs WHERE card_id=$1 AND status=\'running\') AS active',[cardId]);
         if(active?.active){await new Promise(resolveDelay=>setTimeout(resolveDelay,750));continue;}
-        await enforceCodexQuota(this.db);
+        await this.quota();
         const job=await this.db.one<CommentJob>(`WITH next_job AS (
           SELECT comment_id FROM card_ai_comment_jobs WHERE card_id=$1 AND status='queued' AND NOT EXISTS (SELECT 1 FROM users WHERE id=card_ai_comment_jobs.user_id AND preferences->>'codexQueuePaused'='true')
           ORDER BY created_at,comment_id FOR UPDATE SKIP LOCKED LIMIT 1
@@ -375,7 +394,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     await this.features.record(userId,context.boardId,cardId,'prompt_session','configurou a sessão de prompt');return updated;
   }
-  async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query('SELECT id,project_id,model,effort,source,multiple_agents,summary,file_changes,activities,status,prompt,output,error,codex_session_id,COALESCE(started_at,created_at) AS started_at,finished_at FROM card_ai_runs WHERE card_id=$1 ORDER BY created_at DESC LIMIT 20',[cardId]);}
+  async runs(cardId:string,userId:string){await this.card(cardId,userId);return this.db.query(`SELECT r.id,r.project_id,r.model,r.effort,r.source,r.multiple_agents,r.summary,r.file_changes,r.activities,r.status,r.prompt,r.output,r.error,r.codex_session_id,COALESCE(r.started_at,r.created_at) AS started_at,r.finished_at,r.write_coordination,r.card_revision,r.finished_card_revision,c.card_revision AS current_card_revision,${cardRevisionFreshnessSql('r','c')} AS freshness FROM card_ai_runs r JOIN cards c ON c.id=r.card_id WHERE r.card_id=$1 ORDER BY r.created_at DESC LIMIT 20`,[cardId]);}
   async toolDiagnostics(userId:string){
     const [latest,failures]=await Promise.all([
       this.db.one<{status:string;error:string|null;activities:ToolCommandActivity[]|null}>('SELECT status,error,activities FROM card_ai_runs WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[userId]),
@@ -399,7 +418,7 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
     assertOrbitFields(body,orbitArchitecture.promptRunAnswer);
     const id=uuid(runId,'Execução');
     if(typeof body.answer!=='string'||!body.answer.trim()||body.answer.trim().length>4000)return fail('Informe uma resposta de até 4000 caracteres.');
-    const run=await this.db.one<{id:string;user_id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents:boolean}>("SELECT id,user_id,project_id,model,effort,codex_session_id,output,multiple_agents FROM card_ai_runs WHERE id=$1 AND card_id=$2 AND status='waiting_answer'",[id,cardId]);
+    const run=await this.db.one<{id:string;user_id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents:boolean;checkout_request?:IsolatedCheckoutRequest|null}>("SELECT id,user_id,project_id,model,effort,codex_session_id,output,multiple_agents,checkout_request FROM card_ai_runs WHERE id=$1 AND card_id=$2 AND status='waiting_answer'",[id,cardId]);
     if(!run)return fail('A execução não está aguardando resposta.',409);
     if(run.user_id!==userId)fail('Somente o autor da execução pode responder.',403);
     return this.execute(cardId,userId,{instruction:body.answer.trim()},undefined,run);
@@ -410,19 +429,46 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       JOIN board_members bm ON bm.board_id=l.board_id AND bm.user_id=$1
       WHERE r.user_id=$1 AND r.status='waiting_answer' ORDER BY r.created_at,r.id`,[userId]);
   }
-  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents?:boolean}){
+  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents?:boolean;checkout_request?:IsolatedCheckoutRequest|null}){
     assertOrbitFields(body,orbitArchitecture.promptRunExecute);
     if(body.multiple_agents!==undefined&&typeof body.multiple_agents!=='boolean')fail('A opção de múltiplos agentes precisa ser booleana.');
     const multipleAgents=promptRunMultipleAgents(body,commentReply,resume);
+    const context=await this.card(cardId,userId);const card=context.card;
+    const requestKey=body.request_key;
+    if(requestKey!==undefined&&(typeof requestKey!=='string'||!requestKey||requestKey.length>150))fail('Chave de execução inválida.');
+    if(requestKey&&!resume){const previous=await this.db.one('SELECT id,project_id,model,effort,status FROM card_ai_runs WHERE card_id=$1 AND request_key=$2',[cardId,requestKey]);if(previous)return previous;}
     if(!this.codex.isAvailable())fail('O plugin de IA está desativado.',409);
     await this.layouts?.assertExecutionAllowed(cardId,userId);
-    const context=await this.card(cardId,userId);const card=context.card;const model=resume?.model||commentReply?.model||card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model;const effort=resume?.effort||commentReply?.effort||card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort;const projectId=resume?.project_id||commentReply?.project_id||card.ai_project_id||card.ai_default_project_id;
+    const model=resume?.model||commentReply?.model||card.ai_model||card.ai_default_model||card.project_ai_default_model||card.user_ai_default_model;const effort=resume?.effort||commentReply?.effort||card.ai_effort||card.ai_default_effort||card.project_ai_default_effort||card.user_ai_default_effort;const projectId=resume?.project_id||commentReply?.project_id||card.ai_project_id||card.ai_default_project_id;
     if(!model)fail('Escolha um modelo no cartão, quadro, projeto ou configuração global.',409);if(!effort)fail('Escolha um esforço no cartão, quadro, projeto ou configuração global.',409);if(!projectId)fail('Selecione um projeto no cartão ou configure o padrão do quadro.',409);
     const project=await this.db.one<{id:string;name:string;local_path:string;is_internal_orbit:boolean}>('SELECT id,name,local_path,is_internal_orbit FROM ai_projects WHERE id=$1 AND owner_id=$2',[projectId,userId]);
     if(!project)fail('Projeto não encontrado.',404);const currentProject=project as {id:string;name:string;local_path:string;is_internal_orbit:boolean};
     const localPath=await this.localPath(currentProject.local_path);
+    if(body.workspace_mode!==undefined&&body.workspace_mode!=='isolated')fail('Modo de workspace inválido.');
+    const traceEnabled=this.traceContextAvailable();
+    const contextRepository=new ContextManifestRepository(this.db);
+    let contextRecord:StoredContextManifest|null=resume&&traceEnabled?await contextRepository.latest('card_ai_runs',resume.id):null;
+    if(resume&&traceEnabled&&!contextRecord)fail('Esta pergunta não possui manifesto verificável. Preserve o histórico e prepare uma nova execução a partir do contexto vigente.',409);
+    let compilerPolicy:ContextCompilerPolicy|null=null;
+    try{compilerPolicy=resume?compilerPolicyForManifest(contextRecord?.manifest??null):contextCompilerPolicyFromHost();}
+    catch(error){if(contextRecord)await contextRepository.observe(contextRecord.id,{phase:'resume_rejected',compatibility:{status:'changed',changes:['compilation:policy'],reasons:['A política de compilação do host está indisponível ou mudou.']}});fail(errorMessage(error),409);}
+
+    if(compilerPolicy&&!traceEnabled)fail('A compilação exige rastreabilidade de contexto do host.',409);
+    let knowledgePolicy:KnowledgeRetrievalPolicy|null;
+    try{knowledgePolicy=resume?knowledgePolicyForManifest(contextRecord?.manifest??null):knowledgePolicyFromHost(compilerPolicy);}
+    catch(error){if(contextRecord)await contextRepository.observe(contextRecord.id,{phase:'resume_rejected',compatibility:{status:'changed',changes:['knowledge:policy'],reasons:['A política capturada de recuperação mudou ou foi desativada.']}});fail(errorMessage(error),409);}
+    let bridgePolicy:ContextBridgeHostPolicy|null|undefined;
+    try{bridgePolicy=resume?contextBridgePolicyForManifest(contextRecord?.manifest??null):undefined;}
+    catch(error){if(contextRecord)await contextRepository.observe(contextRecord.id,{phase:'resume_rejected',compatibility:{status:'changed',changes:['bridge:policy'],reasons:['A política capturada do Bridge mudou ou foi desativada.']}});fail(errorMessage(error),409);}
+    const requestedIsolation=body.workspace_mode==='isolated'||Boolean(resume?.checkout_request);
+    if(requestedIsolation&&!card.workspace_id)fail('Workspace organizacional não identificado para este card.',409);
+    const checkoutRequest: IsolatedCheckoutRequest|undefined=resume?.checkout_request|| (requestedIsolation?await captureIsolationRequest({id:currentProject.id,root:localPath,workspace_id:card.workspace_id}):undefined);
+    if(resume&&body.workspace_mode==='isolated'&&!resume.checkout_request)fail('Uma sessão legada não pode trocar de checkout ao responder.',409);
+    let executionPath=localPath;
+    let deferForAnswer:(()=>void)|undefined;
     const instructionLimit=commentReply?5000:4000;
     const additional=body.instruction===undefined?'':typeof body.instruction==='string'&&body.instruction.trim().length<=instructionLimit?body.instruction.trim():fail('A instrução adicional é inválida.');
+    const technicalBefore=traceEnabled?await contextTechnicalState(localPath,checkoutRequest):null;
     const checklistRows=await this.db.query<{checklist_title:string;item_text:string|null;completed:boolean|null}>(
       `SELECT cl.title AS checklist_title,ci.text AS item_text,ci.completed
        FROM checklists cl LEFT JOIN checklist_items ci ON ci.checklist_id=cl.id
@@ -444,10 +490,13 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       ? `\n\nCONVERSA COMPLETA DE COMENTÁRIOS DESTE CARTÃO (em ordem cronológica; use todas as mensagens como contexto):\n${conversationRows.map(row=>`${row.author_name}:\n${row.body}`).join('\n\n')||'(sem comentários anteriores)'}\n\nConsidere o histórico inteiro, mesmo quando partes dele se repetirem.`
       : '';
     const initialCommentIsAlreadyInHistory=commentReply&&conversationRows.some(row=>row.body===additional);
-    let previousSessionId:string|null=null;let continuing=false;
+    let previousSessionId:string|null=null;let continuing=Boolean(resume?.codex_session_id);
     const executionGuidance='Use o histórico anterior como referência e confira o estado atual dos arquivos e das verificações; não presuma que uma execução anterior concluiu ou validou o trabalho. Implemente somente a solicitação atual e os itens pendentes da checklist deste cartão. Não execute checklists dos cartões de contexto nem repita trabalho já comprovado. Implemente a solicitação nesta execução. Você pode editar arquivos, executar builds e verificações adequadas e respeitar as regras de ciclo de vida do projeto: só reinicie serviços quando o usuário solicitar explicitamente. Se alguma coisa bugar durante a execução, identifique a causa, corrija o problema e retome a solicitação até concluir ou registrar claramente o bloqueio. Não encerre com a execução pendente nem publique alterações sem pedido explícito do usuário. TRABALHO LONGO E RETOMADA: divida solicitações grandes em etapas pequenas, independentes e verificáveis; conclua e registre cada etapa no artefato persistente apropriado antes de iniciar a próxima. Não concentre muitas demandas, verificações ou alterações em um único bloco longo. Antes de repetir uma etapa após interrupção, confira arquivos, histórico e verificações para reaproveitar o progresso válido e evitar efeitos duplicados. Envie progresso curto em cada marco e, se o limite da execução se aproximar, deixe um checkpoint explícito com o que foi concluído, o próximo passo e os riscos, para a próxima execução continuar dali. ECONOMIA DE DADOS: use o histórico e a descrição como contexto sem repeti-los na resposta; envie mensagens de progresso curtas; não copie arquivos completos, diffs ou saídas de terminal para a resposta. Em comandos de validação longos, grave a saída em arquivo temporário, mostre apenas sucesso/falha e, se falhar, apresente somente as linhas relevantes do erro. Seja breve, salvo quando o usuário pedir detalhes.';
-    const contextsPrompt=cardContextsPrompt(await linkedCardContexts(this.db,cardId,userId));
-    const skillsPrompt=await this.skillInstructions(projectId as string,userId,cardId);
+    const selectedLinkedCards=await linkedCardContexts(this.db,cardId,userId);
+    const contextsPrompt=cardContextsPrompt(selectedLinkedCards);
+    const selectedSkillConfig=traceEnabled?await this.db.one<{skills:string[];agent:string|null}>('SELECT skills,agent FROM card_execution_configs WHERE card_id=$1',[cardId]):null;
+    const selectedSkills=traceEnabled?await this.projectRegistry!.skillPrompt(projectId as string,userId,selectedSkillConfig?.skills??[],selectedSkillConfig?.agent,{workspaceId:card.workspace_id}):null;
+    const skillsPrompt=selectedSkills?(selectedSkills.text?`\n\nINSTRUÇÕES DE SKILLS DO PROJETO (aplique as instruções pertinentes a esta solicitação):\n${selectedSkills.text}`:''):await this.skillInstructions(projectId as string,userId,cardId);
     const configuredScope=await this.db.one<{context:{write_scope?:string[]};permissions:string[]}>('SELECT context,permissions FROM card_execution_configs WHERE card_id=$1',[cardId]);
     const writeScope=configuredScope?.context.write_scope;
     let projectChecks:string[][]=[];if(this.projectRegistry){const registered=await this.projectRegistry.get(projectId as string,userId);if(registered.config.require_write_scope===true&&writeScope===undefined)fail('Este projeto exige um escopo de arquivos configurado para cada demanda.',409);projectChecks=validateProjectChecks(registered.config.post_execution_checks);if(projectChecks.length&&!configuredScope?.permissions.includes('process.execute'))fail('As verificações obrigatórias do projeto exigem permissão para executar processos.',409);}
@@ -470,50 +519,171 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       ? `${executionGuidance}${delegationGuidance}${developmentGuidance}\n\nContinue a conversa deste cartão. A descrição atual é a fonte de requisitos; só altere o projeto quando a mensagem pedir. ${commentReply?'A conversa completa já está nesta sessão; use-a como contexto e processe somente o comentário novo abaixo. ':''}Esta orientação substitui instruções anteriores da sessão que impeçam a implementação ou a validação local.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nDESCRIÇÃO ATUAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${commentReply?'':conversationPrompt}\n\n${commentReply?'NOVA MENSAGEM DO COMENTÁRIO':'NOVA INSTRUÇÃO'}:\n${additional||'Continue a implementação e informe o próximo resultado.'}${summaryInstruction}`
       : `${executionGuidance}${delegationGuidance}${developmentGuidance}\n\nVocê está iniciando a sessão de prompt do Orbit no projeto selecionado. Trabalhe somente dentro do diretório atual.\n\nCARTÃO: ${card.title}${skillsPrompt}\n\nINSTRUÇÃO PRINCIPAL:\n${card.description||card.title}${imagePrompt}${contextsPrompt}${checklistPrompt}${conversationPrompt}${additional&&!initialCommentIsAlreadyInHistory?`\n\n${commentReply?'COMENTÁRIO INICIAL':'INSTRUÇÃO ADICIONAL'}:\n${additional}`:''}${summaryInstruction}`)+modeGuidance;
     let prompt=redact(makePrompt());
+    if(checkoutRequest){
+      if(projectChecks.length)fail('Verificações requerem provisionamento seguro antes de executar em worktree isolada.',409);
+      await validateIsolationRequest({id:currentProject.id,root:localPath,workspace_id:card.workspace_id},checkoutRequest);
+    }
+    const identityFor=(id:string)=>executionContextIdentity('card_ai_runs',id,card,currentProject.id,userId,'codex',questionMode?'prompt_question':'prompt');
+    const sessionBinding={mode:resume?'resume_same_run':'new_session',requestedSessionHash:resume?.codex_session_id?hashContextText(resume.codex_session_id):null,parentContextFingerprint:contextRecord?.manifest.fingerprint??null};
+    const compilationTurn=contextRecord?contextRecord.turn+1:0;
+    const promptConfiguration=()=>discoveryConfiguration(contextJson({model,effort,multipleAgents,questionMode,writeScope:writeScope??null,projectChecks,source:commentReply?'comment':'description',sessionBinding}),currentProject.id,contextRecord??undefined);
+    const collectContext=async(captured=false,approvedRoot?:string):Promise<{sources:ContextSource[];configuration:ReturnType<typeof contextJson>;assemblyPolicy:string;prompt:string}>=>{
+      if(!this.projectRegistry||!this.pluginRegistry)throw new Error('Registries de contexto indisponíveis.');
+      const registered=await this.projectRegistry.get(currentProject.id,userId);
+      if(registered.root!==localPath)throw new Error('A raiz autorizada do projeto mudou durante a preparação ou espera.');
+      const selectedProject=approvedRoot?{...registered,authorizationRoot:registered.root,root:approvedRoot,resourcesRoot:resolve(approvedRoot,relativeContextPath(registered.root,registered.resourcesRoot))}:registered;
+      const projectFlags=captured?currentProject:await this.db.one<{is_internal_orbit:boolean}>('SELECT is_internal_orbit FROM ai_projects WHERE id=$1 AND owner_id=$2',[currentProject.id,userId]);
+      if(!projectFlags)throw new Error('A classificação do projeto não pôde ser reautorizada.');
+      const observedDevelopmentGuidance=captured?developmentGuidance:orbitDevelopmentGuidance(Boolean(projectFlags.is_internal_orbit||existsSync(resolve(selectedProject.root,'orbit.workspace.json'))||existsSync(resolve(selectedProject.root,'orbit.shared-lock.json'))),multipleAgents);
+      const scope=identityFor('pending');
+      const activeCard=captured?card:(await this.card(cardId,userId)).card;
+      const skillConfig=captured?selectedSkillConfig:await this.db.one<{skills:string[];agent:string|null}>('SELECT skills,agent FROM card_execution_configs WHERE card_id=$1',[cardId]);
+      const skills=captured?selectedSkills:await this.projectRegistry.skillPrompt(currentProject.id,userId,skillConfig?.skills??[],skillConfig?.agent,{workspaceId:card.workspace_id},selectedProject);
+      const checklists=captured?checklistRows:await this.db.query(`SELECT cl.title AS checklist_title,ci.text AS item_text,ci.completed FROM checklists cl LEFT JOIN checklist_items ci ON ci.checklist_id=cl.id WHERE cl.card_id=$1 ORDER BY cl.position,cl.id,ci.position,ci.id`,[cardId]);
+      const linked=captured?selectedLinkedCards:await linkedCardContexts(this.db,cardId,userId);
+      const configured=captured?configuredScope:await this.db.one<{context:{write_scope?:string[]};permissions:string[]}>('SELECT context,permissions FROM card_execution_configs WHERE card_id=$1',[cardId]);
+      const conversation=captured?conversationRows:commentReply?await this.db.query(`SELECT COALESCE(c.author_label,u.name) AS author_name,c.body FROM comments c JOIN users u ON u.id=c.author_id WHERE c.card_id=$1 ORDER BY c.created_at ASC,c.id ASC`,[cardId]):[];
+      const images=captured?promptImages:await this.descriptionImages(cardId);
+      if(!captured&&commentReply){const extra=await this.db.query<{name:string;mime_type:string;data:Buffer}>("SELECT name,mime_type,data FROM comment_attachments WHERE comment_id=$1 AND kind='file' AND mime_type IN ('image/png','image/jpeg','image/webp','image/gif','image/avif') AND data IS NOT NULL ORDER BY created_at,id LIMIT 10",[commentReply.comment_id]);images.push(...extra.map(row=>({name:row.name,mimeType:row.mime_type,data:row.data})));}
+      const {title,description,card_revision,...controls}=activeCard;
+      if(linked.some(row=>row.workspace_id!==undefined&&row.workspace_id!==(card.workspace_id??null)))throw new Error('Contexto relacionado fora do workspace autorizado.');
+      const sources:ContextSource[]=[
+        observedContextSource(scope,'host:architecture','host_policy',orbitArchitecturePrompt,{origin:'host_architecture',trust:'host_policy',contentHash:hashContextText(orbitArchitecturePrompt)}),
+        observedContextSource(scope,'host:prompt-policy','host_policy',{executionGuidance,delegationGuidance,summaryInstruction,developmentGuidance:observedDevelopmentGuidance},{trust:'host_policy'}),
+        observedContextSource(scope,`card:${cardId}`,'demand',{title:redact(title),description:redact(description)},{origin:'card',resourceId:cardId,version:Number.isSafeInteger(card_revision)?String(card_revision):null,availability:Number.isSafeInteger(card_revision)?'available':'unverified',trust:'documental'}),
+        observedContextSource(scope,'prompt:controls','configuration',{controls,skillConfig:skillConfig??null,scope:configured??null,projectInternal:projectFlags.is_internal_orbit??false}),
+        observedContextSource(scope,'prompt:checklists','checklists',contextJson(checklists)),
+        observedContextSource(scope,'prompt:related-selection','card_selection',linked.map(row=>row.id)),
+        ...linked.map(row=>observedContextSource(scope,`card:${row.id}`,'related_card',{title:redact(row.title),description:redact(row.description)},{origin:'linked_card',resourceId:row.id,version:Number.isSafeInteger(row.card_revision)?String(row.card_revision):null,availability:Number.isSafeInteger(row.card_revision)?'available':'unverified',trust:'documental'})),
+        ...(skills?.sources??[]),
+        observedContextSource(scope,'prompt:images','attachments',images.map(image=>({name:image.name,mimeType:image.mimeType,hash:createHash('sha256').update(image.data).digest('hex')}))),
+        observedContextSource(scope,'prompt:conversation','conversation',contextJson(conversation),{trust:'historical'}),
+        observedContextSource(scope,'prompt:turn','instruction',{additional,previousQuestion:resume?.output??null},{trust:'documental'}),
+        ...(compilerPolicy&&resume?.output?[observedContextSource(scope,'prompt:previous-question','previous_result',resume.output,{trust:'result'})]:[]),
+        ...relevantPluginSources(scope,this.pluginRegistry,['ai']),
+      ];
+      if(compilerPolicy){
+        const activePolicy=contextCompilerPolicyFromHost();
+        if(!activePolicy||hashContextValue(activePolicy)!==hashContextValue(compilerPolicy))throw new Error('A política de compilação do host mudou; reconciliação necessária.');
+        const blocks:ContextCompileBlock[]=[];
+        const add=(id:string,section:ContextCompileBlock['section'],sourceIds:string[],text:string,required=true,priority:ContextCompileBlock['priority']='direct')=>{if(text)blocks.push({id,section,sourceIds,text:redactContext(text),required,priority,kind:'structured'});};
+        add('host-architecture','rules',['host:architecture'],orbitArchitecturePrompt);
+        add('host-execution','operations',['host:prompt-policy'],`${executionGuidance}${delegationGuidance}${observedDevelopmentGuidance}${summaryInstruction}`);
+        add('task','task',[`card:${cardId}`],JSON.stringify({title,description:description||title}));
+        add('controls','technical',['prompt:controls'],JSON.stringify({executor:'codex',model,effort,multipleAgents,writeScope:configured?.context.write_scope??null,permissions:configured?.permissions??[],checks:projectChecks}));
+        add('turn','task',['prompt:turn'],JSON.stringify({instruction:additional||'Continue a implementação e informe o próximo resultado.'}));
+        if(resume?.output)add('previous-question','history',['prompt:previous-question'],resume.output);
+        add('question-continuity','operations',['prompt:turn'],questionMode?questionGuidance(Boolean(resume)):'');
+        const skillSources=(skills?.sources??[]).filter(source=>source.type!=='configuration'&&source.provenance?.selectionOnly!==true);
+        if(skills?.text)add('skills','dependencies',skillSources.map(source=>source.id),skills.text);
+        add('checklists','task',['prompt:checklists'],checklists.length?JSON.stringify({checklists,instruction:'Execute os itens pendentes do cartão, um por vez; valide antes de concluir e registre bloqueios. Itens concluídos são somente referência.'}):'');
+        for(const row of linked)add(`related-${row.id}`,'dependencies',[`card:${row.id}`],cardContextsPrompt([row]),false,'related');
+        // Whole comment records are optional history. The current instruction is always mandatory above.
+        conversation.forEach((row,index)=>add(`history-${index}`,'history',['prompt:conversation'],JSON.stringify(row),false,'historical'));
+        add('images','dependencies',['prompt:images'],images.length?`${images.length} imagens anexadas são entregues separadamente. Seu custo de tokens não é conhecido; o orçamento limita apenas o texto controlado pelo Orbit.`:'');
+        const retrieval=knowledgePolicy?await prepareProjectKnowledge({projects:this.projectRegistry,project:selectedProject,user:userId,scope,permissions:configured?.permissions??[],compilerPolicy,policy:knowledgePolicy,card:activeCard}):null;
+        if(retrieval){for(const source of retrieval.sources){const existing=sources.find(s=>s.id===source.id);if(existing){if(existing.contentHash!==source.contentHash)throw new Error('Uma fonte recuperada divergiu do contexto explícito.');if(existing.version===null)existing.version=source.version;}else sources.push(source);}blocks.push(...retrieval.blocks);}
+        const compilation=compileContext({identity:scope,turn:compilationTurn,sources,blocks,policy:compilerPolicy});
+        if(compilation.status!=='ready')throw new Error('Compilação de contexto bloqueada: '+compilation.blockers.join('; '));
+        const metadata=compilationMetadata(compilation);
+        if(bridgePolicy===undefined)bridgePolicy=contextBridgePolicyFromHost(metadata,undefined,retrieval?{...retrieval.metadata,...knowledgeRetrievalMetadata(retrieval.result,compilation)}:undefined);
+        if(bridgePolicy&&hashContextValue(contextBridgePolicyFromHost(metadata,bridgePolicy.knowledge?process.env:{...process.env,ORBIT_CONTEXT_BRIDGE_KNOWLEDGE_ENABLED:'0'},retrieval?{...retrieval.metadata,...knowledgeRetrievalMetadata(retrieval.result,compilation)}:undefined))!==hashContextValue(bridgePolicy))throw new Error('A política do Bridge mudou durante a execução.');
+        return {sources,configuration:bridgeConfiguration({...promptConfiguration(),contextCompilation:metadata,...(retrieval?{knowledgeRetrieval:{...retrieval.metadata,...knowledgeRetrievalMetadata(retrieval.result,compilation)}}:{})},bridgePolicy),assemblyPolicy:compilerPolicy.id,prompt:compilation.text};
+      }
+      if(bridgePolicy===undefined)bridgePolicy=contextBridgePolicyFromHost(undefined);
+      return {sources,configuration:promptConfiguration(),assemblyPolicy:'orbit-prompt-sessions/1',prompt};
+    };
+    let preparedContext:Awaited<ReturnType<typeof collectContext>>|undefined;
+    if(traceEnabled){
+      preparedContext=await collectContext(true);
+      if(compilerPolicy)prompt=preparedContext.prompt;
+      const captured=manifestForExecution(identityFor('pending'),preparedContext,technicalBefore!);
+      const current=manifestForExecution(identityFor('pending'),await collectContext(),await contextTechnicalState(localPath,checkoutRequest));
+      if(compareContextManifest(captured,currentContext(current)).status!=='compatible')fail('Uma fonte do contexto mudou durante a preparação. Reconcilie antes de executar.',409);
+      if(contextRecord){
+        // An answer is an explicit turn delta; all shared dependencies must remain compatible.
+        const parentCurrent=currentContext(current);
+        parentCurrent.sources=parentCurrent.sources.map(source=>['prompt:turn','prompt:previous-question'].includes(source.id)?contextRecord!.manifest.sources.find(old=>old.id===source.id)??source:source);
+        delete parentCurrent.material;
+        if(compilerPolicy){
+          const previous=contextRecord.manifest.configuration.contextCompilation as unknown as {policy:ContextCompilerPolicy;decisions:unknown[]};
+          const next=current.configuration.contextCompilation as unknown as {policy:ContextCompilerPolicy;decisions:Array<{blockId:string}>};
+          const shared=(value:{decisions:Array<any>})=>value.decisions.filter(decision=>!['turn','question-continuity','previous-question'].includes(decision.blockId));
+          if(!previous||hashContextValue(previous.policy)!==hashContextValue(next.policy)||hashContextValue(shared(previous))!==hashContextValue(shared(next))){
+            await contextRepository.observe(contextRecord.id,{phase:'resume_rejected',compatibility:{status:'changed',changes:['compilation:shared_material'],reasons:['A política ou o material compartilhado da compilação mudou.']}});
+            fail('A compilação da pergunta mudou; prepare uma nova execução.',409);
+          }
+        }
+        parentCurrent.configuration={...parentCurrent.configuration,sessionBinding:contextRecord.manifest.configuration.sessionBinding??null,...(compilerPolicy?{contextCompilation:contextRecord.manifest.configuration.contextCompilation}: {})};
+        const resumeCompatibility=compareContextManifest(contextRecord.manifest,parentCurrent);
+        if(resumeCompatibility.status!=='compatible'){await contextRepository.observe(contextRecord.id,{phase:'resume_rejected',compatibility:resumeCompatibility});fail('O contexto da pergunta mudou; a sessão não pode ser retomada silenciosamente.',409);}
+      }
+    }
     const client=await this.db.pool.connect();let run:{id:string};
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[cardId]);
+      if(requestKey&&!resume){const previous=(await client.query('SELECT id,project_id,model,effort,status FROM card_ai_runs WHERE card_id=$1 AND request_key=$2',[cardId,requestKey])).rows[0];if(previous){await client.query('COMMIT');return previous;}}
+      const version=(await client.query<{card_revision:number}>('SELECT card_revision FROM cards WHERE id=$1 FOR SHARE',[cardId])).rows[0];
+      if(!version||version.card_revision!==card.card_revision)fail('O cartão mudou durante a preparação. Atualize e execute novamente.',409);
       if(resume){
-        const resumed=(await client.query<{id:string}>("UPDATE card_ai_runs SET status='queued',prompt=$4,worker_id=$3,heartbeat_at=now(),output=NULL,error=NULL,finished_at=NULL WHERE id=$1 AND card_id=$2 AND user_id=$5 AND status='waiting_answer' RETURNING id",[resume.id,cardId,this.workerId,prompt,userId])).rows[0];
-        if(!resumed)fail('A execução já foi respondida ou cancelada.',409);
+        const resumed=(await client.query<{id:string}>("UPDATE card_ai_runs SET status='queued',prompt=$4,worker_id=$3,heartbeat_at=now(),output=NULL,error=NULL,finished_at=NULL WHERE id=$1 AND card_id=$2 AND user_id=$5 AND status='waiting_answer' AND card_revision=$6 RETURNING id",[resume.id,cardId,this.workerId,prompt,userId,card.card_revision])).rows[0];
+        if(!resumed)fail('A execução já foi respondida, cancelada ou pertence a uma revisão antiga. Atualize o cartão; cancele a pergunta antiga antes de executar novamente.',409);
         run=resumed;
       }else{
         const waiting=(await client.query("SELECT id FROM card_ai_runs WHERE card_id=$1 AND status='waiting_answer' LIMIT 1",[cardId])).rows[0];
         if(waiting)fail('Responda ou cancele a pergunta pendente na aba Execução.',409);
-        run=(await client.query<{id:string}>("INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source,worker_id,status,multiple_agents) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9) RETURNING id",[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description',this.workerId,multipleAgents])).rows[0];
+        if(checkoutRequest||requestKey){
+          run=(await client.query<{id:string}>("INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source,worker_id,status,multiple_agents,card_revision,checkout_request,request_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12) RETURNING id",[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description',this.workerId,multipleAgents,card.card_revision,checkoutRequest?JSON.stringify(checkoutRequest):null,requestKey??null])).rows[0];
+        }else{
+        run=(await client.query<{id:string}>("INSERT INTO card_ai_runs(card_id,project_id,user_id,model,effort,prompt,source,worker_id,status,multiple_agents,card_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10) RETURNING id",[cardId,currentProject.id,userId,model,effort,prompt,commentReply?'comment':'description',this.workerId,multipleAgents,card.card_revision])).rows[0];
+        }
+      }
+      if(traceEnabled&&preparedContext){
+        const manifest=manifestForExecution(identityFor(run!.id),preparedContext,technicalBefore!);
+        contextRecord=await contextRepository.store(client,manifest,contextRecord?{parentId:contextRecord.id}:{});
       }
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+    let coordinationWrites:Promise<unknown>=Promise.resolve();
+    const writeProtectionAbort=new AbortController();
+    const ownershipTimer=setInterval(()=>void this.db.one<{status:string;worker_id:string}>('SELECT status,worker_id FROM card_ai_runs WHERE id=$1',[run!.id]).then(row=>{if(!row||row.worker_id!==this.workerId||!['queued','running'].includes(row.status))writeProtectionAbort.abort();}).catch(()=>writeProtectionAbort.abort()),1000);
+    ownershipTimer.unref();
     const queuedHeartbeat=setInterval(()=>void this.db.query("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='queued'",[run!.id,this.workerId]).catch(()=>undefined),5_000);
     queuedHeartbeat.unref();
     this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'queued',message:'Execução adicionada à fila.'});
     void (async()=>{
-      let cardClient:PoolClient|null=null;let cardLocked=false;let projectClient:PoolClient|null=null;let projectLocked=false;const cardLockName=`orbit-ai-card:${cardId}`;const projectLockName=`orbit-ai-project:${localPath}`;
+      const cardProtectionLost=()=>writeProtectionAbort.abort();
+      let cardClient:PoolClient|null=null;let cardLocked=false;const cardLockName=`orbit-ai-card:${cardId}`;
       try {
         while(true){
           if(await this.queuePaused(userId)){await new Promise(resolveDelay=>setTimeout(resolveDelay,750));continue;}
-          const candidate=await this.db.pool.connect();
+          const candidate=await this.db.pool.connect();candidate.on('error',cardProtectionLost);
           const state=(await candidate.query<{status:string}>("SELECT status FROM card_ai_runs WHERE id=$1 AND worker_id=$2",[run!.id,this.workerId])).rows[0];
-          if(state?.status!=='queued'){candidate.release();return;}
+          if(state?.status!=='queued'){candidate.removeListener('error',cardProtectionLost);candidate.release();return;}
           const acquired=(await candidate.query<{locked:boolean}>('SELECT pg_try_advisory_lock(hashtext($1)::bigint) AS locked',[cardLockName])).rows[0]?.locked;
-          if(!acquired){candidate.release();await new Promise(resolveDelay=>setTimeout(resolveDelay,250));continue;}
+          if(!acquired){candidate.removeListener('error',cardProtectionLost);candidate.release();await new Promise(resolveDelay=>setTimeout(resolveDelay,250));continue;}
           const first=(await candidate.query<{id:string}>("SELECT id FROM card_ai_runs WHERE card_id=$1 AND status IN ('queued','waiting_answer') ORDER BY created_at,id LIMIT 1",[cardId])).rows[0];
           if(first?.id===run!.id){cardClient=candidate;cardLocked=true;break;}
-          await candidate.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[cardLockName]);candidate.release();
+          await candidate.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[cardLockName]);candidate.removeListener('error',cardProtectionLost);candidate.release();
           await new Promise(resolveDelay=>setTimeout(resolveDelay,250));
         }
-        projectClient=await this.db.pool.connect();
-        await projectClient.query('SELECT pg_advisory_lock(hashtext($1)::bigint)',[projectLockName]);projectLocked=true;
-        const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND id<>$3 AND codex_session_id IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1',[cardId,currentProject.id,run!.id]);
-        previousSessionId=resume?.codex_session_id||previous?.codex_session_id||null;continuing=Boolean(previousSessionId);prompt=redact(makePrompt());
+        let finalizeWriteOutcome:(()=>Promise<void>)|undefined;
+        const executeProtected=async(lease:WorkspaceWriteLease)=>{
+        await coordinationWrites;await lease.assertActive();
+        if(checkoutRequest){const activeCard=await this.card(cardId,userId);if(activeCard.card.card_revision!==card.card_revision||activeCard.card.workspace_id!==card.workspace_id)throw new Error('A revisão ou workspace mudou durante a espera; reconciliação necessária antes de executar.');}
+        await this.db.query('UPDATE card_ai_runs SET write_coordination=write_coordination||$2::jsonb WHERE id=$1 AND worker_id=$3',[run!.id,JSON.stringify({phase:'active_workspace',owner:lease.owner,resource:lease.resource}),this.workerId]);
+
+        const previous=await this.db.one<{codex_session_id:string}>('SELECT codex_session_id FROM card_ai_runs WHERE card_id=$1 AND project_id=$2 AND id<>$3 AND codex_session_id IS NOT NULL AND checkout_request IS NULL AND card_revision=$4 ORDER BY started_at DESC,id DESC LIMIT 1',[cardId,currentProject.id,run!.id,card.card_revision]);
+        if(traceEnabled&&contextRecord&&!resume&&previous?.codex_session_id)await contextRepository.observe(contextRecord.id,{phase:'session_selection',compatibility:{status:'captured',changes:[],reasons:['Nova execução usa sessão nova: compatibilidade do histórico de outra execução não foi comprovada.']}});
+        previousSessionId=traceEnabled?(resume?.codex_session_id||null):checkoutRequest?(resume?.codex_session_id||null):(resume?.codex_session_id||previous?.codex_session_id||null);continuing=Boolean(previousSessionId);prompt=compilerPolicy?preparedContext!.prompt:redact(makePrompt());
         while(await this.queuePaused(userId)){
           const pending=await this.db.one<{status:string}>('SELECT status FROM card_ai_runs WHERE id=$1',[run!.id]);
-          if(pending?.status!=='queued')return;
+          if(pending?.status!=='queued'){if(checkoutRequest){writeProtectionAbort.abort();throw new Error('Execução isolada cancelada ou sem ownership antes de iniciar.');}return;}
           await new Promise(resolveDelay=>setTimeout(resolveDelay,750));
         }
         const claimed=await this.db.one("UPDATE card_ai_runs SET status='running',prompt=$2,started_at=now(),heartbeat_at=now() WHERE id=$1 AND worker_id=$3 AND status='queued' RETURNING id",[run!.id,prompt,this.workerId]);
         if(!claimed){
           const state=await this.db.one<{status:string}>('SELECT status FROM card_ai_runs WHERE id=$1 AND worker_id=$2',[run!.id,this.workerId]);
-          if(!state||state.status==='cancelled')return;
+          if(!state||state.status==='cancelled'){if(checkoutRequest){writeProtectionAbort.abort();throw new Error('Execução isolada cancelada ou sem ownership antes de iniciar.');}return;}
           throw new Error('A execução deixou de estar disponível na fila.');
         }
         let streamedOutput='';let outputWrite:Promise<unknown>=Promise.resolve();const fileChanges=new Map<string,{path:string;kind:'add'|'delete'|'update';additions:number;deletions:number;diff:string}>();const activities=new Map<string,{id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number}>();
@@ -526,15 +696,39 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
           this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message:safeMessage,output,replace,files:details?.fileChanges?[...fileChanges.values()].map(({path,kind})=>({path,kind})):undefined,activity:safeActivity});
         };
         progress(`Iniciando ${model} com esforço ${effort}.`);
-        const result=await this.codex.execute(prompt,localPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined),async()=>{
+        if(contextRecord){
+          const delivered=await collectContext(false,checkoutRequest?executionPath:undefined);
+          const observed=manifestForExecution(identityFor(run!.id),delivered,await contextTechnicalState(executionPath,checkoutRequest));
+          const verified=await verifyRunContext(contextRepository,contextRecord,observed,'started',{boundary:'codex_provider_execute_input',contextHash:observed.material.contextHash,promptHash:observed.material.promptHash,checkoutOwner:lease.owner});
+          if(verified.status!=='compatible')throw new Error('O contexto capturado mudou durante a espera; reconciliação necessária antes de executar.');
+          if(compilerPolicy){prompt=delivered.prompt;await this.db.query('UPDATE card_ai_runs SET prompt=$2 WHERE id=$1',[run!.id,prompt]);}
+        }
+        let activeBridge:Awaited<ReturnType<typeof openContextBridge>>|undefined;
+        if(contextRecord&&bridgePolicy){
+          const registeredBridgeProject=await this.projectRegistry!.get(currentProject.id,userId);
+          const bridgeProject=checkoutRequest?{...registeredBridgeProject,authorizationRoot:registeredBridgeProject.root,root:executionPath,resourcesRoot:resolve(executionPath,relativeContextPath(registeredBridgeProject.root,registeredBridgeProject.resourcesRoot))}:registeredBridgeProject;
+          activeBridge=await openContextBridge({db:this.db,projects:this.projectRegistry!,plugins:this.pluginRegistry!,record:contextRecord,project:bridgeProject,lease,workerId:this.workerId,signal:writeProtectionAbort.signal,card:async()=>(await this.card(cardId,userId)).card});
+        }
+        const result=await (async()=>{try{return await this.codex.execute(prompt,executionPath,model as string,effort as string,progress,previousSessionId,sessionId=>this.db.query('UPDATE card_ai_runs SET codex_session_id=$2 WHERE id=$1',[run!.id,sessionId]).then(()=>undefined),async()=>{
           const active=await this.db.query<{id:string}>("UPDATE card_ai_runs SET heartbeat_at=now() WHERE id=$1 AND worker_id=$2 AND status='running' RETURNING id",[run!.id,this.workerId]);
           return active.length>0;
-        },initialQuestion?'planning':questionMode?'bypass':card.ai_execution_mode==='planning'?'planning':'bypass',promptImages,initialQuestion?[]:writeScope,initialQuestion?[]:projectChecks,questionMode,multipleAgents);
-        await enforceCodexQuota(this.db,true);
+        },initialQuestion?'planning':questionMode?'bypass':card.ai_execution_mode==='planning'?'planning':'bypass',promptImages,initialQuestion?[]:writeScope,initialQuestion?[]:projectChecks,questionMode,multipleAgents,compilerPolicy&&contextRecord?{compiledHash:contextRecord.manifest.material.promptHash,policy:compilerPolicy,...(bridgePolicy?{dynamicContextBudgetBytes:bridgePolicy.limits.maxTotalBytes}:{}),onDelivery:receipt=>contextRepository.observe(contextRecord!.id,{phase:'delivered',compatibility:{status:'compatible',changes:[],reasons:['Material compilado verificado na fronteira do adaptador.']},delivery:receipt}).then(()=>undefined)}:undefined,activeBridge?.handle);
+        }finally{if(activeBridge)await activeBridge.close().catch(()=>console.error('Context Bridge close audit unavailable.'));}})();
+        if(contextRecord)await finalRunContext(contextRepository,contextRecord,async()=>manifestForExecution(identityFor(run!.id),await collectContext(false,checkoutRequest?executionPath:undefined),await contextTechnicalState(executionPath,checkoutRequest)),{boundary:'codex_provider_result',requestedSessionHash:previousSessionId?hashContextText(previousSessionId):null,resultSessionHash:result.sessionId?hashContextText(result.sessionId):null});
+        await this.quota(true);
         for(const change of redactFileChanges(result.fileChanges))fileChanges.set(change.path,change);
         for(const activity of result.activities)activities.set(activity.id,{...activity,command:redact(activity.command),output:redact(activity.output)});
         await outputWrite;
         const safeResultOutput=redact(result.output);
+        if(contextRecord?.manifest.configuration.discoveryJournal){try{
+          const registeredDiscoveryProject=await this.projectRegistry!.get(currentProject.id,userId);
+          const discoveryProject=checkoutRequest?{...registeredDiscoveryProject,authorizationRoot:registeredDiscoveryProject.root,root:executionPath,resourcesRoot:resolve(executionPath,relativeContextPath(registeredDiscoveryProject.root,registeredDiscoveryProject.resourcesRoot))}:registeredDiscoveryProject;
+          const captures=await captureExecutionDiscoveries({db:this.db,projects:this.projectRegistry!,record:contextRecord,project:discoveryProject,lease,workerId:this.workerId,signal:writeProtectionAbort.signal,output:result.output,authorizeCard:async()=>{await this.features.cardBoard(cardId,userId);return (await this.card(cardId,userId)).card;}});
+          this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'running',message:'Discovery Journal: '+captures.map(c=>c.state).join(', ')});
+        }catch{console.error('Discovery capture unavailable; technical output preserved.');}}
+        await lease.assertActive();
+        if(questionMode&&extractPromptQuestion(safeResultOutput))deferForAnswer?.();
+        finalizeWriteOutcome=async()=>{
         const question=questionMode?extractPromptQuestion(safeResultOutput):null;
         if(initialQuestion&&!question)throw new Error('O modo Questionar não retornou uma pergunta válida. Tente novamente.');
         if(question){
@@ -555,35 +749,55 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
             await replyClient.query('BEGIN');
             const publishedSummary=promptResult.summary||'A execução foi concluída; consulte a aba Execução para ver os detalhes.';
             const answer=(await replyClient.query<{id:string}>('INSERT INTO comments(card_id,author_id,author_label,body) VALUES($1,$2,$3,$4) RETURNING id',[cardId,userId,commentReply.authorLabel,publishedSummary])).rows[0];
-            await replyClient.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,suggested_commit_type=$9,suggested_commit_name=$10,suggested_commit_summary=$11,finished_at=now() WHERE id=$1",[run!.id,'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),null,result.sessionId,promptResult.commit.type,promptResult.commit.name,promptResult.commit.summary]);
+            const completed=(await replyClient.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,suggested_commit_type=$9,suggested_commit_name=$10,suggested_commit_summary=$11,finished_at=now() WHERE id=$1 AND worker_id=$12 AND status='running' RETURNING id",[run!.id,'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),null,result.sessionId,promptResult.commit.type,promptResult.commit.name,promptResult.commit.summary,this.workerId])).rows;
+            if(!completed.length)throw new Error("A execução deixou de pertencer a este worker.");
             await replyClient.query("UPDATE card_ai_comment_jobs SET status='success',answer_comment_id=$2,error=NULL,finished_at=now() WHERE comment_id=$1",[commentReply.comment_id,answer.id]);
             await replyClient.query('COMMIT');
           }catch(error){await replyClient.query('ROLLBACK');throw error}finally{replyClient.release()}
           this.events.commentChanged(context.boardId,cardId);
         }else{
-          await this.db.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,suggested_commit_type=$9,suggested_commit_name=$10,suggested_commit_summary=$11,finished_at=now() WHERE id=$1",[run!.id,'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),null,result.sessionId,promptResult.commit.type,promptResult.commit.name,promptResult.commit.summary]);
+          const completed=await this.db.query("UPDATE card_ai_runs SET status=$2,output=$3,summary=$4,file_changes=$5,activities=$6,error=$7,codex_session_id=$8,suggested_commit_type=$9,suggested_commit_name=$10,suggested_commit_summary=$11,finished_at=now() WHERE id=$1 AND worker_id=$12 AND status='running' RETURNING id",[run!.id,'success',promptResult.output,promptResult.summary,JSON.stringify([...fileChanges.values()]),JSON.stringify([...activities.values()]),null,result.sessionId,promptResult.commit.type,promptResult.commit.name,promptResult.commit.summary,this.workerId]);
+          if(!completed.length)throw new Error("A execução deixou de pertencer a este worker.");
           await this.features.record(userId,context.boardId,cardId,'prompt_execution',`${continuing?'continuou':'iniciou'} a conversa com ${model} em ${currentProject.name}`);
         }
         await this.features.notify(userId,context.boardId,cardId,'prompt_execution','Prompt concluído',`O cartão “${card.title}” terminou de processar o prompt.`);
         this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'success',message:'Execução concluída.'});
+        };
+        };
+        if(checkoutRequest){
+          // Recheck authorization and organizational scope after waiting in the card FIFO.
+          const authorized=await this.db.one<{local_path:string}>('SELECT local_path FROM ai_projects WHERE id=$1 AND owner_id=$2',[currentProject.id,userId]);
+          const currentCard=await this.card(cardId,userId);
+          if(!authorized||await this.localPath(authorized.local_path)!==localPath||currentCard.card.workspace_id!==card.workspace_id)throw new Error('A autorização do projeto ou workspace mudou durante a espera.');
+          await withIsolatedCheckout(this.db,{queue:'card_ai_runs',authorizedProjectRoot:localPath,runId:run!.id,cardId,cardRevision:card.card_revision,projectId:currentProject.id,workspaceId:card.workspace_id,request:checkoutRequest,continuation:Boolean(resume),signal:writeProtectionAbort.signal,onState:phase=>{
+            coordinationWrites=coordinationWrites.then(()=>this.db.query('UPDATE card_ai_runs SET write_coordination=write_coordination||$2::jsonb WHERE id=$1 AND worker_id=$3',[run!.id,JSON.stringify({phase,mode:'isolated'}),this.workerId])).catch(()=>writeProtectionAbort.abort());
+            if(phase==='waiting_workspace')this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'queued',message:'Aguardando preparação ou exclusividade da worktree isolada.'});
+          }},async(checkout,lease)=>{
+            executionPath=checkout.root;deferForAnswer=checkout.deferForAnswer;
+            await withIsolatedExecution({runId:run!.id,queue:'card_ai_runs',root:checkout.root,baseCommit:checkoutRequest.baseCommit,cardRevision:card.card_revision},()=>executeProtected(lease));
+          });
+        }else{
+        await withWorkspaceWriteLease(this.db,{queue:'card_ai_runs',runId:run!.id,cardId,projectId:currentProject.id,projectRoot:localPath,signal:writeProtectionAbort.signal,onState:phase=>{
+          coordinationWrites=coordinationWrites.then(()=>this.db.query('UPDATE card_ai_runs SET write_coordination=write_coordination||$2::jsonb WHERE id=$1 AND worker_id=$3',[run!.id,JSON.stringify({phase,projectRoot:localPath}),this.workerId])).catch(()=>writeProtectionAbort.abort());
+          if(phase==='waiting_workspace')this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'queued',message:'Aguardando exclusividade física do workspace.'});
+        }},executeProtected);
+        }
+        await coordinationWrites;await finalizeWriteOutcome?.();
       }
       catch(error){
+        if(contextRecord)await finalRunContext(contextRepository,contextRecord,async()=>manifestForExecution(identityFor(run!.id),await collectContext(),await contextTechnicalState(localPath,checkoutRequest)));
         const message=redact(errorMessage(error));
         console.error('[PromptSessions] Execução falhou.',run!.id,message);
-        const failed=await this.db.one<{id:string}>("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1 AND status IN ('queued','running') RETURNING id",[run!.id,message]);
+        const failed=await this.db.one<{id:string}>("UPDATE card_ai_runs SET status='error',error=$2,finished_at=now() WHERE id=$1 AND worker_id=$3 AND status IN ('queued','running') RETURNING id",[run!.id,message,this.workerId]);
         if(!failed)return;
         if(commentReply){await this.db.query("UPDATE card_ai_comment_jobs SET status='error',error=$2,finished_at=now() WHERE comment_id=$1 AND answer_comment_id IS NULL",[commentReply.comment_id,message]);this.events.commentChanged(context.boardId,cardId);}
         await this.features.notify(userId,context.boardId,cardId,'prompt_execution','Falha no prompt',message);
         this.events.promptProgress(context.boardId,cardId,{runId:run!.id,status:'error',message});
       }finally{
-        clearInterval(queuedHeartbeat);
-        if(projectClient){
-          try{if(projectLocked)await projectClient.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[projectLockName]);}
-          finally{projectClient.release();}
-        }
+        clearInterval(queuedHeartbeat);clearInterval(ownershipTimer);await coordinationWrites;
         if(cardClient){
           try{if(cardLocked)await cardClient.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)',[cardLockName]);}
-          finally{cardClient.release();}
+          finally{cardClient.removeListener('error',cardProtectionLost);cardClient.release(true);}
         }
       }
     })().catch(error=>console.error('Não foi possível finalizar a execução de prompt.',error));

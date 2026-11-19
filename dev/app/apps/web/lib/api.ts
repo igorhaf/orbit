@@ -28,6 +28,7 @@ export type CustomValue = { field_id:string;name?:string;type?:CustomField['type
 export type ChecklistGroup = { id:string;card_id:string;title:string;position:number;items:ChecklistItem[] };
 export type CardExtensions = { checklists:ChecklistGroup[];values:CustomValue[] };
 export type Card = {managed_record?:boolean;
+  card_revision?:number;
   plugin_badges?:Array<{pluginId:string;field:string;value:string;label:string;color:string}>;
   execution_blocked?:boolean;
   id: string;
@@ -121,7 +122,7 @@ export type AiEffort = 'low'|'medium'|'high'|'xhigh';
 export type AiProject = {id:string;name:string;local_path:string;ai_default_model:string|null;ai_default_effort:AiEffort|null;created_at:string;updated_at:string;is_internal_orbit?:boolean};
 export type PromptFileChange={path:string;kind:'add'|'delete'|'update';additions?:number;deletions?:number;diff?:string};
 export type PromptActivity={id:string;kind:'command';command:string;output:string;status:'running'|'completed'|'failed';exitCode?:number};
-export type PromptRun = {id:string;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';multiple_agents?:boolean;summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
+export type PromptRun = {write_coordination?:{phase?:string;owner?:string;resource?:string};id:string;card_revision?:number|null;current_card_revision?:number;freshness?:'pending'|'current'|'stale'|'unversioned';finished_card_revision?:number|null;project_id?:string;model:string;effort?:AiEffort;source?:'description'|'comment';multiple_agents?:boolean;summary?:string|null;file_changes?:PromptFileChange[];activities?:PromptActivity[];status:'queued'|'running'|'waiting_answer'|'success'|'error'|'cancelled';prompt?:string;output?:string|null;error?:string|null;codex_session_id?:string|null;started_at:string;finished_at?:string|null};
 export type ToolDiagnostic={run_id:string;card_id:string;board_id:string;card_title:string;board_title:string;created_at:string;kind:'missing'|'permission'|'command'|'authentication'|'version';tool:string;title:string;details:string;installCommands:string[];failedCommand:string|null};
 export type ToolDiagnostics={status:'error'|'success'|'running';issues:ToolDiagnostic[]};
 export type TrelloConnection = { id:string; trello_board_id:string; trello_board_name:string; enabled:boolean; last_synced_at:string|null; last_error:string|null; created_at:string };
@@ -275,3 +276,24 @@ export const labelColors: Record<string,string> = {
   none:'linear-gradient(135deg,#f2f3f5,#dfe1e6)',
 };
 export const labelTextColor = (color:string) => /_light$|^none$/.test(color) ? '#172b4d' : '#fff';
+
+export type RunRevisionFreshness = 'pending'|'current'|'stale'|'unversioned';
+/** Compare the captured revision with the newest revision known by the API or card UI. */
+export function runRevisionFreshness(run:{card_revision?:number|null;current_card_revision?:number;freshness?:RunRevisionFreshness;status?:string},cardRevision?:number):RunRevisionFreshness {
+  if(!Number.isSafeInteger(run.card_revision)||(run.card_revision??0)<1)return 'unversioned';
+  const known=[cardRevision,run.current_card_revision].filter((revision):revision is number=>Number.isSafeInteger(revision)&&(revision??0)>0);
+  if(known.length){
+    if(run.card_revision!==Math.max(...known))return 'stale';
+    return run.freshness==='pending'||['queued','running','waiting_answer'].includes(run.status||'')?'pending':'current';
+  }
+  return run.freshness||'unversioned';
+}
+export function runRevisionLabel(run:{card_revision?:number|null;current_card_revision?:number;freshness?:RunRevisionFreshness;status?:string},cardRevision?:number):string {
+  const freshness=runRevisionFreshness(run,cardRevision);
+  if(freshness==='unversioned')return 'Execução sem revisão registrada. Reexecute para vincular o resultado à demanda atual.';
+  if(freshness==='pending')return `Execução vinculada à revisão r${run.card_revision} do cartão. Ainda não há resultado final.`;
+  const current=Math.max(cardRevision||0,run.current_card_revision||0);
+  return freshness==='stale'
+    ? `Execução de uma revisão anterior: r${run.card_revision}${current?`; cartão atual r${current}`:''}. A demanda foi alterada; revise o resultado antes de reutilizá-lo.`
+    : `Execução da revisão r${run.card_revision} do cartão.`;
+}

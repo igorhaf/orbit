@@ -1,3 +1,4 @@
+import {currentWorkspaceWriteLease,assertWorkspaceWriteCoverage} from './workspace-coordinator';
 import {chmod,lstat,mkdir,readFile,readdir,readlink,rm,stat,symlink,writeFile} from 'node:fs/promises';
 import {dirname,isAbsolute,join,relative,resolve} from 'node:path';
 
@@ -15,6 +16,8 @@ export function validateWriteScope(value:unknown):string[]{
 
 // Compare the working tree, not just CLI events: shell writes must be checked too.
 export async function captureFileScope(root:string,allowed:string[]){
+  const lease=currentWorkspaceWriteLease();
+  if(lease)await assertWorkspaceWriteCoverage(root);
   const scope=new Set(validateWriteScope(allowed));
   for(const path of scope){
     const parts=path.split('/');
@@ -25,6 +28,7 @@ export async function captureFileScope(root:string,allowed:string[]){
     }
   }
   async function snapshot(){
+    await lease?.assertActive();
     const files=new Map<string,Entry>();let bytes=0;
     async function walk(directory:string){
       for(const entry of await readdir(directory,{withFileTypes:true})){
@@ -35,7 +39,7 @@ export async function captureFileScope(root:string,allowed:string[]){
         else if(entry.isFile()){const body=await readFile(path);bytes+=body.length;if(bytes>100*1024*1024)throw new Error('Projeto excede 100 MB para verificação de escopo; exclua apenas diretórios de build ou dependências.');files.set(key,{kind:'file',body,mode:(await stat(path)).mode})}
       }
     }
-    await walk(root);return files;
+    await walk(root);await lease?.assertActive();return files;
   }
   const before=await snapshot();
   async function changes(){
@@ -47,6 +51,12 @@ export async function captureFileScope(root:string,allowed:string[]){
     return changed;
   }
   async function restore(paths:string[]){
+    if(!paths.length)return;
+    if(lease){
+      await lease.assertActive();
+      lease.poison('Conflito de autoria na restauração do workspace.');
+      throw new Error(`Conflito de autoria: restauração automática recusada sob coordenação para preservar alterações não atribuídas: ${paths.join(', ')}. Revise o workspace; nenhum arquivo foi restaurado ou apagado.`);
+    }
     // Remove replaced parent links before restoring children; never follow them.
     for(const path of [...paths].sort((a,b)=>a.split('/').length-b.split('/').length)){
       const absolute=resolve(root,path),previous=before.get(path);

@@ -112,6 +112,20 @@ function adaptBootstrapMigration(files, sourceApp) {
   return [{ id: 'explicit-bootstrap-root', path: `app/${path}`, source: { path: `${sourceApp}/${path}`, sha256: sha(original) }, result: { sha256: sha(replacement) }, reason: 'New products initialize ROOT from explicit credentials through ensureBootstrapRoot.' }];
 }
 
+function adaptContextRuntime(files, sourceApp, id, sharedPackages) {
+  const path = 'apps/api/src/orbit-architecture.ts';
+  if (!files.has(path)) return [];
+  if (sharedPackages.some(pkg => pkg.files.some(file => file.target === path))) throw new Error('A identidade de contexto é do runtime; separe-a da fonte compartilhada antes de gerar outro produto.');
+  const original = files.get(path).toString();
+  const declaration = /^export const orbitContextRuntime\s*=\s*(['"])[^'"\r\n]+\1;[ \t]*(?=\r?$)/gm;
+  const matches = [...original.matchAll(declaration)];
+  if (matches.length > 1 || (!matches.length && /\borbitContextRuntime\b/.test(original))) throw new Error('Identidade de contexto do runtime ambígua ou declaração não suportada.');
+  const replacement = `export const orbitContextRuntime=${JSON.stringify(id)};`;
+  const transformed = matches.length ? original.replace(declaration, replacement) : replacement + '\n' + original;
+  files.set(path, transformed);
+  return [{ id: 'context-runtime-identity', path: `app/${path}`, source: { path: `${sourceApp}/${path}`, sha256: sha(original) }, result: { sha256: sha(transformed) }, reason: 'Each product owns its context namespace; a generated product must not inherit DEV identity.' }];
+}
+
 function reservePorts(root, config, flags) {
   const used = new Set();
   const existing = [];
@@ -264,13 +278,14 @@ async function product(args, context) {
     sharedPackages.push({ id: snapshot.id, version: snapshot.version, integrity: snapshot.integrity, files: projections });
     sharedLocks.push({ id: snapshot.id, version: snapshot.version, integrity: snapshot.integrity, files: Object.fromEntries(snapshot.files.map(file => [file.target, file.sha256])) });
   }
-  const transformations = adaptBootstrapMigration(appFiles, runtime.app);
+  const transformations = [...adaptBootstrapMigration(appFiles, runtime.app), ...adaptContextRuntime(appFiles, runtime.app, id, context.config.sharedPackages || [])];
   const profile = { schemaVersion: 1, id, name: id, app: `${destinationPath}/app`, basedOn: runtime.id, theme, ports,
     database: { name: `orbit_${id.replaceAll('-', '_')}` },
     plugins: { requested: selected, enabled, disabled: catalog.plugins.map(plugin => plugin.id).filter(plugin => !enabled.includes(plugin)).sort() }, sharedPackages };
   const sourceHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: context.root, encoding: 'utf8' }).trim();
   const sourceDirty = Boolean(execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', runtime.app, 'orbit.workspace.json', ...(context.config.sharedPackages || []).map(pkg => pkg.path)], { cwd: context.root, encoding: 'utf8' }).trim());
   const files = new Map([...appFiles].map(([path, value]) => ['app/' + path, value]));
+  files.set('product.profile.json', json(profile));
   const appPackage = JSON.parse(appFiles.get('package.json').toString());
   appPackage.name = `orbit-${id}`;
   appPackage.scripts ||= {};

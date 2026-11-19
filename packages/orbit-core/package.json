@@ -1,11 +1,12 @@
 {
   "name": "@orbit/core-source",
-  "version": "1.3.0",
+  "version": "1.12.5",
   "private": true,
   "description": "Canonical Orbit source distribution with reproducible isolated-runtime projections.",
   "files": [
     "core-version.json",
-    "src"
+    "src",
+    "sql"
   ],
   "orbit": {
     "format": 1,
@@ -14,6 +15,34 @@
       {
         "source": "core-version.json",
         "target": "apps/api/core-version.json"
+      },
+      {
+        "source": "sql/migrations/157_card_revisions.sql",
+        "target": "apps/api/sql/migrations/157_card_revisions.sql"
+      },
+      {
+        "source": "sql/migrations/158_workspace_coordination.sql",
+        "target": "apps/api/sql/migrations/158_workspace_coordination.sql"
+      },
+      {
+        "source": "sql/migrations/159_isolated_checkouts.sql",
+        "target": "apps/api/sql/migrations/159_isolated_checkouts.sql"
+      },
+      {
+        "source": "sql/migrations/160_context_manifests.sql",
+        "target": "apps/api/sql/migrations/160_context_manifests.sql"
+      },
+      {
+        "source": "sql/migrations/207_context_bridge_audit.sql",
+        "target": "apps/api/sql/migrations/207_context_bridge_audit.sql"
+      },
+      {
+        "source": "sql/migrations/208_context_bridge_knowledge_audit.sql",
+        "target": "apps/api/sql/migrations/208_context_bridge_knowledge_audit.sql"
+      },
+      {
+        "source": "sql/migrations/209_discovery_journal.sql",
+        "target": "apps/api/sql/migrations/209_discovery_journal.sql"
       },
       {
         "source": "src/access/bootstrap-root.spec.ts",
@@ -136,6 +165,14 @@
         "target": "apps/api/src/card-rules.ts"
       },
       {
+        "source": "src/card-versions.spec.ts",
+        "target": "apps/api/src/card-versions.spec.ts"
+      },
+      {
+        "source": "src/card-versions.ts",
+        "target": "apps/api/src/card-versions.ts"
+      },
+      {
         "source": "src/cloudflare-tunnel/cloudflare-tunnel.plugin.ts",
         "target": "apps/api/src/cloudflare-tunnel/cloudflare-tunnel.plugin.ts"
       },
@@ -256,12 +293,140 @@
         "target": "apps/api/src/execution/config.ts"
       },
       {
+        "source": "src/execution/context-bridge-adapter.spec.ts",
+        "target": "apps/api/src/execution/context-bridge-adapter.spec.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-adapter.ts",
+        "target": "apps/api/src/execution/context-bridge-adapter.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-host.spec.ts",
+        "target": "apps/api/src/execution/context-bridge-host.spec.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-host.ts",
+        "target": "apps/api/src/execution/context-bridge-host.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-knowledge.spec.ts",
+        "target": "apps/api/src/execution/context-bridge-knowledge.spec.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-mcp-entry.spec.ts",
+        "target": "apps/api/src/execution/context-bridge-mcp-entry.spec.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-mcp-entry.ts",
+        "target": "apps/api/src/execution/context-bridge-mcp-entry.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-mcp.spec.ts",
+        "target": "apps/api/src/execution/context-bridge-mcp.spec.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-mcp.ts",
+        "target": "apps/api/src/execution/context-bridge-mcp.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-peer.py",
+        "target": "apps/api/src/execution/context-bridge-peer.py"
+      },
+      {
+        "source": "src/execution/context-bridge-peer.spec.ts",
+        "target": "apps/api/src/execution/context-bridge-peer.spec.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-peer.ts",
+        "target": "apps/api/src/execution/context-bridge-peer.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-repository.spec.ts",
+        "target": "apps/api/src/execution/context-bridge-repository.spec.ts"
+      },
+      {
+        "source": "src/execution/context-bridge-repository.ts",
+        "target": "apps/api/src/execution/context-bridge-repository.ts"
+      },
+      {
+        "source": "src/execution/context-bridge.spec.ts",
+        "target": "apps/api/src/execution/context-bridge.spec.ts"
+      },
+      {
+        "source": "src/execution/context-bridge.ts",
+        "target": "apps/api/src/execution/context-bridge.ts"
+      },
+      {
         "source": "src/execution/context-builder.ts",
         "target": "apps/api/src/execution/context-builder.ts"
       },
       {
+        "source": "src/execution/context-compiler-host.spec.ts",
+        "target": "apps/api/src/execution/context-compiler-host.spec.ts"
+      },
+      {
+        "source": "src/execution/context-compiler-host.ts",
+        "target": "apps/api/src/execution/context-compiler-host.ts"
+      },
+      {
+        "source": "src/execution/context-compiler.spec.ts",
+        "target": "apps/api/src/execution/context-compiler.spec.ts"
+      },
+      {
+        "source": "src/execution/context-compiler.ts",
+        "target": "apps/api/src/execution/context-compiler.ts"
+      },
+      {
+        "source": "src/execution/context-delivery.spec.ts",
+        "target": "apps/api/src/execution/context-delivery.spec.ts"
+      },
+      {
+        "source": "src/execution/context-delivery.ts",
+        "target": "apps/api/src/execution/context-delivery.ts"
+      },
+      {
+        "source": "src/execution/context-manifest.spec.ts",
+        "target": "apps/api/src/execution/context-manifest.spec.ts"
+      },
+      {
+        "source": "src/execution/context-manifest.ts",
+        "target": "apps/api/src/execution/context-manifest.ts"
+      },
+      {
+        "source": "src/execution/context-registry.spec.ts",
+        "target": "apps/api/src/execution/context-registry.spec.ts"
+      },
+      {
+        "source": "src/execution/context-runtime.spec.ts",
+        "target": "apps/api/src/execution/context-runtime.spec.ts"
+      },
+      {
+        "source": "src/execution/context-runtime.ts",
+        "target": "apps/api/src/execution/context-runtime.ts"
+      },
+      {
         "source": "src/execution/development-policy.ts",
         "target": "apps/api/src/execution/development-policy.ts"
+      },
+      {
+        "source": "src/execution/discovery-journal-host.ts",
+        "target": "apps/api/src/execution/discovery-journal-host.ts"
+      },
+      {
+        "source": "src/execution/discovery-journal-repository.spec.ts",
+        "target": "apps/api/src/execution/discovery-journal-repository.spec.ts"
+      },
+      {
+        "source": "src/execution/discovery-journal-repository.ts",
+        "target": "apps/api/src/execution/discovery-journal-repository.ts"
+      },
+      {
+        "source": "src/execution/discovery-journal.spec.ts",
+        "target": "apps/api/src/execution/discovery-journal.spec.ts"
+      },
+      {
+        "source": "src/execution/discovery-journal.ts",
+        "target": "apps/api/src/execution/discovery-journal.ts"
       },
       {
         "source": "src/execution/execution.browser.spec.ts",
@@ -290,6 +455,54 @@
       {
         "source": "src/execution/file-scope.ts",
         "target": "apps/api/src/execution/file-scope.ts"
+      },
+      {
+        "source": "src/execution/isolated-checkout.ts",
+        "target": "apps/api/src/execution/isolated-checkout.ts"
+      },
+      {
+        "source": "src/execution/isolated-execution-policy.spec.ts",
+        "target": "apps/api/src/execution/isolated-execution-policy.spec.ts"
+      },
+      {
+        "source": "src/execution/isolated-execution-policy.ts",
+        "target": "apps/api/src/execution/isolated-execution-policy.ts"
+      },
+      {
+        "source": "src/execution/knowledge-bridge.spec.ts",
+        "target": "apps/api/src/execution/knowledge-bridge.spec.ts"
+      },
+      {
+        "source": "src/execution/knowledge-bridge.ts",
+        "target": "apps/api/src/execution/knowledge-bridge.ts"
+      },
+      {
+        "source": "src/execution/knowledge-host.spec.ts",
+        "target": "apps/api/src/execution/knowledge-host.spec.ts"
+      },
+      {
+        "source": "src/execution/knowledge-host.ts",
+        "target": "apps/api/src/execution/knowledge-host.ts"
+      },
+      {
+        "source": "src/execution/knowledge-lexical-loader.ts",
+        "target": "apps/api/src/execution/knowledge-lexical-loader.ts"
+      },
+      {
+        "source": "src/execution/knowledge-lexical.d.ts",
+        "target": "apps/api/src/execution/knowledge-lexical.d.ts"
+      },
+      {
+        "source": "src/execution/knowledge-lexical.js",
+        "target": "apps/api/src/execution/knowledge-lexical.js"
+      },
+      {
+        "source": "src/execution/knowledge-retrieval.spec.ts",
+        "target": "apps/api/src/execution/knowledge-retrieval.spec.ts"
+      },
+      {
+        "source": "src/execution/knowledge-retrieval.ts",
+        "target": "apps/api/src/execution/knowledge-retrieval.ts"
       },
       {
         "source": "src/execution/managed-process.spec.ts",
@@ -330,6 +543,26 @@
       {
         "source": "src/execution/types.ts",
         "target": "apps/api/src/execution/types.ts"
+      },
+      {
+        "source": "src/execution/workspace-coordinator.spec.ts",
+        "target": "apps/api/src/execution/workspace-coordinator.spec.ts"
+      },
+      {
+        "source": "src/execution/workspace-coordinator.ts",
+        "target": "apps/api/src/execution/workspace-coordinator.ts"
+      },
+      {
+        "source": "src/execution/workspace-process.spec.ts",
+        "target": "apps/api/src/execution/workspace-process.spec.ts"
+      },
+      {
+        "source": "src/execution/workspace-process.ts",
+        "target": "apps/api/src/execution/workspace-process.ts"
+      },
+      {
+        "source": "src/execution/workspace-supervisor.py",
+        "target": "apps/api/src/execution/workspace-supervisor.py"
       },
       {
         "source": "src/git/draft.spec.ts",
@@ -698,6 +931,10 @@
       {
         "source": "src/workspaces/workspace-branding.ts",
         "target": "apps/api/src/workspaces/workspace-branding.ts"
+      },
+      {
+        "source": "src/access/editorial-permissions.ts",
+        "target": "apps/api/src/access/editorial-permissions.ts"
       }
     ]
   }

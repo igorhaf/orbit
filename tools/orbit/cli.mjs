@@ -8,12 +8,13 @@ const [command = 'help', ...args] = process.argv.slice(2);
 const modules = {
   catalog: './catalog.mjs', impact: './catalog.mjs', generate: './generate.mjs', migrate: './generate.mjs',
   knowledge: './knowledge.mjs', metrics: './knowledge.mjs', delivery: './knowledge.mjs',
-  shared: './shared.mjs', plan: './plan.mjs', check: './verify.mjs', verify: './verify.mjs',
+  preflight: './preflight.mjs', shared: './shared.mjs', plan: './plan.mjs', check: './verify.mjs', verify: './verify.mjs',
 };
 
 if (command === 'help' || command === '--help') {
   console.log(`Orbit development tools (Node.js; no Docker or external AI service required)
 
+  preflight [--runtime id] [--format json|text]  Read-only architecture readiness
   catalog [--runtime id]                 Discover real plugin definitions and contracts
   impact [--files path,...] [--base ref] Identify dependent files/runtimes and checks
   shared check|sync [--write]            Verify or update versioned source projections
@@ -43,9 +44,9 @@ See docs/acceleration/README.md. Generators and migrations preview changes by de
       if (profile.id !== entry.name || profile.app !== expectedApp || config.runtimes.some(runtime => runtime.id === profile.id)) throw new Error(`Invalid or duplicate generated product profile: ${entry.name}`);
       config.runtimes.push({ id: profile.id, app: profile.app, webPort: profile.ports.web, apiPort: profile.ports.api });
     }
-    const { execute } = await import(modules[command]);
+    const { execute, formatText } = await import(modules[command]);
     const result = await execute(command, args, { root, config });
-    console.log(JSON.stringify(result, null, 2));
+    console.log(command === 'preflight' && args[args.indexOf('--format') + 1] === 'text' && formatText ? formatText(result) : JSON.stringify(result, null, 2));
     if (result?.ok === false || (result?.check && result.check.status !== 'passed')) process.exitCode = 1;
   } catch (error) {
     console.error(JSON.stringify({ ok: false, error: error.message }));

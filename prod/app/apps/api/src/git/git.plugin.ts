@@ -1,3 +1,5 @@
+import {currentWorkspaceWriteLease,assertWorkspaceWriteCoverage} from '../execution/workspace-coordinator';
+import {runManagedProcess} from '../execution/managed-process';
 import {Body,Controller,Delete,Get,HttpException,Inject,Injectable,Param,Patch,Post,Query,Req} from '@nestjs/common';
 import {Request} from 'express';
 import {execFile} from 'node:child_process';
@@ -52,7 +54,7 @@ export class GitPlugin {
     return dir;
   }
   private async repoDir(repo:Repo){const dir=await this.projectDirectory(repo.local_path,repo.relative_path);const top=(await this.git(dir,['rev-parse','--show-toplevel'])).trim();if(await realpath(top)!==dir)bad('A pasta não é a raiz do repositório Git.',400);return dir}
-  private async git(dir:string,args:string[]):Promise<string>{try{const output=await runFile('git',args,{cwd:dir,timeout:60000,maxBuffer:1024*1024,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});return output.stdout}catch(error){const output=error as Error&{stderr?:string};return bad(safeLog(output.stderr||output.message).slice(0,1000),409)}}
+  private async git(dir:string,args:string[]):Promise<string>{try{const lease=currentWorkspaceWriteLease();if(lease){await assertWorkspaceWriteCoverage(dir);const output=await runManagedProcess('git',args,{cwd:dir,timeoutMs:60000,maxOutputBytes:1024*1024,signal:lease.signal,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});if(output.code!==0)throw new Error(output.stderr||'Git falhou.');return output.stdout;}const output=await runFile('git',args,{cwd:dir,timeout:60000,maxBuffer:1024*1024,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});return output.stdout}catch(error){const output=error as Error&{stderr?:string};return bad(safeLog(output.stderr||output.message).slice(0,1000),409)}}
   private async allowedRepositoryBranch(repo:Repo,branch:string){asRule(()=>allowedBranch(branch,repo.branches));const targets=await this.db.query<{branches:string[]}>('SELECT branches FROM git_pipeline_targets WHERE repository_id=$1 AND active',[repo.id]);if(targets.length&&!targets.some(target=>target.branches.includes(branch)))bad('A branch não consta em nenhum pipeline configurado.',409);return branch}
   private async currentBranch(repo:Repo,dir:string){const branch=(await this.git(dir,['branch','--show-current'])).trim();if(!branch)bad('Checkout em detached HEAD não é permitido.',409);return this.allowedRepositoryBranch(repo,branch)}
   private async explicitFiles(dir:string,paths:string[]){for(const path of paths){try{const full=resolve(dir,path),info=await lstat(full);if(info.isDirectory())bad('Selecione arquivos, não pastas.',400);const real=await realpath(full),rel=relative(dir,real);if(rel==='..'||rel.startsWith('..'+sep)||isAbsolute(rel))bad('Arquivo fora do repositório.',400)}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error}}}

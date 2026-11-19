@@ -86,7 +86,7 @@ export function inspectShared({ root, config }, selected) {
   const packages = config.sharedPackages.map(pkg => packageSnapshot(root, pkg));
   const runtimes = selected ? config.runtimes.filter(runtime => runtime.id === selected) : config.runtimes;
   if (!runtimes.length) throw new Error(`Unknown runtime: ${selected}`);
-  const diagnostics = [], projections = [], locks = [];
+  const diagnostics = [], projections = [], locks = [], projectionStates = [];
   const targets = new Set();
   for (const pkg of packages) for (const file of pkg.files) {
     if (targets.has(file.target)) throw new Error(`Two packages own the same projection: ${file.target}`);
@@ -108,6 +108,7 @@ export function inspectShared({ root, config }, selected) {
         const targetPath = safePath(root, target);
         const actual = existsSync(targetPath) ? digest(readFileSync(targetPath)) : null;
         const before = previous?.files?.[file.target];
+        projectionStates.push({ runtime: runtime.id, package: pkg.id, source: `${config.sharedPackages.find(item => item.id === pkg.id).path}/${file.source}`, path: target, canonical: file.sha256, actual, locked: before ?? null });
         const changed = actual !== file.sha256;
         if (changed && actual !== null && actual !== before) diagnostics.push({ code: 'local-drift', runtime: runtime.id, path: target, message: 'Projection has independent changes; reconcile with canonical source before synchronizing.' });
         if (changed) projections.push({ path: target, contents: file.contents, package: pkg.id });
@@ -115,9 +116,9 @@ export function inspectShared({ root, config }, selected) {
       }
       next.packages.push(entry);
     }
-    if (json(old) !== json(next)) locks.push({ path, contents: json(next) });
+    if (!isDeepStrictEqual(old, next)) locks.push({ path, contents: json(next) });
   }
-  return { packages, diagnostics, projections, locks };
+  return { packages, diagnostics, projections, locks, projectionStates };
 }
 
 const validVersion = value => typeof value === 'string' && /^\d+\.\d+\.\d+$/.test(value);
@@ -136,12 +137,17 @@ export async function reconcileShared(context, options = {}) {
   const result = () => ({ ok: diagnostics.length === 0 && requiredScope.length === 0, mode: options.allowWrite === true ? 'apply' : 'plan', written: false, changedPaths: entries.map(entry => entry.path), writePaths: entries.map(entry => entry.path), requiresWrite: entries.length > 0, requiredScope, diagnostics, releases });
   const diagnostic = (code, message, extra = {}) => diagnostics.push({ code, message, ...extra });
   if (!['patch', 'minor', 'major'].includes(release)) { diagnostic('invalid-release', 'Use patch, minor or major for a shared release.'); return { ...result(), blocked: 'diagnostics' }; }
-  let raw, rawHash, configPath, projectRoot, changedFiles;
+  let raw, rawHash, configPath, projectRoot, changedFiles, selectedPackages;
   try {
     configPath = safePath(root, 'orbit.workspace.json');
     const rawContents = readFileSync(configPath, 'utf8');
     raw = JSON.parse(rawContents); rawHash = digest(rawContents);
     if (!Array.isArray(raw.sharedPackages) || !Array.isArray(raw.runtimes)) throw new Error('Workspace sharedPackages/runtimes must be arrays.');
+    if (options.packageIds !== undefined) {
+      if (!Array.isArray(options.packageIds) || !options.packageIds.length || options.packageIds.some(id => typeof id !== 'string' || !id) || new Set(options.packageIds).size !== options.packageIds.length) throw new Error('packageIds must be a nonempty array of unique package IDs.');
+      selectedPackages = new Set(options.packageIds);
+      for (const id of selectedPackages) if (!raw.sharedPackages.some(pkg => pkg.id === id)) throw new Error(`Unknown shared package: ${id}`);
+    }
     if (options.projectRoot !== undefined && !isAbsolute(options.projectRoot)) throw new Error('projectRoot must be an absolute directory.');
     projectRoot = resolve(options.projectRoot || root);
     if (existsSync(projectRoot)) projectRoot = realpathSync(projectRoot);
@@ -172,18 +178,28 @@ export async function reconcileShared(context, options = {}) {
     try {
       if (ownedPackages.has(pkg.id)) throw new Error('Duplicate shared package identity.');
       ownedPackages.add(pkg.id);
-      const snapshot = packageSnapshot(root, pkg);
-      for (const file of snapshot.files) {
+      // Check ownership across the whole manifest even when source inspection is scoped.
+      // Unselected source contents, versions and runtime drifts are deliberately untouched.
+      if (!Array.isArray(pkg.files)) throw new Error('Package projection mappings must be an array.');
+      for (const file of pkg.files) {
+        safePath(root, file.target);
         if (targets.has(file.target)) throw new Error(`Multiple packages own projection ${file.target}.`);
         targets.add(file.target);
       }
+      if (selectedPackages && !selectedPackages.has(pkg.id)) continue;
+      const snapshot = packageSnapshot(root, pkg);
       const metadataContents = readFileSync(safePath(root, `${pkg.path}/package.json`), 'utf8');
       snapshots.push({ pkg, snapshot, metadataPath: `${pkg.path}/package.json`, metadata: JSON.parse(metadataContents), metadataHash: digest(metadataContents) });
     } catch (error) { diagnostic('invalid-package', error.message, { package: pkg.id }); }
   }
-  for (const [runtime, lock] of locks) for (const previous of lock.value?.packages || []) {
-    if (!ownedPackages.has(previous.id)) diagnostic('removed-package', 'Removing shared ownership requires an explicit migration; no projected code will be deleted.', { runtime, package: previous.id });
-    if (!validVersion(previous.version) || typeof previous.integrity !== 'string' || !previous.files || typeof previous.files !== 'object' || Array.isArray(previous.files)) diagnostic('invalid-lock-package', 'Shared lock package metadata is invalid.', { runtime, package: previous.id });
+  for (const [runtime, lock] of locks) {
+    const ids = new Set();
+    for (const previous of lock.value?.packages || []) {
+      if (!previous || typeof previous.id !== 'string' || ids.has(previous.id)) { diagnostic('invalid-lock-package', 'Shared lock package identities must be unique strings.', { runtime }); continue; }
+      ids.add(previous.id);
+      if (!ownedPackages.has(previous.id)) diagnostic('removed-package', 'Removing shared ownership requires an explicit migration; no projected code will be deleted.', { runtime, package: previous.id });
+      if (!validVersion(previous.version) || typeof previous.integrity !== 'string' || !previous.files || typeof previous.files !== 'object' || Array.isArray(previous.files)) diagnostic('invalid-lock-package', 'Shared lock package metadata is invalid.', { runtime, package: previous.id });
+    }
   }
   if (diagnostics.length) return { ...result(), blocked: 'diagnostics' };
 
@@ -257,8 +273,19 @@ export async function reconcileShared(context, options = {}) {
     try {
       if (workspaceChanged) add('orbit.workspace.json', json(raw), 'workspace');
       for (const runtime of runtimes.values()) {
-        const next = { schemaVersion: 1, runtime: runtime.id, packages: snapshots.map(({ snapshot }) => ({ id: snapshot.id, version: snapshot.version, integrity: snapshot.integrity, files: Object.fromEntries(snapshot.files.map(file => [file.target, file.sha256])) })) };
         const lock = locks.get(runtime.id);
+        const published = snapshots.map(({ snapshot }) => ({ id: snapshot.id, version: snapshot.version, integrity: snapshot.integrity, files: Object.fromEntries(snapshot.files.map(file => [file.target, file.sha256])) }));
+        let next;
+        if (selectedPackages) {
+          const remaining = new Map(published.map(pkg => [pkg.id, pkg]));
+          const packages = (lock.value?.packages || []).map(previous => {
+            const replacement = remaining.get(previous.id);
+            remaining.delete(previous.id);
+            return replacement || previous;
+          });
+          packages.push(...remaining.values());
+          next = { ...(lock.value || { schemaVersion: 1, runtime: runtime.id }), packages };
+        } else next = { schemaVersion: 1, runtime: runtime.id, packages: published };
         if (!isDeepStrictEqual(lock.value, next)) add(lock.path, json(next), 'lock');
       }
     } catch (error) { diagnostic('invalid-destination', error.message); }
@@ -327,12 +354,12 @@ export async function execute(command, args, context) {
     for (let index = 1; index < args.length; index++) {
       const flag = args[index];
       if (flag === '--write') { flags.write = true; continue; }
-      if (!['--files', '--scope', '--project-root', '--release'].includes(flag)) throw new Error(`Unknown reconcile argument: ${flag}`);
+      if (!['--files', '--scope', '--project-root', '--release', '--packages'].includes(flag)) throw new Error(`Unknown reconcile argument: ${flag}`);
       const value = args[++index];
       if (!value || value.startsWith('--')) throw new Error(`${flag} requires a value.`);
       flags[flag.slice(2)] = value;
     }
-    return reconcileShared(context, { changedFiles: flags.files?.split(',').filter(Boolean), writeScope: flags.scope?.split(',').filter(Boolean), projectRoot: flags['project-root'], allowWrite: flags.write === true, release: flags.release });
+    return reconcileShared(context, { changedFiles: flags.files?.split(',').filter(Boolean), writeScope: flags.scope?.split(',').filter(Boolean), projectRoot: flags['project-root'], allowWrite: flags.write === true, release: flags.release, packageIds: flags.packages?.split(',') });
   }
   if (operation === 'bump') {
     const [ , id, increment] = args;

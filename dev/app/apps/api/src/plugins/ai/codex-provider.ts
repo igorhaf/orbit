@@ -1,10 +1,14 @@
+import type {ContextBridgeExecutorHandle} from '../../execution/context-bridge-host';
+import {prepareContextDelivery,type ContextDeliveryContract} from '../../execution/context-delivery';
+import {currentIsolatedExecution,assertIsolatedExecutionRoot,isolatedCodexPolicy,assertIsolatedChecks,isolatedProcessEnvironment} from '../../execution/isolated-execution-policy';
 import { extractPromptQuestion } from '../../prompt-question';
 import { HttpException, Injectable } from '@nestjs/common';
 import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
-import { spawn } from 'node:child_process';
-import { execFile } from 'node:child_process';
+import {spawnWorkspaceProcess} from '../../execution/workspace-process';
+import {currentWorkspaceWriteLease} from '../../execution/workspace-coordinator';
+import {runManagedProcess} from '../../execution/managed-process';
 import { prepareOrbitCodexHome } from '../../codex-home';
 import { orbitArchitecturePrompt } from '../../orbit-architecture';
 import { captureFileScope } from '../../execution/file-scope';
@@ -40,6 +44,7 @@ export const codexErrorMessage=(detail:string) => {
 @Injectable()
 export class CodexAiService {
   private available:()=>boolean=()=>true;
+  private async codexHome(){return prepareOrbitCodexHome()}
   setAvailability(check:()=>boolean){this.available=check}
   isAvailable(){return this.available()}
 
@@ -48,16 +53,22 @@ export class CodexAiService {
     const result=await this.run(instruction, process.cwd(), model, effort, undefined, undefined, undefined, undefined, 'planning');
     return typeof result==='string'?result:result.output;
   }
-  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], writeScope?:string[], projectChecks:string[][]=[], allowQuestions=false, multiAgents=false): Promise<CodexExecution> {
+  async execute(instruction: string, projectPath: string, model: string, effort: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], writeScope?:string[], projectChecks:string[][]=[], allowQuestions=false, multiAgents=false, contextDelivery?:ContextDeliveryContract,contextBridge?:ContextBridgeExecutorHandle): Promise<CodexExecution> {
+    if(contextBridge)throw new HttpException('Context Bridge Codex não homologado; configuração MCP e sandbox preservados.',409);
+    const lease=currentWorkspaceWriteLease();
+    if((executionMode!=='planning'||writeScope!==undefined||projectChecks.length)&&!lease)throw new HttpException('Execução mutável sem proteção compartilhada do workspace.',409);
+    await lease?.assertActive();
+    await assertIsolatedExecutionRoot(projectPath);
+    assertIsolatedChecks(projectChecks);
     const verify=writeScope===undefined?null:await captureFileScope(projectPath,writeScope);
     try{
-      const scoped=writeScope===undefined?instruction:`ESCRITA LIMITADA A ESTES ARQUIVOS (qualquer alteração fora desta lista será revertida e falhará a execução):\n${writeScope.join('\n')}\n\n${instruction}`;
-      const result=await this.run(scoped, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode, images, multiAgents);
+      const scoped=writeScope===undefined?instruction:`ESCRITA LIMITADA A ESTES ARQUIVOS (alterações fora desta lista interrompem a execução; restauração exige autoria comprovada):\n${writeScope.join('\n')}\n\n${instruction}`;
+      const result=await this.run(scoped, projectPath, model, effort, progress, sessionId, onSessionId, onHeartbeat, executionMode, images, multiAgents,contextDelivery,instruction);
       if(verify)await verify();
       if(projectChecks.length&&!(allowQuestions&&extractPromptQuestion(typeof result==='string'?result:result.output))){
         progress?.('Validando as verificações obrigatórias do projeto…');
         const heartbeat=setInterval(()=>void Promise.resolve(onHeartbeat?.()).catch(()=>undefined),5000);
-        try{await runProjectChecks(projectPath,projectChecks)}finally{clearInterval(heartbeat)}
+        try{await runProjectChecks(projectPath,projectChecks,90000,lease?.signal)}finally{clearInterval(heartbeat)}
       }
       if(verify)await verify();
       return typeof result==='string'?{output:result,sessionId:sessionId||null,fileChanges:[],activities:[]}:result;
@@ -92,9 +103,10 @@ export class CodexAiService {
     } catch { return null; }
     return null;
   }
-  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], multiAgents=false): Promise<string|CodexExecution> {
+  private async run(instruction: string, workingDirectory: string, model?: string, effort?: string, progress?:Progress, sessionId?:string|null, onSessionId?:(id:string)=>Promise<void>|void, onHeartbeat?:()=>Promise<boolean|void>|boolean|void, executionMode:'planning'|'bypass'='bypass', images:CodexPromptImage[]=[], multiAgents=false,contextDelivery?:ContextDeliveryContract,compiledInstruction=instruction): Promise<string|CodexExecution> {
     if(!this.available())throw new HttpException('O plugin de IA está desativado.',409);
-    const codexHome = await prepareOrbitCodexHome();
+    await assertIsolatedExecutionRoot(workingDirectory);
+    const codexHome = await this.codexHome();
     const directory = await mkdtemp(join(tmpdir(), 'orbit-codex-'));
     const output = join(directory, 'response.txt');
     const imageFiles:string[]=[];
@@ -115,19 +127,21 @@ export class CodexAiService {
         const imagePath=join(directory,`prompt-image-${index+1}${extension}`);
         await writeFile(imagePath,image.data,{mode:0o600});imageFiles.push(imagePath);
       }
+      const envelope=contextDelivery?instruction:`${orbitArchitecturePrompt}\n\n${instruction}`;
+      if(contextDelivery){const receipt=prepareContextDelivery(compiledInstruction,envelope,contextDelivery);await contextDelivery.onDelivery?.(receipt);}
       await new Promise<void>((resolve, reject) => {
-        const executionPolicy = executionMode === 'planning' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox'];
+        const executionPolicy = currentIsolatedExecution() ? isolatedCodexPolicy(executionMode!=='planning') : executionMode === 'planning' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox'];
         const command = sessionId
           ? ['exec', '-C', workingDirectory, ...executionPolicy, '--skip-git-repo-check', ...(multiAgents ? ['--enable', 'multi_agent'] : []), 'resume', sessionId, ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])]
           : ['exec', ...executionPolicy, '--skip-git-repo-check', ...(multiAgents ? ['--enable', 'multi_agent'] : []), ...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : []), '-C', workingDirectory];
-        const child = spawn(executable, [
+        const child = spawnWorkspaceProcess(executable, [
           ...command,
           ...imageFiles.flatMap(image=>['--image',image]),
           ...(progress ? ['--json'] : []),
           '--output-last-message', output, '-',
-        ], { env: { ...process.env, CODEX_HOME: codexHome }, stdio: ['pipe', progress?'pipe':'ignore', 'pipe'], detached:process.platform!=='win32' });
+        ], { env: currentIsolatedExecution()?isolatedProcessEnvironment(codexHome):{ ...process.env, CODEX_HOME: codexHome }, stdio: ['pipe', progress?'pipe':'ignore', 'pipe'], detached:process.platform!=='win32' });
         child.stdin?.on('error', () => { /* The Codex process may exit before consuming the prompt. */ });
-        child.stdin?.end(`${orbitArchitecturePrompt}\n\n${instruction}`);
+        child.stdin?.end(envelope);
         let stderr = '';
         let stdout = '';
         let receivedOutputDelta=false;
@@ -148,7 +162,7 @@ export class CodexAiService {
           if(settled||timedOut)return;
           timedOut=true;timeoutMessage=message;
           terminateProcessGroup('SIGTERM');
-          killTimer=setTimeout(()=>{terminateProcessGroup('SIGKILL');killTimer=undefined;finish(new Error(timeoutMessage));},2_000);
+          killTimer=setTimeout(()=>{terminateProcessGroup('SIGKILL');killTimer=undefined;},2_000);
           killTimer.unref();
         };
         const armIdleTimeout=()=>{
@@ -156,14 +170,18 @@ export class CodexAiService {
           timeoutTimer=setTimeout(()=>timeoutProcess('O Codex ficou sem enviar progresso e excedeu o limite de inatividade.'),idleTimeout);
           timeoutTimer.unref();
         };
+        const activeLease=currentWorkspaceWriteLease();
+        const onProtectionLost=()=>timeoutProcess('Execução interrompida por perda de proteção do workspace.');
+        activeLease?.signal.addEventListener('abort',onProtectionLost,{once:true});
+        if(activeLease?.signal.aborted)onProtectionLost();
         const heartbeatTimer=setInterval(()=>{
-          if(child.exitCode===null&&child.signalCode===null)void Promise.resolve(onHeartbeat?.()).then(active=>{if(active===false)timeoutProcess('A execução não está mais ativa neste worker.')}).catch(()=>undefined);
+          if(child.exitCode===null&&child.signalCode===null)void Promise.resolve(onHeartbeat?.()).then(active=>{if(active===false)timeoutProcess('A execução não está mais ativa neste worker.')}).catch(()=>timeoutProcess('A proteção do worker deixou de responder.'));
         },timeoutSetting('CODEX_AI_HEARTBEAT_INTERVAL_MS',5_000));
         heartbeatTimer.unref();
         armIdleTimeout();
         const maxRuntimeTimer=setTimeout(()=>timeoutProcess('A execução do Codex excedeu o tempo máximo permitido.'),maxRuntime);
         maxRuntimeTimer.unref();
-        const clearTimers=()=>{if(timeoutTimer)clearTimeout(timeoutTimer);if(maxRuntimeTimer)clearTimeout(maxRuntimeTimer);if(killTimer&&!timedOut)clearTimeout(killTimer);clearInterval(heartbeatTimer);};
+        const clearTimers=()=>{activeLease?.signal.removeEventListener('abort',onProtectionLost);if(timeoutTimer)clearTimeout(timeoutTimer);if(maxRuntimeTimer)clearTimeout(maxRuntimeTimer);if(killTimer&&!timedOut)clearTimeout(killTimer);clearInterval(heartbeatTimer);};
         finish=(error?:Error)=>{
           if(settled)return;
           settled=true;clearTimers();
@@ -235,7 +253,7 @@ export class CodexAiService {
       const detail = error instanceof Error ? error.message : '';
       if (sessionId && /(?:no (?:saved )?(?:session|conversation|thread|rollout)|(?:session|conversation|thread|rollout).*(?:not found|does not exist|could not be found)|could not find (?:the )?(?:session|conversation|thread|rollout))/i.test(detail)) {
         progress?.('A sessão anterior não está disponível neste armazenamento; iniciando uma nova sessão.');
-        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat, executionMode, images, multiAgents);
+        return await this.run(instruction, workingDirectory, model, effort, progress, null, onSessionId, onHeartbeat, executionMode, images, multiAgents,contextDelivery,compiledInstruction);
       }
       console.error('[CodexAi] Execução falhou.',redact(detail));
       await sessionPersistence;
@@ -249,12 +267,12 @@ export class CodexAiService {
 
   private async reviewFileChanges(workingDirectory:string,changes:Array<{path:string;kind:'add'|'delete'|'update'}>):Promise<PromptFileChange[]> {
     const safe=changes.slice(0,100);
-    const runGit=(args:string[])=>new Promise<string>(resolveOutput=>execFile('git',args,{cwd:workingDirectory,encoding:'utf8',maxBuffer:512*1024},(_error,stdout)=>resolveOutput(stdout||'')));
+    const runGit=async(args:string[])=>{const result=await runManagedProcess('git',args,{cwd:workingDirectory,timeoutMs:30000,maxOutputBytes:512*1024,signal:currentWorkspaceWriteLease()?.signal,env:currentIsolatedExecution()?isolatedProcessEnvironment():{...process.env,GIT_TERMINAL_PROMPT:'0',GIT_OPTIONAL_LOCKS:'0'}});return result.stdout;};
     const reviewed:PromptFileChange[]=[];
     for(const change of safe){
       let diff='';
       try{
-        diff=(await runGit(['diff','--no-ext-diff','--no-color','--unified=3','--',change.path]))+(await runGit(['diff','--cached','--no-ext-diff','--no-color','--unified=3','--',change.path]));
+        diff=(await runGit(['diff','--no-ext-diff','--no-textconv','--no-color','--unified=3','--',change.path]))+(await runGit(['diff','--cached','--no-ext-diff','--no-textconv','--no-color','--unified=3','--',change.path]));
         if(!diff&&change.kind==='add'){
           const absolute=resolvePath(workingDirectory,change.path);
           const root=await realpath(workingDirectory);const actual=await realpath(absolute);

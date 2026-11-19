@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import lexical from '../../packages/orbit-core/src/execution/knowledge-lexical.js';
+const {lexicalWords: words, rankLexical} = lexical;
 import { execFileSync, spawn } from 'node:child_process';
 import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, openSync, closeSync } from 'node:fs';
 import { delimiter, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -12,7 +14,6 @@ const snapshotExcluded = (path) => excluded.test(path);
 const knowledgeExcluded = (path) => excluded.test(path) || isLockfile(path);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const slash = (value) => value.split(sep).join('/');
-const words = (text) => (text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().match(/[\p{L}\p{N}_-]{2,}/gu) || []);
 
 function parse(args) {
   const options = { _: [] };
@@ -201,20 +202,7 @@ function queryKnowledge(options, { root, config }) {
     const [canonical, ...aliases] = group;
     return { ...canonical, equivalentSources: aliases.map(({ path, start, end, hash, runtime }) => ({ path, start, end, hash, runtime })) };
   });
-  const counts = new Map(terms.map((term) => [term, 0]));
-  const tokens = chunks.map((chunk) => words(`${chunk.path} ${chunk.text}`));
-  tokens.forEach((items) => { const unique = new Set(items); for (const term of terms) if (unique.has(term)) counts.set(term, counts.get(term) + 1); });
-  const averageLength = tokens.reduce((sum, item) => sum + item.length, 0) / (tokens.length || 1);
-  const ranked = chunks.map((chunk, index) => {
-    const items = tokens[index];
-    let score = 0;
-    for (const term of terms) {
-      const frequency = items.filter((item) => item === term).length;
-      const idf = Math.log(1 + (chunks.length - counts.get(term) + 0.5) / (counts.get(term) + 0.5));
-      score += idf * frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * items.length / (averageLength || 1)));
-    }
-    return { ...chunk, score: Math.round(score * 1_000_000) / 1_000_000 };
-  }).filter((chunk) => chunk.score > 0).sort((a, b) => b.score - a.score || a.path.localeCompare(b.path) || a.start - b.start);
+  const ranked = rankLexical(query, chunks.map((chunk) => ({ id: `${chunk.path}:${chunk.start}:${chunk.end}`, label: chunk.path, text: chunk.text, chunk })), { tieBreak: (left, right) => left.chunk.path.localeCompare(right.chunk.path) || left.chunk.start - right.chunk.start }).map(({ document, score }) => ({ ...document.chunk, score }));
   const stale = new Map();
   let remaining = tokenBudget * 4;
   const results = [];

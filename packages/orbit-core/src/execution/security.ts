@@ -32,11 +32,13 @@ export function containsSecretText(value:string){
   if(/(?:-----BEGIN .*PRIVATE KEY-----|\b(?:sk-|ghp_|glpat-|xox[baprs]-)[A-Za-z0-9_-]{12,}|\bBearer\s+[A-Za-z0-9._-]{10,}|\b(?:[\w.-]*(?:password|secret|token|api[_-]?key|authorization|private[_-]?key))['"]?\s*[:=]\s*['"]?[^\s,'";]+)/i.test(text))return true;
   return Object.entries(process.env).some(([key,secret])=>/(?:PASSWORD|TOKEN|SECRET|KEY|DATABASE_URL)/i.test(key)&&Boolean(secret&&secret.length>=8&&text.includes(secret)));
 }
-export function redact(value:string){
-  let text=value.replace(/(?:Bearer\s+)[\w.-]+/gi,'Bearer [REDACTED]').replace(/\b(?:sk-|ghp_|glpat-|xox[baprs]-)[A-Za-z0-9_-]{12,}/gi,'[REDACTED]').replace(/((?:[\w.-]*(?:password|secret|token|api[_-]?key|authorization|private[_-]?key))["']?\s*[:=]\s*["']?)[^\s,"';]+/gi,'$1[REDACTED]');
+/** Context compilation must budget the complete redacted material, never a silent prefix. */
+export function redactContext(value:string){
+  let text=value.replace(/(?:Bearer\s+)[\w.-]+/gi,'Bearer [REDACTED]').replace(/\b(?:sk-|ghp_|glpat-|xox[baprs]-)[A-Za-z0-9_-]{12,}/gi,'[REDACTED]').replace(/(?<![\w.-])((?:[\w.-]*(?:password|secret|token|api[_-]?key|authorization|private[_-]?key))["']?\s*[:=]\s*["']?)[^\s,"';]+/gi,'$1[REDACTED]');
   for(const [key,secret] of Object.entries(process.env))if(/PASSWORD|TOKEN|SECRET|KEY|DATABASE_URL/i.test(key)&&secret&&secret.length>=8)text=text.split(secret).join('[REDACTED]');
-  return text.slice(0,64000);
+  return text;
 }
+export function redact(value:string){return redactContext(value).slice(0,64000)}
 export function redactFileChanges<T extends {diff:string}>(changes:T[]):T[]{return changes.map(change=>({...change,diff:redact(change.diff)}))}
 export function scrub(value:unknown):unknown {
   if(typeof value==='string')return redact(value);

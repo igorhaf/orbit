@@ -1,3 +1,4 @@
+import {assertIsolatedChecks} from './isolated-execution-policy';
 import {redact} from './security';
 import {runManagedProcess} from './managed-process';
 
@@ -7,10 +8,11 @@ export function validateProjectChecks(value:unknown):string[][] {
   return value.map(command=>[...command]);
 }
 
-export async function runProjectChecks(root:string,checks:string[][],timeout=90000){
+export async function runProjectChecks(root:string,checks:string[][],timeout=90000,signal?:AbortSignal){
+  assertIsolatedChecks(checks);
   for(const [executable,...args] of validateProjectChecks(checks)){
     try{
-      const result=await runManagedProcess(executable,args,{cwd:root,timeoutMs:timeout,maxOutputBytes:256*1024});
+      const result=await runManagedProcess(executable,args,{cwd:root,timeoutMs:timeout,maxOutputBytes:256*1024,signal});
       if(result.code!==0)throw new Error(result.stderr||result.stdout||`terminou com código ${result.code}`);
     }catch(error){
       throw new Error(`Verificação obrigatória falhou: ${executable} ${args.join(' ')}. ${redact((error instanceof Error?error.message:String(error)).slice(-2000))}`);

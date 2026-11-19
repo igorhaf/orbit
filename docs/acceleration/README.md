@@ -96,3 +96,24 @@ A recuperação local usa BM25 lexical. O RAG vetorial já existente no plugin d
 Índices, métricas, contextos, backups de codemod e evidências privadas ficam em `.orbit/cache` e `.orbit/local`, ignorados pelo Git. O relatório de marco pode ser documentado sem publicar logs ou dados privados. A estimativa de redução de tempo discutida anteriormente continua sendo uma projeção; os cronômetros medem apenas períodos realmente registrados.
 
 Leia [knowledge.md](knowledge.md) para todos os argumentos e estados de entrega.
+
+## Preflight arquitetural somente de leitura
+
+```sh
+node tools/orbit/cli.mjs preflight --runtime dev --format text
+node tools/orbit/cli.mjs preflight --format json
+```
+
+O comando compõe o inspector de fontes compartilhadas e o catálogo estático existente, com cache desativado. Não sincroniza projeções, não executa os checks recomendados e não consulta banco, providers ou serviços. O JSON inclui HEAD/branch/alterações Git, hashes canônico/projeção/lock, contratos declarados, imports diretos para módulos internos de IA e comandos recomendados. A listagem de caminhos Git não lê o conteúdo de arquivos não rastreados.
+
+`PASS` confirma apenas a condição estática examinada; `WARN` exige revisão (por exemplo, árvore alterada ou imports diretos); `BLOCK` indica conflito detectável ou risco de sobrescrita; `NOT_VERIFIED` indica cobertura incompleta, metadado dinâmico ou estado operacional não consultado. A agregação prioriza `BLOCK`, depois `NOT_VERIFIED`, `WARN` e `PASS`. O exit code é 1 para `BLOCK` ou `NOT_VERIFIED`, 0 para os demais. `promotionReady` permanece falso: preflight estático não homologa uma promoção.
+
+Diferenças de contrato entre produtos são avisos para revisão. Uma projeção declarada canônica que diverge bloqueia sincronização automática, mesmo que a diferença seja uma customização legítima; esse bloqueio não classifica o produto como defeituoso. Diferenças de arquivos fora do mapa compartilhado permanecem não verificadas. Não há opção de escrita neste comando. Mais detalhes e os bloqueios do snapshot inicial estão em [01-FUNDACAO-COMPATIBILIDADE.md](../implementacao-arquitetural/01-FUNDACAO-COMPATIBILIDADE.md).
+
+Uma reconciliação pode selecionar pacotes sem publicar as diferenças independentes dos demais:
+
+```sh
+node tools/orbit/cli.mjs shared reconcile --packages @orbit/core-source --release minor --files packages/orbit-core/src/card-versions.ts
+```
+
+O exemplo planeja; `--write` aplica somente depois de todas as precondições aprovarem. A lista de `--files` precisa atribuir **todas** as mudanças da release selecionada, inclusive diferenças anteriores revisadas; o exemplo abreviado não atribui automaticamente outros arquivos. Entradas de lock e projeções de pacotes não selecionados são preservadas, e conflitos de propriedade continuam bloqueando o plano. Sem `--packages`, a reconciliação permanece global. A distribuição core 1.4.0 e os limites do versionamento base estão em [02-VERSIONAMENTO-CARDS.md](../implementacao-arquitetural/02-VERSIONAMENTO-CARDS.md).

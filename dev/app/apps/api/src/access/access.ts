@@ -1,7 +1,10 @@
+import {discoveryEditorialPermissions} from './editorial-permissions';
 import type {PluginDefinition} from '../plugins/contract';
 import {corePrivileges,permissionForRoute,evaluatePermissions,Privilege} from './privileges';
 import {Body,CanActivate,Controller,ExecutionContext,Get,HttpException,Inject,Injectable,Param,Patch,Post,Put,Query,Req} from '@nestjs/common';
 import type {Request} from 'express';
+import type {QueryResultRow} from 'pg';
+import type {ContextQueryClient} from '../execution/context-manifest';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 import {Db} from '../db';
@@ -46,7 +49,7 @@ export class AccessService {
  registerBoardPolicy(policy:(board:string,user:string,permission:string,snapshot?:{is_collection?:boolean})=>Promise<boolean>){this.boardPolicies.push(policy)}
  async availableBoards<T extends {id:string;is_collection?:boolean}>(boards:T[],user:string){const allowed=await Promise.all(boards.map(async board=>(await Promise.all(this.boardPolicies.map(policy=>policy(board.id,user,'boards.read',board)))).every(Boolean)&& (await Promise.all(this.boardListingPolicies.map(policy=>policy(board.id,user)))).every(Boolean)));return boards.filter((_board,index)=>allowed[index])}
 
- private registeredPermissions=new Map<string,Privilege>(corePrivileges.map(p=>[p.id,p]));
+ private registeredPermissions=new Map<string,Privilege>([...corePrivileges,...discoveryEditorialPermissions.map(id=>({id,label:id,source:'core'}))].map(p=>[p.id,p]));
  private routePlugins=new Map<string,string>();
  private pluginDefinitions=new Map<string,PluginDefinition>();
  private pluginRoutes=new Set<string>();
@@ -80,10 +83,44 @@ export class AccessService {
  async authenticate(token:string){let payload:jwt.JwtPayload;try{payload=jwt.verify(token,process.env.JWT_SECRET!) as jwt.JwtPayload}catch{return deny('Sessão expirada.',401)}const user=await this.account(id(payload.sub));if(Number(payload.version||0)!==user.session_version)deny('Sessão revogada. Entre novamente.',401);return user}
  async grants(user:string,type='global',scope='*'){return this.db.query<{role_id:string;name:string;permissions:string[]}>('SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id WHERE g.user_id=$1 AND g.scope_type=$2 AND g.scope_id=$3',[user,type,scope])}
  async isAdmin(user:string){const simulation=currentSimulatedProfile(user);if(simulation)return ['administrator','platform_admin'].includes(simulation.id);return Boolean(await this.db.one("SELECT user_id FROM access_grants WHERE user_id=$1 AND scope_type='global' AND role_id IN ('administrator','platform_admin')",[user]))}
- async initializeDefaults(){const read=this.catalog().filter(p=>p.endsWith('.read')&&!p.startsWith('settings.'));if(this.catalog().includes('views.board.use'))read.push('views.board.use');await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id='user' AND NOT defaults_initialized",[read]);await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id IN ('administrator','platform_admin') AND NOT defaults_initialized",[this.catalog()])}
- async effective(user:string,type='global',scope='*'){const account=await this.account(user);const simulated=currentSimulatedProfile(user);if(account.is_root&&!simulated)return ['*'];if(simulated){const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');return evaluatePermissions(false,simulated.permissions,[],[],disabled.map(row=>row.permission_id),this.catalog())}const roles=type==='global'?await this.grants(user):await this.db.query<{role_id:string;name:string;permissions:string[]}>(`SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id
+ async initializeDefaults(){const read=this.catalog().filter(p=>!p.startsWith('discovery_review.')&&p.endsWith('.read')&&!p.startsWith('settings.'));if(this.catalog().includes('views.board.use'))read.push('views.board.use');await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id='user' AND NOT defaults_initialized",[read]);await this.db.query("UPDATE access_roles SET permissions=$1,defaults_initialized=true WHERE id IN ('administrator','platform_admin') AND NOT defaults_initialized",[this.catalog().filter(p=>!p.startsWith('discovery_review.'))])}
+ async effective(user:string,type='global',scope='*',explicitOnly=false){const account=await this.account(user);const simulated=currentSimulatedProfile(user);if(account.is_root&&!simulated&&!explicitOnly)return ['*'];if(simulated){const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');return evaluatePermissions(false,simulated.permissions,[],[],disabled.map(row=>row.permission_id),this.catalog())}const roles=type==='global'?await this.grants(user):await this.db.query<{role_id:string;name:string;permissions:string[]}>(`SELECT g.role_id,r.name,r.permissions FROM access_grants g JOIN access_roles r ON r.id=g.role_id
    WHERE g.user_id=$1 AND ((g.scope_type='global' AND g.scope_id='*') OR (g.scope_type=$2 AND g.scope_id=$3))`,[user,type,scope]);const grouped=await this.db.query<{permissions:string[]}>('SELECT g.permissions FROM access_groups g JOIN access_group_members m ON m.group_id=g.id WHERE m.user_id=$1',[user]);const exceptions=await this.db.query<{permission_id:string;effect:string}>('SELECT permission_id,effect FROM access_user_exceptions WHERE user_id=$1',[user]);const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');const rolePermissions=roles.flatMap(r=>r.permissions);return evaluatePermissions(false,rolePermissions,grouped.flatMap(g=>g.permissions),exceptions,disabled.map(p=>p.permission_id),this.catalog())}
+ /** Narrow transactional entry: reuse real grants/groups/exceptions evaluation without ROOT bypass.
+  * Callback providers have no transaction contract, so they are not silently bypassed. */
+ async editorialPermissions(db:ContextQueryClient,user:string){
+  if(currentSimulatedProfile(user))deny();
+  const query=async<T extends QueryResultRow>(sql:string,parameters:unknown[]=[]):Promise<T[]>=>{
+   const result: unknown=await db.query(sql,parameters);
+   if(Array.isArray(result))return result;
+   if(result&&typeof result==='object'&&'rows' in result&&Array.isArray(result.rows))return result.rows;
+   throw new Error('Resultado SQL de autorização editorial inválido.');
+  };
+  const proxy=new AccessService({
+   query,
+   one:async<T extends QueryResultRow>(sql:string,parameters:unknown[]=[])=>(await query<T>(sql,parameters))[0]??null,
+  } as Db);
+  proxy.registeredPermissions=this.registeredPermissions;
+  return proxy.effective(user,'global','*',true);
+ }
+ editorialScopeProvidersPresent(){return this.boardPolicies.length>0||this.boardAccessProviders.length>0||this.scopes.size>0||this.memberships.size>0||this.recordPermissionProviders.length>0||this.resourceAvailability.length>0||this.resourceProviders.length>0||this.boardListProviders.length>0||this.boardScopeProviders.length>0||this.boardMemberProviders.length>0||this.boardListingPolicies.length>0}
+ editorialProviderInventory(){
+  return [
+   {family:'scope',count:this.scopes.size,ids:[...this.scopes.keys()]},
+   {family:'membership',count:this.memberships.size,ids:[...this.memberships.keys()]},
+   {family:'board_policy',count:this.boardPolicies.length},
+   {family:'board_access',count:this.boardAccessProviders.length},
+   {family:'board_list',count:this.boardListProviders.length},
+   {family:'board_scope',count:this.boardScopeProviders.length},
+   {family:'board_members',count:this.boardMemberProviders.length},
+   {family:'board_listing_policy',count:this.boardListingPolicies.length},
+   {family:'record_permission',count:this.recordPermissionProviders.length},
+   {family:'resource_availability',count:this.resourceAvailability.length},
+   {family:'resources',count:this.resourceProviders.length},
+  ];
+ }
  async has(user:string,permission:string,type='global',scope='*'){
+  if(permission.startsWith('discovery_review.'))return type==='global'&&!(currentSimulatedProfile(user))&&(await this.effective(user,'global','*',true)).includes(permission);
   const account=await this.account(user);if(account.is_root&&!currentSimulatedProfile(user))return true;
   const granted=(await this.effective(user,type,scope)).includes(permission);if(!granted)return false;
   if(type==='global')return true;
@@ -92,6 +129,7 @@ export class AccessService {
 
  /** Strict resource authorization: only a grant on this exact scope can authorize access. */
  async hasScoped(user:string,permission:string,type:string,scope:string){
+  if(permission.startsWith('discovery_review.'))return false;
   const account=await this.account(user);if(account.is_root&&!currentSimulatedProfile(user))return true;
   const provider=this.scopes.get(type),membership=this.memberships.get(type);if(!provider||!membership||!await provider(scope))return false;
   const roles=await this.grants(user,type,scope);
@@ -124,7 +162,27 @@ export class AccessService {
  async scopedAssignments(actor:string,type:string,scope:string){await this.require(actor,'access.manage');type=text(type,80);scope=text(scope,120);await this.assertScope(type,scope);return this.db.query(`SELECT u.id AS user_id,u.name,u.email,COALESCE(array_agg(g.role_id) FILTER(WHERE g.role_id IS NOT NULL),'{}') AS roles
    FROM users u LEFT JOIN access_grants g ON g.user_id=u.id AND g.scope_type=$1 AND g.scope_id=$2
    WHERE NOT u.disabled AND g.user_id IS NOT NULL GROUP BY u.id ORDER BY u.name`,[type,scope])}
- async assignScopedRoles(actor:string,user:string,type:string,scope:string,values:unknown){await this.require(actor,'access.manage');user=id(user);type=text(type,80);scope=text(scope,120);await this.assertScope(type,scope);const target=await this.db.one<{id:string;is_root:boolean}>('SELECT id,is_root FROM users WHERE id=$1',[user]);if(!target)deny('Usuário não encontrado.',404);if(target.is_root)deny('A conta ROOT é protegida.');const roles=await this.validateRoles(actor,values);const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query('DELETE FROM access_grants WHERE user_id=$1 AND scope_type=$2 AND scope_id=$3',[user,type,scope]);for(const role of roles)await client.query('INSERT INTO access_grants(user_id,role_id,scope_type,scope_id) VALUES($1,$2,$3,$4)',[user,role,type,scope]);await client.query('UPDATE users SET session_version=session_version+1 WHERE id=$1',[user]);await client.query('COMMIT');this.revoke(user);await this.audit(actor,'role.scope.updated',`${type}:${scope}:${user}`,{type,id:scope});return {ok:true,roles}}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}}
+ async assignScopedRoles(actor:string,user:string,type:string,scope:string,values:unknown){
+  await this.require(actor,'access.manage');
+  user=id(user);type=text(type,80);
+  await this.assertScope(type,scope);
+  const target=await this.db.one<{id:string;is_root:boolean}>('SELECT id,is_root FROM users WHERE id=$1',[user]);
+  if(!target)deny('Usuário não encontrado.',404);
+  if(target.is_root)deny('A conta ROOT é protegida.');
+  const roles=await this.validateRoles(actor,values);
+  const client=await this.db.pool.connect();
+  try{
+   await client.query('BEGIN');
+   // Keep user invalidation and grants in the same transaction, in editorial lock order.
+   await client.query('UPDATE users SET session_version=session_version+1 WHERE id=$1',[user]);
+   await client.query('DELETE FROM access_grants WHERE user_id=$1 AND scope_type=$2 AND scope_id=$3',[user,type,scope]);
+   for(const role of roles)await client.query('INSERT INTO access_grants(user_id,role_id,scope_type,scope_id) VALUES($1,$2,$3,$4)',[user,role,type,scope]);
+   await client.query('COMMIT');
+   this.revoke(user);
+   await this.audit(actor,'role.scope.updated',`${type}:${scope}:${user}`,{type,id:scope});
+   return {ok:true,roles};
+  }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+ }
  async users(){return this.db.query(`SELECT u.id,u.name,u.email,u.is_root,u.disabled,u.created_at,COALESCE(array_agg(g.role_id) FILTER(WHERE g.role_id IS NOT NULL),'{}') AS roles FROM users u LEFT JOIN access_grants g ON g.user_id=u.id AND g.scope_type='global' GROUP BY u.id ORDER BY u.is_root DESC,u.name`)}
  async validateRoles(actor:string,values:unknown){if(!Array.isArray(values)||values.some(v=>typeof v!=='string')||values.length>20)deny('Perfis inválidos.',400);const roles=await this.roles();const selected=roles.filter(role=>values.includes(role.id));if(selected.length!==new Set(values).size)deny('Perfil inexistente.',400);const me=await this.me(actor);if(!await this.isRootForAuthorization(actor)&&!me.is_admin&&selected.some(role=>(role.permissions as string[]).some(p=>!me.permissions.includes(p))))deny('Não é permitido delegar permissões que você não possui.');return [...new Set(values)] as string[]}
  async createUser(actor:string,body:Record<string,unknown>){await this.require(actor,'access.manage');if(Object.keys(body).some(key=>!['name','email','password','roles'].includes(key)))deny('Campo de usuário inválido.',400);const name=text(body.name);const email=text(body.email,255).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))deny('E-mail inválido.',400);const password=text(body.password,200);if(password.length<12)deny('Use uma senha com pelo menos 12 caracteres.',400);const roles=await this.validateRoles(actor,body.roles===undefined?['user']:body.roles);const client=await this.db.pool.connect();try{await client.query('BEGIN');const user=(await client.query('INSERT INTO users(name,email,password_hash) VALUES($1,$2,$3) RETURNING id',[name,email,await bcrypt.hash(password,12)])).rows[0];for(const role of roles)await client.query('INSERT INTO access_grants(user_id,role_id) VALUES($1,$2)',[user.id,role]);await client.query('COMMIT');await this.audit(actor,'user.created',user.id);return {id:user.id}}catch(error){await client.query('ROLLBACK');if((error as {code?:string}).code==='23505')deny('E-mail já cadastrado.',409);throw error}finally{client.release()}}

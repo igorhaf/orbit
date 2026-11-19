@@ -1,3 +1,5 @@
+import {EventEmitter} from 'node:events';
+import {withWorkspaceWriteLease} from './workspace-coordinator';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
@@ -24,23 +26,27 @@ test('project check configuration uses argv, with no shell interpolation',()=>{
   assert.deepEqual(validateProjectChecks([['npm','run','check']]),[['npm','run','check']]);
 });
 
-test('an AI success cannot bypass mandatory checks or authorize validator writes',async()=>{
+async function guarded<T>(root:string,action:()=>Promise<T>){
+  let owner='';const fake={pool:{connect:async()=>Object.assign(new EventEmitter(),{query:async()=>({rows:[{locked:true}]}),release(){}})}};
+  try{return await withWorkspaceWriteLease(fake,{queue:'card_ai_runs',runId:'scope-check-fixture',cardId:'fixture-card',projectId:'fixture-project',projectRoot:root},async lease=>{owner=lease.owner;return action()})}
+  finally{if(owner)await rm(`/tmp/orbit-write-coordination-${process.getuid?.()}/${owner}.json`,{force:true})}
+}
+test('an AI success cannot bypass mandatory checks and validator writes remain preserved for review',async()=>{
   const root=await mkdtemp(join(tmpdir(),'orbit-ai-checks-'));
   try{
     const ai=new CodexAiService();
     (ai as unknown as {run:()=>Promise<string>}).run=async()=> 'AI claimed success';
-    const execute=(checks:string[][])=>ai.execute('Task',root,'fixture','medium',undefined,undefined,undefined,undefined,'bypass',[],[],checks);
+    const execute=(checks:string[][])=>guarded(root,()=>ai.execute('Task',root,'fixture','medium',undefined,undefined,undefined,undefined,'bypass',[],[],checks));
     await assert.rejects(()=>execute([['node','-e','process.exit(1)']]),/obrigatória falhou/);
-    await assert.rejects(()=>execute([['node','-e','require("fs").writeFileSync("unexpected","bad")']]),/fora do escopo.*revertidas/);
-    await assert.rejects(()=>readFile(join(root,'unexpected')));
+    await assert.rejects(()=>execute([['node','-e','require("fs").writeFileSync("unexpected","bad")']]),/autoria/);
+    assert.equal(await readFile(join(root,'unexpected'),'utf8'),'bad');
   }finally{await rm(root,{recursive:true,force:true})}
 });
-
-test('failed verification or execution restores authorized changes and removes new source files',async()=>{
-  const root=await mkdtemp(join(tmpdir(),'orbit-ai-rollback-'));
-  try{
-    await writeFile(join(root,'page.tsx'),'original layout');
-    for(const failInRun of [false,true]){
+test('failed verification cannot erase source changes without proven authorship',async()=>{
+  for(const failInRun of [false,true]){
+    const root=await mkdtemp(join(tmpdir(),'orbit-ai-rollback-'));
+    try{
+      await writeFile(join(root,'page.tsx'),'original layout');
       const ai=new CodexAiService();
       (ai as unknown as {run:()=>Promise<string>}).run=async()=>{
         await writeFile(join(root,'page.tsx'),'invalid replacement');
@@ -48,9 +54,9 @@ test('failed verification or execution restores authorized changes and removes n
         if(failInRun)throw new Error('Executor failed');
         return 'AI claimed success';
       };
-      await assert.rejects(()=>ai.execute('Task',root,'fixture','medium',undefined,undefined,undefined,undefined,'bypass',[],['page.tsx','added.tsx'],[['node','-e','process.exit(1)']]),failInRun?/Executor failed/:/obrigatória falhou/);
-      assert.equal(await readFile(join(root,'page.tsx'),'utf8'),'original layout');
-      await assert.rejects(()=>readFile(join(root,'added.tsx')));
-    }
-  }finally{await rm(root,{recursive:true,force:true})}
+      await assert.rejects(()=>guarded(root,()=>ai.execute('Task',root,'fixture','medium',undefined,undefined,undefined,undefined,'bypass',[],['page.tsx','added.tsx'],[['node','-e','process.exit(1)']])),/autoria/);
+      assert.equal(await readFile(join(root,'page.tsx'),'utf8'),'invalid replacement');
+      assert.equal(await readFile(join(root,'added.tsx'),'utf8'),'invented fields');
+    }finally{await rm(root,{recursive:true,force:true})}
+  }
 });
