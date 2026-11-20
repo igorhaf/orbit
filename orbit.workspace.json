@@ -3,15 +3,17 @@
   "runtimes": [
     {
       "id": "dev",
-      "app": "dev/app",
+      "app": "forge/app",
       "webPort": 3001,
-      "apiPort": 4001
+      "apiPort": 4001,
+      "name": "Forge"
     },
     {
       "id": "prod",
-      "app": "prod/app",
+      "app": "workspace/app",
       "webPort": 3000,
-      "apiPort": 4000
+      "apiPort": 4000,
+      "name": "Workspace"
     },
     {
       "id": "safdoulas",
@@ -24,13 +26,31 @@
       "app": "suinda/app",
       "webPort": 3003,
       "apiPort": 4004
+    },
+    {
+      "id": "gastro-oceanica",
+      "name": "Gastro Oceânica",
+      "app": "gastro-oceanica/app",
+      "webPort": 3011,
+      "apiPort": 4011,
+      "product": "clinical-management",
+      "aiCodeDevelopment": false
+    },
+    {
+      "id": "rumo",
+      "name": "Rumo",
+      "app": "rumo/app",
+      "webPort": 3010,
+      "apiPort": 4010,
+      "product": "visual-project-management",
+      "aiCodeDevelopment": false
     }
   ],
   "sharedPackages": [
     {
       "id": "@orbit/core-source",
       "path": "packages/orbit-core",
-      "version": "1.12.5",
+      "version": "1.16.8",
       "files": [
         {
           "source": "core-version.json",
@@ -65,6 +85,22 @@
           "target": "apps/api/sql/migrations/209_discovery_journal.sql"
         },
         {
+          "source": "sql/migrations/213_auth_email_change.sql",
+          "target": "apps/api/sql/migrations/213_auth_email_change.sql"
+        },
+        {
+          "source": "src/access/auth-email-change.postgres.spec.ts",
+          "target": "apps/api/src/access/auth-email-change.postgres.spec.ts"
+        },
+        {
+          "source": "src/access/auth-email-change.spec.ts",
+          "target": "apps/api/src/access/auth-email-change.spec.ts"
+        },
+        {
+          "source": "src/access/auth-email-change.ts",
+          "target": "apps/api/src/access/auth-email-change.ts"
+        },
+        {
           "source": "src/access/bootstrap-root.spec.ts",
           "target": "apps/api/src/access/bootstrap-root.spec.ts"
         },
@@ -73,8 +109,36 @@
           "target": "apps/api/src/access/bootstrap-root.ts"
         },
         {
+          "source": "src/access/editorial-permissions.ts",
+          "target": "apps/api/src/access/editorial-permissions.ts"
+        },
+        {
+          "source": "src/access/login-factors.spec.ts",
+          "target": "apps/api/src/access/login-factors.spec.ts"
+        },
+        {
+          "source": "src/access/login-factors.ts",
+          "target": "apps/api/src/access/login-factors.ts"
+        },
+        {
           "source": "src/access/management.ts",
           "target": "apps/api/src/access/management.ts"
+        },
+        {
+          "source": "src/access/privileges.spec.ts",
+          "target": "apps/api/src/access/privileges.spec.ts"
+        },
+        {
+          "source": "src/access/privileges.ts",
+          "target": "apps/api/src/access/privileges.ts"
+        },
+        {
+          "source": "src/access/profile-simulation-plugins.spec.ts",
+          "target": "apps/api/src/access/profile-simulation-plugins.spec.ts"
+        },
+        {
+          "source": "src/access/profile-simulation-plugins.ts",
+          "target": "apps/api/src/access/profile-simulation-plugins.ts"
         },
         {
           "source": "src/access/request-rate-limits.spec.ts",
@@ -549,12 +613,24 @@
           "target": "apps/api/src/execution/project-registry.ts"
         },
         {
+          "source": "src/execution/prompt-run-mode.ts",
+          "target": "apps/api/src/execution/prompt-run-mode.ts"
+        },
+        {
           "source": "src/execution/registries.ts",
           "target": "apps/api/src/execution/registries.ts"
         },
         {
           "source": "src/execution/run-repository.ts",
           "target": "apps/api/src/execution/run-repository.ts"
+        },
+        {
+          "source": "src/execution/runtime-code-policy.spec.ts",
+          "target": "apps/api/src/execution/runtime-code-policy.spec.ts"
+        },
+        {
+          "source": "src/execution/runtime-code-policy.ts",
+          "target": "apps/api/src/execution/runtime-code-policy.ts"
         },
         {
           "source": "src/execution/security.ts",
@@ -951,17 +1027,13 @@
         {
           "source": "src/workspaces/workspace-branding.ts",
           "target": "apps/api/src/workspaces/workspace-branding.ts"
-        },
-        {
-          "source": "src/access/editorial-permissions.ts",
-          "target": "apps/api/src/access/editorial-permissions.ts"
         }
       ]
     },
     {
       "id": "@orbit/ui-source",
       "path": "packages/orbit-ui",
-      "version": "1.1.3",
+      "version": "1.4.5",
       "files": [
         {
           "source": "src/app/board/[id]/print/page.tsx",
@@ -1072,6 +1144,10 @@
           "target": "apps/web/components/codex-limits.tsx"
         },
         {
+          "source": "src/components/email-change-form.tsx",
+          "target": "apps/web/components/email-change-form.tsx"
+        },
+        {
           "source": "src/components/git-card-panel.tsx",
           "target": "apps/web/components/git-card-panel.tsx"
         },
@@ -1098,6 +1174,14 @@
         {
           "source": "src/components/profile-simulation-context.tsx",
           "target": "apps/web/components/profile-simulation-context.tsx"
+        },
+        {
+          "source": "src/components/skip-to-main.spec.ts",
+          "target": "apps/web/components/skip-to-main.spec.ts"
+        },
+        {
+          "source": "src/components/skip-to-main.tsx",
+          "target": "apps/web/components/skip-to-main.tsx"
         },
         {
           "source": "src/components/vault-constant-select.tsx",
@@ -1160,20 +1244,16 @@
           "target": "apps/web/lib/use-hydrated.ts"
         },
         {
-          "source": "src/plugins/ai/QueuesPage.tsx",
-          "target": "apps/web/plugins/ai/QueuesPage.tsx"
-        },
-        {
           "source": "src/plugins/ai/card-renderers.tsx",
           "target": "apps/web/plugins/ai/card-renderers.tsx"
         },
         {
-          "source": "src/plugins/board-views/BoardViewRenderer.tsx",
-          "target": "apps/web/plugins/board-views/BoardViewRenderer.tsx"
+          "source": "src/plugins/ai/QueuesPage.tsx",
+          "target": "apps/web/plugins/ai/QueuesPage.tsx"
         },
         {
-          "source": "src/plugins/board-views/StructuredBoardView.tsx",
-          "target": "apps/web/plugins/board-views/StructuredBoardView.tsx"
+          "source": "src/plugins/board-views/BoardViewRenderer.tsx",
+          "target": "apps/web/plugins/board-views/BoardViewRenderer.tsx"
         },
         {
           "source": "src/plugins/board-views/contract.ts",
@@ -1182,6 +1262,10 @@
         {
           "source": "src/plugins/board-views/hierarchy.ts",
           "target": "apps/web/plugins/board-views/hierarchy.ts"
+        },
+        {
+          "source": "src/plugins/board-views/StructuredBoardView.tsx",
+          "target": "apps/web/plugins/board-views/StructuredBoardView.tsx"
         },
         {
           "source": "src/plugins/card-layouts/CardBadges.tsx",
@@ -1238,6 +1322,14 @@
         {
           "source": "src/plugins/record-cards/RecordWorkOverview.tsx",
           "target": "apps/web/plugins/record-cards/RecordWorkOverview.tsx"
+        },
+        {
+          "source": "src/plugins/records/ExtensionPage.tsx",
+          "target": "apps/web/plugins/records/ExtensionPageBase.tsx"
+        },
+        {
+          "source": "src/plugins/records/SchemaFields.tsx",
+          "target": "apps/web/plugins/records/SchemaFields.tsx"
         },
         {
           "source": "src/plugins/software-development/card-renderers.tsx",

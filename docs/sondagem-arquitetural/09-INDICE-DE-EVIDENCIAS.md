@@ -16,11 +16,11 @@ Referências abaixo apontam para os arquivos examinados. Os números são linhas
 
 | Tema | Evidências |
 | --- | --- |
-| Entidades fundamentais | `dev/app/apps/api/sql/schema.sql:2-114` |
+| Entidades fundamentais | `forge/app/apps/api/sql/schema.sql:2-114` |
 | Associações de cartão | `schema.sql:143-258` |
-| Feed de atividade | `schema.sql:259-286`; `dev/app/apps/api/src/features.ts:214` |
-| CRUD/fluxos | `dev/app/apps/api/src/main.ts:668-682,736-824,838-980` |
-| Workspaces | `dev/app/apps/api/src/workspaces/workspaces.plugin.ts:17-20`; migrations 068 e 069 |
+| Feed de atividade | `schema.sql:259-286`; `forge/app/apps/api/src/features.ts:214` |
+| CRUD/fluxos | `forge/app/apps/api/src/main.ts:668-682,736-824,838-980` |
+| Workspaces | `forge/app/apps/api/src/workspaces/workspaces.plugin.ts:17-20`; migrations 068 e 069 |
 | Execução por cartão | `sql/migrations/001_executable_cards.sql:1-49`; `src/execution/execution.controller.ts:7-15`; `execution.service.ts:53-149` |
 | Runs de prompt Codex | `sql/schema.sql:408-462`; `src/plugins/ai/prompt-sessions.ts:37,378,413-482` |
 | Revisão de records de plugins | `sql/migrations/118_extension_records.sql:1-70` |
@@ -49,16 +49,16 @@ Referências abaixo apontam para os arquivos examinados. Os números são linhas
 | Descoberta, dependências e activation | `src/execution/registries.ts:21-162`; `src/plugins/sdk.ts` |
 | Conectores | `src/github/`, `src/git/`, `src/google/`, `src/calendar/`, `src/mail/`, `src/dropbox/`, `src/alexa-orbit/` |
 | Webhooks | `src/plugins/webhooks.ts`; migration `146_orbit_webhooks.sql` |
-| Entrega | `src/delivery/`; `prod/app/docs/delivery-pipelines/README.md`; `prod/app/docs/delivery-release-and-rollback.md:20-22` |
+| Entrega | `src/delivery/`; `workspace/app/docs/delivery-pipelines/README.md`; `workspace/app/docs/delivery-release-and-rollback.md:20-22` |
 | Testes do contract/registry | `src/plugins/contract.spec.ts`, `core-compatibility.spec.ts`, `sdk.spec.ts`; `src/execution/execution.integration.spec.ts` |
 
 ## Interface e simulação de perfil
 
 | Tema | Evidências |
 | --- | --- |
-| Home e quadro DEV | `dev/app/apps/web/app/page.tsx`; `app/board/[id]/page.tsx`; `components/card-dialog.tsx` |
-| Plugin navigation/UI | `dev/app/apps/web/app/plugins/page.tsx`; `lib/plugin-navigation.ts`; `components/plugin-navigation.tsx` |
-| Perfil simulado e contexto de demonstração | `dev/app/apps/api/src/access/profile-simulation-context.ts:15`; `access/access.ts:82-139` |
+| Home e quadro DEV | `forge/app/apps/web/app/page.tsx`; `app/board/[id]/page.tsx`; `components/card-dialog.tsx` |
+| Plugin navigation/UI | `forge/app/apps/web/app/plugins/page.tsx`; `lib/plugin-navigation.ts`; `components/plugin-navigation.tsx` |
+| Perfil simulado e contexto de demonstração | `forge/app/apps/api/src/access/profile-simulation-context.ts:15`; `access/access.ts:82-139` |
 | Testes de acesso e navegação | `src/access/access.spec.ts`; `src/access/profile-simulation-context.spec.ts`; `apps/web/lib/plugin-navigation.spec.ts` |
 
 ## Testes e limites

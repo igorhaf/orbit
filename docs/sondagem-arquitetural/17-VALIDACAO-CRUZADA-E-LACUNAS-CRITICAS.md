@@ -17,9 +17,9 @@ Termos usados: **fato** = comportamento demonstrado pela implementação lida; *
 
 ### Identidade e edição do card
 
-O schema de `cards` inclui `updated_at`, mas não contém uma coluna de revisão ou histórico de snapshots (`dev/app/apps/api/sql/schema.sql:103-114`). A rota `PATCH /cards/:id` chama `updateCard` (`dev/app/apps/api/src/main.ts:1303-1305`). A função carrega a linha atual e, em seguida, atualiza título, descrição, datas, lista, posição, tipo e outros campos operacionais no mesmo registro, atribuindo `updated_at=now()` (`main.ts:881-963`). Não há comparação de `updated_at`, hash/revisão ou recusa por status ativo nesse caminho.
+O schema de `cards` inclui `updated_at`, mas não contém uma coluna de revisão ou histórico de snapshots (`forge/app/apps/api/sql/schema.sql:103-114`). A rota `PATCH /cards/:id` chama `updateCard` (`forge/app/apps/api/src/main.ts:1303-1305`). A função carrega a linha atual e, em seguida, atualiza título, descrição, datas, lista, posição, tipo e outros campos operacionais no mesmo registro, atribuindo `updated_at=now()` (`main.ts:881-963`). Não há comparação de `updated_at`, hash/revisão ou recusa por status ativo nesse caminho.
 
-Na interface, título é salvo por `PATCH` ao perder foco e o campo não é desabilitado pelo estado de execução (`dev/app/apps/web/components/card-dialog.tsx:335-358`). A descrição também pode ser salva durante execução: o botão **Salvar** não usa `aiLocked`; somente **Salvar e executar** usa esse bloqueio (`card-dialog.tsx:525-545`). Portanto, a UI não impede toda edição durante um run. A API tampouco verifica estado do run em `updateCard` (`main.ts:881-963`).
+Na interface, título é salvo por `PATCH` ao perder foco e o campo não é desabilitado pelo estado de execução (`forge/app/apps/web/components/card-dialog.tsx:335-358`). A descrição também pode ser salva durante execução: o botão **Salvar** não usa `aiLocked`; somente **Salvar e executar** usa esse bloqueio (`card-dialog.tsx:525-545`). Portanto, a UI não impede toda edição durante um run. A API tampouco verifica estado do run em `updateCard` (`main.ts:881-963`).
 
 ### Prompt e momento do snapshot
 
@@ -209,12 +209,12 @@ BM25 pode fornecer busca lexical local e evitar dependência externa de embeddin
 
 ## 8. Contradições não resolvidas
 
-- Se existem consumidores vetoriais carregados dinamicamente, plugins externos ou configurações de host fora de `dev/app/apps/api/src`; busca estática local não encontrou `.rank()` produtivo.
+- Se existem consumidores vetoriais carregados dinamicamente, plugins externos ou configurações de host fora de `forge/app/apps/api/src`; busca estática local não encontrou `.rank()` produtivo.
 - Se o provider de prompt carrega MCP via configuração do diretório `.orbit/sessions`/CLI; `prepareOrbitCodexHome` só permite estabelecer o HOME/auth observado, não configuração efetiva.
 - O teste `git.workflow.spec.ts` demonstra undo/redo básico na fixture, mas não o caso com commits dependentes, worktree dirty, card excluído e histórico de backup.
 - A consulta de branch/HEAD antes de commit Git não prova qual branch/HEAD o Codex usou desde o início do run.
 - Testes unitários de `captureFileScope`, queue e retrieval existem, mas sem execução não se sabe se passam na árvore atual. Testes de integração podem envolver PostgreSQL local; não foram iniciados.
-- **CONTROL — Compose:** `compose.yml:189-197` aponta build context `./dev/app` e Dockerfile `tools/orbit-control/Dockerfile`; o caminho resultante `dev/app/tools/orbit-control/Dockerfile` não existe na árvore. `control/Dockerfile` existe, mas é outro caminho. Inspeção estática não prova qual imagem está atualmente em execução ou se foi construída de fonte anterior.
+- **CONTROL — Compose:** `compose.yml:189-197` aponta build context `./forge/app` e Dockerfile `tools/orbit-control/Dockerfile`; o caminho resultante `forge/app/tools/orbit-control/Dockerfile` não existe na árvore. `control/Dockerfile` existe, mas é outro caminho. Inspeção estática não prova qual imagem está atualmente em execução ou se foi construída de fonte anterior.
 - **CONTROL — escopo de ambientes:** `control/environments.json` descreve DEV, PROD, Safdoulas e Suindá (`:1-105`), mas o script Python implementa operações nomeadas somente para dev/prod (`control/bin/orbit-env.py:14-16,41-44,149-197`). A documentação esclarece que Suindá usa Compose próprio, mas não reconcilia integralmente Safdoulas nem a divergência do arquivo de build (`README-ARCHITECTURE.md:91-123`). Não se inferiu que o script atende todas as entradas JSON.
 - **CONTROL — serviço health:** Compose define healthcheck HTTP na porta 8787 (`compose.yml:213-215`), enquanto `control/Dockerfile` mostrado apenas instala CLI e fica em loop (`control/Dockerfile:1-6`); não se encontrou servidor HTTP nesse Dockerfile. Pode haver fonte antiga ou arquivo fora do escopo. O healthcheck declarado não é comprovado pela imagem presente.
 - **Configuração/pastas operacionais:** `orbit.workspace.json` e `control/environments.json` guardam paths locais absolutos; monorepo diz que controle operacional não é versionado em parte e `README-ARCHITECTURE.md` traz caminhos absolutos de host. O uso em outro host/checkout não é portátil por definição. A árvore `.env` real, bancos, estado CONTROL e serviços não foi consultada.

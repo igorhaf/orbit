@@ -1,9 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {join} from 'node:path';import {fileURLToPath} from 'node:url';
-const root=fileURLToPath(new URL('../..',import.meta.url)),require=createRequire(join(root,'dev/app/package.json'));
-process.env.TSX_TSCONFIG_PATH=join(root,'dev/app/apps/api/tsconfig.json');require('tsx/cjs/api').register();
-const {CodexAiService}=require(join(root,'dev/app/apps/api/src/plugins/ai/codex-provider.ts'));
-const {CodexExecutor}=require(join(root,'dev/app/apps/api/src/execution/codex-executor.ts'));
-const {isolatedCodexPolicy}=require(join(root,'dev/app/apps/api/src/execution/isolated-execution-policy.ts'));
+const root=fileURLToPath(new URL('../..',import.meta.url)),require=createRequire(join(root,'forge/app/package.json'));
+process.env.TSX_TSCONFIG_PATH=join(root,'forge/app/apps/api/tsconfig.json');require('tsx/cjs/api').register();
+const {CodexAiService}=require(join(root,'forge/app/apps/api/src/plugins/ai/codex-provider.ts'));
+const {CodexExecutor}=require(join(root,'forge/app/apps/api/src/execution/codex-executor.ts'));
+const {isolatedCodexPolicy}=require(join(root,'forge/app/apps/api/src/execution/isolated-execution-policy.ts'));
 test('B19 real adapters refuse unhomologated Bridge before HOME, process or provider initialization',async()=>{
  const provider=new CodexAiService();let homes=0;provider.codexHome=async()=>{homes++;throw new Error('Must not inspect HOME')};
  const bridge={descriptor:{protocol:'orbit-context-bridge/1'},exchange:async()=>null,signal:new AbortController().signal};

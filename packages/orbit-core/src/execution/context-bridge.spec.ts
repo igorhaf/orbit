@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ContextBridge,ContextBridgeError,contextBridgeProtocol,contextBridgeTransportReserveBytes,type ContextBridgeOptions,type ContextBridgeAuditEvent,type ContextBridgeLimits,type ContextBridgeRequest} from './context-bridge';
+import {ContextBridge,ContextBridgeError,contextBridgeProtocol,type ContextBridgeOptions,type ContextBridgeAuditEvent,type ContextBridgeLimits,type ContextBridgeRequest} from './context-bridge';
 import {createContextManifest,hashContextText,hashContextValue,type ContextSource,type ContextObject,type CurrentContextObservation} from './context-manifest';
 import {compileContext,compilationMetadata,defaultContextCompilerPolicy} from './context-compiler';
 
 const copy=<T>(value:T):T=>JSON.parse(JSON.stringify(value));
-const manifestInput=(manifest:ReturnType<typeof createContextManifest>)=>{const {schemaVersion,fingerprint,integrityHash,captureStatus,...input}=manifest;return input};
+const manifestInput=(manifest:ReturnType<typeof createContextManifest>)=>Object.fromEntries(Object.entries(manifest).filter(([key])=>!['schemaVersion','fingerprint','integrityHash','captureStatus'].includes(key))) as Omit<ReturnType<typeof createContextManifest>,'schemaVersion'|'fingerprint'|'integrityHash'|'captureStatus'>;
 const identity={runtimeId:'dev',projectId:'project',workspaceId:'workspace',actorId:'actor',queue:'card_runs' as const,runId:'run',cardId:'card',cardRevision:1,executor:'fixture',executionType:'card_execution'};
 function source(id='document:rules/selected'):ContextSource{return {schemaVersion:1,id,type:'rules',origin:'project_document',resourceId:'rules/selected',logicalPath:'.orbit/rules/selected.md',ownerId:'actor',scope:{runtimeId:'dev',projectId:'project',workspaceId:'workspace',actorId:'actor'},version:'1',contentHash:hashContextText('Selected authorized body'),availability:'available',required:true,selectionReason:'explicit_selection',dependencies:[],trust:'documental',provenance:{rawHash:hashContextText('Selected authorized body')}}}
 function fixture(overrides:Partial<ContextBridgeOptions>={},limits:Partial<ContextBridgeLimits>={}){

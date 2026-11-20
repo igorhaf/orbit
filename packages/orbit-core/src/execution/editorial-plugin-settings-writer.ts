@@ -29,9 +29,9 @@ export async function writeEditorialPluginSetting(
  return repository.advance(expected,async db=>{
   if(!enabled&&requiredViews.includes(pluginId)){
    await db.query("SELECT pg_advisory_xact_lock(hashtextextended('orbit.required-board-view',0))");
-   const {rows}: {rows:{plugin_id:string;enabled:boolean}[]}=
-    await db.query('SELECT plugin_id,enabled FROM plugin_settings WHERE plugin_id=ANY($1::text[])',[requiredViews]);
-   const states=new Map(rows.map(row=>[row.plugin_id,row.enabled]));
+   const {rows}=await db.query('SELECT plugin_id,enabled FROM plugin_settings WHERE plugin_id=ANY($1::text[])',[requiredViews]);
+   const states=new Map<string,boolean>();
+   for(const row of rows){if(typeof row.plugin_id!=='string'||typeof row.enabled!=='boolean')throw new Error('plugin_setting_observation_invalid');states.set(row.plugin_id,row.enabled)}
    if(!hasBoardViewAfterChange(states,pluginId,enabled))throw new RequiredBoardViewError();
   }
   await db.query(`INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2)

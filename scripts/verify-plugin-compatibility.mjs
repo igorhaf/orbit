@@ -3,7 +3,7 @@ import {resolve} from 'node:path';
 import {inspectShared} from '../tools/orbit/shared.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const environments = ['dev', 'prod', 'safdoulas', 'suinda'];
+const environments = ['forge', 'workspace', 'safdoulas', 'suinda', 'gastro-oceanica', 'rumo'];
 const errors = [];
 try {
   const config = JSON.parse(readFileSync(resolve(root, 'orbit.workspace.json'), 'utf8'));
@@ -184,7 +184,7 @@ try {
   errors.push('suinda: página de aprendizagem ausente');
 }
 
-for (const relativePath of ['suinda/compose.yml', 'dev/app/tools/dev-runtime/runtime/suinda.compose.snapshot.yml']) {
+for (const relativePath of ['suinda/compose.yml', 'forge/app/tools/dev-runtime/runtime/suinda.compose.snapshot.yml']) {
   try {
     if (!/NEXT_PUBLIC_ORBIT_THEME:\s*dark\b/.test(readFileSync(resolve(root, relativePath), 'utf8'))) {
       errors.push(`suinda: tema escuro não fixado em ${relativePath}`);
@@ -195,7 +195,7 @@ for (const relativePath of ['suinda/compose.yml', 'dev/app/tools/dev-runtime/run
 }
 try {
   const layout = readFileSync(resolve(root, 'suinda/app/apps/web/app/layout.tsx'), 'utf8');
-  if (!/data-theme=\{forcedTheme\s*\|\|\s*undefined\}/.test(layout) || !/data-theme-forced=\{forcedTheme\s*\?\s*'true'\s*:\s*undefined\}/.test(layout)) {
+  if (!/const initialTheme\s*=\s*forcedTheme\s*\|\|\s*'dark'/.test(layout) || !/data-theme=\{initialTheme\}/.test(layout) || !/data-theme-forced=\{forcedTheme\s*\?\s*'true'\s*:\s*undefined\}/.test(layout)) {
     errors.push('suinda: layout não aplica e fixa o tema definido pelo runtime');
   }
 } catch {

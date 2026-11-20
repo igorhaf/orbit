@@ -77,7 +77,7 @@ Abra **http://localhost:3000**. A API fica em **http://localhost:4000** e oferec
 
 ## Instâncias principal e desenvolvimento
 
-Os runtimes principal (`prod/app`) e DEV (`dev/app`) estão no monorepo Orbit, branch única `main`, mas mantêm bancos e volumes de arquivos isolados. A principal usa `http://localhost:3000` e API `4000`; desenvolvimento usa `http://localhost:3001` e API `4001`. A pasta atual é o runtime Suindá (`suinda/app`), servido em `http://localhost:3003/suinda` com API em `http://localhost:4004` e tema escuro Orbit.
+Os runtimes principal (`workspace/app`) e DEV (`forge/app`) estão no monorepo Orbit, branch única `main`, mas mantêm bancos e volumes de arquivos isolados. A principal usa `http://localhost:3000` e API `4000`; desenvolvimento usa `http://localhost:3001` e API `4001`. A pasta atual é o runtime Suindá (`suinda/app`), servido em `http://localhost:3003/suinda` com API em `http://localhost:4004` e tema escuro Orbit.
 
 ### Operação essencial
 
@@ -86,7 +86,7 @@ Use uma única instância de cada gerenciador. Se uma porta já estiver ocupada,
 Para parar o Orbit DEV:
 
 ```bash
-cd /home/meada/projetos/orbit-dev
+cd /home/meada/projetos/orbit/forge/app
 test -f .orbit-dev-manager.pid && kill "$(cat .orbit-dev-manager.pid)"
 ```
 
@@ -116,7 +116,7 @@ ss -ltnp | rg ':(3000|3001|4000|4001)\\b'
 Para reconstruir e levantar o Orbit DEV:
 
 ```bash
-cd /home/meada/projetos/orbit-dev
+cd /home/meada/projetos/orbit/forge/app
 npm run db:prepare
 npm run build
 npm run orbit:dev

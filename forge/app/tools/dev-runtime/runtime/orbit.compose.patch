@@ -1,0 +1,213 @@
+--- a/compose.yml
++++ b/compose.yml
+@@ -12,14 +12,17 @@
+       LANG: pt_BR.UTF-8
+     volumes:
+       - db_prod_data:/var/lib/postgresql/data
+-    networks: [prod_db_net]
+-    restart: unless-stopped
+-    security_opt: [no-new-privileges:true]
+-    healthcheck:
+-      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
++    networks: [ prod_db_net ]
++    restart: unless-stopped
++    security_opt: [ no-new-privileges:true ]
++    healthcheck:
++      test: [ CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"' ]
+       interval: 10s
+       timeout: 5s
+       retries: 10
++    mem_limit: 1g
++    memswap_limit: 1536m
++    mem_reservation: 128m
+ 
+   db-dev:
+     build:
+@@ -32,14 +35,17 @@
+       LANG: pt_BR.UTF-8
+     volumes:
+       - db_dev_data:/var/lib/postgresql/data
+-    networks: [dev_db_net]
+-    restart: unless-stopped
+-    security_opt: [no-new-privileges:true]
+-    healthcheck:
+-      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
++    networks: [ dev_db_net ]
++    restart: unless-stopped
++    security_opt: [ no-new-privileges:true ]
++    healthcheck:
++      test: [ CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"' ]
+       interval: 10s
+       timeout: 5s
+       retries: 10
++    mem_limit: 1g
++    memswap_limit: 1536m
++    mem_reservation: 128m
+ 
+   api-prod:
+     build:
+@@ -70,22 +76,25 @@
+       - ./safdoulas:/host-projects/safdoulas:rw
+       - safdoulas_v2_node_modules:/host-projects/safdoulas/app/node_modules:ro
+       - /home/meada/.codex/auth.json:/home/meada/.codex/auth.json:ro
+-    ports: ['127.0.0.1:4000:4000']
+-    networks: [prod_db_net, prod_net, control_net]
++    ports: [ '127.0.0.1:4000:4000' ]
++    networks: [ prod_db_net, prod_net, control_net ]
+     depends_on:
+-      db-prod: {condition: service_healthy}
++      db-prod: { condition: service_healthy }
+     restart: unless-stopped
+     user: '1000:1000'
+     read_only: true
+-    tmpfs: [/tmp]
+-    cap_drop: [ALL]
+-    security_opt: [no-new-privileges:true]
+-    healthcheck:
+-      test: [CMD, node, -e, "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL,connectionTimeoutMillis:2500});await c.connect();await c.query('SELECT 1');await c.end();const r=await fetch('http://127.0.0.1:4000/');process.exit(r.status<500?0:1)})().catch(()=>process.exit(1))"]
++    tmpfs: [ /tmp ]
++    cap_drop: [ ALL ]
++    security_opt: [ no-new-privileges:true ]
++    healthcheck:
++      test: [ CMD, node, -e, "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL,connectionTimeoutMillis:2500});await c.connect();await c.query('SELECT 1');await c.end();const r=await fetch('http://127.0.0.1:4000/');process.exit(r.status<500?0:1)})().catch(()=>process.exit(1))" ]
+       interval: 15s
+       timeout: 5s
+       retries: 8
+       start_period: 90s
++    mem_limit: 2g
++    memswap_limit: 3g
++    mem_reservation: 256m
+ 
+   web-prod:
+     build:
+@@ -100,22 +109,25 @@
+       ORBIT_API_PROXY_URL: http://api-prod:4000
+       WEB_HOSTNAME: 0.0.0.0
+       PORT: '3000'
+-    ports: ['127.0.0.1:3000:3000']
+-    networks: [prod_net]
++    ports: [ '127.0.0.1:3000:3000' ]
++    networks: [ prod_net ]
+     depends_on:
+-      api-prod: {condition: service_healthy}
++      api-prod: { condition: service_healthy }
+     restart: unless-stopped
+     user: '1000:1000'
+     read_only: true
+-    tmpfs: [/tmp, /home/meada/projetos/orbit/apps/web/.next/cache]
+-    cap_drop: [ALL]
+-    security_opt: [no-new-privileges:true]
+-    healthcheck:
+-      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
++    tmpfs: [ /tmp, /home/meada/projetos/orbit/apps/web/.next/cache ]
++    cap_drop: [ ALL ]
++    security_opt: [ no-new-privileges:true ]
++    healthcheck:
++      test: [ CMD, node, -e, "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))" ]
+       interval: 15s
+       timeout: 5s
+       retries: 8
+       start_period: 90s
++    mem_limit: 512m
++    memswap_limit: 768m
++    mem_reservation: 64m
+ 
+   dev:
+     build:
+@@ -135,12 +147,12 @@
+       HOME: /tmp
+       CODEX_HOME: /home/meada/.local/share/orbit-codex
+       ORBIT_API_PROXY_URL: http://127.0.0.1:4001
+-      WATCHPACK_POLLING: '1000'
+-      CHOKIDAR_USEPOLLING: 'true'
+       ORBIT_NEXT_DIST_DIR: .next-dev
+       THEME: dark
+       PORT: '3001'
+       WEB_HOSTNAME: 0.0.0.0
++      ORBIT_DEV_BUILD_LOCK: /run/orbit-dev-locks/build.lock
++      ORBIT_DEV_MEMORY_MODE: ${ORBIT_DEV_MEMORY_MODE:-conserve}
+     volumes:
+       - ./forge/app:/home/meada/projetos/orbit:rw
+       - /:/host-filesystem:rw
+@@ -149,21 +161,30 @@
+       - ./forge/data/root-orbit-sessions:/home/meada/projetos/orbit/.orbit/sessions:rw
+       - ./forge/data/api-orbit-sessions:/home/meada/projetos/orbit/apps/api/.orbit/sessions:rw
+       - /home/meada/.codex/auth.json:/home/meada/.local/share/orbit-codex/auth.json:ro
+-    ports: ['3001:3001', '127.0.0.1:4001:4001']
+-    networks: [dev_db_net, dev_net, control_net]
++      - ./control/state/dev-locks:/run/orbit-dev-locks:rw
++    ports: [ '3001:3001', '127.0.0.1:4001:4001' ]
++    networks: [ dev_db_net, dev_net, control_net ]
+     depends_on:
+-      db-dev: {condition: service_healthy}
++      db-dev: { condition: service_healthy }
+     restart: unless-stopped
+     user: '1000:1000'
+-    tmpfs: ['/tmp:rw,exec,nosuid,size=536870912']
+-    cap_drop: [ALL]
+-    security_opt: [no-new-privileges:true]
+-    healthcheck:
+-      test: [CMD, node, -e, "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL,connectionTimeoutMillis:2500});await c.connect();await c.query('SELECT 1');await c.end();const r=await Promise.all([fetch('http://127.0.0.1:4001/'),fetch('http://127.0.0.1:3001/')]);process.exit(r.every(x=>x.status<500)?0:1)})().catch(()=>process.exit(1))"]
++    tmpfs: [ '/tmp:rw,exec,nosuid,size=536870912' ]
++    cap_drop: [ ALL ]
++    security_opt: [ no-new-privileges:true ]
++    healthcheck:
++      test: [ CMD, node, -e, "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL,connectionTimeoutMillis:2500});await c.connect();await c.query('SELECT 1');await c.end();const r=await Promise.all([fetch('http://127.0.0.1:4001/'),fetch('http://127.0.0.1:3001/')]);process.exit(r.every(x=>x.status<500)?0:1)})().catch(()=>process.exit(1))" ]
+       interval: 15s
+       timeout: 10s
+       retries: 12
+       start_period: 180s
++    init: true
++    mem_limit: 2500m
++    memswap_limit: 3500m
++    mem_reservation: 512m
++    command:
++      - npm
++      - run
++      - dev
+ 
+   control:
+     build:
+@@ -184,27 +205,30 @@
+       - ./safdoulas/data/config:/home/meada/projetos/orbit/safdoulas/data/config:rw
+       - ./control/backups:/control/backups:rw
+       - ./control/snapshots:/control/snapshots:rw
+-    networks: [control_net, prod_db_net, dev_db_net]
++    networks: [ control_net, prod_db_net, dev_db_net ]
+     restart: unless-stopped
+     read_only: true
+-    tmpfs: [/tmp]
+-    security_opt: [no-new-privileges:true]
+-    healthcheck:
+-      test: [CMD, python3, -c, "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8787/health',timeout=5).status == 200"]
++    tmpfs: [ /tmp ]
++    security_opt: [ no-new-privileges:true ]
++    healthcheck:
++      test: [ CMD, python3, -c, "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8787/health',timeout=5).status == 200" ]
+       interval: 20s
+       timeout: 5s
+       retries: 5
++    mem_limit: 512m
++    memswap_limit: 768m
++    mem_reservation: 32m
+ 
+ networks:
+-  control_net: {name: orbit_control_net}
+-  prod_net: {name: orbit_prod_net}
+-  dev_net: {name: orbit_dev_net}
+-  prod_db_net: {name: orbit_prod_db_net, internal: true}
+-  dev_db_net: {name: orbit_dev_db_net, internal: true}
++  control_net: { name: orbit_control_net }
++  prod_net: { name: orbit_prod_net }
++  dev_net: { name: orbit_dev_net }
++  prod_db_net: { name: orbit_prod_db_net, internal: true }
++  dev_db_net: { name: orbit_dev_db_net, internal: true }
+ 
+ volumes:
+-  db_prod_data: {name: orbit_db_prod_data}
+-  db_dev_data: {name: orbit_db_dev_data}
++  db_prod_data: { name: orbit_db_prod_data }
++  db_dev_data: { name: orbit_db_dev_data }
+   safdoulas_v2_node_modules:
+     external: true
+     name: orbit_safdoulas_v2_node_modules

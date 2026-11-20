@@ -240,13 +240,13 @@ Caminhos curtos da tabela são packages/orbit-core/src/execution salvo indicaç�
 |D24|Resultados dirigidos§24.|Sem suíte global/serviço operacional.|
 
 
-Mapa de reprodução por cenário (os nomes D estão nos títulos dos testes diretos): D1–D16/D18–D20/D23 → `dev/app/apps/api/src/execution/context-bridge-knowledge.spec.ts`, comando unitário§23, evidência unit-final.log; D6/D7/D18 adicionalmente → `knowledge-bridge.spec.ts`, mesmo comando/log. D2/D14/D15/D17/D18/D19/D21/D22/D23 → `node --test tools/orbit/knowledge-bridge-workers.test.mjs`, fixture `context-workers.test.mjs`, evidência dynamic-workers.log (18filhos). D20 adicionalmente → `node --test tools/orbit/context-bridge-mcp-supervised.test.mjs`, chain-final.log (6casos); D19/persistência → `node --test tools/orbit/context-bridge.postgres.test.mjs`, bridge-postgres.log (9casos). D24 → todos os comandos/listas§24. Cada PASS da matriz refere-se a esses arquivos/comandos e aos limites da coluna correspondente.
+Mapa de reprodução por cenário (os nomes D estão nos títulos dos testes diretos): D1–D16/D18–D20/D23 → `forge/app/apps/api/src/execution/context-bridge-knowledge.spec.ts`, comando unitário§23, evidência unit-final.log; D6/D7/D18 adicionalmente → `knowledge-bridge.spec.ts`, mesmo comando/log. D2/D14/D15/D17/D18/D19/D21/D22/D23 → `node --test tools/orbit/knowledge-bridge-workers.test.mjs`, fixture `context-workers.test.mjs`, evidência dynamic-workers.log (18filhos). D20 adicionalmente → `node --test tools/orbit/context-bridge-mcp-supervised.test.mjs`, chain-final.log (6casos); D19/persistência → `node --test tools/orbit/context-bridge.postgres.test.mjs`, bridge-postgres.log (9casos). D24 → todos os comandos/listas§24. Cada PASS da matriz refere-se a esses arquivos/comandos e aos limites da coluna correspondente.
 
 Complementares: query vazia/longa, acentos, no_match, oversized chunk, hash/version mismatch, config/corpus alterado, sourceId/path arbitrário, replay/terminal, flag do host, auditfail, schema init inválido, cache/source authorization e dados hostis. Matrix não soma24 testes Node fictícios.
 
 Comandos novos seguros:
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/context-bridge-knowledge.spec.ts dev/app/apps/api/src/execution/knowledge-bridge.spec.ts
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/context-bridge-knowledge.spec.ts forge/app/apps/api/src/execution/knowledge-bridge.spec.ts
 node --test tools/orbit/knowledge-bridge-workers.test.mjs
 node --test tools/orbit/context-bridge-mcp-supervised.test.mjs
 node --test tools/orbit/context-bridge.postgres.test.mjs
@@ -282,7 +282,7 @@ Durante o desenvolvimento houve falhas corrigidas de fixture/tipagem/integrabili
 
 Reprodução das suites: Node24.20.0, dependências locais existentes; usar ambiente novo sem herdar DATABASE_URL/credenciais, HOME/CODEX_HOME temporários, CODEX_BIN inexistente, PATH=/usr/bin:/bin, TSX_DISABLE_CACHE=1, TSX_TSCONFIG_PATH absoluto do DEV, ORBIT_CONTEXT_COMPILER_ENABLED=0 e ORBIT_CONTEXT_BRIDGE_ENABLED=0 (fixtures opt-in habilitam suas flags). Git de fixture: GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_GLOBAL=/dev/null, hooksPath=/dev/null, fsmonitor=false, template temporário. PostgreSQL dos harnesses é privado e descartável.
 
-Lista exata de arquivos unitários (prefixo `dev/app/apps/api/src/`), passados a `node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test`:
+Lista exata de arquivos unitários (prefixo `forge/app/apps/api/src/`), passados a `node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test`:
 ```text
 execution/context-bridge-knowledge.spec.ts
 execution/knowledge-bridge.spec.ts
@@ -364,21 +364,21 @@ Comparação contra o snapshot imediatamente anterior à07B: **3413 arquivos exi
 Modificados nesta etapa:
 ```text
 AGENTS.md
-dev/app/apps/api/src/execution/context-bridge-adapter.ts
-dev/app/apps/api/src/execution/context-bridge-host.spec.ts
-dev/app/apps/api/src/execution/context-bridge-host.ts
-dev/app/apps/api/src/execution/context-bridge-mcp-entry.ts
-dev/app/apps/api/src/execution/context-bridge-mcp.ts
-dev/app/apps/api/src/execution/context-bridge-repository.spec.ts
-dev/app/apps/api/src/execution/context-bridge-repository.ts
-dev/app/apps/api/src/execution/context-bridge.ts
-dev/app/apps/api/src/execution/execution.service.ts
-dev/app/apps/api/src/execution/isolated-checkout.ts
-dev/app/apps/api/src/execution/knowledge-host.ts
-dev/app/apps/api/src/execution/knowledge-retrieval.ts
-dev/app/apps/api/src/orbit-architecture.ts
-dev/app/apps/api/src/plugins/ai/prompt-sessions.ts
-dev/app/orbit.shared-lock.json
+forge/app/apps/api/src/execution/context-bridge-adapter.ts
+forge/app/apps/api/src/execution/context-bridge-host.spec.ts
+forge/app/apps/api/src/execution/context-bridge-host.ts
+forge/app/apps/api/src/execution/context-bridge-mcp-entry.ts
+forge/app/apps/api/src/execution/context-bridge-mcp.ts
+forge/app/apps/api/src/execution/context-bridge-repository.spec.ts
+forge/app/apps/api/src/execution/context-bridge-repository.ts
+forge/app/apps/api/src/execution/context-bridge.ts
+forge/app/apps/api/src/execution/execution.service.ts
+forge/app/apps/api/src/execution/isolated-checkout.ts
+forge/app/apps/api/src/execution/knowledge-host.ts
+forge/app/apps/api/src/execution/knowledge-retrieval.ts
+forge/app/apps/api/src/orbit-architecture.ts
+forge/app/apps/api/src/plugins/ai/prompt-sessions.ts
+forge/app/orbit.shared-lock.json
 docs/product-experience.md
 orbit.workspace.json
 packages/orbit-core/package.json
@@ -394,21 +394,21 @@ packages/orbit-core/src/execution/execution.service.ts
 packages/orbit-core/src/execution/isolated-checkout.ts
 packages/orbit-core/src/execution/knowledge-host.ts
 packages/orbit-core/src/execution/knowledge-retrieval.ts
-prod/app/apps/api/src/execution/context-bridge-adapter.ts
-prod/app/apps/api/src/execution/context-bridge-host.spec.ts
-prod/app/apps/api/src/execution/context-bridge-host.ts
-prod/app/apps/api/src/execution/context-bridge-mcp-entry.ts
-prod/app/apps/api/src/execution/context-bridge-mcp.ts
-prod/app/apps/api/src/execution/context-bridge-repository.spec.ts
-prod/app/apps/api/src/execution/context-bridge-repository.ts
-prod/app/apps/api/src/execution/context-bridge.ts
-prod/app/apps/api/src/execution/execution.service.ts
-prod/app/apps/api/src/execution/isolated-checkout.ts
-prod/app/apps/api/src/execution/knowledge-host.ts
-prod/app/apps/api/src/execution/knowledge-retrieval.ts
-prod/app/apps/api/src/orbit-architecture.ts
-prod/app/apps/api/src/plugins/ai/prompt-sessions.ts
-prod/app/orbit.shared-lock.json
+workspace/app/apps/api/src/execution/context-bridge-adapter.ts
+workspace/app/apps/api/src/execution/context-bridge-host.spec.ts
+workspace/app/apps/api/src/execution/context-bridge-host.ts
+workspace/app/apps/api/src/execution/context-bridge-mcp-entry.ts
+workspace/app/apps/api/src/execution/context-bridge-mcp.ts
+workspace/app/apps/api/src/execution/context-bridge-repository.spec.ts
+workspace/app/apps/api/src/execution/context-bridge-repository.ts
+workspace/app/apps/api/src/execution/context-bridge.ts
+workspace/app/apps/api/src/execution/execution.service.ts
+workspace/app/apps/api/src/execution/isolated-checkout.ts
+workspace/app/apps/api/src/execution/knowledge-host.ts
+workspace/app/apps/api/src/execution/knowledge-retrieval.ts
+workspace/app/apps/api/src/orbit-architecture.ts
+workspace/app/apps/api/src/plugins/ai/prompt-sessions.ts
+workspace/app/orbit.shared-lock.json
 safdoulas/app/apps/api/src/execution/context-bridge-adapter.ts
 safdoulas/app/apps/api/src/execution/context-bridge-host.spec.ts
 safdoulas/app/apps/api/src/execution/context-bridge-host.ts
@@ -446,19 +446,19 @@ tools/orbit/context-workers.test.mjs
 
 Novos nesta etapa:
 ```text
-dev/app/apps/api/sql/migrations/208_context_bridge_knowledge_audit.sql
-dev/app/apps/api/src/execution/context-bridge-knowledge.spec.ts
-dev/app/apps/api/src/execution/knowledge-bridge.spec.ts
-dev/app/apps/api/src/execution/knowledge-bridge.ts
+forge/app/apps/api/sql/migrations/208_context_bridge_knowledge_audit.sql
+forge/app/apps/api/src/execution/context-bridge-knowledge.spec.ts
+forge/app/apps/api/src/execution/knowledge-bridge.spec.ts
+forge/app/apps/api/src/execution/knowledge-bridge.ts
 docs/implementacao-arquitetural/07B-CONSULTA-LEXICAL-DINAMICA-CONTEXT-BRIDGE.md
 packages/orbit-core/sql/migrations/208_context_bridge_knowledge_audit.sql
 packages/orbit-core/src/execution/context-bridge-knowledge.spec.ts
 packages/orbit-core/src/execution/knowledge-bridge.spec.ts
 packages/orbit-core/src/execution/knowledge-bridge.ts
-prod/app/apps/api/sql/migrations/208_context_bridge_knowledge_audit.sql
-prod/app/apps/api/src/execution/context-bridge-knowledge.spec.ts
-prod/app/apps/api/src/execution/knowledge-bridge.spec.ts
-prod/app/apps/api/src/execution/knowledge-bridge.ts
+workspace/app/apps/api/sql/migrations/208_context_bridge_knowledge_audit.sql
+workspace/app/apps/api/src/execution/context-bridge-knowledge.spec.ts
+workspace/app/apps/api/src/execution/knowledge-bridge.spec.ts
+workspace/app/apps/api/src/execution/knowledge-bridge.ts
 safdoulas/app/apps/api/sql/migrations/208_context_bridge_knowledge_audit.sql
 safdoulas/app/apps/api/src/execution/context-bridge-knowledge.spec.ts
 safdoulas/app/apps/api/src/execution/knowledge-bridge.spec.ts

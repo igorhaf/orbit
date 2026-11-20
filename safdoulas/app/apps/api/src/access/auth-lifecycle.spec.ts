@@ -63,6 +63,17 @@ test('completion consumes a token once, hashes password, verifies account, and r
   await assert.rejects(()=>auth.complete(token,'another sufficiently long password'),/Token inválido ou expirado/);
 });
 
+test('email-change token cannot be used to set a password',async()=>{
+  const statements:string[]=[];let rolledBack=false;
+  const client={async query(sql:string){statements.push(sql);if(sql.includes('SELECT t.id'))return {rows:sql.includes("t.purpose IN ('invite','verify','recover')")?[]:[{id:'email-change-token',user_id:'user-1',purpose:'change-email'}]};if(sql==='ROLLBACK')rolledBack=true;return {rows:[]}},release(){}};
+  const auth=new AuthLifecycle({pool:{async connect(){return client}}} as unknown as Db,{async send(){}} as AuthMailer,{} as never);
+  await assert.rejects(()=>auth.complete('d'.repeat(43),'a sufficiently long password'),/Token inválido ou expirado/);
+  const select=statements.find(sql=>sql.includes('SELECT t.id'))||'';
+  assert.match(select,/t\.purpose IN \('invite','verify','recover'\)/);
+  assert.equal(rolledBack,true);
+  assert.equal(statements.some(sql=>sql.includes('UPDATE users SET password_hash')),false);
+});
+
 test('expired or unknown token rolls back completion',async()=>{
   let rolledBack=false;
   const client={async query(sql:string){if(sql.includes('SELECT t.id'))return {rows:[]};if(sql==='ROLLBACK')rolledBack=true;return {rows:[]}},release(){}};

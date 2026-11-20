@@ -8,8 +8,8 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const root=fileURLToPath(new URL('../..',import.meta.url));
-const require=createRequire(join(root,'dev/app/package.json'));
-process.env.TSX_TSCONFIG_PATH=join(root,'dev/app/apps/api/tsconfig.json');
+const require=createRequire(join(root,'forge/app/package.json'));
+process.env.TSX_TSCONFIG_PATH=join(root,'forge/app/apps/api/tsconfig.json');
 require('tsx/cjs/api').register();
 const {ContextBridgeAdapter,contextBridgeProtocol}=require(join(root,'packages/orbit-core/src/execution/context-bridge-adapter.ts'));
 

@@ -423,7 +423,7 @@ const recordKinds: Record<string, RecordKindContribution> = {
 export const safdoulasProcessesPlugin: PluginDefinition = {
   id: "safdoulas-processes",
   name: "Processos de acreditação SAFDOULAS",
-  version: "1.0.0",
+  version: "1.1.0",
   description: "Registra processos com regras e evidências versionadas, acesso por escopo e transições autorizadas pelas regras vigentes.",
   scope: "workspace",
   dependencies: ["versioned-records", "safdoulas-governance", "safdoulas-registry", "forms", "documents", "privacy"],
@@ -437,6 +437,16 @@ export const safdoulasProcessesPlugin: PluginDefinition = {
     permissions: [transitionPermission(role)],
   }))),
   contributions: {
+    profileSimulationExamples: context => context.permissions.includes("plugin.safdoulas-processes.read") ? [
+      {
+        id: "accreditation-review", title: "Processo demonstrativo de acreditação", type: "accreditation_process", state: "document_review",
+        description: "Caso inteiramente fictício para demonstrar conferência documental. Não representa protocolo, decisão ou reconhecimento oficial.", is_demo: true,
+      },
+      {
+        id: "evidence-check", title: "Conferir evidências de exemplo", type: "review_task", state: "pending",
+        description: "Exercício de leitura para acompanhar itens e responsáveis sem consultar um processo real.", is_demo: true,
+      },
+    ] : [],
     recordCards:[{board:courseBoard,kind:"accreditation_process",label:"Curso em acreditação",href:"/safdoulas/processes",recordParam:"process",description:"Anotações de acompanhamento do curso. Utilize os documentos e o processo vinculados para submeter evidências ou registrar decisões formais.",titleReference:{plugin:"safdoulas-registry",idField:"course_record_id",revisionField:"course_revision",titleField:"name"}}],
     navigation: [{ id: "safdoulas-processes", href: "/extensions/safdoulas-processes", label: "Processos" , permission: "plugin.safdoulas-processes.read", group: { id: "accreditation", label: "Acreditação" }, section: {"id": "workflow", "label": "Tramitação", "order": 2}, order: 0}],
     recordKinds,

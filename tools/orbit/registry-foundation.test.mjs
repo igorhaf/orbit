@@ -13,7 +13,7 @@ test('real DEV registry preserves deterministic protections with AI disabled', t
   const script = join(temporary, 'registry.test.ts');
   writeFileSync(script, `
     import assert from 'node:assert/strict';
-    import {PluginRegistry} from ${JSON.stringify(resolve(root, 'dev/app/apps/api/src/execution/registries.ts'))};
+    import {PluginRegistry} from ${JSON.stringify(resolve(root, 'forge/app/apps/api/src/execution/registries.ts'))};
     const registry = new PluginRegistry();
     const action = {id:'echo', name:'Echo', permissions:['core.write'], inputSchema:{type:'object',additionalProperties:false},execute:async()=>({type:'text',value:'ok'})};
     registry.register({id:'ai',name:'AI',version:'1.0.0'});
@@ -33,5 +33,5 @@ test('real DEV registry preserves deterministic protections with AI disabled', t
     assert.throws(()=>registry.register({id:'cycle-b',name:'B',version:'1.0.0',dependencies:['cycle-a']}),/circular/);
     assert.throws(()=>registry.register({id:'incompatible',name:'Bad',version:'1.0.0',coreCompatibility:{minVersion:'99.0.0'}}),/incompatível/);
   `);
-  assert.doesNotThrow(() => execFileSync(process.execPath, ['--import', resolve(root, 'dev/app/node_modules/tsx/dist/loader.mjs'), script], { cwd: temporary, env: { ...process.env, ORBIT_HIDDEN_PLUGINS: '', TSX_DISABLE_CACHE: '1' }, stdio: 'pipe', timeout: 30_000 }));
+  assert.doesNotThrow(() => execFileSync(process.execPath, ['--import', resolve(root, 'forge/app/node_modules/tsx/dist/loader.mjs'), script], { cwd: temporary, env: { ...process.env, ORBIT_HIDDEN_PLUGINS: '', TSX_DISABLE_CACHE: '1' }, stdio: 'pipe', timeout: 30_000 }));
 });

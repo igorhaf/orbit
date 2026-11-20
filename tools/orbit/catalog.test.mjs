@@ -11,7 +11,8 @@ function fixture(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const write = (path, content) => { const absolute = join(root, path); mkdirSync(dirname(absolute), { recursive: true }); writeFileSync(absolute, content); };
   const runtime = (id = 'dev') => {
-    const result = { id, app: `${id}/app` };
+    const app = id === 'dev' ? 'forge/app' : id === 'prod' ? 'workspace/app' : `${id}/app`;
+    const result = { id, app };
     write(`${result.app}/apps/api/core-version.json`, JSON.stringify({ version: '1.2.0', pluginApiVersion: 1 }));
     write(`${result.app}/apps/api/package.json`, JSON.stringify({ scripts: { test: 'tsx --test src/a.spec.ts' } }));
     write(`${result.app}/apps/api/tsconfig.json`, '{}');
@@ -23,7 +24,7 @@ function fixture(t) {
 
 test('catalog resolves factory parameters, class metadata, helpers, imports and capability permissions without executing source', t => {
   const { root, write, runtime } = fixture(t), dev = runtime();
-  write('dev/app/apps/api/src/plugins/all.ts', `
+  write('forge/app/apps/api/src/plugins/all.ts', `
     throw new Error('Catalog must never execute application code');
     export const basePlugin = {id:'base',name:'Base',version:'1.0.0'};
     function plugin(id:string) { return {plugin:{id,name:id,version:'1.0.0',dependencies:['base'],capabilities:['read','write'].map(action=>({id:action,name:action,permissions:[\`plugin.\${id}.\${action}\`]}))}}; }
@@ -32,7 +33,7 @@ test('catalog resolves factory parameters, class metadata, helpers, imports and 
     export class Calendar { readonly id='calendar'; readonly name='Calendar'; }
     export const calendarPluginDefinition=(calendar:Calendar)=>({id:calendar.id,name:calendar.name,version:'1.0.0',dependencies:['base']});
   `);
-  write('dev/app/apps/api/src/main.ts', `
+  write('forge/app/apps/api/src/main.ts', `
     import {genericPlugins,providerDefinition,calendarPluginDefinition,Calendar} from './plugins/all';
     const create=(calendar:Calendar)=>{for(const plugin of genericPlugins)registry.register(plugin);registry.register(providerDefinition('mail'));registry.register(calendarPluginDefinition(calendar));};
   `);
@@ -56,8 +57,8 @@ test('reports missing dependencies, duplicate ids, incompatible versions, missin
 
 test('compares contracts across runtimes and reports unresolved declared dependencies', t => {
   const { root, write, runtime } = fixture(t), dev = runtime(), prod = runtime('prod');
-  write('dev/app/apps/api/src/plugins/feature.ts', "export const featurePlugin={id:'feature',name:'Feature',version:'1.0.0',dependencies:[]};");
-  write('prod/app/apps/api/src/plugins/feature.ts', "export const featurePlugin={id:'feature',name:'Feature',version:'1.1.0',dependencies:[]}; export const unknownPlugin={id:'unknown',name:'Unknown',version:'1.0.0',dependencies:externalDependencies()};");
+  write('forge/app/apps/api/src/plugins/feature.ts', "export const featurePlugin={id:'feature',name:'Feature',version:'1.0.0',dependencies:[]};");
+  write('workspace/app/apps/api/src/plugins/feature.ts', "export const featurePlugin={id:'feature',name:'Feature',version:'1.1.0',dependencies:[]}; export const unknownPlugin={id:'unknown',name:'Unknown',version:'1.0.0',dependencies:externalDependencies()};");
   const result = buildCatalog(root, {runtimes:[dev,prod]});
   assert.equal(result.ok,false);
   assert.ok(result.diagnostics.some(item=>item.code==='divergent-plugin-contract'));
@@ -76,7 +77,7 @@ test('follows transitive imports and shared projections to recommend impacted te
   write('packages/core/src/core.ts', 'export const x=1;');
   const result = analyzeImpact(root,{runtimes:[dev,prod],sharedPackages:[{path:'packages/core',files:[{source:'src/core.ts',target:'apps/api/src/core.ts'}]}]},['packages/core/src/core.ts']);
   assert.deepEqual(result.runtimes.map(runtime=>runtime.id),['dev','prod']);
-  assert.ok(result.impactedFiles.includes('prod/app/apps/api/src/wrapper.spec.ts'));
+  assert.ok(result.impactedFiles.includes('workspace/app/apps/api/src/wrapper.spec.ts'));
   const commands=result.checks.flatMap(check=>check.command);
   assert.ok(commands.some(value=>value.endsWith('wrapper.spec.ts')));
   assert.ok(!commands.some(value=>value.endsWith('wrapper.integration.spec.ts')));
@@ -85,9 +86,9 @@ test('follows transitive imports and shared projections to recommend impacted te
 
 test('uses conservative impact for unknown shared configuration and scopes known runtime changes', t => {
   const { root, write, runtime } = fixture(t), dev = runtime(), prod = runtime('prod');
-  write('dev/app/apps/api/src/feature.ts', 'export const x=1;');
+  write('forge/app/apps/api/src/feature.ts', 'export const x=1;');
   const config={runtimes:[dev,prod]};
-  const scoped=analyzeImpact(root,config,['dev/app/apps/api/src/feature.ts']);
+  const scoped=analyzeImpact(root,config,['forge/app/apps/api/src/feature.ts']);
   assert.deepEqual(scoped.runtimes.map(runtime=>runtime.id),['dev']);
   assert.equal(scoped.conservative,false);
   const broad=analyzeImpact(root,config,['infrastructure/unknown.json']);
@@ -100,25 +101,25 @@ test('default impact includes staged, unstaged and untracked files without readi
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8'});
   git('init','--quiet');
   write('.gitignore','.env\n');
-  write('dev/app/apps/api/src/tracked.ts','export const x=1;');
+  write('forge/app/apps/api/src/tracked.ts','export const x=1;');
   git('add','.');
   git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--quiet','-m','baseline');
-  write('dev/app/apps/api/src/tracked.ts','export const x=2;');
-  write('dev/app/apps/api/src/staged.ts','export const y=1;');
-  git('add','dev/app/apps/api/src/staged.ts');
-  write('dev/app/apps/api/src/untracked.ts','export const z=1;');
+  write('forge/app/apps/api/src/tracked.ts','export const x=2;');
+  write('forge/app/apps/api/src/staged.ts','export const y=1;');
+  git('add','forge/app/apps/api/src/staged.ts');
+  write('forge/app/apps/api/src/untracked.ts','export const z=1;');
   write('.env','SECRET=not-indexed');
   const result=await execute('impact',[],{root,config:{runtimes:[dev]}});
-  assert.deepEqual(result.files,['dev/app/apps/api/src/staged.ts','dev/app/apps/api/src/tracked.ts','dev/app/apps/api/src/untracked.ts']);
+  assert.deepEqual(result.files,['forge/app/apps/api/src/staged.ts','forge/app/apps/api/src/tracked.ts','forge/app/apps/api/src/untracked.ts']);
 });
 
 test('plugin dependency edges include consumers without source imports, while tooling changes avoid runtime-wide test runs', t => {
   const {root,write,runtime}=fixture(t), dev=runtime();
-  write('dev/app/apps/api/src/plugins/base.ts', "export const basePlugin={id:'base',name:'Base',version:'1.0.0',dependencies:[]};");
-  write('dev/app/apps/api/src/plugins/child.ts', "export const childPlugin={id:'child',name:'Child',version:'1.0.0',dependencies:['base']};");
-  write('dev/app/apps/api/src/child.spec.ts', "import {childPlugin} from './plugins/child';");
-  const impact=analyzeImpact(root,{runtimes:[dev]},['dev/app/apps/api/src/plugins/base.ts']);
-  assert.ok(impact.impactedFiles.includes('dev/app/apps/api/src/child.spec.ts'));
+  write('forge/app/apps/api/src/plugins/base.ts', "export const basePlugin={id:'base',name:'Base',version:'1.0.0',dependencies:[]};");
+  write('forge/app/apps/api/src/plugins/child.ts', "export const childPlugin={id:'child',name:'Child',version:'1.0.0',dependencies:['base']};");
+  write('forge/app/apps/api/src/child.spec.ts', "import {childPlugin} from './plugins/child';");
+  const impact=analyzeImpact(root,{runtimes:[dev]},['forge/app/apps/api/src/plugins/base.ts']);
+  assert.ok(impact.impactedFiles.includes('forge/app/apps/api/src/child.spec.ts'));
   assert.deepEqual(impact.runtimes[0].plugins,['base','child']);
   write('tools/orbit/feature.test.mjs','');
   const tooling=analyzeImpact(root,{runtimes:[dev]},['tools/orbit/feature.mjs']);
@@ -130,7 +131,7 @@ test('plugin dependency edges include consumers without source imports, while to
 test('metadata cache invalidates both runtime source and imported shared metadata changes', t => {
   const {root,write,runtime}=fixture(t), dev=runtime();
   write('packages/shared/version.ts', "export const pluginVersion='1.0.0';");
-  write('dev/app/apps/api/src/plugins/feature.ts', "import {pluginVersion} from '../../../../../../packages/shared/version'; export const featurePlugin={id:'feature',name:'Feature',version:pluginVersion,dependencies:[]};");
+  write('forge/app/apps/api/src/plugins/feature.ts', "import {pluginVersion} from '../../../../../../packages/shared/version'; export const featurePlugin={id:'feature',name:'Feature',version:pluginVersion,dependencies:[]};");
   const first=catalogRuntime(root,dev);
   assert.equal(first.plugins[0].version,'1.0.0');
   assert.equal(first.cache.hit,false);
@@ -139,7 +140,7 @@ test('metadata cache invalidates both runtime source and imported shared metadat
   const sharedChange=catalogRuntime(root,dev);
   assert.equal(sharedChange.cache.hit,false);
   assert.equal(sharedChange.plugins[0].version,'1.1.0');
-  write('dev/app/apps/api/src/plugins/feature.ts', "export const featurePlugin={id:'feature',name:'Feature',version:'1.2.0',dependencies:[]};");
+  write('forge/app/apps/api/src/plugins/feature.ts', "export const featurePlugin={id:'feature',name:'Feature',version:'1.2.0',dependencies:[]};");
   const sourceChange=catalogRuntime(root,dev);
   assert.equal(sourceChange.cache.hit,false);
   assert.equal(sourceChange.plugins[0].version,'1.2.0');
@@ -147,9 +148,9 @@ test('metadata cache invalidates both runtime source and imported shared metadat
 
 test('impact ignores generated .next variants and returns tooling fast path without creating application catalogs', t => {
   const {root,write,runtime}=fixture(t), dev=runtime();
-  write('dev/app/apps/api/src/core.ts','export const x=1;');
-  write('dev/app/apps/web/.next-native-dev/generated.js', "import {x} from '../../api/src/core';");
-  const result=analyzeImpact(root,{runtimes:[dev]},['dev/app/apps/api/src/core.ts']);
+  write('forge/app/apps/api/src/core.ts','export const x=1;');
+  write('forge/app/apps/web/.next-native-dev/generated.js', "import {x} from '../../api/src/core';");
+  const result=analyzeImpact(root,{runtimes:[dev]},['forge/app/apps/api/src/core.ts']);
   assert.ok(!result.impactedFiles.some(path=>path.includes('.next')));
   const tooling=analyzeImpact(root,{runtimes:[{id:'missing',app:'absent/app'}]},['docs/note.md']);
   assert.deepEqual(tooling.runtimes,[]);

@@ -9,13 +9,13 @@ import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 
 const root=fileURLToPath(new URL('../..',import.meta.url));
-const require=createRequire(join(root,'dev/app/package.json'));
-process.env.TSX_TSCONFIG_PATH=join(root,'dev/app/apps/api/tsconfig.json');
+const require=createRequire(join(root,'forge/app/package.json'));
+process.env.TSX_TSCONFIG_PATH=join(root,'forge/app/apps/api/tsconfig.json');
 require('tsx/cjs/api').register();
-const {CodexAiService}=require(join(root,'dev/app/apps/api/src/plugins/ai/codex-provider.ts'));
-const {CodexExecutor}=require(join(root,'dev/app/apps/api/src/execution/codex-executor.ts'));
-const {withWorkspaceWriteLease}=require(join(root,'dev/app/apps/api/src/execution/workspace-coordinator.ts'));
-const {withIsolatedExecution}=require(join(root,'dev/app/apps/api/src/execution/isolated-execution-policy.ts'));
+const {CodexAiService}=require(join(root,'forge/app/apps/api/src/plugins/ai/codex-provider.ts'));
+const {CodexExecutor}=require(join(root,'forge/app/apps/api/src/execution/codex-executor.ts'));
+const {withWorkspaceWriteLease}=require(join(root,'forge/app/apps/api/src/execution/workspace-coordinator.ts'));
+const {withIsolatedExecution}=require(join(root,'forge/app/apps/api/src/execution/isolated-execution-policy.ts'));
 
 test('real provider uses only a fake CLI with isolated sandbox arguments, sanitized env and no original-directory fallback',{timeout:15000},async t=>{
  const directory=mkdtempSync(join(tmpdir(),'orbit-isolated-fake-cli-')),tree=join(directory,'tree'),home=join(directory,'fake-home'),binary=join(directory,'fake-codex');

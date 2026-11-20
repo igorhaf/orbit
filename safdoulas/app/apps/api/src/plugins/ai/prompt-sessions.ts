@@ -3,11 +3,13 @@ import {captureExecutionDiscoveries} from '../../execution/discovery-journal-hos
 import {knowledgePolicyFromHost,knowledgePolicyForManifest,prepareProjectKnowledge} from '../../execution/knowledge-host';
 import {knowledgeRetrievalMetadata,type KnowledgeRetrievalPolicy} from '../../execution/knowledge-retrieval';
 import {contextBridgePolicyFromHost,contextBridgePolicyForManifest,bridgeConfiguration,openContextBridge,type ContextBridgeHostPolicy} from '../../execution/context-bridge-host';
-import {compileContext,compilationMetadata,type ContextCompileBlock,type ContextCompilerPolicy} from '../../execution/context-compiler';
+import {compileContext,compilationMetadata,type ContextCompilationDecision,type ContextCompileBlock,type ContextCompilerPolicy} from '../../execution/context-compiler';
 import {contextCompilerPolicyFromHost,compilerPolicyForManifest} from '../../execution/context-compiler-host';
-import {ContextManifestRepository,ContextManifest,ContextSource,StoredContextManifest,compareContextManifest,hashContextValue,hashContextText} from '../../execution/context-manifest';
+import {ContextManifestRepository,ContextSource,StoredContextManifest,compareContextManifest,hashContextValue,hashContextText} from '../../execution/context-manifest';
 import {contextTechnicalState,executionContextIdentity,manifestForExecution,observedContextSource,relevantPluginSources,currentContext,verifyRunContext,finalRunContext,contextJson} from '../../execution/context-runtime';
 import {PluginRegistry} from '../../execution/registries';
+import {promptRunMultipleAgents} from '../../execution/prompt-run-mode';
+export {promptRunMultipleAgents} from '../../execution/prompt-run-mode';
 import {orbitArchitecturePrompt} from '../../orbit-architecture';
 import {relative as relativeContextPath} from 'node:path';
 import {captureIsolationRequest,validateIsolationRequest,withIsolatedCheckout,IsolatedCheckoutRequest} from '../../execution/isolated-checkout';
@@ -426,10 +428,10 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
       JOIN board_members bm ON bm.board_id=l.board_id AND bm.user_id=$1
       WHERE r.user_id=$1 AND r.status='waiting_answer' ORDER BY r.created_at,r.id`,[userId]);
   }
-  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents:boolean;checkout_request?:IsolatedCheckoutRequest|null}){
+  async execute(cardId:string,userId:string,body:Payload={},commentReply?:CommentReply,resume?:{id:string;project_id:string;model:string;effort:Effort;codex_session_id:string|null;output:string;multiple_agents?:boolean;checkout_request?:IsolatedCheckoutRequest|null}){
     if(!commentReply&&!resume)assertOrbitFields(body,orbitArchitecture.promptRunExecute);
     if(body.multiple_agents!==undefined&&typeof body.multiple_agents!=='boolean')fail('A opção de múltiplos agentes precisa ser booleana.');
-    const multipleAgents=resume?.multiple_agents??(commentReply?false:body.multiple_agents!==false);
+    const multipleAgents=promptRunMultipleAgents(body,commentReply,resume);
     const context=await this.card(cardId,userId);const card=context.card;
     const requestKey=body.request_key;
     if(requestKey!==undefined&&(typeof requestKey!=='string'||!requestKey||requestKey.length>150))fail('Chave de execução inválida.');
@@ -603,9 +605,9 @@ export class PromptSessionsService implements OnModuleInit,OnModuleDestroy {
         parentCurrent.sources=parentCurrent.sources.map(source=>['prompt:turn','prompt:previous-question'].includes(source.id)?contextRecord!.manifest.sources.find(old=>old.id===source.id)??source:source);
         delete parentCurrent.material;
         if(compilerPolicy){
-          const previous=contextRecord.manifest.configuration.contextCompilation as unknown as {policy:ContextCompilerPolicy;decisions:unknown[]};
-          const next=current.configuration.contextCompilation as unknown as {policy:ContextCompilerPolicy;decisions:Array<{blockId:string}>};
-          const shared=(value:{decisions:Array<any>})=>value.decisions.filter(decision=>!['turn','question-continuity','previous-question'].includes(decision.blockId));
+          const previous=contextRecord.manifest.configuration.contextCompilation as unknown as {policy:ContextCompilerPolicy;decisions:ContextCompilationDecision[]};
+          const next=current.configuration.contextCompilation as unknown as {policy:ContextCompilerPolicy;decisions:ContextCompilationDecision[]};
+          const shared=(value:{decisions:ContextCompilationDecision[]})=>value.decisions.filter(decision=>!['turn','question-continuity','previous-question'].includes(decision.blockId));
           if(!previous||hashContextValue(previous.policy)!==hashContextValue(next.policy)||hashContextValue(shared(previous))!==hashContextValue(shared(next))){
             await contextRepository.observe(contextRecord.id,{phase:'resume_rejected',compatibility:{status:'changed',changes:['compilation:shared_material'],reasons:['A política ou o material compartilhado da compilação mudou.']}});
             fail('A compilação da pergunta mudou; prepare uma nova execução.',409);

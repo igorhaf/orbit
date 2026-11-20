@@ -9,6 +9,8 @@ import {ProjectRegistry} from '../../execution/project-registry';
 import {prepareOrbitCodexHome} from '../../codex-home';
 import {CodexTransport,type RpcMessage} from './transport';
 import {orbitArchitecturePrompt} from '../../orbit-architecture';
+import {assertAiCodeDevelopmentAllowed} from '../../execution/runtime-code-policy';
+import {orbitContextRuntime} from '../../orbit-architecture';
 type Payload=Record<string,unknown>;
 type Session={id:string;projectId:string;title:string;createdAt:string};
 type HistoryTurn={id:string;status:string;items:Payload[];error?:unknown};
@@ -21,7 +23,7 @@ export class CodexIdeService implements OnModuleDestroy{
  private cleanup=setInterval(()=>{for(const [user,pending]of this.connections)void pending.then(c=>{if(!this.plugins.isEnabled('codex-ide')||(Date.now()-c.touched>30*60_000&&!c.active.size)){c.rpc.close();this.connections.delete(user)}}).catch(()=>undefined)},5_000);
  constructor(@Inject(Db)private db:Db,@Inject(AccessService)private access:AccessService,@Inject(PluginRegistry)private plugins:PluginRegistry,@Inject(ProjectRegistry)private projects:ProjectRegistry){this.cleanup.unref()}
  async onModuleDestroy(){clearInterval(this.cleanup);for(const pending of this.connections.values())try{(await pending).rpc.close()}catch{/* already closed */}}
- async authorize(user:string,write=false){if(!user)fail('Autenticação necessária.',401);if(!this.plugins.isEnabled('codex-ide')){const pending=this.connections.get(user);if(pending)void pending.then(c=>c.rpc.close()).catch(()=>undefined);this.connections.delete(user);fail('O painel Codex ou sua dependência de IA está desativado.',409)}await this.access.require(user,write?'codex.ide.write':'codex.ide.read');if(write)await this.access.require(user,'ai.write')}
+ async authorize(user:string,write=false){assertAiCodeDevelopmentAllowed(orbitContextRuntime);if(!user)fail('Autenticação necessária.',401);if(!this.plugins.isEnabled('codex-ide')){const pending=this.connections.get(user);if(pending)void pending.then(c=>c.rpc.close()).catch(()=>undefined);this.connections.delete(user);fail('O painel Codex ou sua dependência de IA está desativado.',409)}await this.access.require(user,write?'codex.ide.write':'codex.ide.read');if(write)await this.access.require(user,'ai.write')}
  async sessions(user:string){const row=await this.db.one<{sessions:Record<string,Session>}>('SELECT preferences->\'codexIdeSessions\' AS sessions FROM users WHERE id=$1',[user]);return Object.values(row?.sessions||{}).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))}
  async owner(user:string,id:string){const session=(await this.sessions(user)).find(s=>s.id===id);if(!session)fail('Conversa não encontrada.',404);await this.projects.get(session!.projectId,user);return session!}
  private async save(user:string,session:Session){await this.db.query(`UPDATE users SET preferences=jsonb_set(COALESCE(preferences,'{}'::jsonb),'{codexIdeSessions}',COALESCE(preferences->'codexIdeSessions','{}'::jsonb)||$2::jsonb) WHERE id=$1`,[user,JSON.stringify({[session.id]:session})])}

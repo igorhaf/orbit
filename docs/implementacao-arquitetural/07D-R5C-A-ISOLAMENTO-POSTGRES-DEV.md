@@ -22,7 +22,7 @@ Os artefatos estão em `tools/orbit/dev-db-cutover/`, marcados para uso sob apro
 Comando executado na raiz do monorepo:
 
 ```sh
-./dev/app/node_modules/.bin/tsx --tsconfig dev/app/apps/api/tsconfig.json --test tools/orbit/dev-db-cutover/transition.postgres.spec.ts
+./forge/app/node_modules/.bin/tsx --tsconfig forge/app/apps/api/tsconfig.json --test tools/orbit/dev-db-cutover/transition.postgres.spec.ts
 ```
 
 **6 testes aprovados, incluindo o teste pai.** O harness iniciou somente um cluster temporário acessível por socket Unix privado. Aplicou 024 e 142 com ownership legado, comprovou a escrita antiga e ausência de 212, e executou a mesma sequência SQL entregue. A preparação recusou alvo incorreto, herança/SET ROLE, ownership adicional e ACL inesperada. A falha na validação interna desfez a transferência e a migration. Preflight e validação foram repetidos no estado apropriado.

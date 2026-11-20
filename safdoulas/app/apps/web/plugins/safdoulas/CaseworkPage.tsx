@@ -9,7 +9,7 @@ import {send,type Board,type Card} from '@/lib/api';
 import { ProcessBoard, type ProcessBoardStage } from "@/plugins/process-board/ProcessBoard";
 import { usePluginAvailability } from "@/lib/plugin-availability";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AccessShell, accessButton as button, accessInput as input, accessPanel as panel } from "@/components/access-shell";
+import { AccessShell, accessButton as button, accessInput as input, accessPanel as panel } from "@/components/safdoulas-shell";
 import { api, authenticatedBlob, type User } from "@/lib/api";
 
 type Row = { display_title?: string; id: string; kind: string; title: string; state: string; revision: number; plugin_id: string; payload: Record<string, unknown> };

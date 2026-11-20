@@ -24,9 +24,9 @@ O serviço vetorial recebe candidatos que o chamador deve autorizar, mas a busca
 - `git status --short` estava vazio antes da escrita autorizada deste relatório. Nenhum comando Git que alterasse metadados ou arquivos foi executado.
 - Não foram iniciados, reiniciados ou interrompidos serviços; não houve acesso a bancos, Docker, APIs de modelos, Codex real, MCP real ou credenciais.
 - Não foram executados builds, migrações ou a suíte de testes do projeto.
-- O único teste executado importou `captureFileScope` real de `dev/app/apps/api/src/execution/file-scope.ts` com o `tsx` já instalado em DEV. O harness criou um diretório sintético sob `/tmp`, sem cópia ou acesso de escrita à árvore do Orbit, e removeu o diretório temporário em `finally`. O diretório descartável não permaneceu após o teste.
+- O único teste executado importou `captureFileScope` real de `forge/app/apps/api/src/execution/file-scope.ts` com o `tsx` já instalado em DEV. O harness criou um diretório sintético sob `/tmp`, sem cópia ou acesso de escrita à árvore do Orbit, e removeu o diretório temporário em `finally`. O diretório descartável não permaneceu após o teste.
 - O harness foi um script pontual e seus resultados são reproduzíveis a partir dos cenários descritos na seção C; não foi uma suíte do repositório.
-- Não foi executado PostgreSQL descartável. Não foi executado Codex fake: o provider chama `prepareOrbitCodexHome()`, que cria diretório `.orbit/sessions` sob a aplicação e pode vincular o `auth.json` global se existir (`dev/app/apps/api/src/codex-home.ts:5-32`). Sem isolamento por injeção de diretórios/executor previamente demonstrado, o fake não foi iniciado.
+- Não foi executado PostgreSQL descartável. Não foi executado Codex fake: o provider chama `prepareOrbitCodexHome()`, que cria diretório `.orbit/sessions` sob a aplicação e pode vincular o `auth.json` global se existir (`forge/app/apps/api/src/codex-home.ts:5-32`). Sem isolamento por injeção de diretórios/executor previamente demonstrado, o fake não foi iniciado.
 
 ## 3. Resultados dos experimentos A–F
 
@@ -34,7 +34,7 @@ O serviço vetorial recebe candidatos que o chamador deve autorizar, mas a busca
 
 **Objetivo.** Determinar quando o texto do card é capturado, o que é persistido e se uma edição pode tornar um resultado obsoleto sem ser detectada.
 
-**Arquivos e símbolos.** `dev/app/apps/api/sql/schema.sql` (tabelas `cards` e `card_ai_runs`); `dev/app/apps/api/src/main.ts` (`Service.updateCard`, rota `PATCH /cards/:id`); `dev/app/apps/api/src/execution/run-repository.ts` (`enqueue`, `finish`); `dev/app/apps/api/src/plugins/ai/prompt-sessions.ts` (`execute`, construção de prompt e persistência); `dev/app/apps/web/components/card-dialog.tsx` (`aiLocked`, edição de título/descrição e `CardPromptSummary`).
+**Arquivos e símbolos.** `forge/app/apps/api/sql/schema.sql` (tabelas `cards` e `card_ai_runs`); `forge/app/apps/api/src/main.ts` (`Service.updateCard`, rota `PATCH /cards/:id`); `forge/app/apps/api/src/execution/run-repository.ts` (`enqueue`, `finish`); `forge/app/apps/api/src/plugins/ai/prompt-sessions.ts` (`execute`, construção de prompt e persistência); `forge/app/apps/web/components/card-dialog.tsx` (`aiLocked`, edição de título/descrição e `CardPromptSummary`).
 
 **Método e isolamento.** Inspeção estática. A1–A3 não foram reproduzidos com executor fake e banco, porque não havia PostgreSQL descartável comprovado e a execução de serviços/testes em banco real está proibida.
 
@@ -54,7 +54,7 @@ O serviço vetorial recebe candidatos que o chamador deve autorizar, mas a busca
 
 **Objetivo.** Analisar locks de `card_runs` e `card_ai_runs`, concorrência por projeto e coordenação entre os dois caminhos.
 
-**Arquivos e símbolos.** `dev/app/apps/api/src/execution/run-repository.ts` (`enqueue`, `claim`); `dev/app/apps/api/src/execution/execution.service.ts` (poller, `tick`); `dev/app/apps/api/src/plugins/ai/prompt-sessions.ts` (enqueue e worker de prompts).
+**Arquivos e símbolos.** `forge/app/apps/api/src/execution/run-repository.ts` (`enqueue`, `claim`); `forge/app/apps/api/src/execution/execution.service.ts` (poller, `tick`); `forge/app/apps/api/src/plugins/ai/prompt-sessions.ts` (enqueue e worker de prompts).
 
 **Método e isolamento.** Rastreamento estático das consultas SQL e do ciclo de worker. Não houve execução com duas instâncias nem PostgreSQL descartável; portanto, nenhum resultado de ordem temporal é apresentado como teste.
 
@@ -75,7 +75,7 @@ O serviço vetorial recebe candidatos que o chamador deve autorizar, mas a busca
 
 **Objetivo.** Verificar snapshot, captura de escopo e restauração em C1–C4.
 
-**Arquivos e símbolos.** `dev/app/apps/api/src/execution/file-scope.ts` (`validateWriteScope`, `captureFileScope`, `snapshot`, `changes`, `restore`, `verify`, `rollback`).
+**Arquivos e símbolos.** `forge/app/apps/api/src/execution/file-scope.ts` (`validateWriteScope`, `captureFileScope`, `snapshot`, `changes`, `restore`, `verify`, `rollback`).
 
 **Método e isolamento.** Teste isolado da função real importada do código, contra dois harnesses em diretórios sintéticos temporários distintos. Apenas arquivos sintéticos foram escritos. Nenhum arquivo do repositório foi objeto da captura; cleanup executado em `finally`.
 
@@ -96,7 +96,7 @@ Esses resultados decorrem do snapshot completo (`file-scope.ts:22-43`), da resta
 
 **Objetivo.** Determinar compatibilidade verificada antes de retomar uma sessão após mudanças no card, arquivos, branch/HEAD ou contexto.
 
-**Arquivos e símbolos.** `dev/app/apps/api/src/plugins/ai/prompt-sessions.ts` (seleção de sessão e construção de prompt); `dev/app/apps/api/src/plugins/ai/codex-provider.ts` (argumento `resume`); `dev/app/apps/api/src/execution/context-builder.ts`; `dev/app/apps/api/src/execution/project-registry.ts`.
+**Arquivos e símbolos.** `forge/app/apps/api/src/plugins/ai/prompt-sessions.ts` (seleção de sessão e construção de prompt); `forge/app/apps/api/src/plugins/ai/codex-provider.ts` (argumento `resume`); `forge/app/apps/api/src/execution/context-builder.ts`; `forge/app/apps/api/src/execution/project-registry.ts`.
 
 **Método e isolamento.** Inspeção estática. O Codex CLI fake solicitado não foi iniciado: a preparação atual de HOME pode escrever `.orbit/sessions` no projeto e criar link para armazenamento global. Não foi feita cópia funcional ou injeção isolada que demonstrasse previamente ausência de efeitos no repositório e no estado global.
 
@@ -110,7 +110,7 @@ Esses resultados decorrem do snapshot completo (`file-scope.ts:22-43`), da resta
 
 **Objetivo.** Comparar executor genérico e provider de prompt quanto a HOME, MCP, eventos e consulta ao contexto.
 
-**Arquivos e símbolos.** `dev/app/apps/api/src/execution/codex-executor.ts`; `dev/app/apps/api/src/plugins/ai/codex-provider.ts`; `dev/app/apps/api/src/codex-home.ts`; `dev/app/apps/api/src/plugins/ai/prompt-sessions.ts` e `prompt-question.ts`.
+**Arquivos e símbolos.** `forge/app/apps/api/src/execution/codex-executor.ts`; `forge/app/apps/api/src/plugins/ai/codex-provider.ts`; `forge/app/apps/api/src/codex-home.ts`; `forge/app/apps/api/src/plugins/ai/prompt-sessions.ts` e `prompt-question.ts`.
 
 **Método e isolamento.** Inspeção estática; nenhuma configuração MCP real, arquivo de usuário, token, modelo ou executor foi carregado. Nenhum fake foi executado pelas razões explicadas em D.
 
@@ -136,7 +136,7 @@ Esses resultados decorrem do snapshot completo (`file-scope.ts:22-43`), da resta
 
 **Resultado e evidência.**
 
-- O `OrbitKnowledgeRetrievalService.rank(scope, query, candidates)` é exportado pelo plugin, recebe candidatos fornecidos pelo chamador e não busca nem autoriza conteúdo do host por conta própria (`dev/app/apps/api/src/plugins/ai/knowledge-retrieval.ts:24-35`; `ai.plugin.ts:13-15`). Isso oferece um ponto reutilizável se o host montar candidatos já autorizados. A busca não encontrou consumidor operacional de `.rank()` nos códigos de API de DEV/PROD; referências encontradas no runtime foram a exportação/definição e testes, não injeção do resultado em prompt.
+- O `OrbitKnowledgeRetrievalService.rank(scope, query, candidates)` é exportado pelo plugin, recebe candidatos fornecidos pelo chamador e não busca nem autoriza conteúdo do host por conta própria (`forge/app/apps/api/src/plugins/ai/knowledge-retrieval.ts:24-35`; `ai.plugin.ts:13-15`). Isso oferece um ponto reutilizável se o host montar candidatos já autorizados. A busca não encontrou consumidor operacional de `.rank()` nos códigos de API de DEV/PROD; referências encontradas no runtime foram a exportação/definição e testes, não injeção do resultado em prompt.
 - O serviço mantém vetores por escopo workspace/plugin/collection/model, usa hash SHA-256 do conteúdo e apaga vetores que saem da lista atual (`knowledge-retrieval.ts:47-89`). Isso invalida conteúdo ausente do conjunto fornecido, mas não associa resultado a card, commit ou revisão de execução.
 - O serviço vetorial só fica disponível com `ORBIT_AI_EMBEDDINGS_ENABLED=true` e chave configurada; embeddings ausentes e a consulta são enviados a `https://api.openai.com/v1/embeddings` (`embeddings.ts:3-24`; `knowledge-retrieval.ts:67-93`). Cache de vetor de documento pode evitar re-embedding daquele documento, mas não elimina a chamada para vetorizar a query. Não é uma opção sem custo de API para uso operacional.
 - `ProjectRegistry` carrega documentos `.orbit` selecionados e lhes calcula hash SHA-256 (`project-registry.ts:45-79`); `ContextBuilder` injeta regras/knowledge, arquivos e cartões relacionados no prompt com seus identificadores/hashes (`context-builder.ts:26-51`). Isso é seleção explícita de recursos de contexto, não recuperação semântica automática nem prova de que os recursos foram buscados por relevância.

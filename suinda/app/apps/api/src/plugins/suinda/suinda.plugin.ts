@@ -3450,7 +3450,7 @@ export const suindaRecordKinds: Record<string, RecordKindContribution> = {
 export const suindaPlugin: PluginDefinition = {
   id: "suinda-learning",
   name: "Suindá · Plataforma de cursos",
-  version: "1.0.0",
+  version: "1.1.0",
   description: "Cursos, turmas, aprendizagem, avaliações, frequência, bolsas e certificação em workspaces do Orbit.",
   scope: "workspace",
   parentPlugin: "versioned-records",
@@ -3687,6 +3687,20 @@ export const suindaPlugin: PluginDefinition = {
     { id: "manage", name: "Administrar registros acadêmicos privados", permissions: ["plugin.suinda-learning.manage"] },
   ],
   contributions: {
+    profileSimulationExamples: context => [
+      ...(context.permissions.includes("plugin.suinda-learning.read") ? [{
+        id: "learning-path", title: "Trilha demonstrativa de aprendizagem", type: "course_progress", state: "in_progress",
+        description: "Percurso fictício com módulos e atividades de exemplo; nenhum progresso real é consultado ou alterado.", is_demo: true as const,
+      }] : []),
+      ...(context.permissions.includes("plugin.suinda-learning.write") || context.permissions.includes("plugin.suinda-learning.publish") ? [{
+        id: "teaching-review", title: "Revisar atividade de uma turma de exemplo", type: "teaching_task", state: "pending",
+        description: "Exemplo somente de leitura para contextualizar o acompanhamento docente e a revisão de atividades.", is_demo: true as const,
+      }] : []),
+      ...(context.permissions.includes("plugin.suinda-learning.manage") ? [{
+        id: "academic-operations", title: "Acompanhar operação acadêmica demonstrativa", type: "academic_operation", state: "in_progress",
+        description: "Cenário sintético de gestão acadêmica; não expõe matrículas, pagamentos ou documentos reais.", is_demo: true as const,
+      }] : []),
+    ],
     notifications: [
       { id: "announcement", label: "Comunicados acadêmicos" },
       { id: "community_reply", label: "Respostas da comunidade" },

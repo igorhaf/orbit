@@ -7,28 +7,29 @@ import { createRequire } from 'node:module';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { AccessService } from '../../../dev/app/apps/api/src/access/access';
-import { AccessManagement } from '../../../dev/app/apps/api/src/access/management';
-import { AuthLifecycle, type AuthMailer } from '../../../dev/app/apps/api/src/access/auth-lifecycle';
-import { MfaService } from '../../../dev/app/apps/api/src/access/mfa';
-import { authenticateLoginAccount, LoginAttemptLimiter } from '../../../dev/app/apps/api/src/access/login-attempts';
-import { applyVersionedMigrations } from '../../../dev/app/apps/api/src/migrations';
-import { seedDatabase } from '../../../dev/app/apps/api/src/seed';
-import { WorkspacesService, workspacesPlugin } from '../../../dev/app/apps/api/src/workspaces/workspaces.plugin';
-import { PluginRegistry } from '../../../dev/app/apps/api/src/execution/registries';
-import { RunRepository } from '../../../dev/app/apps/api/src/execution/run-repository';
-import { CardExecutionService } from '../../../dev/app/apps/api/src/execution/execution.service';
-import { ProjectRegistry } from '../../../dev/app/apps/api/src/execution/project-registry';
-import { emptyConfig } from '../../../dev/app/apps/api/src/execution/types';
-import { QueueManagement } from '../../../dev/app/apps/api/src/plugins/ai/queue-management';
-import { FeaturesService } from '../../../dev/app/apps/api/src/features';
-import { OrbitEvents } from '../../../dev/app/apps/api/src/orbit-events';
-import { ExtensionRecords } from '../../../dev/app/apps/api/src/plugins/records/records.service';
-import { DocumentScanner } from '../../../dev/app/apps/api/src/plugins/records/documents';
-import { genericPlugins, recordPlugins } from '../../../dev/app/apps/api/src/plugins/records/catalog';
+import { AccessService } from '../../../forge/app/apps/api/src/access/access';
+import { AccessManagement } from '../../../forge/app/apps/api/src/access/management';
+import { AuthLifecycle, type AuthMailer } from '../../../forge/app/apps/api/src/access/auth-lifecycle';
+import { MfaService } from '../../../forge/app/apps/api/src/access/mfa';
+import { authenticateLoginAccount, LoginAttemptLimiter } from '../../../forge/app/apps/api/src/access/login-attempts';
+import { applyVersionedMigrations } from '../../../forge/app/apps/api/src/migrations';
+import { seedDatabase } from '../../../forge/app/apps/api/src/seed';
+import { WorkspacesService, workspacesPlugin } from '../../../forge/app/apps/api/src/workspaces/workspaces.plugin';
+import { PluginRegistry } from '../../../forge/app/apps/api/src/execution/registries';
+import { RunRepository } from '../../../forge/app/apps/api/src/execution/run-repository';
+import { CardExecutionService } from '../../../forge/app/apps/api/src/execution/execution.service';
+import { ProjectRegistry } from '../../../forge/app/apps/api/src/execution/project-registry';
+import { emptyConfig } from '../../../forge/app/apps/api/src/execution/types';
+import { QueueManagement } from '../../../forge/app/apps/api/src/plugins/ai/queue-management';
+import { FeaturesService } from '../../../forge/app/apps/api/src/features';
+import { OrbitEvents } from '../../../forge/app/apps/api/src/orbit-events';
+import { ExtensionRecords } from '../../../forge/app/apps/api/src/plugins/records/records.service';
+import { DocumentScanner } from '../../../forge/app/apps/api/src/plugins/records/documents';
+import { genericPlugins, recordPlugins } from '../../../forge/app/apps/api/src/plugins/records/catalog';
+import { CLAIM_WEBHOOK_DELIVERIES_SQL } from '../../../forge/app/apps/api/src/plugins/webhooks';
 
-const { Client, Pool } = createRequire(resolve('dev/app/package.json'))('pg');
-const dotenv = createRequire(resolve('dev/app/package.json'))('dotenv');
+const { Client, Pool } = createRequire(resolve('forge/app/package.json'))('pg');
+const dotenv = createRequire(resolve('forge/app/package.json'))('dotenv');
 const database = 'orbit_r5ca_fixture';
 const postgres = '/usr/lib/postgresql/16/bin';
 const enabled = process.env.ORBIT_R6_REHEARSE_DEV_SCHEMA === '1';
@@ -39,7 +40,7 @@ const roleArgs = ['approval=DISPOSABLE', 'owner_role=trial_owner', 'app_role=orb
   'writer_role=trial_writer', 'reader_role=trial_reader'].flatMap(x => ['-v', x]);
 
 async function exportSchema(target: string) {
-  const { DATABASE_URL } = dotenv.parse(await readFile('dev/app/apps/api/.env'));
+  const { DATABASE_URL } = dotenv.parse(await readFile('forge/app/apps/api/.env'));
   if (!DATABASE_URL) throw Error('Authorized DEV configuration absent');
   const source = new URL(DATABASE_URL);
   assert.ok(['postgresql:', 'postgres:'].includes(source.protocol));
@@ -143,7 +144,7 @@ test('R6 schema only rehearsal in private PostgreSQL 16', { skip: !enabled, time
         const versioned = join(socket, 'runtime-prerequisites');
         await mkdir(versioned);
         for (const name of ['157_card_revisions.sql', '158_workspace_coordination.sql']) {
-          await copyFile(resolve('dev/app/apps/api/sql/migrations', name), join(versioned, name));
+          await copyFile(resolve('forge/app/apps/api/sql/migrations', name), join(versioned, name));
         }
         const pool = new Pool({ host: socket, port: Number(port), database, user: 'orbit_dev_app', max: 1 });
         try {
@@ -441,6 +442,13 @@ test('R6 schema only rehearsal in private PostgreSQL 16', { skip: !enabled, time
           'SELECT e.event_type,d.status FROM webhook_events e JOIN webhook_deliveries d ON d.event_id=e.id WHERE e.record_id=$1 ORDER BY e.revision',
           [process.id],
         )).rows, [{ event_type: 'record.created', status: 'pending' }, { event_type: 'record.updated', status: 'pending' }]);
+        const claimedDeliveries = await app.query(CLAIM_WEBHOOK_DELIVERIES_SQL);
+        assert.equal(claimedDeliveries.rows.length, 4, 'the restricted runtime claims queued webhook deliveries');
+        assert.deepEqual([...new Set(claimedDeliveries.rows.map(row => row.event_type))].sort(), ['record.created', 'record.updated']);
+        for (const delivery of claimedDeliveries.rows) {
+          await app.query("UPDATE webhook_deliveries SET status='pending',last_error='SYNTHETIC_RETRY',available_at=now(),updated_at=now() WHERE id=$1", [delivery.id]);
+        }
+        await assert.rejects(app.query('DELETE FROM webhook_deliveries'), { code: '42501' });
         await owner.query('DELETE FROM webhook_subscriptions WHERE workspace_id=$1', [workspace.id]);
         await assert.rejects(app.query('UPDATE extension_record_versions SET title=$1 WHERE record_id=$2', ['Denied', process.id]), { code: '42501' });
       });
@@ -546,8 +554,8 @@ test('R6 schema only rehearsal in private PostgreSQL 16', { skip: !enabled, time
       `;
       try {
         execFileSync('/usr/bin/unshare', ['--user', '--map-root-user', '--net', '--pid', '--fork', '--kill-child', '/bin/bash', '-c', shell, 'fixture',
-          resolve('dev/app/node_modules/.bin/tsx'), '--tsconfig', resolve('dev/app/apps/api/tsconfig.json'),
-          resolve('dev/app/apps/api/src/main.ts')], {
+          resolve('forge/app/node_modules/.bin/tsx'), '--tsconfig', resolve('forge/app/apps/api/tsconfig.json'),
+          resolve('forge/app/apps/api/src/main.ts')], {
           cwd: socket, timeout: 20000, stdio: 'pipe',
           env: { ...env, DATABASE_URL: url.toString(), DOTENV_CONFIG_PATH: join(socket, 'no.env'),
             ORBIT_ENV: 'development', CODEX_BIN: '/usr/bin/false', HOME: socket, CODEX_HOME: join(socket, 'codex'),
@@ -636,8 +644,8 @@ test('R6 schema only rehearsal in private PostgreSQL 16', { skip: !enabled, time
       `;
       try {
         execFileSync('/usr/bin/unshare', ['--user', '--map-root-user', '--net', '--pid', '--fork', '--kill-child', '/bin/bash', '-c', shell, 'fixture',
-          resolve('dev/app/node_modules/.bin/tsx'), '--tsconfig', resolve('dev/app/apps/api/tsconfig.json'),
-          resolve('dev/app/apps/api/src/main.ts')], {
+          resolve('forge/app/node_modules/.bin/tsx'), '--tsconfig', resolve('forge/app/apps/api/tsconfig.json'),
+          resolve('forge/app/apps/api/src/main.ts')], {
           cwd: socket, timeout: 30000, stdio: 'pipe',
           env: { ...env, DATABASE_URL: url.toString(), DOTENV_CONFIG_PATH: join(socket, 'no.env'),
             ORBIT_ENV: 'development', CODEX_BIN: '/usr/bin/false', HOME: socket, CODEX_HOME: join(socket, 'codex'), API_HOST: '127.0.0.1',

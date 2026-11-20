@@ -41,7 +41,8 @@ export async function createKnowledgeBridgeCallback(options:{record:StoredContex
    alive(signal);await options.authorize(signal);alive(signal);
    const observed=await projects.revalidateSelection(project,identity.actorId,[candidate.source],{workspaceId:identity.workspaceId});alive(signal);
    const current=observed[0];if(!current)return false;
-   const {observedAt:beforeAt,...before}=candidate.source,{observedAt:afterAt,...after}=current;
+   const withoutObservation=(source:ContextSource)=>Object.fromEntries(Object.entries(source).filter(([key])=>key!=='observedAt'));
+   const before=withoutObservation(candidate.source),after=withoutObservation(current);
    return canonicalContextJson(before)===canonicalContextJson(after);
   }});
   await revalidateKnowledgeCandidates(host,catalog);await compatible(signal);await options.authorize(signal);alive(signal);

@@ -11,7 +11,29 @@ export class AccessManagement {
  async delete(actor:string,key:string){await this.access.require(actor,'access.manage');await this.db.query('DELETE FROM access_groups WHERE id=$1',[id(key)]);await this.changed(actor,'group.deleted',key);return {ok:true}}
  async settings(actor:string,body:Record<string,unknown>){await this.access.require(actor,'access.manage');const catalog=await this.access.privilegeCatalog();const ids=body.source?catalog.filter(p=>p.source===body.source).map(p=>p.id):this.validate(body.permissions);if(typeof body.enabled!=='boolean'||ids.length===0)throw new HttpException('Estado ou origem inválida.',400);const client=await this.db.pool.connect();try{await client.query('BEGIN');for(const permission of ids)await client.query('INSERT INTO access_permission_settings(permission_id,enabled) VALUES($1,$2) ON CONFLICT(permission_id) DO UPDATE SET enabled=$2',[permission,body.enabled]);await client.query('COMMIT');await this.changed(actor,'privileges.enabled',`${body.source||'selected'}:${body.enabled}`);return {ok:true}}catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}}
  async exceptions(user:string){return this.db.query('SELECT permission_id,effect FROM access_user_exceptions WHERE user_id=$1',[id(user)])}
- async saveExceptions(actor:string,user:string,body:Record<string,unknown>){await this.access.require(actor,'access.manage');const account=await this.access.account(id(user));if(account.is_root)throw new HttpException('ROOT possui acesso total e não recebe restrições.',403);if(!Array.isArray(body.exceptions))throw new HttpException('Exceções inválidas.',400);const values: Array<{permission_id:string;effect:string}>=body.exceptions.map(row=>{if(!row||typeof row.permission_id!=='string'||!['allow','deny'].includes(row.effect))throw new HttpException('Exceção inválida.',400);this.validate([row.permission_id]);return {permission_id:row.permission_id,effect:row.effect}});const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query('DELETE FROM access_user_exceptions WHERE user_id=$1',[user]);for(const row of values)await client.query('INSERT INTO access_user_exceptions(user_id,permission_id,effect) VALUES($1,$2,$3)',[user,row.permission_id,row.effect]);await client.query('UPDATE users SET session_version=session_version+1 WHERE id=$1',[user]);await client.query('COMMIT');this.access.revoke(user);await this.access.audit(actor,'user.exceptions.updated',user);return {ok:true}}catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}}
+ async saveExceptions(actor:string,user:string,body:Record<string,unknown>){
+  await this.access.require(actor,'access.manage');
+  const account=await this.access.account(id(user));
+  if(account.is_root)throw new HttpException('ROOT possui acesso total e não recebe restrições.',403);
+  if(!Array.isArray(body.exceptions))throw new HttpException('Exceções inválidas.',400);
+  const values: Array<{permission_id:string;effect:string}>=body.exceptions.map(row=>{
+   if(!row||typeof row.permission_id!=='string'||!['allow','deny'].includes(row.effect))throw new HttpException('Exceção inválida.',400);
+   this.validate([row.permission_id]);
+   return {permission_id:row.permission_id,effect:row.effect};
+  });
+  const client=await this.db.pool.connect();
+  try{
+   await client.query('BEGIN');
+   // Follow editorial lock order while keeping session invalidation atomic with the exceptions.
+   await client.query('UPDATE users SET session_version=session_version+1 WHERE id=$1',[user]);
+   await client.query('DELETE FROM access_user_exceptions WHERE user_id=$1',[user]);
+   for(const row of values)await client.query('INSERT INTO access_user_exceptions(user_id,permission_id,effect) VALUES($1,$2,$3)',[user,row.permission_id,row.effect]);
+   await client.query('COMMIT');
+   this.access.revoke(user);
+   await this.access.audit(actor,'user.exceptions.updated',user);
+   return {ok:true};
+  }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+ }
 }
 @Controller('access')
 export class AccessManagementController {

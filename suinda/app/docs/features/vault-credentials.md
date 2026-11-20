@@ -18,4 +18,4 @@ Em DEV foram migrados sete valores para quatro cadernos: configuração Google c
 
 A ferramenta `apps/api/src/migrate-integration-credentials.ts` exige aplicação explícita em DEV, lista de arquivos DEV e pasta privada de recuperação. Ela valida as chaves de criptografia e possíveis divergências entre arquivos, guarda uma recuperação criptografada, usa transação para os cadernos e conexões e valida os valores por referência sem imprimi-los. Valores já referenciados são ignorados. Conexões de provedores ainda não suportados pela migração abortam a transação.
 
-A recuperação desta execução está em `dev/data/backups/credential-migrations/`, fora do repositório. Os backups normais das configurações e o backup separado do cofre continuam sendo enviados ao Drive da conta já selecionada.
+A recuperação desta execução está em `forge/data/backups/credential-migrations/`, fora do repositório. Os backups normais das configurações e o backup separado do cofre continuam sendo enviados ao Drive da conta já selecionada.

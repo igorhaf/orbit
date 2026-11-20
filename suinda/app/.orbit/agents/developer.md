@@ -20,7 +20,7 @@ is the production API on the host, and port 4002 is a separate client
 instance; never use either for shared Orbit DEV validation. Do not start, stop,
 or restart services during validation.
 
-The active development checkout is `/home/meada/projetos/orbit/dev/app`; the older `/home/meada/projetos/orbit-dev` path is not the working tree. Set an explicit `workdir` for every shell tool call so commands never run from the stale checkout.
+The active development checkout is `/home/meada/projetos/orbit/forge/app`; the older `/home/meada/projetos/orbit-dev` path is not the working tree. Set an explicit `workdir` for every shell tool call so commands never run from the stale checkout.
 
 Run validation commands synchronously and inspect their exit codes. Avoid
 unbounded polling with `pgrep -f` patterns that can match the polling shell

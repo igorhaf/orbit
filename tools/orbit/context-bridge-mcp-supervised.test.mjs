@@ -6,8 +6,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
-const root=fileURLToPath(new URL('../..',import.meta.url)),require=createRequire(join(root,'dev/app/package.json'));
-process.env.TSX_TSCONFIG_PATH=join(root,'dev/app/apps/api/tsconfig.json');require('tsx/cjs/api').register();
+const root=fileURLToPath(new URL('../..',import.meta.url)),require=createRequire(join(root,'forge/app/package.json'));
+process.env.TSX_TSCONFIG_PATH=join(root,'forge/app/apps/api/tsconfig.json');require('tsx/cjs/api').register();
 const {ContextBridge}=require(join(root,'packages/orbit-core/src/execution/context-bridge.ts'));
 const {ProjectKnowledgeRetriever,knowledgeCompileInputs,knowledgeRetrievalMetadata,defaultKnowledgeRetrievalPolicy}=require(join(root,'packages/orbit-core/src/execution/knowledge-retrieval.ts'));
 const {hashContextText}=require(join(root,'packages/orbit-core/src/execution/context-manifest.ts'));
@@ -39,7 +39,7 @@ for(const {queue,failure,dynamic=false,presentation='structured'} of [{queue:'ca
   writeFileSync(script,`
    const {spawn}=require('node:child_process'),assert=require('node:assert/strict');
    assert.equal(process.env.DATABASE_URL,undefined);assert.equal(process.env.OPENAI_API_KEY,undefined);
-   const child=spawn(process.execPath,['--import',${JSON.stringify(join(root,'dev/app/node_modules/tsx/dist/loader.mjs'))},${JSON.stringify(join(root,'packages/orbit-core/src/execution/context-bridge-mcp-entry.ts'))}],{cwd:process.cwd(),env:process.env,stdio:['pipe','pipe','inherit']});
+   const child=spawn(process.execPath,['--import',${JSON.stringify(join(root,'forge/app/node_modules/tsx/dist/loader.mjs'))},${JSON.stringify(join(root,'packages/orbit-core/src/execution/context-bridge-mcp-entry.ts'))}],{cwd:process.cwd(),env:process.env,stdio:['pipe','pipe','inherit']});
    console.log(JSON.stringify({peerPid:child.pid}));
    const send=(id,method,params)=>child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\\n');
    let buffer='';child.stdout.on('data',chunk=>{buffer+=chunk;let at;while((at=buffer.indexOf('\\n'))>=0){const r=JSON.parse(buffer.slice(0,at));buffer=buffer.slice(at+1);if(process.env.ORBIT_FIXTURE_FAILURE==='bad_handshake'){assert.equal(r.error.code,-32602);console.log('handshake-rejected');child.stdin.end();continue;}assert.equal(r.error,undefined);if(r.id===1){if(process.env.ORBIT_FIXTURE_FAILURE==='mcp_crash'){console.log('mcp-crash-tested');child.kill('SIGKILL');continue;}send(undefined,'notifications/initialized');send(2,'tools/list',{});}else if(r.id===2){assert.equal(r.result.tools.length,process.env.ORBIT_FIXTURE_DYNAMIC==='1'?6:5);send(3,'tools/call',process.env.ORBIT_FIXTURE_DYNAMIC==='1'?{name:'orbit_knowledge_search',arguments:{query:process.env.ORBIT_FIXTURE_TEXT==='1'?'nonmatchingtoken':'abacaxi',limit:1}}:{name:'orbit_context_describe',arguments:{}});}else if(r.id===3){const payload=process.env.ORBIT_FIXTURE_TEXT==='1'?JSON.parse(r.result.content[0].text):r.result.structuredContent;assert.equal(payload.status,'ok');if(process.env.ORBIT_FIXTURE_DYNAMIC==='1'){assert.equal(payload.capability,'knowledge.search');if(process.env.ORBIT_FIXTURE_TEXT!=='1')assert.ok(payload.data.results[0].text.includes('Abacaxi'));}console.log('broker-response-verified');child.stdin.end();}}});
@@ -48,7 +48,7 @@ for(const {queue,failure,dynamic=false,presentation='structured'} of [{queue:'ca
   `);
   let child,output='',diagnostics='',pin;
   try{
-   await lease.assertActive();child=spawnWorkspaceProcess(process.execPath,[script],{cwd:dir,env:{PATH:'/usr/bin:/bin',HOME:join(dir,'home'),CODEX_HOME:join(dir,'home','empty'),TSX_TSCONFIG_PATH:join(root,'dev/app/apps/api/tsconfig.json'),TSX_DISABLE_CACHE:'1',ORBIT_FIXTURE_FAILURE:failure,ORBIT_FIXTURE_DYNAMIC:dynamic?'1':'0',ORBIT_FIXTURE_TEXT:presentation==='text'?'1':'0',ORBIT_CONTEXT_BRIDGE_BOOTSTRAP:JSON.stringify({endpointPath:peer.endpointPath,publicKey:peer.publicKey,limits,presentation})},stdio:['ignore','pipe','pipe']});
+   await lease.assertActive();child=spawnWorkspaceProcess(process.execPath,[script],{cwd:dir,env:{PATH:'/usr/bin:/bin',HOME:join(dir,'home'),CODEX_HOME:join(dir,'home','empty'),TSX_TSCONFIG_PATH:join(root,'forge/app/apps/api/tsconfig.json'),TSX_DISABLE_CACHE:'1',ORBIT_FIXTURE_FAILURE:failure,ORBIT_FIXTURE_DYNAMIC:dynamic?'1':'0',ORBIT_FIXTURE_TEXT:presentation==='text'?'1':'0',ORBIT_CONTEXT_BRIDGE_BOOTSTRAP:JSON.stringify({endpointPath:peer.endpointPath,publicKey:peer.publicKey,limits,presentation})},stdio:['ignore','pipe','pipe']});
    child.stderr.on('data',b=>diagnostics+=b);child.stdout.on('data',b=>{output+=b;const match=output.match(/\{"peerPid":(\d+)\}/);if(match&&!pin)pin=readContextBridgePeerIdentity(Number(match[1])).then(id=>peer.authorizePeer(id));});
    const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve)});await pin;assert.equal(code,failure==='mcp_crash'?1:0,diagnostics);assert.match(output,failure==='mcp_crash'?/mcp-crash-tested/:failure==='bad_handshake'?/handshake-rejected/:/broker-response-verified/);assert.equal(events.some(e=>e.phase==='response_prepared'),!failure);
   }finally{await peer.close();await internal.close()}

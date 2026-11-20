@@ -303,7 +303,7 @@ for (const definition of Object.values(recordKinds)) Object.assign(definition, {
 export const safdoulasRegistryPlugin: PluginDefinition = {
   id: "safdoulas-registry",
   name: "Cadastro para acreditação SAFDOULAS",
-  version: "1.0.0",
+  version: "1.1.0",
   description: "Dados e evidências de instituições, cursos, ofertas, equipes e propostas curriculares submetidos à acreditação; o cadastro não oferece aulas nem acompanha a aprendizagem das estudantes.",
   scope: "workspace",
   dependencies: ["versioned-records", "forms", "documents", "privacy"],
@@ -313,6 +313,12 @@ export const safdoulasRegistryPlugin: PluginDefinition = {
     permissions: [`plugin.safdoulas-registry.${action}`],
   })),
   contributions: {
+    profileSimulationExamples: context => context.permissions.includes("plugin.safdoulas-registry.read") ? [
+      {
+        id: "institution-record", title: "Cadastro institucional de exemplo", type: "institution_record", state: "draft",
+        description: "Registro inteiramente fictício para demonstrar cadastros formativos; não identifica uma instituição real.", is_demo: true,
+      },
+    ] : [],
     navigation: [{ id: "safdoulas-registry", href: "/extensions/safdoulas-registry", label: "Cadastro formativo" , permission: "plugin.safdoulas-registry.read", group: { id: "accreditation", label: "Acreditação" }, section: {"id": "registry", "label": "Cadastros e normas", "order": 1}, order: 0}],
     recordKinds,
   },

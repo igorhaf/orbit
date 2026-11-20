@@ -14,7 +14,7 @@ import {RequiredBoardViewError,writeEditorialPluginSetting} from './editorial-pl
 import {reconcileEditorialPluginSetting as reconcile} from './editorial-plugin-settings-orchestration';
 import {recoverEditorialPluginSetting as recover} from './editorial-plugin-settings-recovery';
 
-const require=createRequire(join(process.cwd(),'dev/app/package.json'));
+const require=createRequire(join(process.cwd(),'forge/app/package.json'));
 const {Pool}=require('pg');
 const postgres='/usr/lib/postgresql/16/bin';
 const migration='packages/orbit-core/sql/migrations/212_editorial_authorization_generation.sql';
@@ -186,7 +186,7 @@ test('07D-R3C-A on an owned PostgreSQL cluster', {timeout:60000},async t=>{
   });
 
   await t.test('07D-R3C-B participant uses the real plugin_settings schema',async b=>{
-   const pluginSettingsDdl=await readFile('dev/app/apps/api/sql/migrations/024_plugin_settings.sql','utf8');
+   const pluginSettingsDdl=await readFile('forge/app/apps/api/sql/migrations/024_plugin_settings.sql','utf8');
    await admin.query(pluginSettingsDdl);
    const setting=async(id:string)=>(await admin.query('SELECT enabled FROM plugin_settings WHERE plugin_id=$1',[id])).rows[0]?.enabled;
    const awaitBlock=async(waiting:string,blocker:string|number)=>{
@@ -373,7 +373,7 @@ test('07D-R3C-A on an owned PostgreSQL cluster', {timeout:60000},async t=>{
   });
 
   await t.test('07D-R3C-C isolated DEV orchestration',async c=>{
-   await admin.query(await readFile('dev/app/apps/api/sql/migrations/024_plugin_settings.sql','utf8'));
+   await admin.query(await readFile('forge/app/apps/api/sql/migrations/024_plugin_settings.sql','utf8'));
    const {PluginRegistry}=require('./apps/api/src/execution/registries.ts');
    const registryFor=(id:string,dependencies:string[]=[] )=>{
     const registry=new PluginRegistry();
@@ -554,7 +554,7 @@ test('07D-R3C-A on an owned PostgreSQL cluster', {timeout:60000},async t=>{
   });
 
   await t.test('07D-R3C-D local recovery observes SQL and treats events only as hints',async d=>{
-   await admin.query(await readFile('dev/app/apps/api/sql/migrations/024_plugin_settings.sql','utf8'));
+   await admin.query(await readFile('forge/app/apps/api/sql/migrations/024_plugin_settings.sql','utf8'));
    const {PluginRegistry}=require('./apps/api/src/execution/registries.ts');
    const make=()=>{
     const registry=new PluginRegistry();
@@ -705,7 +705,7 @@ test('07D-R3C-A on an owned PostgreSQL cluster', {timeout:60000},async t=>{
    }
    const settings='plugin_settings',installations='plugin_installations',gen='editorial_authorization_generation';
    const tables=[settings,installations,gen];
-   const sqlDir='dev/app/apps/api/sql/migrations';
+   const sqlDir='forge/app/apps/api/sql/migrations';
    const migrations=await Promise.all([
     readFile(`${sqlDir}/024_plugin_settings.sql`,'utf8'),
     readFile(`${sqlDir}/142_optional_plugin_installations.sql`,'utf8'),

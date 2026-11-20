@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
-const require = createRequire(new URL('../../dev/app/package.json', import.meta.url));
+const require = createRequire(new URL('../../forge/app/package.json', import.meta.url));
 const ts = require('typescript');
 
 for (const runtime of ['dev', 'prod', 'safdoulas', 'suinda']) {

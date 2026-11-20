@@ -11,7 +11,7 @@
 
 ## Base verificada
 
-- O checkout real é `/home/meada/projetos/orbit/dev/app`, pois `/home/meada/projetos/orbit-dev` não existe.
+- O checkout real é `/home/meada/projetos/orbit/forge/app`, pois `/home/meada/projetos/orbit-dev` não existe.
 - A branch atual é `develop` no commit `3828347dcb11fdb7d35f8177ab5f969e07055ec1`.
 - A branch `safdoulas` e a tag `safdoulas-2026-10-13` permanecem no commit `0a8c39171b2e6174a6cc37e787988806a81582b0`.
 - O trabalho Safdoula atual existe como alterações locais não commitadas, incluindo as migrations `078`–`117` e os módulos de domínio.

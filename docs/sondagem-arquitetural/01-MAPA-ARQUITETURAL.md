@@ -4,8 +4,8 @@
 
 | Área | Caminho | Evidência/configuração observada |
 | --- | --- | --- |
-| Orbit DEV | `dev/app` | Web 3001 / API 4001 em `README.md:9-15`; Compose raiz e dados próprios |
-| Orbit PROD | `prod/app` | Web 3000 / API 4000; configuração e banco próprios |
+| Orbit DEV | `forge/app` | Web 3001 / API 4001 em `README.md:9-15`; Compose raiz e dados próprios |
+| Orbit PROD | `workspace/app` | Web 3000 / API 4000; configuração e banco próprios |
 | Safdoulas | `safdoulas/app` | Web 3002 / API 4003; produto e dados próprios |
 | Suindá | `suinda/app` | Web 3003 / API 4004; produto, Compose e dados próprios |
 | CONTROL | `control/` | Manifesto de ambientes e scripts locais; cobertura não uniforme |
@@ -33,17 +33,17 @@ O diagrama representa os caminhos presentes no código/configuração, não uma 
 
 ### Interface
 
-O frontend Next.js expõe páginas para Home, quadros, busca, inbox, calendário, extensões, plugins, acessos, workspaces e configurações. A interface consome API via módulos `lib/api.ts`, e áreas colaborativas usam Socket.IO. A lista completa de rotas DEV aparece em `dev/app/apps/web/app/`; Home e quadro são `app/page.tsx` e `app/board/[id]/page.tsx`.
+O frontend Next.js expõe páginas para Home, quadros, busca, inbox, calendário, extensões, plugins, acessos, workspaces e configurações. A interface consome API via módulos `lib/api.ts`, e áreas colaborativas usam Socket.IO. A lista completa de rotas DEV aparece em `forge/app/apps/web/app/`; Home e quadro são `app/page.tsx` e `app/board/[id]/page.tsx`.
 
 ### API e dados
 
-`main.ts` registra a API central, autenticação, regras de domínio e controladores. Serviços especializados ficam em `access/`, `execution/`, `plugins/`, `calendar/`, `git/`, `delivery/`, `workspaces/` e outros módulos. PostgreSQL é acessado pelo serviço `Db` (`dev/app/apps/api/src/db.ts`). `migrations.ts` aplica migrações versionadas; o schema-base e os arquivos numerados vivem em `apps/api/sql/`.
+`main.ts` registra a API central, autenticação, regras de domínio e controladores. Serviços especializados ficam em `access/`, `execution/`, `plugins/`, `calendar/`, `git/`, `delivery/`, `workspaces/` e outros módulos. PostgreSQL é acessado pelo serviço `Db` (`forge/app/apps/api/src/db.ts`). `migrations.ts` aplica migrações versionadas; o schema-base e os arquivos numerados vivem em `apps/api/sql/`.
 
 O schema combina tabelas centrais relacionais (usuários, workspaces, quadros, listas, cartões e atividades) com tabelas especializadas por capacidade. Plugins de domínio também podem contribuir tipos de registro para a persistência versionada compartilhada, implementada nas tabelas `extension_records` e `extension_record_versions` (`sql/migrations/118_extension_records.sql`).
 
 ### Extensibilidade
 
-`PluginDefinition` registra versão, pai, dependências, escopo, rotas, permissões, capacidades, ações, provedores e contribuições (`dev/app/apps/api/src/plugins/contract.ts:224-248`). `PluginRegistry` valida registro, dependências, bloqueios e ações (`execution/registries.ts`). Contribuições podem adicionar navegação, tipos/layouts de cartão, views, record kinds, eventos, notificações e provedores.
+`PluginDefinition` registra versão, pai, dependências, escopo, rotas, permissões, capacidades, ações, provedores e contribuições (`forge/app/apps/api/src/plugins/contract.ts:224-248`). `PluginRegistry` valida registro, dependências, bloqueios e ações (`execution/registries.ts`). Contribuições podem adicionar navegação, tipos/layouts de cartão, views, record kinds, eventos, notificações e provedores.
 
 ## Tecnologias observáveis
 

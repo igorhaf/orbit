@@ -9,8 +9,8 @@ separada da consolidação Git.
 
 | Ambiente | Código executado | Quadro de trabalho | Caminho alvo | Branch |
 | --- | --- | --- | --- | --- |
-| DEV (`:3001`) | `dev/app` | Orbit | `prod/app` | `main` |
-| PROD (`:3000`) | `prod/app` | Safdoulas | `safdoulas/app` | `main` |
+| DEV (`:3001`) | `forge/app` | Orbit | `workspace/app` | `main` |
+| PROD (`:3000`) | `workspace/app` | Safdoulas | `safdoulas/app` | `main` |
 | Safdoulas (`:3002`) | `safdoulas/app` | validação do cliente | — | `main` |
 | Suindá (`:3003`) | `suinda/app` | plataforma de cursos | `suinda/app` | `main` |
 
@@ -34,14 +34,14 @@ ambiente, mas não fundiu automaticamente versões divergentes de código.
       web-prod            web-dev       web:3002           web:3003
 ```
 
-PROD é uma imagem construída de `prod/app`; a API tem sistema de arquivos
+PROD é uma imagem construída de `workspace/app`; a API tem sistema de arquivos
 somente leitura, exceto a montagem gravável e restrita do diretório Safdoulas em
 `/host-projects/safdoulas`. O contêiner PROD não recebe acesso ao restante do host.
-DEV monta o código `dev/app` para rodar o ambiente e usa a montagem já existente
+DEV monta o código `forge/app` para rodar o ambiente e usa a montagem já existente
 `/:/host-filesystem` para alcançar o checkout de produção em
-`/host-filesystem/home/meada/projetos/orbit/prod/app`. O projeto Safdoulas não fica
-mais cadastrado no banco DEV. A pasta `/home/meada/projetos/orbit/dev/app` é o
-código executado por DEV; o checkout `/home/meada/projetos/orbit/prod/app` é o
+`/host-filesystem/home/meada/projetos/orbit/workspace/app`. O projeto Safdoulas não fica
+mais cadastrado no banco DEV. A pasta `/home/meada/projetos/orbit/forge/app` é o
+código executado por DEV; o checkout `/home/meada/projetos/orbit/workspace/app` é o
 destino de código selecionado pelo quadro Orbit de DEV.
 
 O quadro `SAFDOULA` no banco PROD usa o projeto `Safdoulas` em
@@ -159,14 +159,14 @@ Classificação inicial das entidades reais do Orbit:
 
 Algumas tabelas misturam classes, como `ai_projects`, `plugin_settings` e
 `integration_connections`; uma sincronização futura precisará separar campos.
-As configurações ativas estão em `prod/data/config/` e `dev/data/config/`. Os
+As configurações ativas estão em `workspace/data/config/` e `forge/data/config/`. Os
 atalhos `prod/.env` e `dev/.env` apontam para os respectivos arquivos de API.
 Credenciais dos bancos ficam em `prod/db.env` e `dev/db.env`; CONTROL usa
 `control/.env`. Todos são ignorados pelo Git e têm modo restrito. Os arquivos
 originais `apps/api/.env` permanecem nos diretórios de origem preservados. Nas
 cópias de código, esses arquivos agora contêm as configurações ativas de cada
 ambiente, sem credenciais do banco nativo. Em DEV, o backup
-criptografado de configuração lê os arquivos ativos de `dev/data/config/`.
+criptografado de configuração lê os arquivos ativos de `forge/data/config/`.
 O Drive continua conectado à conta inicial, mas os novos backups DEV usam pastas
 com prefixo `Orbit DEV` (banco, cofre, configurações e anexos) para não misturar
 arquivos com PROD. As contas OAuth copiadas no snapshot devem ser revisadas antes

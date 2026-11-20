@@ -6,7 +6,7 @@ O diagnóstico conectou ao PostgreSQL DEV usando a configuração normal da API.
 
 ## Identificação e método
 
-- Configuração carregada em memória: `dev/app/apps/api/.env`, pelo caminho normal usado pela API DEV (`DATABASE_URL`). Nenhum segredo foi impresso ou registrado.
+- Configuração carregada em memória: `forge/app/apps/api/.env`, pelo caminho normal usado pela API DEV (`DATABASE_URL`). Nenhum segredo foi impresso ou registrado.
 - Destino não secreto confirmado pela configuração e pela sessão: `127.0.0.1:5432`, banco `orbit_native_dev`, PostgreSQL 16.15.
 - A própria conexão confirmou `current_database = orbit_native_dev` e `session_user = current_user = orbit_dev_app`.
 - Consultas somente leitura executadas dentro de transação `READ ONLY`, com `statement_timeout` local de 4 segundos; transação encerrada com rollback.
@@ -23,7 +23,7 @@ O diagnóstico conectou ao PostgreSQL DEV usando a configuração normal da API.
 
 ## Writers observáveis
 
-- O runtime DEV ainda contém o caminho legado `setPluginEnabled` em `dev/app/apps/api/src/main.ts`, escrevendo settings pelo pool geral.
+- O runtime DEV ainda contém o caminho legado `setPluginEnabled` em `forge/app/apps/api/src/main.ts`, escrevendo settings pelo pool geral.
 - A migration 212 está disponível na fonte do core, mas não consta como aplicada no banco DEV diagnosticado. A projeção operacional DEV e os objetos da migration não foram alterados.
 - A inspeção local de processos não prova ausência de outras instâncias, conexões remotas ou writers externos; esses permanecem não verificados.
 

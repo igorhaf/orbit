@@ -41,6 +41,7 @@ import {OrbitKnowledgeRetentionWorker} from './plugins/ai/knowledge-retrieval';
 import {AccessManagement,AccessManagementController} from './access/management';
 import {AuthLifecycle,SmtpAuthMailer} from './access/auth-lifecycle';
 import {LoginAttemptLimiter,authenticateLoginAccount,type LoginAccount} from './access/login-attempts';
+import {resolveLoginFactors} from './access/login-factors';
 import {recordSuccessfulLogin} from './access/login-history';
 import {SocialLoginService} from './access/social-login';
 import {configuredRequestLimit,RequestRateLimiter} from './access/request-rate-limits';
@@ -76,6 +77,8 @@ import { Db } from './db';
 import {ORBIT_AI_CARD,AiCardOperations} from './plugins/ai-port';
 import {aiCardProviders} from './plugins/ai/card-service';
 import { assertOrbitFields, orbitArchitecture } from './orbit-architecture';
+import { assertAiCodeDevelopmentPluginCanBeEnabled } from './execution/runtime-code-policy';
+import { orbitContextRuntime } from './orbit-architecture';
 import { ProjectRegistry } from './execution/project-registry';
 import { CardExecutionService } from './execution/execution.service';
 import { CardExecutionController } from './execution/execution.controller';
@@ -253,15 +256,12 @@ class Service {
     const email = value(body.email, 'E-mail', 255).toLowerCase();
     const attempts=new LoginAttemptLimiter(this.db);
     if(!await attempts.tryStartAttempt(email,origin))throw new HttpException({message:'Muitas tentativas de acesso. Aguarde antes de tentar novamente.',retry_after_seconds:await attempts.retryAfterSeconds(email,origin)},429);
-    const challengeId = typeof body.mfa_challenge_id === 'string' ? body.mfa_challenge_id : null;
-    const row = challengeId
-      ? await this.authLifecycle.completeMfaChallenge(challengeId, body.mfa_code, 'login')
-      : await authenticateLoginAccount(this.db,email,value(body.password, 'Senha', 200));
-    if(!row)return fail('E-mail ou senha incorretos.',401);
-    if (row.email.toLowerCase() !== email || challengeId && !row.mfa_enabled) return fail('Código inválido ou expirado.',401);
-    if (row.mfa_enabled && !challengeId) return { mfa_required: true, ...await this.authLifecycle.requestMfaLogin(row.id) };
-    await attempts.recordSuccess(email,origin);
-    return this.issueSession(row,userAgent);
+    const resolution=await resolveLoginFactors(email,body.mfa_challenge_id,body.mfa_code,()=>authenticateLoginAccount(this.db,email,value(body.password,'Senha',200)),{
+      completeChallenge:(id,code,purpose)=>this.authLifecycle.completeMfaChallenge(id,code,purpose),
+      requestLogin:userId=>this.authLifecycle.requestMfaLogin(userId),
+    },()=>attempts.recordSuccess(email,origin));
+    if(resolution.kind==='challenge')return {mfa_required:true,...resolution.challenge,email:resolution.email};
+    return this.issueSession(resolution.account,userAgent);
   }
   async socialSession(row:LoginAccount,userAgent?:string){
     if(row.mfa_enabled)return {mfa_required:true,...await this.authLifecycle.requestMfaLogin(row.id),email:row.email};
@@ -1244,7 +1244,7 @@ class ApiController {
   @Get('health') health() { return { status: 'ok' }; }
   private hiddenPluginIds(){return new Set((process.env.ORBIT_HIDDEN_PLUGINS||'').split(',').map(id=>id.trim()).filter(Boolean))}
   @Get('plugins') pluginsCatalog(){const hidden=this.hiddenPluginIds();return {plugins:this.plugins.catalog().filter(plugin=>!hidden.has(plugin.id))}}
-  @Patch('plugins/:id') async setPluginEnabled(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){this.service.user(req);if(!this.plugins.isInstalled(id))return fail('O plugin não está instalado nesta instância.',404);if(typeof body.enabled!=='boolean')fail('Estado do plugin inválido.');const enabled=body.enabled as boolean;if(enabled&&productProfileDisablesPlugin(id))return fail('Este módulo está desativado pelo perfil de produto Suindá.',409);try{this.plugins.getById(id)}catch(error){return fail((error as Error).message,404)}if((REQUIRED_BOARD_VIEW_PLUGIN_IDS as readonly string[]).includes(id)&&!enabled){const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query("SELECT pg_advisory_xact_lock(hashtextextended('orbit.required-board-view',0))");const rows=await client.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings WHERE plugin_id=ANY($1::text[])',[REQUIRED_BOARD_VIEW_PLUGIN_IDS]);const states=new Map(rows.rows.map(row=>[row.plugin_id,row.enabled]));if(!hasBoardViewAfterChange(states,id,enabled))fail('Mantenha ativo pelo menos um modo de quadro: Quadro visual ou Gestão estruturada.',409);await client.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);await client.query('COMMIT')}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}}else await this.db.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);this.plugins.setEnabled(id,enabled);this.service.pluginsChanged(id);return {id,enabled}}
+  @Patch('plugins/:id') async setPluginEnabled(@Req() req:Request,@Param('id') id:string,@Body() body:Payload){this.service.user(req);if(!this.plugins.isInstalled(id))return fail('O plugin não está instalado nesta instância.',404);if(typeof body.enabled!=='boolean')fail('Estado do plugin inválido.');const enabled=body.enabled as boolean;assertAiCodeDevelopmentPluginCanBeEnabled(orbitContextRuntime,id,enabled);if(enabled&&productProfileDisablesPlugin(id))return fail('Este módulo está desativado pelo perfil de produto Suindá.',409);try{this.plugins.getById(id)}catch(error){return fail((error as Error).message,404)}if((REQUIRED_BOARD_VIEW_PLUGIN_IDS as readonly string[]).includes(id)&&!enabled){const client=await this.db.pool.connect();try{await client.query('BEGIN');await client.query("SELECT pg_advisory_xact_lock(hashtextextended('orbit.required-board-view',0))");const rows=await client.query<{plugin_id:string;enabled:boolean}>('SELECT plugin_id,enabled FROM plugin_settings WHERE plugin_id=ANY($1::text[])',[REQUIRED_BOARD_VIEW_PLUGIN_IDS]);const states=new Map(rows.rows.map(row=>[row.plugin_id,row.enabled]));if(!hasBoardViewAfterChange(states,id,enabled))fail('Mantenha ativo pelo menos um modo de quadro: Quadro visual ou Gestão estruturada.',409);await client.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);await client.query('COMMIT')}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}}else await this.db.query('INSERT INTO plugin_settings(plugin_id,enabled) VALUES($1,$2) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()',[id,enabled]);this.plugins.setEnabled(id,enabled);this.service.pluginsChanged(id);return {id,enabled}}
   @Get('backups') async backups(@Req() req:Request){try{return await this.backupService.list(this.service.user(req))}catch(error){return fail((error as Error).message,409)}}
   @Get('backups/options') async backupOptions(@Req() req:Request){return this.backupService.options(this.service.user(req))}
   @Patch('backups/automatic') async configureAutomaticBackups(@Req() req:Request,@Body() body:Payload){const owner=this.service.user(req);if(typeof body.connectionId!=='string'||typeof body.enabled!=='boolean')fail('Configuração automática inválida.',400);return this.backupService.configureAutomatic(owner,body.connectionId as string,body.enabled as boolean)}

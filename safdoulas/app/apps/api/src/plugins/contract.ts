@@ -113,11 +113,15 @@ export type RecordKindContribution = {
   transitions: Record<string, string[]>;
   /** Localized labels for this kind's states, supplied by its owning plugin. */
   stateLabels?: Record<string, string>;
+  /** States omitted from the shared transition menu while remaining available to plugin-owned actions. */
+  hiddenTransitions?: string[];
   immutable?: string[];
   example: Record<string, unknown>;
   /** Payload properties that must remain unique within a workspace for this plugin and kind. */
   uniqueFields?: string[];
-  /** Payload paths encrypted at rest by the shared record store; owner, state, references and query keys must remain unencrypted. */
+  /** Top-level string payload fields that listing search may compare after resource authorization and decryption. */
+  searchableFields?: string[];
+  /** Payload paths encrypted at rest by the shared record store; database-side ownership, state, references and uniqueness keys must remain unencrypted. */
   sensitiveFields?: string[];
   /** Encrypts uploaded attachment bytes at rest using the shared data-encryption key. */
   sensitiveAttachments?: boolean;
@@ -155,9 +159,17 @@ export type RecordKindContribution = {
     description?: string;
     states: string[];
     permission: "write" | "publish";
-    path: string;
+    path?: string;
     ownsTransitions?: boolean;
     when?: Record<string, string | number | boolean | null>;
+    transition?: {
+      state: string;
+      reason?: string;
+      reasonChoices?: Array<{ value: string; label: string }>;
+      noOpValue?: string;
+      noOpLabel?: string;
+      confirmation?: string;
+    };
     download?: { recordIdField: string; revisionField: string; fileNameField: string; path: string };
   }>;
   /** Computes allowed states from a pinned, plugin-owned workflow definition. */
@@ -190,6 +202,8 @@ export type RecordAccessPolicy = {
 
 export type RecordWebhookEvent = { type: string; label: string; version: number };
 export type RecordWebhookResource = { workspace_id: string; id: string; plugin_id: string; kind: string; state: string; revision: number; payload: Record<string, unknown> };
+export type ProfileSimulationExample = { id: string; title: string; type: string; state: string; description: string; is_demo: true };
+export type ProfileSimulationExampleContext = { roleId: string; roleName: string; permissions: readonly string[] };
 export type RecordWebhookContribution = {
   sourcePluginId: string;
   events: RecordWebhookEvent[];
@@ -201,6 +215,8 @@ export type RecordBoardDefinition={
  templates:Array<{id:string;name:string;phase:string;description:string;checklist:string[]}>;
 };
 export type PluginContribution = {
+  /** Static, read-only examples shown only in ROOT profile simulation; never persisted or used to authorize domain routes. */
+  profileSimulationExamples?: (context: ProfileSimulationExampleContext) => readonly ProfileSimulationExample[];
  boardCreators?:Array<{id:string;name:string;href:string;permission:string}>;
   /** Opt-in native collaboration, with sensitive title references checked per user. */
   recordCards?:Array<{kind:string;label:string;description?:string;href?:string;recordParam?:string;board?:RecordBoardDefinition;titleReference?:{plugin:string;idField:string;revisionField:string;titleField:string}}>;

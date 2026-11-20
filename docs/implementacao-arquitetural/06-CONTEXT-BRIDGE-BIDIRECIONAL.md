@@ -302,7 +302,7 @@ Comandos executados com Node24.20.0 absoluto e ambiente sintético conforme§24:
 
 ```sh
 # U: Core novo e regressões unitárias; lista completa em§22
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=<absoluto>/dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/context-bridge.spec.ts dev/app/apps/api/src/execution/context-bridge-host.spec.ts dev/app/apps/api/src/execution/context-bridge-adapter.spec.ts dev/app/apps/api/src/execution/context-bridge-repository.spec.ts
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=<absoluto>/forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/context-bridge.spec.ts forge/app/apps/api/src/execution/context-bridge-host.spec.ts forge/app/apps/api/src/execution/context-bridge-adapter.spec.ts forge/app/apps/api/src/execution/context-bridge-repository.spec.ts
 # W: duas filas/classes/registries/adapter reais, DB/quota/executor fake
 node --test tools/orbit/context-bridge-workers.test.mjs
 # A: pipes reais com cliente Node sintético

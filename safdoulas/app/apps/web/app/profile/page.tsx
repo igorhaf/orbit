@@ -1,4 +1,5 @@
 "use client";
+import { EmailChangeForm } from '@/components/email-change-form';
 import {useCreationAvailability} from '@/plugins/project-boards/use-creation-availability';
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -93,11 +94,6 @@ export default function ProfilePage() {
   const ready = useHydrated();
   const [tab, setTab] = useState<Tab>("profile");
   const [name, setName] = useState("");
-  const [emailDraft, setEmailDraft] = useState("");
-  const [emailChangePassword, setEmailChangePassword] = useState("");
-  const [emailChangeMessage, setEmailChangeMessage] = useState("");
-  const [emailChangeError, setEmailChangeError] = useState("");
-  const [emailChangeBusy, setEmailChangeBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [create, setCreate] = useState(false);
@@ -118,7 +114,6 @@ export default function ProfilePage() {
       setCurrentUser(account);
       setUser(account);
       setName(account.name);
-      setEmailDraft(account.email);
       setBoards(all);
       setActivities(activity);
       setLoginHistory(logins);
@@ -177,21 +172,6 @@ export default function ProfilePage() {
       setError("");
     } catch (err) {
       setError((err as Error).message);
-    }
-  }
-  async function requestEmailChange(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setEmailChangeBusy(true);
-    setEmailChangeError("");
-    setEmailChangeMessage("");
-    try {
-      await send("/auth/email-change", "POST", { email: emailDraft, current_password: emailChangePassword });
-      setEmailChangePassword("");
-      setEmailChangeMessage("Enviamos um link de confirmação para o novo endereço. O e-mail da conta só muda depois da confirmação.");
-    } catch (err) {
-      setEmailChangeError((err as Error).message);
-    } finally {
-      setEmailChangeBusy(false);
     }
   }
   async function uploadAvatar(file: File | null) {
@@ -487,17 +467,7 @@ export default function ProfilePage() {
                   </button>
                 </form>
               </section>
-              <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-bold">Alterar e-mail da conta</h2>
-                <p className="mt-1 text-sm text-[#626f86]">Confirme a alteração pelo link enviado ao novo endereço. Sua senha atual será solicitada antes do envio.</p>
-                <form onSubmit={requestEmailChange} className="mt-4 grid max-w-lg gap-3">
-                  <label className="text-xs font-bold">Novo e-mail<input required type="email" maxLength={320} autoComplete="email" value={emailDraft} onChange={(event) => setEmailDraft(event.target.value)} className="mt-1 min-h-10 w-full rounded border border-[#8590a2] px-3 text-sm font-normal" /></label>
-                  <label className="text-xs font-bold">Senha atual<input required type="password" maxLength={200} autoComplete="current-password" value={emailChangePassword} onChange={(event) => setEmailChangePassword(event.target.value)} className="mt-1 min-h-10 w-full rounded border border-[#8590a2] px-3 text-sm font-normal" /></label>
-                  {emailChangeError && <p role="alert" className="text-sm text-[#ae2a19]">{emailChangeError}</p>}
-                  {emailChangeMessage && <p role="status" className="text-sm text-[#216e4e]">{emailChangeMessage}</p>}
-                  <button disabled={emailChangeBusy || !emailDraft.trim() || emailDraft.trim().toLowerCase() === user.email.toLowerCase() || !emailChangePassword} className="min-h-10 justify-self-start rounded bg-[#0c66e4] px-4 text-sm font-semibold text-white disabled:opacity-60">{emailChangeBusy ? "Enviando…" : "Enviar confirmação"}</button>
-                </form>
-              </section>
+              <EmailChangeForm currentEmail={user.email}/>
               <section className="rounded-xl border border-[#dfe1e6] bg-white p-6 shadow-sm">
                 <h2 className="mb-4 text-lg font-bold">Seu trabalho</h2>
                 <div className="space-y-3">

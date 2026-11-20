@@ -8,10 +8,10 @@ const binding=():BridgeAuditBinding=>({bridgeId:randomUUID(),manifestId:randomUU
 const event=():ContextBridgeAuditEvent=>({phase:'response_emitted',requestId:'request-1',capability:'sources.read',sourceId:'src_'+'b'.repeat(64),sourceHash:'c'.repeat(64),sourceIdentityHash:'e'.repeat(64),sourceVersion:'1',status:'ok',responseHash:'d'.repeat(64),returnedBytes:30,chargedBytes:30,observedAt:'2026-11-14T10:00:00.000Z'});
 
 test('bridge audit uses a metadata allowlist, independent rows and safe history DTOs',async()=>{
-  const sqlCalls:Array<{sql:string;values:any[]}>=[],rows:any[]=[];
-  const db={query:async(sql:string,values:any[]=[])=>{
+  const sqlCalls:Array<{sql:string;values:unknown[]}>=[],rows:Array<Record<string,unknown>>=[];
+  const db={query:async(sql:string,values:unknown[]=[])=>{
     sqlCalls.push({sql,values});
-    if(sql.startsWith('INSERT')){const audit=JSON.parse(values[26]);const row={id:values[0],event_sequence:rows.length+1,bridge_id:values[1],manifest_id:values[2],context_fingerprint:values[13],audit,recorded_at:new Date('2026-11-14T10:00:01.000Z')};rows.push(row);return {rows:[row]}}
+    if(sql.startsWith('INSERT')){const audit=JSON.parse(String(values[26])) as unknown;const row={id:values[0],event_sequence:rows.length+1,bridge_id:values[1],manifest_id:values[2],context_fingerprint:values[13],audit,recorded_at:new Date('2026-11-14T10:00:01.000Z')};rows.push(row);return {rows:[row]}}
     return {rows:[...rows].reverse()};
   }};
   const repo=new ContextBridgeRepository(db),host=binding(),original=event(),before=JSON.stringify({host,original});
@@ -21,7 +21,7 @@ test('bridge audit uses a metadata allowlist, independent rows and safe history 
   const history=await repo.history(host.manifestId);assert.deepEqual(history.map(row=>row.event.phase),['delivery_unverified','response_emitted']);
   assert.equal(history[0].sequence,'2');assert.ok(sqlCalls.every(call=>!call.sql.includes('context_manifest_verifications')));
   assert.ok(!JSON.stringify(history).includes(host.ownerId));assert.ok(!JSON.stringify(history).includes('ownerId'));
-  assert.equal((JSON.parse(sqlCalls[0].values[26])).event.sourceHash,original.sourceHash);assert.equal(sqlCalls[0].values[27],original.sourceIdentityHash);
+  assert.equal((JSON.parse(String(sqlCalls[0].values[26])) as {event:ContextBridgeAuditEvent}).event.sourceHash,original.sourceHash);assert.equal(sqlCalls[0].values[27],original.sourceIdentityHash);
 });
 
 test('bridge audit rejects bodies, paths, credentials and malformed metadata before database access',async()=>{
@@ -33,8 +33,8 @@ test('bridge audit rejects bodies, paths, credentials and malformed metadata bef
 });
 
 test('bridge audit accepts Db array responses and does not fabricate persistence success',async()=>{
-  const host=binding(),item=event();let captured:any[]=[];
-  const repo=new ContextBridgeRepository({query:async(_sql,values=[])=>{captured=values;return [{id:values[0],event_sequence:'123',bridge_id:host.bridgeId,manifest_id:host.manifestId,context_fingerprint:host.contextFingerprint,audit:values[26],recorded_at:'2026-11-14T10:00:01.000Z'}]}});
+  const host=binding(),item=event();let captured:unknown[]=[];
+  const repo=new ContextBridgeRepository({query:async(_sql:string,values:unknown[]=[]):Promise<Record<string,unknown>[]>=>{captured=values;return [{id:values[0],event_sequence:'123',bridge_id:host.bridgeId,manifest_id:host.manifestId,context_fingerprint:host.contextFingerprint,audit:values[26],recorded_at:'2026-11-14T10:00:01.000Z'}]}});
   assert.equal((await repo.append(host,item)).sequence,'123');assert.equal(captured[25],item.observedAt);
   await assert.rejects(()=>new ContextBridgeRepository({query:async()=>[]}).append(host,item),/not persisted/);
 });
@@ -42,11 +42,11 @@ test('bridge audit accepts Db array responses and does not fabricate persistence
 
 const knowledge=()=>({schemaVersion:1 as const,queryHash:'1'.repeat(64),corpusHash:'2'.repeat(64),policy:'orbit-lexical-retrieval/1',found:3,returned:1,omitted:2,sources:[{sourceId:'src_'+'3'.repeat(64),sourceIdentityHash:'4'.repeat(64),sourceHash:'5'.repeat(64),sourceVersion:'sha256:'+'6'.repeat(64)}]});
 test('07B audit stores bounded dynamic knowledge separately without changing207 legacy event JSON',async()=>{
- let captured:any[]=[];let sqlText='';
+ let captured:unknown[]=[];let sqlText='';
  const host=binding(),item={...event(),capability:'knowledge.search',knowledge:knowledge()} as ContextBridgeAuditEvent;
- const repo=new ContextBridgeRepository({query:async(sql,values=[])=>{sqlText=sql;captured=values;return [{id:values[0],event_sequence:'1',bridge_id:host.bridgeId,manifest_id:host.manifestId,context_fingerprint:host.contextFingerprint,audit:values[26],knowledge_metadata:values[28],recorded_at:'2026-11-16T10:00:00Z'}]}});
+ const repo=new ContextBridgeRepository({query:async(sql:string,values:unknown[]=[]):Promise<Record<string,unknown>[]>=>{sqlText=sql;captured=values;return [{id:values[0],event_sequence:'1',bridge_id:host.bridgeId,manifest_id:host.manifestId,context_fingerprint:host.contextFingerprint,audit:values[26],knowledge_metadata:values[28],recorded_at:'2026-11-16T10:00:00Z'}]}});
  const before=JSON.stringify(item),stored=await repo.append(host,item);
- assert.ok(sqlText.includes('knowledge_metadata'));assert.equal(captured.length,29);assert.equal(JSON.parse(captured[26]).event.knowledge,undefined);assert.deepEqual(stored.event.knowledge,knowledge());assert.equal(JSON.stringify(item),before);
+ assert.ok(sqlText.includes('knowledge_metadata'));assert.equal(captured.length,29);assert.equal((JSON.parse(String(captured[26])) as {event:ContextBridgeAuditEvent}).event.knowledge,undefined);assert.deepEqual(stored.event.knowledge,knowledge());assert.equal(JSON.stringify(item),before);
  assert.ok(!JSON.stringify(stored).includes(host.ownerId));
  for(const remainingBytes of [0,1000000]){const withEstimate={...knowledge(),remainingBytes};const estimate=await repo.append(host,{...item,knowledge:withEstimate});assert.deepEqual(estimate.event.knowledge,withEstimate);}
  await repo.append(host,event());assert.equal(captured.length,28);assert.ok(!sqlText.includes('knowledge_metadata'));

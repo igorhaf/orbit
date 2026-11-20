@@ -1,0 +1,31 @@
+node_modules
+.next
+apps/web/.next-dev/
+dist
+.env
+.env.local
+*.tsbuildinfo
+/backups/
+/.orbit-deploy-request
+/.orbit-deploy-manager
+/.orbit-deploy-status.json
+/.orbit-manager.pid
+/.orbit-rebuild-previous-static/
+/.orbit-dev-manager.pid
+/.orbit-dev-restart-ack
+/.orbit/sessions/
+/apps/api/.orbit/
+
+# Isolated validation builds
+.next-validation/
+
+# Local browser downloads used by validation scripts
+.orbit/validations/**/browser-cache/
+
+# Host-specific project endpoints and paths
+/.orbit/runtime.json
+
+# Development compiler caches and Python validation bytecode
+apps/web/.next-*/
+__pycache__/
+*.py[cod]

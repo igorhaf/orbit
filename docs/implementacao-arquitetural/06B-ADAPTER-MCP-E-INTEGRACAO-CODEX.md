@@ -216,19 +216,19 @@ PluginRegistry/PluginDefinition, dependências, parentPlugin, capabilities/actio
 
 Inventário exato desta etapa (inclui individualmente cada projeção):
 
-- dev/app/apps/api/src/execution/context-bridge-adapter.ts
-- dev/app/apps/api/src/execution/context-bridge-mcp.spec.ts
-- dev/app/apps/api/src/execution/context-bridge-mcp.ts
-- dev/app/orbit.shared-lock.json
+- forge/app/apps/api/src/execution/context-bridge-adapter.ts
+- forge/app/apps/api/src/execution/context-bridge-mcp.spec.ts
+- forge/app/apps/api/src/execution/context-bridge-mcp.ts
+- forge/app/orbit.shared-lock.json
 - orbit.workspace.json
 - packages/orbit-core/package.json
 - packages/orbit-core/src/execution/context-bridge-adapter.ts
 - packages/orbit-core/src/execution/context-bridge-mcp.spec.ts
 - packages/orbit-core/src/execution/context-bridge-mcp.ts
-- prod/app/apps/api/src/execution/context-bridge-adapter.ts
-- prod/app/apps/api/src/execution/context-bridge-mcp.spec.ts
-- prod/app/apps/api/src/execution/context-bridge-mcp.ts
-- prod/app/orbit.shared-lock.json
+- workspace/app/apps/api/src/execution/context-bridge-adapter.ts
+- workspace/app/apps/api/src/execution/context-bridge-mcp.spec.ts
+- workspace/app/apps/api/src/execution/context-bridge-mcp.ts
+- workspace/app/orbit.shared-lock.json
 - safdoulas/app/apps/api/src/execution/context-bridge-adapter.ts
 - safdoulas/app/apps/api/src/execution/context-bridge-mcp.spec.ts
 - safdoulas/app/apps/api/src/execution/context-bridge-mcp.ts
@@ -270,7 +270,7 @@ Nenhuma nova tabela ou migration.207_context_bridge_audit.sql e157–160 preserv
 
 Comandos novos seguros:
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/context-bridge-mcp.spec.ts
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/context-bridge-mcp.spec.ts
 node --test tools/orbit/context-bridge-mcp.test.mjs
 ```
 Logs locais: /tmp/orbit06b-audit. Falhas intermediárias de timeout da fixture foram corrigidas; não contam como testes aprovados.

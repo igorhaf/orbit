@@ -14,7 +14,7 @@ import {DiscoveryReviewApplication,DiscoveryReviewApplicationError,discoveryRevi
 import {DiscoveryReviewRepository,type DiscoveryReviewOrigin} from './discovery-review-repository';
 import {DiscoveryJournalRepository,discoveryProposalHash,type DiscoveryBinding,type DiscoverySubmission} from './discovery-journal-repository';
 import {type DiscoveryReviewCommand,type DiscoveryReviewPolicy} from './discovery-review';
-const require=createRequire(join(process.cwd(),'dev/app/package.json'));
+const require=createRequire(join(process.cwd(),'forge/app/package.json'));
 const {Pool}=require('pg');
 const bin='/usr/lib/postgresql/16/bin';
 const policy:DiscoveryReviewPolicy={schemaVersion:1,minimumReviewRevision:1,requiredEvidenceCompatibility:['compatible'],allowIneligibleApproval:false};
@@ -341,8 +341,8 @@ test('07D-B PostgreSQL disposable cluster: transactions, history and concurrency
    CREATE TABLE ai_projects(id uuid PRIMARY KEY,owner_id uuid);
    CREATE TABLE plugin_settings(plugin_id text,enabled boolean);
    CREATE TABLE vault_items(card_id uuid); ALTER TABLE cards ADD COLUMN archived_at timestamptz; ALTER TABLE cards ADD COLUMN list_id uuid;`);
-  for(const name of ['065_rbac_core.sql','068_rbac_privileges_groups.sql','070_rbac_editable_defaults.sql','096_access_audit_scopes.sql'])await pool.query(await readFile('dev/app/apps/api/sql/migrations/'+name,'utf8'));
-  const {AccessService}=require(join(process.cwd(),'dev/app/apps/api/src/access/access.ts'));
+  for(const name of ['065_rbac_core.sql','068_rbac_privileges_groups.sql','070_rbac_editable_defaults.sql','096_access_audit_scopes.sql'])await pool.query(await readFile('forge/app/apps/api/sql/migrations/'+name,'utf8'));
+  const {AccessService}=require(join(process.cwd(),'forge/app/apps/api/src/access/access.ts'));
   const realAccess=new AccessService({query:async(sql:string,p:any[]) => (await pool.query(sql,p)).rows,one:async(sql:string,p:any[]) => (await pool.query(sql,p)).rows[0]??null});
   const realActor=randomUUID(),realGroup=randomUUID();
   await pool.query("INSERT INTO users(id,name,email,is_root) VALUES($1,'Editor','fixture@invalid.test',true)",[realActor]);
@@ -465,7 +465,7 @@ test('07D-B PostgreSQL disposable cluster: transactions, history and concurrency
    assert.equal((await pool.query('SELECT session_version FROM users WHERE id=$1',[realActor])).rows[0].session_version,0);
   });
   await t.test('07D-R8 linked Vault mutations follow cards-first lock order and preserve rollback',async()=>{
-   const fromDev=(path:string)=>require(join(process.cwd(),'dev/app/apps/api/src',path));
+   const fromDev=(path:string)=>require(join(process.cwd(),'forge/app/apps/api/src',path));
    const {VaultService}=fromDev('plugins/vault/vault.service.ts');
    const {encryptVaultPayload}=fromDev('vault-crypto.ts');
    const cardId=randomUUID(),linkedId=randomUUID(),standaloneId=randomUUID();
@@ -563,8 +563,8 @@ test('07D-B PostgreSQL disposable cluster: transactions, history and concurrency
    }
   });
   await t.test('07D-R6 record role effects wait on users before touching access grants',async()=>{
-   const {ExtensionRecords}=require(join(process.cwd(),'dev/app/apps/api/src/plugins/records/records.service.ts'));
-   const {PluginRegistry}=require(join(process.cwd(),'dev/app/apps/api/src/execution/registries.ts'));
+   const {ExtensionRecords}=require(join(process.cwd(),'forge/app/apps/api/src/plugins/records/records.service.ts'));
+   const {PluginRegistry}=require(join(process.cwd(),'forge/app/apps/api/src/execution/registries.ts'));
    const userId=randomUUID(),recordId=randomUUID(),workspace=randomUUID(),roleId='administrator';
    await pool.query(`CREATE TABLE extension_records(id uuid PRIMARY KEY,workspace_id uuid,plugin_id text,kind text,revision integer);
     CREATE TABLE extension_record_versions(record_id uuid,revision integer)`);
@@ -626,7 +626,7 @@ test('07D-B PostgreSQL disposable cluster: transactions, history and concurrency
    }
   });
   await t.test('07D-R7 scoped roles and user exceptions acquire users first and roll back atomically',async()=>{
-   const {AccessManagement}=require(join(process.cwd(),'dev/app/apps/api/src/access/management.ts'));
+   const {AccessManagement}=require(join(process.cwd(),'forge/app/apps/api/src/access/management.ts'));
    const db={pool,query:async(sql:string,p:unknown[])=>(await pool.query(sql,p)).rows,
     one:async(sql:string,p:unknown[])=>(await pool.query(sql,p)).rows[0]??null};
    const access=new AccessService(db),management=new AccessManagement(db,access);

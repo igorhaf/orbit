@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {
   assertContextManifestIntegrity,canonicalContextJson,compareContextManifest,ContextManifestError,
   ContextManifestRepository,createContextManifest,hashContextText,hashContextValue,
-  type ContextSource,type CreateContextManifestInput,type ContextQueryClient,
+  type ContextSource,type CreateContextManifestInput,type ContextQueryClient,type ContextQueryResponse,type ContextQueryRow,
 } from './context-manifest';
 
 const scope={runtimeId:'dev',projectId:'project-a',workspaceId:'workspace-a',actorId:'actor-a'};
@@ -101,8 +101,8 @@ test('T17: duplicate IDs fail both capture and comparison',()=>{
 });
 test('T17: JSON ambiguity and lossy values fail without invoking accessors or toJSON',()=>{
   let invoked=false;const getter={get value(){invoked=true;return 1}};
-  const circular:any={};circular.self=circular;
-  const hiddenSparse:any=[1];delete hiddenSparse[0];hiddenSparse.extra=1;
+  const circular:Record<string,unknown>={};circular.self=circular;
+  const hiddenSparse:unknown[]&{extra?:number}=[];hiddenSparse.length=1;delete hiddenSparse[0];hiddenSparse.extra=1;
   class CustomArray extends Array<number>{map(){invoked=true;return [] as never}}
   for(const value of [undefined,NaN,Infinity,BigInt(1),()=>1,new Date(),getter,{value:undefined},[undefined],Array(2),hiddenSparse,new CustomArray(),circular,{[Symbol('x')]:1},Object.create({x:1})]){
     assert.throws(()=>canonicalContextJson(value),ContextManifestError);
@@ -122,21 +122,21 @@ test('host_policy/documental/history labels remain descriptive and cannot replac
 });
 
 class MemoryDatabase implements ContextQueryClient {
-  manifests:any[]=[];observations:any[]=[];statements:string[]=[];
-  async query(sql:string,p:any[]=[]):Promise<any>{
+  manifests:ContextQueryRow[]=[];observations:ContextQueryRow[]=[];statements:string[]=[];
+  async query(sql:string,p:unknown[]=[]):Promise<ContextQueryResponse>{
     this.statements.push(sql);
     if(sql.startsWith('SELECT pg_advisory'))return {rows:[]};
     if(sql.startsWith('INSERT INTO context_run_manifests')){
       const [id,queue,run_id,turn,parent_id,card_id,card_revision,project_id,workspace_id,actor_id,runtime_id,fingerprint,integrity_hash,manifest]=p;
-      const row={id,queue,run_id,turn,parent_id,card_id,card_revision,project_id,workspace_id,actor_id,runtime_id,fingerprint,integrity_hash,manifest:JSON.parse(manifest),created_at:'2026-01-01T00:00:00Z'};
+      const row={id,queue,run_id,turn,parent_id,card_id,card_revision,project_id,workspace_id,actor_id,runtime_id,fingerprint,integrity_hash,manifest:JSON.parse(String(manifest)) as unknown,created_at:'2026-01-01T00:00:00Z'};
       this.manifests.push(row);return {rows:[clone(row)]};
     }
     if(sql.startsWith('SELECT * FROM context_run_manifests')){
-      const found=sql.includes('WHERE id=')?this.manifests.filter(row=>row.id===p[0]):this.manifests.filter(row=>row.queue===p[0]&&row.run_id===p[1]).sort((a,b)=>b.turn-a.turn).slice(0,1);
+      const found=sql.includes('WHERE id=')?this.manifests.filter(row=>row.id===p[0]):this.manifests.filter(row=>row.queue===p[0]&&row.run_id===p[1]).sort((a,b)=>Number(b.turn)-Number(a.turn)).slice(0,1);
       return {rows:clone(found)};
     }
     if(sql.startsWith('INSERT INTO context_manifest_verifications')){
-      this.observations.push({id:p[0],manifest_id:p[1],phase:p[2],status:p[3],observation:JSON.parse(p[4]),observed_at:p[5]});return {rows:[]};
+      this.observations.push({id:p[0],manifest_id:p[1],phase:p[2],status:p[3],observation:JSON.parse(String(p[4])) as unknown,observed_at:p[5]});return {rows:[]};
     }
     if(sql.startsWith('SELECT * FROM context_manifest_verifications'))return {rows:clone(this.observations.filter(row=>row.manifest_id===p[0]))};
     throw new Error('Unexpected fake query: '+sql);

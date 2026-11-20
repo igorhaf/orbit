@@ -46,8 +46,8 @@ O resolver é uma fronteira interna de confiança do host, não um mecanismo de 
 Comando (Node 24.20.0):
 
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
- node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test \
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
+ node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test \
  packages/orbit-core/src/execution/discovery-review-repository.spec.ts \
  packages/orbit-core/src/execution/discovery-review.spec.ts
 ```

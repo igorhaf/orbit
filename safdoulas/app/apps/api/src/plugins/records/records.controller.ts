@@ -5,6 +5,7 @@ import {
   Inject,
   Param,
   Post,
+  Query,
   Req,
   Res,
 } from "@nestjs/common";
@@ -39,8 +40,13 @@ export class ExtensionRecordsController {
     @Req() req: AccessRequest,
     @Param("plugin") plugin: string,
     @Param("workspace") workspace: string,
+    @Query("q") query = "",
+    @Query("kind") kind = "",
+    @Query("link_field") relationField = "",
+    @Query("link_id") relationIds: string | string[] = [],
   ) {
-    return this.records.list(plugin, workspace, String(req.orbitUser));
+    const values = Array.isArray(relationIds) ? relationIds : relationIds ? [relationIds] : [];
+    return this.records.list(plugin, workspace, String(req.orbitUser), query, kind, relationField, values);
   }
   @Get(":plugin/workspaces/:workspace/summary") summary(
     @Req() req: AccessRequest,

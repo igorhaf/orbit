@@ -11,7 +11,7 @@ import vm from 'node:vm';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const filename = fileURLToPath(import.meta.url);
-const require = createRequire(join(root, 'dev/app/package.json'));
+const require = createRequire(join(root, 'forge/app/package.json'));
 const pgBin = '/usr/lib/postgresql/16/bin';
 const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -293,7 +293,7 @@ if (process.argv[2] === '--workspace-client') {
       const ts=require('typescript'),path=join(root,'packages/orbit-core/src/execution/run-repository.ts'),loaded={exports:{}},calls=[];
       const compiled=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
       const local=createRequire(path);
-      vm.runInThisContext(`(function(require,module,exports,__filename,__dirname){${compiled}\n})`)(specifier=>specifier==='../codex-limits'?{enforceCodexQuota:async(_db,force=false)=>calls.push(force)}:local(specifier),loaded,loaded.exports,path,join(root,'dev/app/apps/api/src/execution'));
+      vm.runInThisContext(`(function(require,module,exports,__filename,__dirname){${compiled}\n})`)(specifier=>specifier==='../codex-limits'?{enforceCodexQuota:async(_db,force=false)=>calls.push(force)}:local(specifier),loaded,loaded.exports,path,join(root,'forge/app/apps/api/src/execution'));
       const {RunRepository}=loaded.exports;
       const db={pool},repository=new RunRepository(db),foreign=new RunRepository(db),id=randomUUID(),user=randomUUID();
       await pool.query("INSERT INTO cards(id,title) VALUES($1,'Run repository fixture')",[id]);await pool.query("INSERT INTO users(id) VALUES($1)",[user]);

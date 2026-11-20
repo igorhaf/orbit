@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import net from 'node:net';
 const root=fileURLToPath(new URL('../..',import.meta.url));
-const require=createRequire(join(root,'dev/app/package.json'));
+const require=createRequire(join(root,'forge/app/package.json'));
 const manifestMigrationPath=join(root,'packages/orbit-core/sql/migrations/160_context_manifests.sql');
 const journalMigrationPath=join(root,'packages/orbit-core/sql/migrations/209_discovery_journal.sql');
 const knowledgeMigrationPath=join(root,'packages/orbit-core/sql/migrations/208_context_bridge_knowledge_audit.sql');

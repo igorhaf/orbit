@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const require = createRequire(join(root, 'dev/app/package.json'));
+const require = createRequire(join(root, 'forge/app/package.json'));
 const { Pool } = require('pg');
 const pgBin = '/usr/lib/postgresql/16/bin';
 const migrationPath = join(root, 'packages/orbit-core/sql/migrations/157_card_revisions.sql');

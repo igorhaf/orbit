@@ -14,4 +14,13 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ['src/**/*.js'],
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+        module: 'readonly',
+      },
+    },
+  },
 );

@@ -1,6 +1,6 @@
 {
   "name": "@orbit/ui-source",
-  "version": "1.1.3",
+  "version": "1.4.5",
   "private": true,
   "description": "Canonical Orbit source distribution with reproducible isolated-runtime projections.",
   "files": [
@@ -119,6 +119,10 @@
         "target": "apps/web/components/codex-limits.tsx"
       },
       {
+        "source": "src/components/email-change-form.tsx",
+        "target": "apps/web/components/email-change-form.tsx"
+      },
+      {
         "source": "src/components/git-card-panel.tsx",
         "target": "apps/web/components/git-card-panel.tsx"
       },
@@ -145,6 +149,14 @@
       {
         "source": "src/components/profile-simulation-context.tsx",
         "target": "apps/web/components/profile-simulation-context.tsx"
+      },
+      {
+        "source": "src/components/skip-to-main.spec.ts",
+        "target": "apps/web/components/skip-to-main.spec.ts"
+      },
+      {
+        "source": "src/components/skip-to-main.tsx",
+        "target": "apps/web/components/skip-to-main.tsx"
       },
       {
         "source": "src/components/vault-constant-select.tsx",
@@ -207,20 +219,16 @@
         "target": "apps/web/lib/use-hydrated.ts"
       },
       {
-        "source": "src/plugins/ai/QueuesPage.tsx",
-        "target": "apps/web/plugins/ai/QueuesPage.tsx"
-      },
-      {
         "source": "src/plugins/ai/card-renderers.tsx",
         "target": "apps/web/plugins/ai/card-renderers.tsx"
       },
       {
-        "source": "src/plugins/board-views/BoardViewRenderer.tsx",
-        "target": "apps/web/plugins/board-views/BoardViewRenderer.tsx"
+        "source": "src/plugins/ai/QueuesPage.tsx",
+        "target": "apps/web/plugins/ai/QueuesPage.tsx"
       },
       {
-        "source": "src/plugins/board-views/StructuredBoardView.tsx",
-        "target": "apps/web/plugins/board-views/StructuredBoardView.tsx"
+        "source": "src/plugins/board-views/BoardViewRenderer.tsx",
+        "target": "apps/web/plugins/board-views/BoardViewRenderer.tsx"
       },
       {
         "source": "src/plugins/board-views/contract.ts",
@@ -229,6 +237,10 @@
       {
         "source": "src/plugins/board-views/hierarchy.ts",
         "target": "apps/web/plugins/board-views/hierarchy.ts"
+      },
+      {
+        "source": "src/plugins/board-views/StructuredBoardView.tsx",
+        "target": "apps/web/plugins/board-views/StructuredBoardView.tsx"
       },
       {
         "source": "src/plugins/card-layouts/CardBadges.tsx",
@@ -285,6 +297,14 @@
       {
         "source": "src/plugins/record-cards/RecordWorkOverview.tsx",
         "target": "apps/web/plugins/record-cards/RecordWorkOverview.tsx"
+      },
+      {
+        "source": "src/plugins/records/ExtensionPage.tsx",
+        "target": "apps/web/plugins/records/ExtensionPageBase.tsx"
+      },
+      {
+        "source": "src/plugins/records/SchemaFields.tsx",
+        "target": "apps/web/plugins/records/SchemaFields.tsx"
       },
       {
         "source": "src/plugins/software-development/card-renderers.tsx",

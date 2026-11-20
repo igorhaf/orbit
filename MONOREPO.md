@@ -4,8 +4,8 @@
 
 Em 10/11/2026, o diretório `/home/meada/projetos/orbit` passou a ser o repositório Git único, na branch `main`. Os checkouts locais anteriores foram consolidados como conteúdo da árvore atual:
 
-- `dev/app` — runtime Orbit DEV;
-- `prod/app` — runtime Orbit PROD;
+- `forge/app` — runtime Orbit DEV;
+- `workspace/app` — runtime Orbit PROD;
 - `safdoulas/app` — runtime Safdoulas;
 - `suinda/app` — runtime Suindá.
 

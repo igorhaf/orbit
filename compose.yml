@@ -6,7 +6,7 @@ services:
       context: ./control
       dockerfile: postgres.Dockerfile
     container_name: orbit-db-prod
-    env_file: ./prod/db.env
+    env_file: ./workspace/db.env
     environment:
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=pt_BR.UTF-8
       LANG: pt_BR.UTF-8
@@ -29,7 +29,7 @@ services:
       context: ./control
       dockerfile: postgres.Dockerfile
     container_name: orbit-db-dev
-    env_file: ./dev/db.env
+    env_file: ./forge/db.env
     environment:
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=pt_BR.UTF-8
       LANG: pt_BR.UTF-8
@@ -49,7 +49,7 @@ services:
 
   api-prod:
     build:
-      context: ./prod/app
+      context: ./workspace/app
       dockerfile: ../Dockerfile
       target: api
       args:
@@ -57,8 +57,8 @@ services:
     image: orbit-api-prod:local
     container_name: orbit-prod-api
     env_file:
-      - ./prod/.env
-      - ./prod/data/config/api.env
+      - ./workspace/.env
+      - ./workspace/data/config/api.env
     environment:
       ORBIT_ENV: production
       ORBIT_APP_NAME: Orbit
@@ -69,10 +69,10 @@ services:
       HOME: /tmp
       CODEX_HOME: /home/meada/.codex
     volumes:
-      - ./prod/data/config:/data/config:rw
-      - ./prod/data/backups:/data/backups:rw
-      - ./prod/data/root-orbit-sessions:/home/meada/projetos/orbit/.orbit/sessions:rw
-      - ./prod/data/api-orbit-sessions:/home/meada/projetos/orbit/apps/api/.orbit/sessions:rw
+      - ./workspace/data/config:/data/config:rw
+      - ./workspace/data/backups:/data/backups:rw
+      - ./workspace/data/root-orbit-sessions:/home/meada/projetos/orbit/.orbit/sessions:rw
+      - ./workspace/data/api-orbit-sessions:/home/meada/projetos/orbit/apps/api/.orbit/sessions:rw
       - ./safdoulas:/host-projects/safdoulas:rw
       - safdoulas_v2_node_modules:/host-projects/safdoulas/app/node_modules:ro
       - /home/meada/.codex/auth.json:/home/meada/.codex/auth.json:ro
@@ -98,7 +98,7 @@ services:
 
   web-prod:
     build:
-      context: ./prod/app
+      context: ./workspace/app
       dockerfile: ../Dockerfile
       target: web
       args:
@@ -131,11 +131,11 @@ services:
 
   dev:
     build:
-      context: ./dev/app
+      context: ./forge/app
       dockerfile: ../Dockerfile
     image: orbit-dev:local
     container_name: orbit-dev
-    env_file: ./dev/.env
+    env_file: ./forge/.env
     environment:
       ORBIT_ENV: development
       ORBIT_APP_NAME: Orbit Dev
@@ -154,12 +154,12 @@ services:
       ORBIT_DEV_BUILD_LOCK: /run/orbit-dev-locks/build.lock
       ORBIT_DEV_MEMORY_MODE: ${ORBIT_DEV_MEMORY_MODE:-conserve}
     volumes:
-      - ./dev/app:/home/meada/projetos/orbit:rw
+      - ./forge/app:/home/meada/projetos/orbit:rw
       - /:/host-filesystem:rw
-      - ./dev/data/config:/data/config:rw
-      - ./dev/data/backups:/data/backups:rw
-      - ./dev/data/root-orbit-sessions:/home/meada/projetos/orbit/.orbit/sessions:rw
-      - ./dev/data/api-orbit-sessions:/home/meada/projetos/orbit/apps/api/.orbit/sessions:rw
+      - ./forge/data/config:/data/config:rw
+      - ./forge/data/backups:/data/backups:rw
+      - ./forge/data/root-orbit-sessions:/home/meada/projetos/orbit/.orbit/sessions:rw
+      - ./forge/data/api-orbit-sessions:/home/meada/projetos/orbit/apps/api/.orbit/sessions:rw
       - /home/meada/.codex/auth.json:/home/meada/.local/share/orbit-codex/auth.json:ro
       - ./control/state/dev-locks:/run/orbit-dev-locks:rw
     ports: [ '3001:3001', '127.0.0.1:4001:4001' ]
@@ -188,7 +188,7 @@ services:
 
   control:
     build:
-      context: ./dev/app
+      context: ./forge/app
       dockerfile: tools/orbit-control/Dockerfile
     image: orbit-control:local
     container_name: orbit-control
@@ -198,10 +198,10 @@ services:
       - /home/meada/projetos/orbit:/home/meada/projetos/orbit:ro
       - ./control/state:/control/state:rw
       - ./control/state:/home/meada/projetos/orbit/control/state:rw
-      - ./prod/app:/home/meada/projetos/orbit/prod/app:rw
+      - ./workspace/app:/home/meada/projetos/orbit/workspace/app:rw
       - ./safdoulas/app:/home/meada/projetos/orbit/safdoulas/app:rw
-      - ./dev/data/config:/home/meada/projetos/orbit/dev/data/config:rw
-      - ./prod/data/config:/home/meada/projetos/orbit/prod/data/config:rw
+      - ./forge/data/config:/home/meada/projetos/orbit/forge/data/config:rw
+      - ./workspace/data/config:/home/meada/projetos/orbit/workspace/data/config:rw
       - ./safdoulas/data/config:/home/meada/projetos/orbit/safdoulas/data/config:rw
       - ./control/backups:/control/backups:rw
       - ./control/snapshots:/control/snapshots:rw

@@ -17,7 +17,7 @@ export class PluginRegistry {
   private disabled=new Set<string>();
   private authorizeAction?:(plugin:string,action:string,user:string)=>Promise<void>;
   setAuthorizer(authorize:(plugin:string,action:string,user:string)=>Promise<void>){this.authorizeAction=authorize}
-  private ajv=new Ajv({allErrors:true});
+  private ajv=new Ajv({allErrors:true}).addFormat('textarea',{type:'string',validate:()=>true});
   private id(value:string,label:string){if(!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(value))throw new Error(`${label} inválido: ${value}`)}
   private unique<T extends {id:string}>(items:T[],label:string){const ids=new Set<string>();for(const item of items){this.id(item.id,label);if(ids.has(item.id))throw new Error(`${label} duplicado: ${item.id}`);ids.add(item.id)}}
   register(plugin:Plugin){
@@ -56,8 +56,21 @@ export class PluginRegistry {
       if(!definition||typeof definition.label!=='string'||!definition.label.trim()||typeof definition.initial!=='string'||!definition.initial.trim()||!definition.transitions||typeof definition.transitions!=='object'||Array.isArray(definition.transitions)||!definition.example||typeof definition.example!=='object'||Array.isArray(definition.example))throw new Error(`Tipo de registro inválido para ${plugin.id}.${kind}.`);
       for(const [state,next] of Object.entries(definition.transitions))if(!state.trim()||!Array.isArray(next)||next.some(value=>typeof value!=='string'||!value.trim()))throw new Error(`Transições inválidas para ${plugin.id}.${kind}.`);
       if(definition.stateLabels!==undefined&&(!definition.stateLabels||typeof definition.stateLabels!=='object'||Array.isArray(definition.stateLabels)||Object.entries(definition.stateLabels).some(([state,label])=>!Object.hasOwn(definition.transitions,state)||typeof label!=='string'||!label.trim())))throw new Error(`Rótulos de estado inválidos para ${plugin.id}.${kind}.`);
+      if(definition.hiddenTransitions!==undefined&&(!Array.isArray(definition.hiddenTransitions)||new Set(definition.hiddenTransitions).size!==definition.hiddenTransitions.length||definition.hiddenTransitions.some(state=>typeof state!=='string'||!Object.hasOwn(definition.transitions,state))))throw new Error(`Transições ocultas inválidas para ${plugin.id}.${kind}.`);
       for(const action of definition.detailActions||[]){
-        if(!/^[a-z][a-z0-9_-]{1,60}$/.test(action.id)||!action.label?.trim()||(action.retryLabel!==undefined&&(typeof action.retryLabel!=='string'||!action.retryLabel.trim()))||!Array.isArray(action.states)||!action.states.length||action.states.some(state=>typeof state!=='string'||!state.trim())||!['write','publish'].includes(action.permission)||!action.path?.startsWith('/')||action.path.startsWith('//')||/[\r\n]/.test(action.path)||(action.ownsTransitions!==undefined&&typeof action.ownsTransitions!=='boolean'))throw new Error(`Ação de registro inválida para ${plugin.id}.${kind}.`);
+        const transition=action.transition;
+        const transitionValid=transition===undefined||Boolean(transition&&Object.hasOwn(definition.transitions,transition.state)
+          &&action.states.every(from=>definition.transitions[from]?.includes(transition.state))
+          &&(transition.reason===undefined||typeof transition.reason==='string'&&transition.reason.trim().length>0&&transition.reason.length<=500)
+          &&(transition.confirmation===undefined||typeof transition.confirmation==='string'&&transition.confirmation.trim().length>0&&transition.confirmation.length<=1000)
+          &&(transition.noOpLabel===undefined||typeof transition.noOpLabel==='string'&&transition.noOpLabel.trim().length>0&&transition.noOpLabel.length<=100)
+          &&(transition.reasonChoices===undefined||Array.isArray(transition.reasonChoices)&&transition.reasonChoices.length>0&&transition.reasonChoices.length<=20
+            &&new Set(transition.reasonChoices.map(option=>option.value)).size===transition.reasonChoices.length
+            &&transition.reasonChoices.every(option=>typeof option.value==='string'&&option.value.trim().length>0&&option.value.length<=200&&typeof option.label==='string'&&option.label.trim().length>0&&option.label.length<=200))
+          &&(transition.noOpValue===undefined||transition.reasonChoices?.some(option=>option.value===transition.noOpValue))
+          &&(transition.reason!==undefined||transition.reasonChoices!==undefined));
+        const pathValid=action.path===undefined?transition!==undefined:action.path.startsWith('/')&&!action.path.startsWith('//')&&!/[\r\n]/.test(action.path);
+        if(!/^[a-z][a-z0-9_-]{1,60}$/.test(action.id)||!action.label?.trim()||(action.retryLabel!==undefined&&(typeof action.retryLabel!=='string'||!action.retryLabel.trim()))||!Array.isArray(action.states)||!action.states.length||action.states.some(state=>typeof state!=='string'||!Object.hasOwn(definition.transitions,state))||!['write','publish'].includes(action.permission)||!pathValid||(action.path!==undefined&&transition!==undefined)||!transitionValid||(action.ownsTransitions!==undefined&&typeof action.ownsTransitions!=='boolean')||(transition!==undefined&&action.download!==undefined))throw new Error(`Ação de registro inválida para ${plugin.id}.${kind}.`);
         if(action.download&&(!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.recordIdField)||!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.revisionField)||!/^[a-z][a-zA-Z0-9_]*$/.test(action.download.fileNameField)||!action.download.path.startsWith('/')||action.download.path.startsWith('//')||/[\r\n]/.test(action.download.path)))throw new Error(`Download inválido para ${plugin.id}.${kind}.${action.id}.`);
       }
       if(definition.immutable!==undefined&&(!Array.isArray(definition.immutable)||definition.immutable.some(state=>typeof state!=='string'||!state.trim())))throw new Error(`Estados imutáveis inválidos para ${plugin.id}.${kind}.`);
@@ -164,7 +177,7 @@ export class PluginRegistry {
       if(integration.plugin!=='filesystem'||integration.action!=='read')throw new Error('Esta action não possui autoridade de efeitos isolados homologada pelo host.');
     }
     // Delivery attestation belongs to the host/adapter, never to a plugin action.
-    const {contextDelivery:hostDelivery,contextBridge:hostBridge,...execution}=input;
+    const execution=Object.fromEntries(Object.entries(input).filter(([key])=>!['contextDelivery','contextBridge'].includes(key))) as ExecutionInput;
     const action=this.validate(integration,input.permissions);await this.authorizeAction?.(integration.plugin,integration.action,input.userId);const output=await action.execute(integration.config||{},{userId:input.userId,projectId:input.projectId,cardId:input.cardId,runId:input.runId,connectionId:integration.connection_id,execution,services,logger:{info(){},warn(){}}});
     await lease?.assertActive();
     if(action.outputSchema&&!this.ajv.validate(action.outputSchema,output))throw new Error('Saída do plugin inválida.');return output;

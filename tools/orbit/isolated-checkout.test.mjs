@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const filename = fileURLToPath(import.meta.url);
-const require = createRequire(join(root, 'dev/app/package.json'));
+const require = createRequire(join(root, 'forge/app/package.json'));
 const modulePath = join(root, 'packages/orbit-core/src/execution/isolated-checkout.ts');
 const pgBin = '/usr/lib/postgresql/16/bin';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));

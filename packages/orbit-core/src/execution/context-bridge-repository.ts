@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {canonicalContextJson,type ContextQueryClient,type ContextQueue} from './context-manifest';
+import {canonicalContextJson,contextQueryRows,type ContextQueryClient,type ContextQueryRow,type ContextQueue} from './context-manifest';
 import type {ContextBridgeAuditEvent} from './context-bridge';
 
 /** Host-only binding. Neither the agent envelope nor a possession of an ID authorizes it. */
@@ -58,11 +58,22 @@ function eventSnapshot(input:ContextBridgeAuditEvent):ContextBridgeAuditEvent{
   if(event.knowledge!==undefined){if(event.capability!=='knowledge.search')throw new ContextBridgeAuditError('Knowledge metadata requires its read-only capability.');event.knowledge=knowledgeSnapshot(event.knowledge);}
   return event;
 }
-async function rows(client:ContextQueryClient,sql:string,values:any[]=[]):Promise<any[]>{const result=await client.query(sql,values);return Array.isArray(result)?result:result.rows}
-function record(row:any):StoredBridgeAuditEvent{
-  const audit=typeof row.audit==='string'?JSON.parse(row.audit):row.audit;
+async function rows(client:ContextQueryClient,sql:string,values:unknown[]=[]):Promise<ContextQueryRow[]>{return contextQueryRows(await client.query(sql,values))}
+function isRecord(value:unknown):value is Record<string,unknown>{return Boolean(value)&&typeof value==='object'&&!Array.isArray(value)}
+function stringField(row:ContextQueryRow,key:string):string{const value=row[key];if(typeof value!=='string'||!value)throw new ContextBridgeAuditError('Bridge audit row is malformed.');return value}
+function record(row:ContextQueryRow):StoredBridgeAuditEvent{
+  const rawAudit=typeof row.audit==='string'?JSON.parse(row.audit) as unknown:row.audit;
+  if(!isRecord(rawAudit)||!isRecord(rawAudit.event))throw new ContextBridgeAuditError('Bridge audit row is malformed.');
+  const rawKnowledge=row.knowledge_metadata;
+  const knowledge=rawKnowledge===undefined||rawKnowledge===null?undefined:typeof rawKnowledge==='string'?JSON.parse(rawKnowledge) as unknown:rawKnowledge;
+  if(knowledge!==undefined&&!isRecord(knowledge))throw new ContextBridgeAuditError('Bridge audit knowledge metadata is malformed.');
+  const eventInput={...rawAudit.event,...(knowledge===undefined?{}:{knowledge})};
+  const sequence=row.event_sequence;
+  if(sequence===undefined||sequence===null)throw new ContextBridgeAuditError('Bridge audit sequence is missing.');
+  const recordedAt=row.recorded_at;
+  if(recordedAt===undefined||recordedAt===null)throw new ContextBridgeAuditError('Bridge audit timestamp is missing.');
   // Read back only the event allowlist. Do not export the private host owner/binding or SQL row.
-  return {id:row.id,sequence:String(row.event_sequence),bridgeId:row.bridge_id,manifestId:row.manifest_id,contextFingerprint:row.context_fingerprint,event:eventSnapshot({...audit.event,...(row.knowledge_metadata!==undefined&&row.knowledge_metadata!==null?{knowledge:typeof row.knowledge_metadata==='string'?JSON.parse(row.knowledge_metadata):row.knowledge_metadata}:{})}),recordedAt:row.recorded_at instanceof Date?row.recorded_at.toISOString():String(row.recorded_at)};
+  return {id:stringField(row,'id'),sequence:String(sequence),bridgeId:stringField(row,'bridge_id'),manifestId:stringField(row,'manifest_id'),contextFingerprint:stringField(row,'context_fingerprint'),event:eventSnapshot(eventInput as unknown as ContextBridgeAuditEvent),recordedAt:recordedAt instanceof Date?recordedAt.toISOString():String(recordedAt)};
 }
 
 /** Append-only query audit, deliberately separate from compatibility verifications04.

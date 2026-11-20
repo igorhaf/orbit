@@ -76,7 +76,7 @@ Node 24.20.0, TSX e PostgreSQL 16 descartável por socket Unix, sem Docker ou ba
 
 - Execução conjunta 07D-A/B/C/C2: **41 aprovados, zero falhas** na primeira versão.
 - Após reforços de ROOT, escopo e testes adicionais, reexecutado somente o arquivo afetado: **34 aprovados, zero falhas**, incluindo oito cenários C2. Os nove testes 07D-A passaram na execução conjunta anterior e seus arquivos não foram alterados.
-- Teste adicional `dev/app/apps/api/src/access/access.spec.ts`: **23 aprovados, uma falha preexistente**. O teste de simulação exige `sessionUser`/`me.id` iguais ao ROOT, mas o código retorna identidade demonstrativa. A incompatibilidade aparece também em `git show HEAD` tanto no teste quanto em `AccessGuard`/`me`; não foi introduzida ou corrigida aqui.
+- Teste adicional `forge/app/apps/api/src/access/access.spec.ts`: **23 aprovados, uma falha preexistente**. O teste de simulação exige `sessionUser`/`me.id` iguais ao ROOT, mas o código retorna identidade demonstrativa. A incompatibilidade aparece também em `git show HEAD` tanto no teste quanto em `AccessGuard`/`me`; não foi introduzida ou corrigida aqui.
 - `git diff --check` dos quatro AccessService: sem erros.
 
 Os testes C2 instanciam o **AccessService de DEV real**, sem mock de avaliação de permissões. Aplicam migrations reais 065, 068, 070 e 096 sobre tabelas-base mínimas, além de 209/210. Validam ROOT sem concessão, grants via grupos reais, auditoria, decisão com concessão explícita, bloqueio concorrente de alteração de role/grupo/membership, deny após revogação contra duplicata, versão de sessão, runtime errado, ausência de adapter de plugin, distinção current/history, simulação e autoaprovação.
@@ -86,8 +86,8 @@ As políticas/compatibilidades positivas usadas pelos testes do repository são 
 Comando principal:
 
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
- node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test \
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
+ node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test \
  packages/orbit-core/src/execution/discovery-review-repository.spec.ts \
  packages/orbit-core/src/execution/discovery-review.spec.ts
 ```

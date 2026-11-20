@@ -238,7 +238,7 @@ Caminhos relativos da tabela são sob packages/orbit-core/src/execution salvo qu
 Comandos novos (a matriz não soma24 testes Node fictícios):
 ```sh
 node --test tools/orbit/knowledge-lexical.test.mjs tools/orbit/knowledge.test.mjs
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/knowledge-retrieval.spec.ts dev/app/apps/api/src/execution/knowledge-host.spec.ts
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/knowledge-retrieval.spec.ts forge/app/apps/api/src/execution/knowledge-host.spec.ts
 node --test tools/orbit/knowledge-retrieval-workers.test.mjs
 ```
 
@@ -308,19 +308,19 @@ Delegação limitada a motor puro, catálogo host e auditoria read-only, com esc
 Baseline3375 arquivos. Nesta etapa: **33 modificados,38 novos,0 removidos**. Inventário individual:
 
 - AGENTS.md
-- dev/app/apps/api/src/execution/context-builder.ts
-- dev/app/apps/api/src/execution/context-runtime.ts
-- dev/app/apps/api/src/execution/execution.service.ts
-- dev/app/apps/api/src/execution/knowledge-host.spec.ts
-- dev/app/apps/api/src/execution/knowledge-host.ts
-- dev/app/apps/api/src/execution/knowledge-lexical-loader.ts
-- dev/app/apps/api/src/execution/knowledge-lexical.d.ts
-- dev/app/apps/api/src/execution/knowledge-lexical.js
-- dev/app/apps/api/src/execution/knowledge-retrieval.spec.ts
-- dev/app/apps/api/src/execution/knowledge-retrieval.ts
-- dev/app/apps/api/src/orbit-architecture.ts
-- dev/app/apps/api/src/plugins/ai/prompt-sessions.ts
-- dev/app/orbit.shared-lock.json
+- forge/app/apps/api/src/execution/context-builder.ts
+- forge/app/apps/api/src/execution/context-runtime.ts
+- forge/app/apps/api/src/execution/execution.service.ts
+- forge/app/apps/api/src/execution/knowledge-host.spec.ts
+- forge/app/apps/api/src/execution/knowledge-host.ts
+- forge/app/apps/api/src/execution/knowledge-lexical-loader.ts
+- forge/app/apps/api/src/execution/knowledge-lexical.d.ts
+- forge/app/apps/api/src/execution/knowledge-lexical.js
+- forge/app/apps/api/src/execution/knowledge-retrieval.spec.ts
+- forge/app/apps/api/src/execution/knowledge-retrieval.ts
+- forge/app/apps/api/src/orbit-architecture.ts
+- forge/app/apps/api/src/plugins/ai/prompt-sessions.ts
+- forge/app/orbit.shared-lock.json
 - docs/implementacao-arquitetural/07A-RAG-LEXICAL-COMPARTILHADO-E-CONHECIMENTO-VERSIONADO.md
 - docs/product-experience.md
 - orbit.workspace.json
@@ -335,19 +335,19 @@ Baseline3375 arquivos. Nesta etapa: **33 modificados,38 novos,0 removidos**. Inv
 - packages/orbit-core/src/execution/knowledge-lexical.js
 - packages/orbit-core/src/execution/knowledge-retrieval.spec.ts
 - packages/orbit-core/src/execution/knowledge-retrieval.ts
-- prod/app/apps/api/src/execution/context-builder.ts
-- prod/app/apps/api/src/execution/context-runtime.ts
-- prod/app/apps/api/src/execution/execution.service.ts
-- prod/app/apps/api/src/execution/knowledge-host.spec.ts
-- prod/app/apps/api/src/execution/knowledge-host.ts
-- prod/app/apps/api/src/execution/knowledge-lexical-loader.ts
-- prod/app/apps/api/src/execution/knowledge-lexical.d.ts
-- prod/app/apps/api/src/execution/knowledge-lexical.js
-- prod/app/apps/api/src/execution/knowledge-retrieval.spec.ts
-- prod/app/apps/api/src/execution/knowledge-retrieval.ts
-- prod/app/apps/api/src/orbit-architecture.ts
-- prod/app/apps/api/src/plugins/ai/prompt-sessions.ts
-- prod/app/orbit.shared-lock.json
+- workspace/app/apps/api/src/execution/context-builder.ts
+- workspace/app/apps/api/src/execution/context-runtime.ts
+- workspace/app/apps/api/src/execution/execution.service.ts
+- workspace/app/apps/api/src/execution/knowledge-host.spec.ts
+- workspace/app/apps/api/src/execution/knowledge-host.ts
+- workspace/app/apps/api/src/execution/knowledge-lexical-loader.ts
+- workspace/app/apps/api/src/execution/knowledge-lexical.d.ts
+- workspace/app/apps/api/src/execution/knowledge-lexical.js
+- workspace/app/apps/api/src/execution/knowledge-retrieval.spec.ts
+- workspace/app/apps/api/src/execution/knowledge-retrieval.ts
+- workspace/app/apps/api/src/orbit-architecture.ts
+- workspace/app/apps/api/src/plugins/ai/prompt-sessions.ts
+- workspace/app/orbit.shared-lock.json
 - safdoulas/app/apps/api/src/execution/context-builder.ts
 - safdoulas/app/apps/api/src/execution/context-runtime.ts
 - safdoulas/app/apps/api/src/execution/execution.service.ts

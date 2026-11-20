@@ -87,8 +87,8 @@ Cenários C4: todas as categorias registradas falham fechadas; providers extras 
 Na execução inicial, o subprocesso de teste de Suindá precisou de seu próprio loader/tsconfig para decorators; corrigido somente o harness, sem alterar configuração do runtime. Reexecutado o arquivo afetado: 41 aprovados. Ao final, execução conjunta direcionada: **68 aprovados, zero falhas/ignorados**, em aproximadamente 6,06s. Tempos locais ilustrativos do teste anterior: espera limitada de escrita ~104ms; três transferências ~308ms; detecção/rollback de deadlock ~1,01s. Não são benchmark de produção.
 
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
- node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test \
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
+ node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test \
  packages/orbit-core/src/execution/discovery-review-sources.spec.ts \
  packages/orbit-core/src/execution/discovery-review-repository.spec.ts \
  packages/orbit-core/src/execution/discovery-review.spec.ts

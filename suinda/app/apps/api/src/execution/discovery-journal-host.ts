@@ -1,7 +1,7 @@
 import {realpath,stat} from 'node:fs/promises';
 import {relative,resolve} from 'node:path';
 import {orbitContextRuntime} from '../orbit-architecture';
-import {ContextManifestRepository,assertContextManifestIntegrity,hashContextValue,type ContextQueryClient,type StoredContextManifest,type ContextSource} from './context-manifest';
+import {ContextManifestRepository,assertContextManifestIntegrity,contextQueryRows,type ContextQueryClient,type StoredContextManifest,type ContextSource} from './context-manifest';
 import {DiscoveryJournal,discoveryArtifacts,discoveryIngestionReviewed,type DiscoveryCaptureReceipt} from './discovery-journal';
 import {DiscoveryJournalRepository,type DiscoveryReadFilter} from './discovery-journal-repository';
 import {type Project,ProjectRegistry} from './project-registry';
@@ -10,7 +10,22 @@ import {currentIsolatedExecution} from './isolated-execution-policy';
 import {bindActiveIsolatedCheckout} from './isolated-checkout';
 
 type CaptureInput={db:ContextQueryClient;projects:ProjectRegistry;record:StoredContextManifest|null;project:Project;lease:WorkspaceWriteLease;workerId:string;signal:AbortSignal;output:unknown;authorizeCard:()=>Promise<{id:string;card_revision:number;workspace_id?:string|null}>};
-const rows=async(db:ContextQueryClient,sql:string,p:any[])=>{const r=await db.query(sql,p);return Array.isArray(r)?r:r.rows};
+const object=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
+const rows=async(db:ContextQueryClient,sql:string,p:unknown[]):Promise<Record<string,unknown>[]>=>contextQueryRows(await db.query(sql,p));
+function captureSummary(value:unknown){
+ if(!object(value)||value.schemaVersion!==1||!Array.isArray(value.receipts))return {state:'unavailable_or_not_recorded'};
+ const manifestId=typeof value.manifestId==='string'&&/^[0-9a-f-]{36}$/.test(value.manifestId)?value.manifestId:null;
+ const turn=typeof value.turn==='number'&&Number.isSafeInteger(value.turn)?value.turn:null;
+ const states=['disabled','absent','empty','persisted','duplicate','rejected','pending'] as const;
+ const receipts=value.receipts.slice(0,1).map((entry:unknown)=>{
+  const receipt=object(entry)?entry:{};
+  const state=states.includes(receipt.state as typeof states[number])?receipt.state as typeof states[number]:'pending';
+  const proposalCount=typeof receipt.proposalCount==='number'&&Number.isSafeInteger(receipt.proposalCount)&&receipt.proposalCount>=0&&receipt.proposalCount<=8?receipt.proposalCount:0;
+  const code=typeof receipt.code==='string'&&/^discovery_[a-z0-9_]{1,64}$/.test(receipt.code)?receipt.code:undefined;
+  return {state,proposalCount,...(code?{code}:{}),semanticApproval:false as const};
+ });
+ return {schemaVersion:1 as const,manifestId,turn,receipts,scope:'last_host_receipt_not_global_history' as const};
+}
 /** An internal host hook, not a write API. Failures are capture receipts and never
  * rewrite the executor's technical output or its lifecycle status. */
 async function captureProtectedDiscoveries(input:CaptureInput):Promise<DiscoveryCaptureReceipt[]>{
@@ -53,8 +68,7 @@ export async function readExecutionDiscoveries(db:ContextQueryClient,record:Stor
  const repository=new DiscoveryJournalRepository(db),records=await repository.list({runtimeId:i.runtimeId,projectId:i.projectId,workspaceId:i.workspaceId,actorId,queue:record.queue,runId:record.runId,cardId:i.cardId},filter);
  const counts:Record<string,number>={};for(const r of records)counts[r.category]=(counts[r.category]??0)+1;
  const result=await rows(db,record.queue==='card_runs'?"SELECT metadata->'discovery_capture' AS discovery_capture FROM card_runs WHERE id=$1 AND user_id=$2":"SELECT discovery_capture FROM card_ai_runs WHERE id=$1 AND user_id=$2",[record.runId,actorId]);
- const observed=result[0]?.discovery_capture;
- const latestCapture=observed&&observed.schemaVersion===1&&Array.isArray(observed.receipts)?{schemaVersion:1,manifestId:typeof observed.manifestId==='string'&&/^[0-9a-f-]{36}$/.test(observed.manifestId)?observed.manifestId:null,turn:Number.isSafeInteger(observed.turn)?observed.turn:null,receipts:observed.receipts.slice(0,1).map((r:any)=>({state:['disabled','absent','empty','persisted','duplicate','rejected','pending'].includes(r.state)?r.state:'pending',proposalCount:Number.isSafeInteger(r.proposalCount)&&r.proposalCount>=0&&r.proposalCount<=8?r.proposalCount:0,code:typeof r.code==='string'&&/^discovery_[a-z0-9_]{1,64}$/.test(r.code)?r.code:undefined,semanticApproval:false})),scope:'last_host_receipt_not_global_history'}:{state:'unavailable_or_not_recorded'};
+ const latestCapture=captureSummary(result[0]?.discovery_capture);
 
  return {schemaVersion:1,latestCapture,records:records.map(r=>({...r,statement:discoveryIngestionReviewed(i.projectId,r.artifactHash)?r.statement:null,statementVisibility:discoveryIngestionReviewed(i.projectId,r.artifactHash)?'reviewed_for_ingestion_not_semantically_approved':'withheld_pending_authorized_review',evidence:r.evidence.map(e=>({...e,state:'historical_reference',recordedState:e.state,availability:'not_revalidated'})),semanticApproval:false})),countsByCategory:counts,countsScope:'returned_page_only',limit:filter.limit??50,offset:filter.offset??0,hasMore:records.length===(filter.limit??50),state:'proposed',compatibility:'historical_not_revalidated',approvalWorkflow:'not_implemented'};
 }

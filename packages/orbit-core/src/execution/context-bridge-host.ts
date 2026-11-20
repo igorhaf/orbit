@@ -3,7 +3,7 @@ import {realpath,stat,lstat,readFile} from 'node:fs/promises';
 import {ContextBridge,contextBridgeProtocol,bridgeKnowledgeAuditMetadata,type ContextBridgeLimits,type ContextBridgeAuditEvent} from './context-bridge';
 import {ContextBridgeAdapter} from './context-bridge-adapter';
 import {ContextBridgeRepository} from './context-bridge-repository';
-import {ContextManifestRepository,assertContextManifestIntegrity,canonicalContextJson,hashContextText,hashContextValue,type ContextObject,type ContextJson,type ContextSource,type StoredContextManifest,type ContextManifest,type ContextQueryClient} from './context-manifest';
+import {ContextManifestRepository,assertContextManifestIntegrity,canonicalContextJson,hashContextValue,type ContextObject,type ContextJson,type ContextSource,type StoredContextManifest,type ContextManifest,type ContextQueryClient} from './context-manifest';
 import {compilerPolicyForManifest} from './context-compiler-host';
 import type {ContextCompilerPolicy} from './context-compiler';
 import {ProjectRegistry,type Project} from './project-registry';
@@ -59,7 +59,7 @@ export function contextBridgePolicyForManifest(manifest:ContextManifest|null,env
   return current;
 }
 export function bridgeConfiguration(configuration:ContextObject,policy:ContextBridgeHostPolicy|null):ContextObject{
-  const {contextBridge:previous,...rest}=configuration;return policy?{...rest,contextBridge:policy as unknown as ContextObject}:rest;
+  const rest={...configuration};delete rest.contextBridge;return policy?{...rest,contextBridge:policy as unknown as ContextObject}:rest;
 }
 
 /** Watch the captured local HEAD/ref without spawning a subprocess per query.
@@ -87,7 +87,7 @@ async function localGitSeal(root:string,git:ContextObject|null):Promise<string>{
  }
 }
 
-type CurrentCard={id:string;card_revision:number;workspace_id?:string|null};
+type CurrentCard={id:string;card_revision:number;workspace_id?:string|null;title:string|null;description:string|null};
 export type OpenContextBridgeInput={db:ContextQueryClient;projects:ProjectRegistry;plugins:PluginRegistry;record:StoredContextManifest;project:Project;lease:WorkspaceWriteLease;workerId:string;signal:AbortSignal;card:()=>Promise<CurrentCard>};
 /** Host-only authorization/observation. The adapter receives only a bound exchange closure. */
 export async function openContextBridge(input:OpenContextBridgeInput){
@@ -132,7 +132,7 @@ export async function openContextBridge(input:OpenContextBridgeInput){
     }
     const promptControls=manifest.sources.find(source=>source.id==='prompt:controls');
     if(promptControls){
-      const {title,description,card_revision,...controls}=card as CurrentCard & Record<string,unknown>;
+      const controls=Object.fromEntries(Object.entries(card as CurrentCard & Record<string,unknown>).filter(([key])=>!['title','description','card_revision'].includes(key)));
       const flagsRows=await db.query('SELECT is_internal_orbit FROM ai_projects WHERE id=$1 AND owner_id=$2',[identity.projectId,identity.actorId]);
       const flags=(Array.isArray(flagsRows)?flagsRows:flagsRows.rows)[0];if(!flags)throw new Error('Projeto não autorizado.');
       const controlsHash=hashContextValue({controls,skillConfig:configRow?{skills:configRow.skills,agent:configRow.agent}:null,scope:configRow?{context:configRow.context,permissions:configRow.permissions}:null,projectInternal:flags.is_internal_orbit??false});
@@ -177,8 +177,9 @@ export async function openContextBridge(input:OpenContextBridgeInput){
       observed=projects.documentSource(selectedProject(),document,identity.actorId,scope,source.selectionReason);text=redactContext(document.body);
     }else if(source.origin==='card'||source.origin==='linked_card'){
       const rows=await db.query(`SELECT c.id,c.title,c.description,c.card_revision,b.workspace_id FROM cards c JOIN lists l ON l.id=c.list_id JOIN boards b ON b.id=l.board_id JOIN authorized_board_members m ON m.board_id=b.id WHERE c.id=$1 AND m.user_id=$2 AND b.closed_at IS NULL AND c.archived_at IS NULL AND l.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM vault_items v WHERE v.card_id=c.id)`,[source.resourceId,identity.actorId]);
-      const card=(Array.isArray(rows)?rows:rows.rows)[0];if(!card||(card.workspace_id??null)!==identity.workspaceId)throw new Error('Fonte indisponível.');
-      observed={...source,version:String(card.card_revision),contentHash:hashContextValue({title:redact(card.title),description:redact(card.description)}),availability:'available'};text=redactContext(JSON.stringify({title:card.title,description:card.description}));
+      const card=(Array.isArray(rows)?rows:rows.rows)[0] as CurrentCard|undefined;if(!card||(card.workspace_id??null)!==identity.workspaceId)throw new Error('Fonte indisponível.');
+      const title=typeof card.title==='string'?card.title:'',description=typeof card.description==='string'?card.description:'';
+      observed={...source,version:String(card.card_revision),contentHash:hashContextValue({title:redact(title),description:redact(description)}),availability:'available'};text=redactContext(JSON.stringify({title,description}));
     }else throw new Error('Fonte sem contrato de leitura.');
     observed={...observed,required:source.required,...(source.version?.startsWith('sha256:')?{version:'sha256:'+String(observed.provenance?.rawHash)}:{})};
     await projects.assertSelectionUnchanged(selectedProject(),identity.actorId,[observed],scope);await authorize(operationSignal);
@@ -187,9 +188,8 @@ export async function openContextBridge(input:OpenContextBridgeInput){
   await bounded(authorize(signal));if(signal.aborted)throw new Error('Bridge cancelado antes de ativar.');
   if(policy.knowledge||manifest.sources.some(source=>source.version?.startsWith('sha256:')))await bounded(repository.assertKnowledgeSchema());
   const knowledge=policy.knowledge?await bounded(createKnowledgeBridgeCallback({record,projects,project:selectedProject(),permissions:[...knowledgePermissions],authorize})):undefined;
-  let bridge:ContextBridge;
-  const audit=(event:ContextBridgeAuditEvent)=>bounded(repository.append({bridgeId:bridge.binding.bridgeId,manifestId:record.id,queue:record.queue,runId:record.runId,turn:record.turn,runtimeId:identity.runtimeId,projectId:identity.projectId,workspaceId:identity.workspaceId,cardId:identity.cardId,cardRevision:identity.cardRevision,actorId:identity.actorId,ownerId:lease.owner,contextFingerprint:manifest.fingerprint},event)).then(()=>undefined);
-  bridge=new ContextBridge({record,ownerId:lease.owner,limits:policy.limits,signal,authorize,observe,read,
+  const audit=(event:ContextBridgeAuditEvent):Promise<void>=>bounded(repository.append({bridgeId:bridge.binding.bridgeId,manifestId:record.id,queue:record.queue,runId:record.runId,turn:record.turn,runtimeId:identity.runtimeId,projectId:identity.projectId,workspaceId:identity.workspaceId,cardId:identity.cardId,cardRevision:identity.cardRevision,actorId:identity.actorId,ownerId:lease.owner,contextFingerprint:manifest.fingerprint},event)).then(()=>undefined);
+  const bridge:ContextBridge=new ContextBridge({record,ownerId:lease.owner,limits:policy.limits,signal,authorize,observe,read,
     readableSourceIds:manifest.sources.filter(source=>(source.origin==='project_file'&&source.type!=='configuration'||source.origin==='project_document'&&['agents','skills','rules','knowledge'].includes(source.type)||source.origin==='card'||source.origin==='linked_card')&&source.availability==='available'&&source.provenance?.selectionOnly!==true).map(source=>source.id),
     ...(knowledge?{knowledge:{policy:policy.knowledge!,...knowledge}}:{}),audit});
   try{await audit({phase:'bridge_created',status:'active',observedAt:new Date().toISOString()});}

@@ -1,6 +1,6 @@
 {
   "name": "@orbit/core-source",
-  "version": "1.12.5",
+  "version": "1.16.8",
   "private": true,
   "description": "Canonical Orbit source distribution with reproducible isolated-runtime projections.",
   "files": [
@@ -45,6 +45,22 @@
         "target": "apps/api/sql/migrations/209_discovery_journal.sql"
       },
       {
+        "source": "sql/migrations/213_auth_email_change.sql",
+        "target": "apps/api/sql/migrations/213_auth_email_change.sql"
+      },
+      {
+        "source": "src/access/auth-email-change.postgres.spec.ts",
+        "target": "apps/api/src/access/auth-email-change.postgres.spec.ts"
+      },
+      {
+        "source": "src/access/auth-email-change.spec.ts",
+        "target": "apps/api/src/access/auth-email-change.spec.ts"
+      },
+      {
+        "source": "src/access/auth-email-change.ts",
+        "target": "apps/api/src/access/auth-email-change.ts"
+      },
+      {
         "source": "src/access/bootstrap-root.spec.ts",
         "target": "apps/api/src/access/bootstrap-root.spec.ts"
       },
@@ -53,8 +69,36 @@
         "target": "apps/api/src/access/bootstrap-root.ts"
       },
       {
+        "source": "src/access/editorial-permissions.ts",
+        "target": "apps/api/src/access/editorial-permissions.ts"
+      },
+      {
+        "source": "src/access/login-factors.spec.ts",
+        "target": "apps/api/src/access/login-factors.spec.ts"
+      },
+      {
+        "source": "src/access/login-factors.ts",
+        "target": "apps/api/src/access/login-factors.ts"
+      },
+      {
         "source": "src/access/management.ts",
         "target": "apps/api/src/access/management.ts"
+      },
+      {
+        "source": "src/access/privileges.spec.ts",
+        "target": "apps/api/src/access/privileges.spec.ts"
+      },
+      {
+        "source": "src/access/privileges.ts",
+        "target": "apps/api/src/access/privileges.ts"
+      },
+      {
+        "source": "src/access/profile-simulation-plugins.spec.ts",
+        "target": "apps/api/src/access/profile-simulation-plugins.spec.ts"
+      },
+      {
+        "source": "src/access/profile-simulation-plugins.ts",
+        "target": "apps/api/src/access/profile-simulation-plugins.ts"
       },
       {
         "source": "src/access/request-rate-limits.spec.ts",
@@ -529,12 +573,24 @@
         "target": "apps/api/src/execution/project-registry.ts"
       },
       {
+        "source": "src/execution/prompt-run-mode.ts",
+        "target": "apps/api/src/execution/prompt-run-mode.ts"
+      },
+      {
         "source": "src/execution/registries.ts",
         "target": "apps/api/src/execution/registries.ts"
       },
       {
         "source": "src/execution/run-repository.ts",
         "target": "apps/api/src/execution/run-repository.ts"
+      },
+      {
+        "source": "src/execution/runtime-code-policy.spec.ts",
+        "target": "apps/api/src/execution/runtime-code-policy.spec.ts"
+      },
+      {
+        "source": "src/execution/runtime-code-policy.ts",
+        "target": "apps/api/src/execution/runtime-code-policy.ts"
       },
       {
         "source": "src/execution/security.ts",
@@ -931,10 +987,6 @@
       {
         "source": "src/workspaces/workspace-branding.ts",
         "target": "apps/api/src/workspaces/workspace-branding.ts"
-      },
-      {
-        "source": "src/access/editorial-permissions.ts",
-        "target": "apps/api/src/access/editorial-permissions.ts"
       }
     ]
   }

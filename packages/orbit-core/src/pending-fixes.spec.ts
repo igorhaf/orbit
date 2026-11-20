@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,6 +8,39 @@ import { CodexAiService, codexErrorMessage } from './codex-ai';
 import { PromptSessionsService } from './prompt-sessions';
 import { TrelloSyncService } from './trello-sync';
 import { orbitArchitecturePrompt } from './orbit-architecture';
+import { withWorkspaceWriteLease } from './execution/workspace-coordinator';
+
+function codexServiceAt(home:string){
+  const service=new CodexAiService();
+  Object.assign(service,{codexHome:async()=>home});
+  return service;
+}
+
+async function guardedCodex<T>(directory:string,action:()=>Promise<T>):Promise<T>{
+  let owner='';
+  const db={pool:{connect:async()=>Object.assign(new EventEmitter(),{
+    query:async()=>({rows:[{locked:true}]}),
+    release(){},
+  })}};
+  try{
+    return await withWorkspaceWriteLease(db,{queue:'card_ai_runs',runId:'pending-fixes-codex-fixture',cardId:'fixture-card',projectId:'fixture-project',projectRoot:directory},async lease=>{
+      owner=lease.owner;
+      return action();
+    });
+  }finally{
+    if(owner)await rm(`/tmp/orbit-write-coordination-${process.getuid?.()}/${owner}.json`,{force:true});
+  }
+}
+
+function errorChain(error:unknown){
+  const messages:string[]=[];
+  let current=error;
+  while(current instanceof Error){
+    messages.push(current.message);
+    current=(current as Error&{cause?:unknown}).cause;
+  }
+  return messages.join('\n');
+}
 
 test('Codex errors distinguish account quota, context tokens and timeouts',()=>{
   assert.match(codexErrorMessage('You have exceeded your current quota: insufficient_quota'),/limite de uso ou de tokens/);
@@ -29,7 +63,7 @@ test('Codex receives long prompts through stdin instead of process arguments',as
     await writeFile(executable,`#!/usr/bin/env node\nimport {writeFile} from 'node:fs/promises';\nconst args=process.argv.slice(2);\nconst output=args[args.indexOf('--output-last-message')+1];\nif(args.at(-1)!=='-'||args.includes('--dangerously-bypass-approvals-and-sandbox')||args[args.indexOf('--sandbox')+1]!=='read-only')process.exit(2);\nlet prompt='';for await(const chunk of process.stdin)prompt+=chunk;\nawait writeFile(output,String(prompt.length));\n`);
     await chmod(executable,0o755);
     process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;
-    assert.equal(await new CodexAiService().complete(prompt,'gpt-6-luna','high'),String(`${orbitArchitecturePrompt}\n\n${prompt}`.length));
+    assert.equal(await codexServiceAt(directory).complete(prompt,'gpt-6-luna','high'),String(`${orbitArchitecturePrompt}\n\n${prompt}`.length));
   }finally{
     if(previousBin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previousBin;
     if(previousHome===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previousHome;
@@ -45,7 +79,7 @@ test('Codex kills a silent process after the inactivity deadline',async()=>{
     await writeFile(executable,`#!/usr/bin/env node\nawait new Promise(resolve=>setTimeout(resolve,5000));\n`);
     await chmod(executable,0o755);
     process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;process.env.CODEX_AI_TIMEOUT_MS='120';process.env.CODEX_AI_MAX_RUNTIME_MS='2000';
-    await assert.rejects(()=>new CodexAiService().complete('travou','gpt-6-luna','low'),/inatividade/);
+    await assert.rejects(()=>codexServiceAt(directory).complete('travou','gpt-6-luna','low'),/inatividade/);
   }finally{
     if(previous.bin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previous.bin;
     if(previous.home===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previous.home;
@@ -63,7 +97,7 @@ test('Codex enforces an absolute deadline even when a process keeps producing ou
     await writeFile(executable,`#!/usr/bin/env node\nsetInterval(()=>process.stdout.write('still alive\\n'),15);\n`);
     await chmod(executable,0o755);
     process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;process.env.CODEX_AI_TIMEOUT_MS='500';process.env.CODEX_AI_MAX_RUNTIME_MS='160';
-    await assert.rejects(()=>new CodexAiService().execute('travou',directory,'gpt-6-luna','low',()=>undefined),/tempo máximo/);
+    await assert.rejects(()=>guardedCodex(directory,()=>codexServiceAt(directory).execute('travou',directory,'gpt-6-luna','low',()=>undefined)),error=>/tempo máximo/.test(errorChain(error)));
   }finally{
     if(previous.bin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previous.bin;
     if(previous.home===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previous.home;
@@ -81,7 +115,7 @@ test('Codex stops promptly when the run is no longer owned by its worker',async(
     await writeFile(executable,`#!/usr/bin/env node\nsetInterval(()=>process.stdout.write('still alive\\n'),15);\n`);
     await chmod(executable,0o755);
     process.env.CODEX_BIN=executable;process.env.CODEX_HOME=directory;process.env.CODEX_AI_TIMEOUT_MS='1000';process.env.CODEX_AI_MAX_RUNTIME_MS='2000';process.env.CODEX_AI_HEARTBEAT_INTERVAL_MS='100';
-    await assert.rejects(()=>new CodexAiService().execute('órfão',directory,'gpt-6-luna','low',()=>undefined,null,undefined,()=>false),/não está mais ativa/);
+    await assert.rejects(()=>guardedCodex(directory,()=>codexServiceAt(directory).execute('órfão',directory,'gpt-6-luna','low',()=>undefined,null,undefined,()=>false)),error=>/não está mais ativa/.test(errorChain(error)));
   }finally{
     if(previous.bin===undefined)delete process.env.CODEX_BIN;else process.env.CODEX_BIN=previous.bin;
     if(previous.home===undefined)delete process.env.CODEX_HOME;else process.env.CODEX_HOME=previous.home;

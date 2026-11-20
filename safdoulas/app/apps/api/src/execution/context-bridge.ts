@@ -1,6 +1,6 @@
 import type {KnowledgeResult} from './knowledge-retrieval';
 import {createHmac,randomBytes,randomUUID} from 'node:crypto';
-import {assertContextManifestIntegrity,canonicalContextJson,compareContextManifest,hashContextText,hashContextValue,type ContextObject,type ContextSource,type CurrentContextObservation,type StoredContextManifest,type ContextCompatibility} from './context-manifest';
+import {assertContextManifestIntegrity,canonicalContextJson,compareContextManifest,hashContextText,hashContextValue,type ContextObject,type ContextJson,type ContextSource,type CurrentContextObservation,type StoredContextManifest} from './context-manifest';
 import {contextCompilerMaterialBudget,type ContextCompilerPolicy} from './context-compiler';
 
 export const contextBridgeProtocol='orbit-context-bridge/1' as const;
@@ -48,7 +48,7 @@ function validateRequest(value:unknown,maxBytes:number):ContextBridgeRequest {
 function sameSource(captured:ContextSource,current:ContextSource){
   // Compare the same semantic source dimensions preserved by the04 manifest.
 
-  const normalize=(value:any):any=>Array.isArray(value)?value.map(normalize):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([key])=>!['observedAt','capturedAt','createdAt','updatedAt'].includes(key)).map(([key,entry])=>[key,normalize(entry)])):value;
+  const normalize=(value:ContextJson):ContextJson=>Array.isArray(value)?value.map(normalize):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([key])=>!['observedAt','capturedAt','createdAt','updatedAt'].includes(key)).map(([key,entry])=>[key,normalize(entry)])):value;
   return canonicalContextJson(normalize(captured))===canonicalContextJson(normalize(current));
 }
 
@@ -144,7 +144,7 @@ export class ContextBridge {
     }
     if(request.capability==='context.describe'){
       const {compatibility,complete}=await this.observe(signal);
-      const {ownerId,protocol,schemaVersion,...identity}=this.binding;
+      const identity={bridgeId:this.binding.bridgeId,manifestId:this.binding.manifestId,queue:this.binding.queue,runId:this.binding.runId,turn:this.binding.turn,runtimeId:this.binding.runtimeId,projectId:this.binding.projectId,workspaceId:this.binding.workspaceId,cardId:this.binding.cardId,cardRevision:this.binding.cardRevision,actorId:this.binding.actorId,executor:this.binding.executor,contextFingerprint:this.binding.contextFingerprint,compiledHash:this.binding.compiledHash,checkoutHash:this.binding.checkoutHash,gitBase:this.binding.gitBase};
       return {data:{identity:identity as unknown as ContextObject,verification:{status:compatibility.status,complete,changedDimensions:compatibility.changes.length},executionState:'running',compilationPolicy:'orbit-context-compiler/1'}};
     }
     if(request.capability==='sources.list'){
@@ -207,11 +207,11 @@ export class ContextBridge {
     const knowledge=request.capability==='knowledge.search'&&this.knowledge?{schemaVersion:1 as const,queryHash:hashContextValue({text:request.parameters!.query,fields:['dynamic_query'],cardId:this.binding.cardId,cardRevision:this.binding.cardRevision}),corpusHash:String((this.record.manifest.configuration.knowledgeRetrieval as ContextObject|undefined)?.corpusHash??''),policy:'orbit-lexical-retrieval/1',found:0,returned:0,omitted:0,remainingBytes:Math.max(0,this.limits.maxTotalBytes-this.charged-this.reserved),sources:[]}:undefined;
     const provenance={...(knowledge&&sha.test(knowledge.corpusHash)?{knowledge}:{}),...(request.parameters?.sourceId?{sourceId:request.parameters.sourceId}:{}),...(selectedSource?{sourceIdentityHash:hashContextText(selectedSource.id)}:{})};
     await this.audit({phase:'request_received',requestId:request.id,capability:request.capability,...provenance,status:'received'});this.ensureActive(signal);
-    let response:ContextBridgeResponse,source:ContextSource|undefined,sourceId=request.parameters?.sourceId;
+    let response:ContextBridgeResponse,source:ContextSource|undefined;
     try{
       await this.authorize(signal);await this.audit({phase:'authorized',requestId:request.id,capability:request.capability,...provenance,status:'authorized'});this.ensureActive(signal);
       if(overConcurrency)throw new ContextBridgeError('bridge_concurrency_limit');
-      const handled=await this.handle(request,signal);source=handled.source;sourceId=handled.sourceId;
+      const handled=await this.handle(request,signal);source=handled.source;
       response=this.response(request,'ok',handled.data);
       if(response.returnedBytes>this.limits.maxResponseBytes)throw new ContextBridgeError('bridge_response_size_limit');
     }catch(error){

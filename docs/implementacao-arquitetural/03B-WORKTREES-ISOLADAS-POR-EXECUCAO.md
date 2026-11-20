@@ -296,9 +296,9 @@ Nenhum H ficou FAIL/NOT_RUN/BLOCKED ao final **no escopo isolado descrito**. Tr�
 Comandos adicionais seguros, usando as fixtures já corrigidas:
 
 ```sh
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json CODEX_BIN=/nonexistent/orbit-fixture-never-codex node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/isolated-execution-policy.spec.ts dev/app/apps/api/src/execution/execution.spec.ts dev/app/apps/api/src/execution/file-scope.spec.ts dev/app/apps/api/src/execution/managed-process.spec.ts dev/app/apps/api/src/execution/project-checks.spec.ts dev/app/apps/api/src/execution/workspace-coordinator.spec.ts dev/app/apps/api/src/execution/workspace-process.spec.ts
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json CODEX_BIN=/nonexistent/orbit-fixture-never-codex node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test --test-name-pattern='prompt queue|revision|disabled AI startup|Questionar|multi_agent' dev/app/apps/api/src/prompt-question.spec.ts
-node dev/app/node_modules/typescript/bin/tsc --noEmit --incremental false -p dev/app/apps/api/tsconfig.json
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json CODEX_BIN=/nonexistent/orbit-fixture-never-codex node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/isolated-execution-policy.spec.ts forge/app/apps/api/src/execution/execution.spec.ts forge/app/apps/api/src/execution/file-scope.spec.ts forge/app/apps/api/src/execution/managed-process.spec.ts forge/app/apps/api/src/execution/project-checks.spec.ts forge/app/apps/api/src/execution/workspace-coordinator.spec.ts forge/app/apps/api/src/execution/workspace-process.spec.ts
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json CODEX_BIN=/nonexistent/orbit-fixture-never-codex node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test --test-name-pattern='prompt queue|revision|disabled AI startup|Questionar|multi_agent' forge/app/apps/api/src/prompt-question.spec.ts
+node forge/app/node_modules/typescript/bin/tsc --noEmit --incremental false -p forge/app/apps/api/tsconfig.json
 ```
 
 O comando de prompt/tsc aplica-se aos outros três prefixos com seus respectivos loader/tsconfig. O bloco75 foi executado via node --test com os nove arquivos listados na tabela. Logs locais de execução estão em `/tmp/orbit03b-audit-jnvk5i5v/`; não são requeridos para reproduzir os comandos e não se presume sua retenção permanente.
@@ -324,7 +324,7 @@ Quatro mappings novos:
 - src/execution/isolated-execution-policy.spec.ts → apps/api/src/execution/isolated-execution-policy.spec.ts.
 - sql/migrations/159_isolated_checkouts.sql → apps/api/sql/migrations/159_isolated_checkouts.sql.
 
-Esses quatro e as seis fontes comuns alteradas de§7 estão projetados sob `dev/app`, `prod/app`, `safdoulas/app`, `suinda/app`. As três famílias não mapeadas (prompt-sessions, codex-provider, orbit-architecture) receberam deltas localizados nos quatro runtimes. Suas diferenças intencionais não foram substituídas por uma cópia integral DEV.
+Esses quatro e as seis fontes comuns alteradas de§7 estão projetados sob `forge/app`, `workspace/app`, `safdoulas/app`, `suinda/app`. As três famílias não mapeadas (prompt-sessions, codex-provider, orbit-architecture) receberam deltas localizados nos quatro runtimes. Suas diferenças intencionais não foram substituídas por uma cópia integral DEV.
 
 Conferência final exige zero drift core e zero locks pendentes. As nove divergências UI anteriores continuam exatamente nos mesmos caminhos; nenhuma projeção UI foi escrita pela release. A comparação com o preflight inicial confirmou os296 hashes de projeção UI e suas296 entradas de lock preservados. Publicação de fontes significa distribuição de arquivos versionáveis no checkout; não significa deploy, migration, npm publish ou ativação operacional.
 

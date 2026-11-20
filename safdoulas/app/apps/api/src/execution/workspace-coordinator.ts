@@ -14,7 +14,7 @@ const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const contains=(parent:string,child:string)=>{const path=relative(parent,child);return path===''||!path.startsWith('..')&&!isAbsolute(path)};
 const directory=()=>`/tmp/orbit-write-coordination-${process.getuid?.()}`;
 type Resource={path:string;dev:number;ino:number};
-type Client={query:(sql:string,params?:unknown[])=>Promise<{rows:any[]}>;on:(event:'error',listener:(error:Error)=>void)=>unknown;removeListener:(event:'error',listener:(error:Error)=>void)=>unknown;release:(destroy?:boolean)=>void};
+type Client={query:(sql:string,params?:unknown[])=>Promise<{rows:Record<string,unknown>[]}>;on:(event:'error',listener:(error:Error)=>void)=>unknown;removeListener:(event:'error',listener:(error:Error)=>void)=>unknown;release:(destroy?:boolean)=>void};
 type Database={pool:{connect:()=>Promise<Client>}};
 export type WorkspaceWriteLeaseRequest={queue:string;runId:string;cardId:string;projectId:string;projectRoot:string;workingDirectory?:string;signal?:AbortSignal;onState?:(state:string)=>void};
 export interface WorkspaceWriteLease {owner:string;resource:string;signal:AbortSignal;assertActive():Promise<void>;descriptors():number[];trackProcess(child:ChildProcess):void;poison(reason:string):void}
@@ -38,7 +38,7 @@ async function gitRoots(path:string):Promise<string[]>{
     const top=(await exec('git',['-C',path,'rev-parse','--show-toplevel'],{env,timeout:3000})).stdout.trim();
     const common=(await exec('git',['-C',path,'rev-parse','--git-common-dir'],{env,timeout:3000})).stdout.trim();
     return [await realpath(top),await realpath(resolve(path,common))];
-  }catch(error){
+  }catch{
     for(let parent=path;;parent=dirname(parent)){
       try{await lstat(join(parent,'.git'));throw new WorkspaceCoordinationError('A raiz Git existe, mas não pôde ser resolvida com segurança.')}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e}
       if(parent===dirname(parent))break;
@@ -79,19 +79,22 @@ async function tryPhysicalLocks(roots:Resource[]){
   }catch(error){await closeHandles(handles);throw error}
 }
 async function readMarkers(path:string){
-  const values:any[]=[];
+  const values:unknown[]=[];
   for(const file of await readdir(path)){
     if(!file.endsWith('.json'))continue;
     let handle:FileHandle;
     try{handle=await open(join(path,file),constants.O_RDONLY|constants.O_NOFOLLOW)}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')continue;throw error}
-    try{const entry=await handle.stat();if(entry.size>65536||entry.uid!==process.getuid?.())throw new Error('Invalid marker');values.push(JSON.parse(await handle.readFile('utf8')))}finally{await handle.close()}
+    try{const entry=await handle.stat();if(entry.size>65536||entry.uid!==process.getuid?.())throw new Error('Invalid marker');const parsed:unknown=JSON.parse(await handle.readFile('utf8'));values.push(parsed)}finally{await handle.close()}
   }
   return values;
 }
-async function overlaps(marker:any,roots:Resource[]){
-  if(!Array.isArray(marker.roots))throw new WorkspaceCoordinationError('Ownership inválido; exige revisão manual.');
-  for(const old of marker.roots)for(const root of roots){
-    if(typeof old.path!=='string'||!isAbsolute(old.path))throw new WorkspaceCoordinationError('Ownership inválido.');
+async function overlaps(marker:unknown,roots:Resource[]){
+  if(!marker||typeof marker!=='object'||Array.isArray(marker)||!Array.isArray((marker as Record<string,unknown>).roots))throw new WorkspaceCoordinationError('Ownership inválido; exige revisão manual.');
+  const markerRoots=(marker as {roots:unknown[]}).roots;
+  for(const candidate of markerRoots)for(const root of roots){
+    if(!candidate||typeof candidate!=='object'||Array.isArray(candidate))throw new WorkspaceCoordinationError('Ownership inválido.');
+    const old=candidate as Record<string,unknown>;
+    if(typeof old.path!=='string'||!isAbsolute(old.path)||typeof old.dev!=='number'||typeof old.ino!=='number')throw new WorkspaceCoordinationError('Ownership inválido.');
     if(contains(old.path,root.path)||contains(root.path,old.path)||old.dev===root.dev&&old.ino===root.ino)return true;
     for(let p=root.path;;p=dirname(p)){const value=await stat(p);if(value.dev===old.dev&&value.ino===old.ino)return true;if(p===dirname(p))break}
   }
@@ -131,17 +134,20 @@ export async function withWorkspaceWriteLease<T>(db:Database,request:WorkspaceWr
     coverage.set(lease,roots);
     let checking=false;
     const heartbeat=setInterval(()=>{if(checking||finished)return;checking=true;let timer:ReturnType<typeof setTimeout>;void Promise.race([client!.query('SELECT 1 AS workspace_guard_heartbeat'),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Heartbeat de coordenação expirou.')),1500)})]).catch(error=>fail(String(error.message))).finally(()=>{clearTimeout(timer);checking=false})},500);heartbeat.unref();
-    let callbackCompleted=false;
-    try{await lease.assertActive();state('active_workspace');const result=await storage.run(lease,()=>callback(lease));await lease.assertActive();callbackCompleted=true;return result}
+    let callbackCompleted=false,result:T|undefined,operationError:unknown,operationFailed=false;
+    try{await lease.assertActive();state('active_workspace');result=await storage.run(lease,()=>callback(lease));await lease.assertActive();callbackCompleted=true}
+    catch(error){operationError=error;operationFailed=true}
     finally{
       clearInterval(heartbeat);
       // Never close directory descriptors while a known supervisor is still alive.
       if(processes.size){if(callbackCompleted)fail('Execução retornou com processos mutáveis ainda ativos.');else controller.abort(new Error('A execução falhou; drenando processos.'));}
       while(processes.size)await Promise.all([...processes]);
-      try{if(!poison){for(const value of [...roots,identities.project,identities.work]){const current=await physical(value.path);if(current.dev!==value.dev||current.ino!==value.ino)throw new Error('Workspace identity changed')}await unlink(markerPath)}}catch(error){poison=String(error);}
+      try{if(!poison){let identityMatches=true;for(const value of [...roots,identities.project,identities.work]){const current=await physical(value.path);if(current.dev!==value.dev||current.ino!==value.ino){identityMatches=false;break}}if(identityMatches)await unlink(markerPath);else poison='Workspace identity changed'}}catch(error){poison=String(error);}
       finished=true;request.signal?.removeEventListener('abort',aborted);client!.removeListener('error',connectionError);
       state(poison?'quarantined_workspace':'released_workspace');
-      if(poison)throw new WorkspaceCoordinationError(poison,'WORKSPACE_PROTECTION_LOST');
     }
+    if(poison){const failure=new WorkspaceCoordinationError(poison,'WORKSPACE_PROTECTION_LOST');if(operationFailed)Object.defineProperty(failure,'cause',{value:operationError});throw failure}
+    if(operationFailed)throw operationError;
+    return result as T;
   }finally{if(client)client.release(true);if(handles)await closeHandles(handles)}
 }

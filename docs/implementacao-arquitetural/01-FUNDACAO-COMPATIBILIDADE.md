@@ -145,7 +145,7 @@ Ambiente: host local, Node e dependências TypeScript/tsx/Ajv já instaladas; ne
 | Comando/verificação | Resultado e alcance |
 |---|---|
 | `node --test --test-concurrency=1 tools/orbit/preflight.test.mjs tools/orbit/catalog.test.mjs tools/orbit/shared.test.mjs tools/orbit/registry-foundation.test.mjs` | **30/30 passaram** na execução final, sem skips. Inclui 9 catálogo, 13 shared, 7 preflight e 1 registry. Rodadas intermediárias de 28 e 29 também passaram; casos foram acrescentados após revisão. |
-| `TSX_DISABLE_CACHE=1 node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test packages/orbit-core/src/execution/file-scope.spec.ts` | **7/7 passaram**, somente arquivos sintéticos. Não demonstra ausência de rollback cruzado. |
+| `TSX_DISABLE_CACHE=1 node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test packages/orbit-core/src/execution/file-scope.spec.ts` | **7/7 passaram**, somente arquivos sintéticos. Não demonstra ausência de rollback cruzado. |
 | `node tools/orbit/cli.mjs preflight --runtime dev --format text` | Saiu com **BLOCK**, exit 1, pelos drifts preexistentes; formato humano conferido. |
 | `preflight(context)` para os quatro runtimes | **BLOCK**; 984 projeções, 17 divergentes, 29 arestas diretas de imports IA. Catálogos: DEV 40 plugins/62 actions; PROD 42/62; Safdoulas 55/62; Suindá 58/63. Contagens são metadados estáticos, não plugins ativos em banco. A execução final agregou 4 PASS, 5 WARN, 46 NOT_VERIFIED e 34 BLOCK; os findings podem referir-se ao mesmo drift sob aspectos diferentes. |
 | `reconcileShared(context,{changedFiles:[...dois file-scope...],allowWrite:false})` | Falha esperada de planejamento: nove drifts independentes de UI; nada persistido. |
@@ -178,7 +178,7 @@ Nenhum commit, stage, branch nova, reset, restore, clean, stash, push ou deploy 
 - Análise estática não comprova bootstrap Nest, permissões de rotas reais, instalação/enablement em banco, assinatura de métodos internos ou integração de todos os plugins.
 - Dependências continuam IDs, sem ranges de versão por consumidor. Imports dinâmicos/DI e resolução fora dos caminhos locais não são um grafo completo.
 - AST possui limites. Campos não resolvidos são marcados e sua compilação de schemas é evitada; código que constrói metadados por execução complexa exige outro teste de contrato isolado.
-- `schema-validator-unavailable` e ausência de parser são NOT_VERIFIED, não download automático. Alguns testes dependem de `dev/app/node_modules` já preparado.
+- `schema-validator-unavailable` e ausência de parser são NOT_VERIFIED, não download automático. Alguns testes dependem de `forge/app/node_modules` já preparado.
 - O preflight não classifica automaticamente intenção de diferenças runtime-owned. O catálogo compara contratos; a revisão humana deste relatório identificou as variantes UI conhecidas.
 - Prova de somente leitura é de conteúdo/mtime em fixtures e inspeção do código, não medição de todos os syscalls no host.
 - A publicação core não foi concluída. A fundação de compatibilidade não está liberada para distribuição comum aos quatro produtos.
@@ -209,7 +209,7 @@ Nenhum commit, stage, branch nova, reset, restore, clean, stash, push ou deploy 
 
 A preparação entregue é verificável: há um comando somente de leitura, hashes por fonte/projeção/lock, contratos/capabilities catalogados, metadados dinâmicos identificados e testes independentes para o registry com IA desabilitada. São úteis para delimitar e revisar a mudança de versionamento de cards.
 
-Os pontos existentes permanecem: `dev/app/apps/api/src/main.ts` (`Service.updateCard`), `execution/run-repository.ts` (enqueue/finish), `plugins/ai/prompt-sessions.ts` (criação/conclusão/retomada), `execution/context-builder.ts`, `execution/project-registry.ts` e UI de resultados em `apps/web/components/card-dialog.tsx`. Suas projeções mapeadas devem partir das fontes em `packages/orbit-core`, observando o manifesto; nem todos os arquivos AI são compartilhados.
+Os pontos existentes permanecem: `forge/app/apps/api/src/main.ts` (`Service.updateCard`), `execution/run-repository.ts` (enqueue/finish), `plugins/ai/prompt-sessions.ts` (criação/conclusão/retomada), `execution/context-builder.ts`, `execution/project-registry.ts` e UI de resultados em `apps/web/components/card-dialog.tsx`. Suas projeções mapeadas devem partir das fontes em `packages/orbit-core`, observando o manifesto; nem todos os arquivos AI são compartilhados.
 
 Antes de implementar: revisar este relatório externamente; resolver a publicação compartilhada ou definir um plano de pacote transacional formalmente testado; decidir política de revisão/freshness; preparar DB efêmero comprovado. Testes da etapa 02 precisarão cobrir edição antes/depois de enqueue/claim, conclusão antiga, ambas filas, idempotência/CAS, sessão/contexto e compatibilidade com IA desabilitada. Esses testes e componentes não foram implementados nesta etapa.
 

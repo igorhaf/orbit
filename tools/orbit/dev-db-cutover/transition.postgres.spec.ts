@@ -10,11 +10,11 @@ import { EditorialAuthorizationGenerationRepository as Repository } from '../../
 import { recoverEditorialPluginSetting } from '../../../packages/orbit-core/src/execution/editorial-plugin-settings-recovery';
 import { RequiredBoardViewError, writeEditorialPluginSetting } from '../../../packages/orbit-core/src/execution/editorial-plugin-settings-writer';
 
-const { Pool } = createRequire(resolve('dev/app/package.json'))('pg');
+const { Pool } = createRequire(resolve('forge/app/package.json'))('pg');
 const database = 'orbit_r5ca_fixture';
 const [owner, app, writer, reader] = ['fixture_owner', 'fixture_app', 'fixture_writer', 'fixture_reader'];
 const names = { owner_role: owner, app_role: app, writer_role: writer, reader_role: reader };
-const migrations = 'dev/app/apps/api/sql/migrations';
+const migrations = 'forge/app/apps/api/sql/migrations';
 const scripts = 'tools/orbit/dev-db-cutover';
 const migration212 = 'packages/orbit-core/sql/migrations/212_editorial_authorization_generation.sql';
 const legacy = "INSERT INTO plugin_settings(plugin_id,enabled) VALUES('vault',false) ON CONFLICT(plugin_id) DO UPDATE SET enabled=EXCLUDED.enabled";

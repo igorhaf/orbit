@@ -77,7 +77,7 @@ def validated_snapshot(name):
 
 def ensure_dev_app_role():
     """Restore ownership after pg_restore, including after the DEV volume is recreated."""
-    config = Path('/home/meada/projetos/orbit/dev/data/config/api.env')
+    config = Path('/home/meada/projetos/orbit/forge/data/config/api.env')
     entry = next((line.partition('=')[2].strip().strip('"\'') for line in config.read_text().splitlines()
                   if line.startswith('DATABASE_URL=')), None)
     if not entry:

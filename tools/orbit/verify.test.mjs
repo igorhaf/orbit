@@ -11,15 +11,15 @@ function fixture(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   execFileSync('git', ['init', '-q', root]);
   mkdirSync(resolve(root, 'scripts'));
-  mkdirSync(resolve(root, 'dev/app/apps/api/src'), { recursive: true });
-  writeFileSync(resolve(root, 'dev/app/apps/api/core-version.json'), JSON.stringify({ version: '1.0.0', pluginApiVersion: 1 }));
-  writeFileSync(resolve(root, 'dev/app/apps/api/src/main.ts'), 'export const value = 1;\n');
-  writeFileSync(resolve(root, 'dev/app/apps/api/package.json'), JSON.stringify({ scripts: {} }));
-  writeFileSync(resolve(root, 'dev/app/orbit.shared-lock.json'), JSON.stringify({ schemaVersion: 1, runtime: 'dev', packages: [] }, null, 2) + '\n');
+  mkdirSync(resolve(root, 'forge/app/apps/api/src'), { recursive: true });
+  writeFileSync(resolve(root, 'forge/app/apps/api/core-version.json'), JSON.stringify({ version: '1.0.0', pluginApiVersion: 1 }));
+  writeFileSync(resolve(root, 'forge/app/apps/api/src/main.ts'), 'export const value = 1;\n');
+  writeFileSync(resolve(root, 'forge/app/apps/api/package.json'), JSON.stringify({ scripts: {} }));
+  writeFileSync(resolve(root, 'forge/app/orbit.shared-lock.json'), JSON.stringify({ schemaVersion: 1, runtime: 'dev', packages: [] }, null, 2) + '\n');
   writeFileSync(resolve(root, '.gitignore'), '.orbit/\n');
   const source = resolve(root, 'scripts/verify-plugin-compatibility.mjs');
   writeFileSync(source, `import fs from 'node:fs'; fs.mkdirSync('.orbit/local',{recursive:true}); const p='.orbit/local/counter'; fs.writeFileSync(p,String(fs.existsSync(p)?Number(fs.readFileSync(p))+1:1));\n`);
-  return { root, config: { runtimes: [{ id: 'dev', app: 'dev/app' }], sharedPackages: [] }, source };
+  return { root, config: { runtimes: [{ id: 'dev', app: 'forge/app' }], sharedPackages: [] }, source };
 }
 
 test('verification plans commands, caches only success and invalidates changed sources', async t => {

@@ -59,7 +59,7 @@ test('changes to unselected documents do not change selected source semantics',a
     const reloaded=await f.registry.get('project','actor');
     assert.ok(reloaded.warnings.length>0);
     const second=await f.builder.build(reloaded,f.config,f.card,'actor');
-    const semantic=(value:typeof first)=>value.sources.map(({observedAt,...source})=>source);
+    const semantic=(value:typeof first)=>value.sources.map(source=>Object.fromEntries(Object.entries(source).filter(([key])=>key!=='observedAt')));
     assert.equal(hashContextValue(semantic(first)),hashContextValue(semantic(second)));
   }finally{await f.cleanup()}
 });

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import {useEffect,useState} from 'react';
 import {useRouter} from 'next/navigation';
-import {AccessShell,accessInput as input,accessButton as button} from '@/components/access-shell';
+import {AccessShell,accessInput as input,accessButton as button} from '@/components/safdoulas-shell';
 import {api,send,type User} from '@/lib/api';
 import {usePluginAvailability} from '@/lib/plugin-availability';
 type Options={courses:Array<{id:string;title:string}>;rules:Array<{id:string;title:string;revision:number}>};

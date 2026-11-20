@@ -1,12 +1,12 @@
 # Inventário de funcionalidades
 
-**Base principal:** código DEV (`dev/app`), considerado ponto de integração segundo `docs/product-experience.md`. Quando um achado se refere a outro runtime ou configuração, isso está indicado. “Testes existentes” significa que há arquivos de teste relacionados; eles não foram executados.
+**Base principal:** código DEV (`forge/app`), considerado ponto de integração segundo `docs/product-experience.md`. Quando um achado se refere a outro runtime ou configuração, isso está indicado. “Testes existentes” significa que há arquivos de teste relacionados; eles não foram executados.
 
 | ID | Funcionalidade / objetivo | Estado | Evidência, dependências e persistência | Testes/evidência de funcionamento e limites |
 | --- | --- | --- | --- | --- |
 | F01 | Monorepo com runtimes DEV, PROD, Safdoulas e Suindá | IMPLEMENTADA | `README.md:7-20`, `orbit.workspace.json`; diretórios, perfis e configuração por ambiente | Estrutura local confirmada; não prova execução de cada serviço |
 | F02 | Administração CONTROL de todos os produtos | PARCIAL | `control/environments.json`; `control/bin/orbit-env.py:14-16,41-43` cobre dev/prod | Safdoulas/Suindá não aparecem no helper analisado; Compose não foi executado |
-| F03 | Workspaces, membros e compartilhamento de recursos | IMPLEMENTADA | `dev/app/apps/api/src/workspaces/workspaces.plugin.ts`; `schema.sql:53`, migration 068/069 | Testes de workspaces existem; compartilhamento de cartões entre workspaces não localizado |
+| F03 | Workspaces, membros e compartilhamento de recursos | IMPLEMENTADA | `forge/app/apps/api/src/workspaces/workspaces.plugin.ts`; `schema.sql:53`, migration 068/069 | Testes de workspaces existem; compartilhamento de cartões entre workspaces não localizado |
 | F04 | Quadros, listas e cartões com associações | IMPLEMENTADA | `schema.sql:59-114,143-258`; `main.ts` e páginas `apps/web/app/` | UI e rotas presentes; inclui assignees, labels, comentários, checklists, anexos e watchers |
 | F05 | Criar, editar, mover, arquivar, restaurar e excluir cartões | IMPLEMENTADA | `main.ts:668-682,736-824,838-980` | Exclusão definitiva exige arquivamento; edição altera registro existente |
 | F06 | Versionamento restaurável do conteúdo integral de cartões | NÃO LOCALIZADA | Schema de `cards` sem tabela geral de revisões; alterações e atividades estão em `main.ts:881-963` e `schema.sql:259` | Feed de atividades não equivale a snapshots restauráveis |

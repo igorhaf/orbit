@@ -1,12 +1,12 @@
 # Suindá
 
-Suindá é a plataforma de cursos construída sobre Orbit. Esta pasta contém sua execução isolada; o código fica em `app/`, dentro do monorepo Orbit e da branch única `main`.
+Suindá é a plataforma de cursos construída sobre Orbit. Esta pasta contém sua execução isolada; o código em `app/` pertence ao monorepo Orbit e à branch única `main`.
 
 ## Mapa
 
 | Caminho | Conteúdo |
 | --- | --- |
-| `app/` | Aplicação Orbit/Suindá e repositório Git dedicado |
+| `app/` | Runtime Orbit/Suindá versionado pelo repositório raiz Orbit |
 | `compose.yml`, `Dockerfile`, `docker-entrypoint.sh` | Definição dos serviços Suindá |
 | `data/config/` | Configuração local privada da API |
 | `data/db-init/` | Inicialização local do banco |
@@ -38,6 +38,7 @@ O runner documentado em [`app/docs/suinda/INTEGRACOES-DEMO.md`](app/docs/suinda/
 - [Requisitos reconciliados](app/docs/suinda/REQUISITOS.md)
 - [Auditoria por requisito](app/docs/suinda/AUDITORIA-BULLETS-2026-10-25.md)
 - [Cenários com dados sintéticos e limites](app/docs/suinda/INTEGRACOES-DEMO.md)
+- [Simulação ROOT dos perfis](app/docs/suinda/SIMULACAO-PERFIS-ROOT.md)
 - [Acessibilidade e evidências](app/docs/suinda/VALIDACAO-ACESSIBILIDADE.md)
 - [Pré-requisitos externos restantes](app/docs/suinda/PRE-REQUISITOS-EXTERNOS.md)
 

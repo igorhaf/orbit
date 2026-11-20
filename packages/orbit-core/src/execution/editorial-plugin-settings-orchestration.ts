@@ -79,10 +79,11 @@ export async function reconcileEditorialPluginSetting(
 
  try{
   const effectiveEnabled=await repository.withPinned(generation,async db=>{
-   const {rows}: {rows:{enabled:boolean}[]}=
-    await db.query('SELECT enabled FROM plugin_settings WHERE plugin_id=$1',[id]);
+   const {rows}=await db.query('SELECT enabled FROM plugin_settings WHERE plugin_id=$1',[id]);
+   const configured=rows[0]?.enabled;
+   if(configured!==undefined&&typeof configured!=='boolean')throw new Error('plugin_setting_observation_invalid');
    const local=registry.catalog().find(item=>item.id===id);
-   if((rows[0]?.enabled??true)!==enabled||!local||!registry.isInstalled(id)||local.configuredEnabled!==enabled){
+   if((configured??true)!==enabled||!local||!registry.isInstalled(id)||local.configuredEnabled!==enabled){
     throw new Error('plugin_setting_observation_mismatch');
    }
    return local.enabled;

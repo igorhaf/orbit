@@ -4,7 +4,7 @@
 
 | Entidade | Relação e finalidade | Evidência |
 | --- | --- | --- |
-| `users` | contas e preferências | `dev/app/apps/api/sql/schema.sql:2-13` |
+| `users` | contas e preferências | `forge/app/apps/api/sql/schema.sql:2-13` |
 | `workspaces` | proprietário e agrupamento | `schema.sql:53-58` |
 | `workspace_members`, `workspace_resources` | membros e compartilhamento limitado de recursos | migrations `068_rbac_privileges_groups.sql`, `069_workspace_resource_sharing.sql` |
 | `boards` | quadro, opcionalmente relacionado ao workspace | `schema.sql:59-76` |

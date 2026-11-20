@@ -1,4 +1,4 @@
-import type {ContextQueryClient} from './context-manifest';
+import type {ContextQueryResult,ContextQueryResultClient} from './context-manifest';
 
 export type EditorialAuthorizationGenerationRef=Readonly<{domainId:string;revision:string}>;
 export type EditorialAuthorizationGeneration=EditorialAuthorizationGenerationRef & Readonly<{
@@ -6,7 +6,7 @@ export type EditorialAuthorizationGeneration=EditorialAuthorizationGenerationRef
  configurationVerification:'unknown';
 }>;
 
-type Connection=ContextQueryClient & {release:(discard?:boolean)=>void};
+type Connection=ContextQueryResultClient & {release:(discard?:boolean)=>void};
 type Pool={connect:()=>Promise<Connection>};
 type ErrorCode='editorial_generation_expected_invalid'|'editorial_generation_unavailable'|
  'editorial_generation_domain_mismatch'|'editorial_generation_conflict'|'editorial_generation_operation_failed'|
@@ -35,9 +35,9 @@ export function assertEditorialAuthorizationGeneration(expected:EditorialAuthori
  if(expected.revision!==observed.revision)fail('editorial_generation_conflict');
 }
 
-function generation(result:{rows?:Array<{domain_id:string;revision:string;authorization_state:string}>}):EditorialAuthorizationGeneration{
+function generation(result:ContextQueryResult):EditorialAuthorizationGeneration{
  const row=result?.rows?.length===1?result.rows[0]:undefined;
- const ref=row&&{domainId:row.domain_id,revision:row.revision};
+ const ref=row&&typeof row.domain_id==='string'&&typeof row.revision==='string'?{domainId:row.domain_id,revision:row.revision}:null;
  if(!isReference(ref)||row?.authorization_state!=='unavailable')return fail('editorial_generation_unavailable');
  return Object.freeze({...ref,authorizationState:'unavailable',configurationVerification:'unknown'});
 }
@@ -108,7 +108,9 @@ export class EditorialAuthorizationGenerationRepository{
   return this.transaction(async db=>{
    const current=await this.readLocked(db,'SHARE');
    const {rows}=await db.query('SELECT enabled FROM plugin_settings WHERE plugin_id=$1',[pluginId]);
-   return {generation:current,explicit:rows.length>0,enabled:rows[0]?.enabled??defaultEnabled};
+   const raw=rows[0]?.enabled;
+   if(raw!==undefined&&typeof raw!=='boolean')return fail('editorial_generation_unavailable');
+   return {generation:current,explicit:rows.length>0,enabled:raw??defaultEnabled};
   });
  }
 
@@ -128,7 +130,7 @@ export class EditorialAuthorizationGenerationRepository{
 
  /** The trusted callback must complete its reads before returning and leave transaction control to the repository. */
  withPinned<T>(expected:EditorialAuthorizationGenerationRef,
-  inspect:(db:ContextQueryClient,current:EditorialAuthorizationGeneration)=>Promise<T>):Promise<T>{
+  inspect:(db:ContextQueryResultClient,current:EditorialAuthorizationGeneration)=>Promise<T>):Promise<T>{
   const reference=Object.freeze({...expected});
   return this.transaction(async db=>{
    const current=await this.readLocked(db,'SHARE');
@@ -138,7 +140,7 @@ export class EditorialAuthorizationGenerationRepository{
  }
 
  /** Only cooperating, trusted server writers. The callback may use DML on this connection, never transaction control. */
- advance(expected:EditorialAuthorizationGenerationRef,mutate:(db:ContextQueryClient)=>Promise<void>){
+ advance(expected:EditorialAuthorizationGenerationRef,mutate:(db:ContextQueryResultClient)=>Promise<void>){
   const reference=Object.freeze({...expected});
   return this.transaction(async db=>{
    const current=await this.readLocked(db,'UPDATE');

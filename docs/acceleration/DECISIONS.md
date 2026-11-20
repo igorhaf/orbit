@@ -2,7 +2,7 @@
 
 ## Distribuição de fontes por projeções
 
-Os quatro runtimes usam builds isolados, imports locais e TypeScript com rootDir próprio. Foram adotados pacotes fonte com projeções determinísticas em cada aplicação. Existe um ponto de edição canônico, versão explícita e lock de conteúdo por consumidor. O build isolado continua autocontido e não depende da árvore externa do monorepo.
+Os seis runtimes usam builds isolados, imports locais e TypeScript com rootDir próprio. Foram adotados pacotes fonte com projeções determinísticas em cada aplicação. Existe um ponto de edição canônico, versão explícita e lock de conteúdo por consumidor. O build isolado continua autocontido e não depende da árvore externa do monorepo.
 
 A promoção inicial usa igualdade exata de fontes genéricas. Arquivos distintos continuam como variantes dos runtimes até extração por contrato/adaptador; não são substituídos em massa. Alterações exclusivas de um produto devem continuar em plugins específicos ou filhos. A distribuição por fontes não afirma que todos os plugins tenham comportamento idêntico nem que todas as versões possíveis sejam compatíveis: o catálogo compara a composição concreta, e os contratos existentes são exercitados nas verificações.
 

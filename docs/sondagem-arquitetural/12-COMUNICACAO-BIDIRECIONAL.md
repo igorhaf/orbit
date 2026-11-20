@@ -2,7 +2,7 @@
 
 ## Canal implementado
 
-O Orbit executa a CLI do Codex como processo local. No fluxo de prompt, carrega dados do card/projeto, compõe uma instrução textual, envia `orbitArchitecturePrompt` junto ao prompt por stdin, e recebe JSONL de progresso mais arquivo de última mensagem (`dev/app/apps/api/src/plugins/ai/codex-provider.ts:118-130`). O comando pode iniciar ou retomar sessão pelo ID persistido; `thread.started` atualiza o ID no run (`:172-184`).
+O Orbit executa a CLI do Codex como processo local. No fluxo de prompt, carrega dados do card/projeto, compõe uma instrução textual, envia `orbitArchitecturePrompt` junto ao prompt por stdin, e recebe JSONL de progresso mais arquivo de última mensagem (`forge/app/apps/api/src/plugins/ai/codex-provider.ts:118-130`). O comando pode iniciar ou retomar sessão pelo ID persistido; `thread.started` atualiza o ID no run (`:172-184`).
 
 O parser reconhece mensagens/fragmentos do agente, comandos, alterações de arquivo, reasoning, turnos e erros (`codex-provider.ts:72-94`). Os eventos normalizados atualizam progresso/atividades e conjunto de arquivos; saída final, session ID, file changes e activities retornam ao serviço (`:186-216,227-233`). O serviço persiste esses dados e emite `prompt:progress` para a sala do quadro (`prompt-sessions.ts:520-527,538-545,564-568`; `orbit-events.ts:17-19`). A interface subscreve eventos e faz polling por card/run (`apps/web/components/prompt-execution.tsx:89-120`).
 

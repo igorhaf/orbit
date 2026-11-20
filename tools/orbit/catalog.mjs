@@ -22,10 +22,10 @@ function walk(root, accept, output = []) {
   return output;
 }
 function parser(root) {
-  for (const base of unique([root, join(root, 'dev/app'), resolve(import.meta.dirname, '../../dev/app')])) {
+  for (const base of unique([root, join(root, 'forge/app'), resolve(import.meta.dirname, '../../forge/app')])) {
     try { return createRequire(join(base, 'package.json'))('typescript'); } catch { /* try next local installation */ }
   }
-  throw new Error('TypeScript parser unavailable. Run npm install in dev/app before building the catalog.');
+  throw new Error('TypeScript parser unavailable. Run npm install in forge/app before building the catalog.');
 }
 function inside(root, path) {
   const result = relative(root, resolve(root, path));

@@ -2,7 +2,7 @@
 
 ## Criação e edição de cartões
 
-1. O usuário interage com Home, lista/quadro ou formulário de cartão no Next.js (`dev/app/apps/web/app/page.tsx`, `app/board/[id]/page.tsx`, `components/card-dialog.tsx`).
+1. O usuário interage com Home, lista/quadro ou formulário de cartão no Next.js (`forge/app/apps/web/app/page.tsx`, `app/board/[id]/page.tsx`, `components/card-dialog.tsx`).
 2. A interface chama rotas HTTP da API com sessão/token em `apps/web/lib/api.ts`.
 3. `ApiController` em `apps/api/src/main.ts` valida usuário, permissões e parâmetros e persiste dados relacionais.
 4. Cartões são relacionados a lista e quadro; atividades registram ações. Edição atualiza a linha do cartão em lugar; não foi localizado snapshot geral de revisão.

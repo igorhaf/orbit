@@ -264,7 +264,7 @@ Comandos e grupos reproduzíveis, após preparar env sintético:
 
 ```sh
 # U: testes puros e regressões unitárias listadas em§19, via loader do DEV
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=/home/meada/projetos/orbit/dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/context-compiler.spec.ts dev/app/apps/api/src/execution/context-compiler-host.spec.ts dev/app/apps/api/src/execution/context-delivery.spec.ts dev/app/apps/api/src/execution/context-manifest.spec.ts dev/app/apps/api/src/execution/context-registry.spec.ts dev/app/apps/api/src/execution/context-runtime.spec.ts
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=/home/meada/projetos/orbit/forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/context-compiler.spec.ts forge/app/apps/api/src/execution/context-compiler-host.spec.ts forge/app/apps/api/src/execution/context-delivery.spec.ts forge/app/apps/api/src/execution/context-manifest.spec.ts forge/app/apps/api/src/execution/context-registry.spec.ts forge/app/apps/api/src/execution/context-runtime.spec.ts
 # W0: classes reais, composição legada
 node --test tools/orbit/context-workers.test.mjs
 # W1: modo compilado em subprocesso com env allowlist

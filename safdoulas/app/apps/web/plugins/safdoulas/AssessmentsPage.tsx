@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AccessShell, accessButton, accessInput, accessPanel } from "@/components/access-shell";
+import { AccessShell, accessButton, accessInput, accessPanel } from "@/components/safdoulas-shell";
 import { api, authenticatedBlob, User, Workspace } from "@/lib/api";
 
 type RecordRow = { id: string; kind: string; state: string; title: string; revision: number; payload: Record<string, unknown> };

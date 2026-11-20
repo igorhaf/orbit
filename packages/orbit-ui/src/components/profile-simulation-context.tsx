@@ -17,28 +17,22 @@ export type ProfileSimulationContextData = {
 
 /** A read-only window into the synthetic context for the active simulated role. */
 export function ProfileSimulationContextLauncher({ active }: { active: boolean }) {
+  if (!active) return null;
+  return <ActiveProfileSimulationContext />;
+}
+
+function ActiveProfileSimulationContext() {
   const [context, setContext] = useState<ProfileSimulationContextData | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let current = true;
-    if (!active) {
-      setContext(null);
-      setOpen(false);
-      setError('');
-      return () => { current = false; };
-    }
-    setOpen(true);
-    setContext(null);
-    setError('');
     void api<ProfileSimulationContextData>('/access/profile-simulation/context')
       .then(value => { if (current) setContext(value); })
       .catch(reason => { if (current) setError((reason as Error).message || 'Contexto demonstrativo indisponível.'); });
     return () => { current = false; };
-  }, [active]);
-
-  if (!active) return null;
+  }, []);
   return <>
     <button type="button" onClick={() => setOpen(true)} aria-label="Abrir contexto de demonstração" title="Abrir contexto de demonstração" className="flex min-h-10 shrink-0 items-center gap-1 rounded bg-[#e9f2ff] px-1.5 text-[11px] font-semibold text-[#0c66e4] hover:bg-[#dbeafe] sm:px-2 sm:text-xs">
       <span aria-hidden="true">◉</span><span>Demo</span>

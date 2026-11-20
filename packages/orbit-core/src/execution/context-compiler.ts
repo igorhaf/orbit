@@ -1,6 +1,6 @@
 import {
   canonicalContextJson, createContextManifest, hashContextText, hashContextValue,
-  type ContextManifestIdentity, type ContextObject, type ContextSource,
+  type ContextJson, type ContextManifestIdentity, type ContextObject, type ContextSource,
 } from './context-manifest';
 
 /** Host-owned typed material. Trust is obtained only from its registered sources. */
@@ -79,14 +79,14 @@ export function contextCompilerMaterialBudget(policy:ContextCompilerPolicy):numb
 }
 
 function sourceSemantic(source:ContextSource):ContextObject {
-  const normalize=(value:any):any=>Array.isArray(value)?value.map(normalize):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([key])=>!['observedAt','capturedAt','createdAt','updatedAt'].includes(key)).map(([key,entry])=>[key,normalize(entry)])):value;
+  const normalize=(value:ContextJson):ContextJson=>Array.isArray(value)?value.map(normalize):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([key])=>!['observedAt','capturedAt','createdAt','updatedAt'].includes(key)).map(([key,entry])=>[key,normalize(entry)])):value;
   return normalize(source) as ContextObject;
 }
 function sourceDedupeKey(source:ContextSource):ContextObject {
   // Logical aliases can share a body; the full provenance of both stays in the
   // compilation fingerprint/sourceUsage, while approval/trust/version never merge.
-  const {id,logicalPath,selectionReason,...rest}=sourceSemantic(source);
-  return rest;
+  const semantic=sourceSemantic(source);
+  return Object.fromEntries(Object.entries(semantic).filter(([key])=>!['id','logicalPath','selectionReason'].includes(key)));
 }
 function renderBlock(block:ContextCompileBlock,body:string,sources:Map<string,ContextSource>):string {
   return canonicalContextJson({block:block.id,sources:block.sourceIds.map(id=>({id,trust:sources.get(id)!.trust})),content:body});
@@ -243,6 +243,6 @@ export function compileContext(input:ContextCompilerInput):ContextCompilationRes
  * API consumers must still authorize the resource and sanitize identifiers.
  */
 export function compilationMetadata(result:ContextCompilationResult):ContextObject {
-  const {identity,turn,text,...metadata}=result;
+  const metadata=Object.fromEntries(Object.entries(result).filter(([key])=>!['identity','turn','text'].includes(key)));
   return clone(metadata) as unknown as ContextObject;
 }

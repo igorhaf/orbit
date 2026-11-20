@@ -8,16 +8,16 @@ import {tmpdir} from 'node:os';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../..',import.meta.url));
-const require=createRequire(join(root,'dev/app/package.json'));
-process.env.TSX_TSCONFIG_PATH=join(root,'dev/app/apps/api/tsconfig.json');
+const require=createRequire(join(root,'forge/app/package.json'));
+process.env.TSX_TSCONFIG_PATH=join(root,'forge/app/apps/api/tsconfig.json');
 require('tsx/cjs/api').register();
 const ts=require('typescript');
-const {CardExecutionService}=require(join(root,'dev/app/apps/api/src/execution/execution.service.ts'));
-const {PluginRegistry}=require(join(root,'dev/app/apps/api/src/execution/registries.ts'));
-const {emptyConfig}=require(join(root,'dev/app/apps/api/src/execution/types.ts'));
+const {CardExecutionService}=require(join(root,'forge/app/apps/api/src/execution/execution.service.ts'));
+const {PluginRegistry}=require(join(root,'forge/app/apps/api/src/execution/registries.ts'));
+const {emptyConfig}=require(join(root,'forge/app/apps/api/src/execution/types.ts'));
 // Evaluate the actual prompt service with only its quota function replaced. Never create
 // an application, Codex service, real pool, HOME or network connection.
-const source=join(root,'dev/app/apps/api/src/plugins/ai/prompt-sessions.ts');
+const source=join(root,'forge/app/apps/api/src/plugins/ai/prompt-sessions.ts');
 const module={exports:{}};let quotaChecks=0;
 const compiled=ts.transpileModule(readFileSync(source,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,experimentalDecorators:true}}).outputText;
 const localRequire=createRequire(source);
@@ -75,7 +75,7 @@ for(const first of ['generic','prompt'])test(`actual worker boundaries coordinat
 
 test('historical C1/C3 remain reproducible only in an uncoordinated disposable baseline',async t=>{
  const workspace=mkdtempSync(join(tmpdir(),'orbit-historical-rollback-'));t.after(()=>rmSync(workspace,{recursive:true,force:true}));
- const {captureFileScope}=require(join(root,'dev/app/apps/api/src/execution/file-scope.ts'));
+ const {captureFileScope}=require(join(root,'forge/app/apps/api/src/execution/file-scope.ts'));
  const first=await captureFileScope(workspace,['a.txt']),second=await captureFileScope(workspace,['b.txt']);
  writeFileSync(join(workspace,'a.txt'),'A');writeFileSync(join(workspace,'b.txt'),'B');
  await assert.rejects(first,/revertidas/);

@@ -1,59 +1,57 @@
-# Isolamento PostgreSQL DEV
+# Isolamento PostgreSQL DEV — procedimento canônico
 
-**NÃO EXECUTAR SEM APROVAÇÃO OPERACIONAL.**
+**Não executar sem aprovação operacional explícita, inventário revisado e janela autorizada.** Este documento é o único runbook de cutover. Para o banco DEV use exclusivamente os arquivos `r6-*`; os arquivos sem prefixo `r6-` são fixtures/regressões do cenário R5C-A e não são um procedimento alternativo.
 
-O procedimento cobre a fronteira de `plugin_settings`, `plugin_installations` e geração editorial. Os quatro logins são parâmetros, e somente o nome do runtime DEV é fixado pelo diagnóstico anterior. Os scripts não provisionam roles nem leem credenciais. Execute a partir de uma sessão administrativa direta no destino conferido, com `psql -X` e um único arquivo por invocação.
+O procedimento separa a identidade geral da API, o writer privado do toggle, o leitor de evidências e o owner/migrador administrativo. Ele não provisiona papéis, cria credenciais, altera configurações de host nem autoriza a montagem do toggle. Connection strings e senhas são fornecidas pelo operador fora dos artefatos. Não use nomes de papéis de exemplo sem inventário e aprovação.
 
-## Antes da janela
+## Pré-requisitos e pontos de parada
 
-1. Confirme host, porta, banco, versão e login por inventário independente. Confirme o SHA-256 do SQL canônico de 212 contra o valor de `prepare.sql`. A migration cria o contador com autorização indisponível.
-2. Homologue em clone representativo. Faça inventário do ownership do banco, schemas, tabelas, sequências, rotinas, extensões e migrations, ACLs diretas, por coluna, de PUBLIC e defaults, roles herdadas, rotinas com privilégios elevados e writers externos. Prepare um plano explícito para transferir os demais objetos do login legado e preservar os grants ordinários necessários. O script recusa ownership legado adicional e não usa `REASSIGN OWNED`.
-3. Separe a credencial do migrador da API e do writer. O owner administrativo deve possuir o banco, o ledger e o schema `public` ou controlá-lo via `pg_database_owner`. O perfil testado usa quatro logins distintos sem memberships. A preparação exige um operador PostgreSQL superusuário para transferir objetos entre owners sem vincular os logins.
-4. Confira permissões ordinárias e dependências de `TEMP`, schema e `search_path`, incluindo migrations, seed, backup e restore. A preparação retira `TEMP` de PUBLIC. Se houver consumidores legítimos que dependam de permissões afetadas, encaminhe-os para revisão antes de prosseguir.
-5. Verifique backup e restauração em destino isolado. Suspenda o toggle, drene conexões, bloqueie reconexões por controle externo de admissão e coordene operadores, migradores, jobs e instâncias remotas. A checagem local de sessões é uma barreira adicional.
+1. Um operador independente confirma host, porta, banco, versão, login e backup em fonte operacional. O script não confia no nome informado como prova do alvo.
+2. Migrations 157 e 158 devem estar aplicadas pelo migrador versionado e aprovadas no fluxo normal. O cutover R6 **não** as aplica. Confirme schema, ledger e checksums por conexão nova.
+3. Homologue a exportação estrutural em PostgreSQL 16 descartável. Revise owners, ACLs de tabela/coluna, privilégios de PUBLIC e defaults, memberships, extensões, funções privilegiadas e writers externos. O teste local não prova que todos os writers remotos foram localizados.
+4. O procedimento de transferência exige operador PostgreSQL com autoridade para `REASSIGN OWNED`; use uma identidade administrativa separada das três identidades de runtime.
+5. Confira backup e restore em destino isolado. Durante a janela, suspenda alterações de configuração e workers, bloqueie novas conexões pelo mecanismo operacional, drene instâncias e migradores e registre evidência de cada etapa. Uma consulta local de sessões não prova ausência de clientes remotos.
 
-## Ordem sob aprovação
+**Pare imediatamente** se o alvo divergir, faltar aprovação/hash revisado, houver migration/checksum inesperado, objeto compartilhado adicional, ACL diferente da fixture, sessão não drenada, writer externo sem tratamento, backup não restaurável ou qualquer resultado SQL diferente do esperado. Não repita uma preparação com `COMMIT` incerto: reconcilie em conexão nova.
 
-Use `approval=OPERATOR_APPROVED` apenas para `orbit_native_dev`. Use `approval=DISPOSABLE` para a fixture `orbit_r5ca_fixture` em socket Unix privado.
+## Sequência única de cutover
 
-1. Rode `preflight.sql` em transação somente leitura. Qualquer divergência interrompe o procedimento.
-2. Rode `prepare.sql` uma vez. A operação em uma transação adquire o advisory lock do migrador, bloqueia as tabelas alvo, confere a base, transfere ownership, aplica e registra 212, restringe ACLs e confere a matriz antes do COMMIT.
-3. Rode `validate.sql`. Com conexões novas, confira as identidades efetivas, as leituras e a recusa do SQL legado em clone, e valide fluxos ordinários e bootstrap com as credenciais planejadas. A montagem do writer no host exige autorização própria. O passo SQL não publica nem habilita rota.
+Execute cada arquivo individualmente com `psql -X`, `ON_ERROR_STOP`, contra a conexão conferida. Registre os resultados sem segredos.
 
-Formato do comando, com os nomes operacionais conferidos e a conexão fornecida fora do arquivo:
+1. `r6-ownership-plan.sql`: produzir o inventário. Revisar os papéis e dependências à parte e registrar o SHA-256 candidato; o próprio hash não aprova o plano.
+2. `r6-preflight.sql`: em transação read-only, passar `approval=OPERATOR_APPROVED`, os quatro papéis revistos e `ownership_sha256=<hash aprovado>`. Qualquer divergência encerra o processo.
+3. `r6-prepare.sql`: somente após bloquear novas admissões e drenar todos os writers. Em uma transação, transfere ownership, instala a 212 e a ACL nomeada, então valida as invariantes antes do `COMMIT`.
+4. `r6-validate.sql`: rodar em conexões novas; conferir identities, ownership, ACLs, migration, guard e recusa de escrita legada. Se falhar, manter a aplicação pausada e seguir a contingência.
+5. Só após validação SQL e aprovação própria do host, montar os arquivos privados de aprovação e credencial com dono UID da API e modo `0600`; iniciar uma instância, executar aceitação sem escrita legada, depois validar cada instância adicional. Nenhum script SQL inicia, reinicia ou libera tráfego da API.
+
+Exemplo de invocação (substitua papéis e hash somente pelos valores aprovados; a conexão é fornecida fora do arquivo):
 
 ```sh
-psql -X -v approval=OPERATOR_APPROVED \
+psql -X -v ON_ERROR_STOP=1 -v approval=OPERATOR_APPROVED \
   -v owner_role=OWNER_REVISADO -v app_role=orbit_dev_app \
   -v writer_role=WRITER_REVISADO -v reader_role=LEITOR_REVISADO \
-  -f tools/orbit/dev-db-cutover/preflight.sql
+  -v ownership_sha256=HASH_REVISADO \
+  -f tools/orbit/dev-db-cutover/r6-preflight.sql
 ```
 
-## Contingência
+Repita a mesma invocação aprovada, trocando o arquivo para `r6-prepare.sql` e depois `r6-validate.sql`. Não use `approval=OPERATOR_APPROVED` em fixture nem `approval=DISPOSABLE` no banco real.
 
-Se a preparação falhar antes do COMMIT, encerre a sessão e confirme o estado com o preflight. Em perda de confirmação do COMMIT, mantenha isolamento e compare o preflight e a validação em sessão nova. Não repita a preparação às cegas.
+## Contingência e restore
 
-Após COMMIT confirmado, suspenda o toggle e retire o pool privado de circulação em caso de rollback do binário. Rode `contingency.sql` para confirmar que a barreira SQL continua aplicada. Se as checagens falharem, mantenha o isolamento e investigue antes de reabrir o tráfego. A contingência mantém ownership administrativo e não devolve DML ao binário legado. A volta de ownership exige revisão específica, pois pode reabrir capacidades inerentes ao owner.
+- Falha antes do `COMMIT`: confirmar rollback e executar `r6-preflight.sql` em conexão nova. Não reabrir escritores até conferir o estado.
+- Confirmação de `COMMIT` perdida: manter tráfego suspenso e comparar ledger, ownership e ACLs com `r6-preflight.sql` e `r6-validate.sql`; nunca reaplicar às cegas.
+- Após o corte, se o binário precisar ser revertido: pausar o toggle, retirar o pool privado e executar `r6-contingency.sql`. Ela mantém a ACL protetiva e não devolve escrita ao runtime legado. Voltar ownership pode reabrir escrita e requer plano aprovado separado.
+- Restore: restaurar somente em banco `orbit_restore_*` isolado, validar conteúdo e executar `r6-restore-acl.sql` com `approval=OPERATOR_APPROVED_RESTORE`; validar em conexões novas antes de considerar qualquer troca. Restore de dados não constitui autorização.
 
-Para recuperar dados, restaure em banco isolado sob papel administrativo. Reaplique e verifique a matriz no destino antes de conectá-lo à aplicação. Um dump sem ACL e sem owner não transporta essa fronteira. O contador e o identificador de domínio podem ser clonados com os dados, portanto o restore não constitui uma nova autorização editorial.
+## Ensaios descartáveis
 
-## Procedimento canônico para o DEV após a R7
-
-Os comandos sem prefixo `r6-` continuam atendendo ao cenário R5C-A, com o owner administrativo já separado. Para cutover DEV, use o caminho com prefixo `r6-`, atualizado e ensaiado na R7. Ele parte da estrutura observada no DEV, em que o runtime antigo é dono do banco e dos objetos ordinários, e usa a mesma aprovação e as mesmas quatro variáveis de papéis.
-
-1. Antes de calcular o fingerprint, confira as migrations de runtime 157 e 158 no ledger e no catálogo. O clone exportado não tinha `cards.card_revision` nem `card_runs.worker_id`. O ensaio aplicou os dois arquivos canônicos somente no cluster descartável pelo runner versionado. O DBA deve revisar e aprovar a atualização de schema operacional pelo fluxo normal de migrations. O script de cutover recusa uma base sem os objetos necessários e não aplica esse conjunto de migrations.
-2. Em janela aprovada e com admissões bloqueadas, execute `r6-ownership-plan.sql`. Revise cada identidade retornada, os privilégios efetivos e os dependentes. Registre o SHA-256 exibido no plano aprovado. O hash vincula as identidades de ownership. Definições, dependentes e ACLs exigem revisão separada.
-3. Passe o SHA-256 conferido em `-v ownership_sha256=<valor>` para `r6-preflight.sql` e `r6-prepare.sql`. A preparação recusa outros objetos compartilhados, desvios na lista revisada e ACLs de relações/colunas que fujam da base observada. O advisory lock e a drenagem são verificações adicionais à contenção externa de novas conexões.
-4. A preparação transfere o banco, suas relações, rotinas e a extensão com `REASSIGN OWNED` em uma transação. Confere que `pgcrypto` preserva OID e versão. Reaproveita a migration 212, o ledger da R5C-A e suas ACLs protegidas, instala a matriz de grants por operação e verifica a fronteira antes do COMMIT.
-5. Repita `r6-validate.sql` e use `r6-contingency.sql` se precisar suspender o toggle e retirar o pool privado. As verificações preservam o bloqueio do binário antigo.
-6. Para um dump pós-corte, restaure sob o papel administrativo em um banco `orbit_restore_*` isolado. Valide o conteúdo e use `r6-restore-acl.sql` com `approval=OPERATOR_APPROVED_RESTORE`. O mecanismo exige 212 restaurada, reaplica as ACLs e falha se as invariantes não forem atendidas. Libere a aplicação somente após o destino restaurado passar nas verificações. A matriz de ensaio cobre os fluxos declarados em `r6-runtime-acl.sql` e exige complemento revisado para outros serviços.
-
-O ensaio reproduz somente o esquema do destino DEV autorizado. A exportação é obtida em snapshot somente leitura no mecanismo DEV conhecido e usada num PostgreSQL 16 temporário de socket privado. Os únicos dados gravados são sintéticos no clone.
+O clone exporta apenas o schema do DEV por conexão local previamente identificada em `r6-clone.postgres.spec.ts`, em transação `READ ONLY`, timeouts limitados, `pg_dump --schema-only` e socket privado. Os testes gravam somente dados sintéticos no PostgreSQL descartável.
 
 ```sh
-ORBIT_R6_REHEARSE_DEV_SCHEMA=1 ./dev/app/node_modules/.bin/tsx \
-  --tsconfig dev/app/apps/api/tsconfig.json --test \
-  tools/orbit/dev-db-cutover/r6-clone.postgres.spec.ts
+ORBIT_R6_REHEARSE_DEV_SCHEMA=1 ORBIT_R6_BOOTSTRAP_API=1 \
+  ./forge/app/node_modules/.bin/tsx --tsconfig forge/app/apps/api/tsconfig.json --test \
+  tools/orbit/dev-db-cutover/r6-clone.postgres.spec.ts \
+  tools/orbit/dev-db-cutover/transition.postgres.spec.ts
 ```
 
-O ensaio opcional do bootstrap e dos dois processos da API usa `ORBIT_R6_BOOTSTRAP_API=1`, uma rede privada Linux sem saída e configurações sintéticas. A fixture não possui consumidores externos e usa `/usr/bin/false` como binário do Codex. Requer `unshare`, `ip` e `curl`.
+`ORBIT_R6_BOOTSTRAP_API=1` acrescenta o bootstrap real e dois processos da API numa rede privada sem saída, usando identidades sintéticas e `/usr/bin/false` como executor Codex. Requer `unshare`, `ip` e `curl`. O ensaio demonstra somente os fluxos incluídos; não comprova topologia, writers ou disponibilidade de integrações no DEV operacional.

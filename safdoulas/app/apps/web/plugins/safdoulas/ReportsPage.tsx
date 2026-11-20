@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { AccessShell, accessButton, accessInput, accessPanel } from "@/components/access-shell";
+import { AccessShell, accessButton, accessInput, accessPanel } from "@/components/safdoulas-shell";
 import { api, authenticatedBlob, User } from "@/lib/api";
 
 type Workspace = { id: string; name: string };

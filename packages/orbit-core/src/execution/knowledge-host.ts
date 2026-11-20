@@ -8,7 +8,7 @@ import {defaultKnowledgeRetrievalPolicy,type KnowledgeCandidate,type KnowledgeRe
 export type KnowledgeHostOptions={projects:ProjectRegistry;project:Project;user:string;workspaceId?:string|null;permissions:string[];signal?:AbortSignal};
 export type KnowledgeCandidateCatalog={schemaVersion:1;policyId:'orbit-knowledge-catalog/1';policyHash:string;catalogHash:string;candidates:KnowledgeCandidate[]};
 const active=(signal?:AbortSignal)=>{if(signal?.aborted)throw new Error('Preparação do conhecimento interrompida.');};
-const semantic=(source:ContextSource)=>{const {observedAt,...rest}=source;return rest;};
+const semantic=(source:ContextSource)=>Object.fromEntries(Object.entries(source).filter(([key])=>key!=='observedAt'));
 const forbidden=/(^|\/)(?:\.env(?:\..*)?|\.git|\.ssh|\.codex|\.next|data|backups?|sessions?|state|snapshots|dist|build|coverage|node_modules|cache|caches|logs?|\.cache|auth(?:\..*)?|credentials?(?:\..*)?|secrets?(?:\..*)?|[^/]*\.(?:pem|key|p12|pfx))(?:\/|$)/i;
 function policy(project:Project){
  const raw=project.config.knowledge_retrieval;
@@ -16,7 +16,7 @@ function policy(project:Project){
  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['documents','files'].includes(k)))throw new Error('Catálogo de conhecimento inválido.');
  const value=raw as Record<string,unknown>,documents=stringList(value.documents,'knowledge_retrieval.documents').sort(),files=stringList(value.files,'knowledge_retrieval.files').sort();
  for(const document of documents)if(!/^(knowledge|rules|skills)\/[a-z][a-z0-9_-]{0,79}$/.test(document))throw new Error('Documento de recuperação inválido.');
- for(const file of files)if(/(?:^|\/)\.orbit\/(?:local|validations)(?:\/|$)/i.test(file)||!/\.(md|mdx|txt|rst|ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|sql|css)$/i.test(file)||file.startsWith('/')||file.includes('\\')||file.split('/').some(p=>p==='..'||p==='.'||!p)||forbidden.test(file)||/[*?\[\]{}]/.test(file))throw new Error('Arquivo de recuperação reservado ou inválido.');
+ for(const file of files)if(/(?:^|\/)\.orbit\/(?:local|validations)(?:\/|$)/i.test(file)||!/\.(md|mdx|txt|rst|ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|sql|css)$/i.test(file)||file.startsWith('/')||file.includes('\\')||file.split('/').some(p=>p==='..'||p==='.'||!p)||forbidden.test(file)||file.split('').some(character=>'*?[]{}'.includes(character)))throw new Error('Arquivo de recuperação reservado ou inválido.');
  return {schemaVersion:1,id:'orbit-knowledge-catalog/1',documents,files};
 }
 

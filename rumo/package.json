@@ -1,0 +1,14 @@
+{
+  "name": "orbit-product-rumo",
+  "private": true,
+  "scripts": {
+    "dev": "node --env-file=.env runtime.mjs",
+    "build": "npm --prefix app run build",
+    "check": "npm --prefix app run lint",
+    "db:migrate": "node --env-file=.env database.mjs migrate",
+    "db:seed": "node --env-file=.env database.mjs seed",
+    "db:prepare": "node --env-file=.env database.mjs prepare",
+    "profile:plan": "node apply-profile.mjs",
+    "profile:apply": "node --env-file=.env apply-profile.mjs --write"
+  }
+}

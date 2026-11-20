@@ -20,16 +20,16 @@ function fixture(t) {
 
 test('index excludes secret paths and actual tokens, reuses unchanged chunks and isolates runtime queries', async (t) => {
   const context = fixture(t);
-  context.put('dev/app/apps/api/src/plugins/contract.ts', 'export type PluginDefinition = { dependencies: string[] }; // moonstone shared contract');
+  context.put('forge/app/apps/api/src/plugins/contract.ts', 'export type PluginDefinition = { dependencies: string[] }; // moonstone shared contract');
   context.put('suinda/app/apps/api/src/course.ts', 'moonstone exclusive academic course access');
   context.put('docs/architecture.md', 'moonstone architecture permissions');
-  context.put('dev/app/.env', 'moonstone password=actual');
-  context.put('dev/app/.env.example', 'moonstone PASSWORD=sample');
-  context.put('dev/app/data/records.json', '{"moonstone":"private records"}');
-  context.put('dev/app/credentials/access.json', '{"moonstone":"private credentials"}');
-  context.put('dev/app/config.json', `{"moonstone":"ghp_${'A'.repeat(35)}"}`);
-  context.put('dev/app/.orbit/sessions/session.md', 'moonstone private conversation');
-  context.put('dev/app/private.md', 'moonstone postgres://user:password@example.com/database');
+  context.put('forge/app/.env', 'moonstone password=actual');
+  context.put('forge/app/.env.example', 'moonstone PASSWORD=sample');
+  context.put('forge/app/data/records.json', '{"moonstone":"private records"}');
+  context.put('forge/app/credentials/access.json', '{"moonstone":"private credentials"}');
+  context.put('forge/app/config.json', `{"moonstone":"ghp_${'A'.repeat(35)}"}`);
+  context.put('forge/app/.orbit/sessions/session.md', 'moonstone private conversation');
+  context.put('forge/app/private.md', 'moonstone postgres://user:password@example.com/database');
   context.track();
   const first = await execute('knowledge', ['index'], context);
   assert.equal(first.indexed, 3);
@@ -48,10 +48,10 @@ test('index excludes secret paths and actual tokens, reuses unchanged chunks and
 
 test('query reports changed sources, bounds context and refuses overwrite or traversals', async (t) => {
   const context = fixture(t);
-  context.put('dev/app/architecture.md', 'dependency catalog permissions\n'.repeat(160));
+  context.put('forge/app/architecture.md', 'dependency catalog permissions\n'.repeat(160));
   context.track();
   await execute('knowledge', ['index'], context);
-  context.put('dev/app/architecture.md', 'updated dependency catalog permissions');
+  context.put('forge/app/architecture.md', 'updated dependency catalog permissions');
   const result = await execute('knowledge', ['query', '--query', 'dependency', '--tokens', '100'], context);
   assert(result.results[0].stale);
   assert(result.approximateTokens <= 100);
@@ -69,7 +69,7 @@ test('query deduplicates exact chunks after scope filters and prefers canonical 
   const context = fixture(t);
   const source = 'export const plugin = { id: "orbit-demo", dependencies: ["permissions"] };';
   context.put('packages/orbit-core/src/plugin.ts', source);
-  context.put('dev/app/apps/api/src/plugin.ts', source);
+  context.put('forge/app/apps/api/src/plugin.ts', source);
   context.put('suinda/app/apps/api/src/plugin.ts', source);
   context.put('suinda/app/apps/api/src/private-course.ts', 'exclusive academy plugin context');
   context.track();
@@ -77,13 +77,13 @@ test('query deduplicates exact chunks after scope filters and prefers canonical 
   const result = await execute('knowledge', ['query', '--runtime', 'dev', '--query', 'plugin dependencies'], context);
   assert.equal(result.results.length, 1);
   assert.equal(result.results[0].path, 'packages/orbit-core/src/plugin.ts');
-  assert.deepEqual(result.results[0].equivalentSources.map((item) => item.path), ['dev/app/apps/api/src/plugin.ts']);
+  assert.deepEqual(result.results[0].equivalentSources.map((item) => item.path), ['forge/app/apps/api/src/plugin.ts']);
   assert.equal(result.results[0].equivalentSources[0].hash, result.results[0].hash);
   assert.equal(result.results[0].equivalentSources[0].start, 1);
   assert(result.results[0].equivalentSources.every((item) => item.runtime === 'dev'));
-  const devPath = await execute('knowledge', ['query', '--runtime', 'dev', '--path', 'dev/app', '--query', 'plugin dependencies'], context);
+  const devPath = await execute('knowledge', ['query', '--runtime', 'dev', '--path', 'forge/app', '--query', 'plugin dependencies'], context);
   assert.equal(devPath.results.length, 1);
-  assert.equal(devPath.results[0].path, 'dev/app/apps/api/src/plugin.ts');
+  assert.equal(devPath.results[0].path, 'forge/app/apps/api/src/plugin.ts');
   assert.deepEqual(devPath.results[0].equivalentSources, []);
   const product = await execute('knowledge', ['query', '--runtime', 'suinda', '--query', 'plugin dependencies'], context);
   assert(product.results[0].equivalentSources.every((item) => item.runtime !== 'dev'));
@@ -185,7 +185,7 @@ test('delivery captures missing executables and enforces command timeout', async
 
 test('functional review requires explicit write, current evidence and actual passing checks', async (t) => {
   const context = fixture(t);
-  context.put('dev/app/contract.ts', 'export const contract = "initial";');
+  context.put('forge/app/contract.ts', 'export const contract = "initial";');
   context.put('docs/review.md', 'Functional acceptance reviewed with a fixture.');
   context.track();
   await execute('delivery', ['init', '--milestone', 'reviewable', '--requirement', 'Preserve contract'], context);
@@ -220,7 +220,7 @@ test('functional review requires explicit write, current evidence and actual pas
 
 test('source fingerprints cover new allowlisted files and invalidate source mutation during execution', async (t) => {
   const context = fixture(t);
-  context.put('dev/app/contract.ts', 'const contract = "first";');
+  context.put('forge/app/contract.ts', 'const contract = "first";');
   context.track();
   await execute('delivery', ['init', '--milestone', 'sources', '--requirement', 'Keep sources checked'], context);
   const first = await execute('delivery', ['check', '--milestone', 'sources', '--name', 'stable', '--', process.execPath, '-e', 'process.exit(0)'], context);
@@ -228,7 +228,7 @@ test('source fingerprints cover new allowlisted files and invalidate source muta
   context.put('packages/contract/new.ts', 'const added = true;');
   let report = await execute('delivery', ['report', '--milestone', 'sources'], context);
   assert.equal(report.manifest.checks[0].status, 'stale');
-  const mutation = await execute('delivery', ['check', '--milestone', 'sources', '--name', 'mutating', '--', process.execPath, '-e', 'require("node:fs").writeFileSync("dev/app/contract.ts", "changed by check");'], context);
+  const mutation = await execute('delivery', ['check', '--milestone', 'sources', '--name', 'mutating', '--', process.execPath, '-e', 'require("node:fs").writeFileSync("forge/app/contract.ts", "changed by check");'], context);
   assert.equal(mutation.check.status, 'stale');
   assert.notEqual(mutation.check.sourcesAtStart.fingerprint, mutation.check.sourcesAtEnd.fingerprint);
   report = await execute('delivery', ['report', '--milestone', 'sources'], context);
@@ -237,22 +237,22 @@ test('source fingerprints cover new allowlisted files and invalidate source muta
 
 test('explicit source scopes isolate independent changes and refuse sensitive scope paths', async (t) => {
   const context = fixture(t);
-  context.put('dev/app/contract.ts', 'const contract = true;');
-  context.put('prod/app/unrelated.ts', 'const unrelated = false;');
-  context.put('dev/app/.env', 'PASSWORD=private');
-  context.put('dev/app/package-lock.json', '{"lockfileVersion":3}');
-  context.put('dev/app/data/package-lock.json', '{"private":"never snapshot"}');
+  context.put('forge/app/contract.ts', 'const contract = true;');
+  context.put('workspace/app/unrelated.ts', 'const unrelated = false;');
+  context.put('forge/app/.env', 'PASSWORD=private');
+  context.put('forge/app/package-lock.json', '{"lockfileVersion":3}');
+  context.put('forge/app/data/package-lock.json', '{"private":"never snapshot"}');
   context.track();
   await execute('delivery', ['init', '--milestone', 'scoped'], context);
-  const result = await execute('delivery', ['check', '--milestone', 'scoped', '--scope', 'dev/app', '--', process.execPath, '-e', 'process.exit(0)'], context);
+  const result = await execute('delivery', ['check', '--milestone', 'scoped', '--scope', 'forge/app', '--', process.execPath, '-e', 'process.exit(0)'], context);
   assert.equal(result.check.sourcesAtStart.fileCount, 2);
-  context.put('prod/app/unrelated.ts', 'const unrelated = true;');
+  context.put('workspace/app/unrelated.ts', 'const unrelated = true;');
   const report = await execute('delivery', ['report', '--milestone', 'scoped'], context);
   assert.equal(report.manifest.checks[0].status, 'passed');
-  context.put('dev/app/package-lock.json', '{"lockfileVersion":4}');
+  context.put('forge/app/package-lock.json', '{"lockfileVersion":4}');
   const changedLock = await execute('delivery', ['report', '--milestone', 'scoped'], context);
   assert.equal(changedLock.manifest.checks[0].status, 'stale');
-  await assert.rejects(execute('delivery', ['check', '--milestone', 'scoped', '--scope', 'dev/app/.env', '--', process.execPath, '-e', 'process.exit(0)'], context), /Sensitive/);
+  await assert.rejects(execute('delivery', ['check', '--milestone', 'scoped', '--scope', 'forge/app/.env', '--', process.execPath, '-e', 'process.exit(0)'], context), /Sensitive/);
 });
 
 test('default delivery snapshots ignore tracked links without ever reading their external targets', async (t) => {
@@ -261,10 +261,10 @@ test('default delivery snapshots ignore tracked links without ever reading their
   t.after(() => rmSync(external, { recursive: true, force: true }));
   const externalFile = join(external, 'outside.md');
   writeFileSync(externalFile, 'PRIVATE_EXTERNAL_CONTENT');
-  context.put('dev/app/contract.ts', 'export const safe = true;');
+  context.put('forge/app/contract.ts', 'export const safe = true;');
   context.put('linked-docs/outside.md', 'Initially local tracked source.');
   symlinkSync(externalFile, join(context.root, 'external-link.md'));
-  symlinkSync('dev/app/contract.ts', join(context.root, 'internal-link.md'));
+  symlinkSync('forge/app/contract.ts', join(context.root, 'internal-link.md'));
   symlinkSync(join(external, 'missing.md'), join(context.root, 'dangling-link.md'));
   context.track();
   rmSync(join(context.root, 'linked-docs'), { recursive: true });
@@ -337,7 +337,7 @@ test('verification import consumes real executed and cached evidence without rer
 
 test('read-only delivery explicitly declares verification not applicable and blocks source mutations', async (t) => {
   const context = fixture(t);
-  context.put('dev/app/contract.ts', 'const contract = true;');
+  context.put('forge/app/contract.ts', 'const contract = true;');
   context.put('docs/acceptance.md', 'Read-only findings reviewed.');
   context.track();
   await execute('delivery', ['init', '--milestone', 'readonly', '--mode', 'read-only', '--requirement', 'Inspect contract'], context);
@@ -349,7 +349,7 @@ test('read-only delivery explicitly declares verification not applicable and blo
   report = await execute('delivery', ['review', '--milestone', 'readonly', '--reviewer', 'orbit-ai-executor', '--note', 'Reviewed current references without editing code.', '--write'], context);
   assert.equal(report.status, 'completed');
   assert.equal(report.verification, 'not-applicable');
-  context.put('dev/app/contract.ts', 'const contract = false;');
+  context.put('forge/app/contract.ts', 'const contract = false;');
   report = await execute('delivery', ['report', '--milestone', 'readonly'], context);
   assert.equal(report.status, 'read_only_sources_changed');
   assert.equal(report.readyForReview, false);

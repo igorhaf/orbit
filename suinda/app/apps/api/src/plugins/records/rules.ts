@@ -36,6 +36,8 @@ export function validate(schema: JsonSchema, payload: unknown) {
   if (serialized === undefined || serialized.length > 250000)
     invalid("Conteúdo ausente ou muito grande.");
   const ajv = new Ajv({ allErrors: true, jsonPointers: true });
+  // `textarea` is Orbit's renderer hint, not a value-format assertion.
+  ajv.addFormat("textarea", { type: "string", validate: () => true });
   if (!ajv.validate(schema, payload))
     invalid(
       "Conteúdo inválido: " + ajv.errorsText(ajv.errors, { separator: "; " }),

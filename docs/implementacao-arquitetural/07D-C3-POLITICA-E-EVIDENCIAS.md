@@ -74,8 +74,8 @@ Execução unitária inicial: 17 testes de fontes aprovados. O primeiro teste SQ
 Após as alterações finais, execução conjunta direcionada: **62 aprovados, zero falhas, zero ignorados**. São 18 testes de fontes, nove da 07D-A e 35 testes/contêiner SQL das etapas B/C/C2/C3.
 
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
- node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test \
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
+ node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test \
  packages/orbit-core/src/execution/discovery-review-sources.spec.ts \
  packages/orbit-core/src/execution/discovery-review-repository.spec.ts \
  packages/orbit-core/src/execution/discovery-review.spec.ts

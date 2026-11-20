@@ -18,10 +18,10 @@ const dynamicKnowledge=process.env.ORBIT_CONTEXT_BRIDGE_KNOWLEDGE_TEST_MODE==='1
 const knowledgeEnabled=dynamicKnowledge||process.env.ORBIT_KNOWLEDGE_RETRIEVAL_TEST_MODE==='1';
 const bridgeEnabled=dynamicKnowledge||process.env.ORBIT_CONTEXT_BRIDGE_TEST_MODE==='1';
 const compilerEnabled=knowledgeEnabled||bridgeEnabled||process.env.ORBIT_CONTEXT_COMPILER_TEST_MODE==='1';
-const require=createRequire(join(root,'dev/app/package.json'));
-process.env.TSX_TSCONFIG_PATH=join(root,'dev/app/apps/api/tsconfig.json');
+const require=createRequire(join(root,'forge/app/package.json'));
+process.env.TSX_TSCONFIG_PATH=join(root,'forge/app/apps/api/tsconfig.json');
 require('tsx/cjs/api').register();
-const api=join(root,'dev/app/apps/api/src');
+const api=join(root,'forge/app/apps/api/src');
 const {CardExecutionService}=require(join(api,'execution/execution.service.ts'));
 const {ProjectRegistry}=require(join(api,'execution/project-registry.ts'));
 const {PluginRegistry}=require(join(api,'execution/registries.ts'));

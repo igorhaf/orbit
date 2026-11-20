@@ -20,11 +20,11 @@ Os principais limites observados para uma futura evolução de orquestração s�
 
 ## Principais componentes
 
-- API NestJS e PostgreSQL: `dev/app/apps/api/src/main.ts`, `sql/schema.sql`, `sql/migrations/`.
-- Interface Next.js: `dev/app/apps/web/app/` e `components/`.
-- Execução por cartão e Codex: `dev/app/apps/api/src/execution/`.
-- Sessões de prompt Codex: `dev/app/apps/api/src/plugins/ai/`.
-- Plugins e contratos: `dev/app/apps/api/src/plugins/contract.ts`, `execution/registries.ts`.
+- API NestJS e PostgreSQL: `forge/app/apps/api/src/main.ts`, `sql/schema.sql`, `sql/migrations/`.
+- Interface Next.js: `forge/app/apps/web/app/` e `components/`.
+- Execução por cartão e Codex: `forge/app/apps/api/src/execution/`.
+- Sessões de prompt Codex: `forge/app/apps/api/src/plugins/ai/`.
+- Plugins e contratos: `forge/app/apps/api/src/plugins/contract.ts`, `execution/registries.ts`.
 - Runtimes e operação: `dev/`, `prod/`, `safdoulas/`, `suinda/`, `control/`.
 - Ferramentas de aceleração: `tools/orbit/`, `packages/`, `orbit.workspace.json`.
 
@@ -39,8 +39,8 @@ Os principais limites observados para uma futura evolução de orquestração s�
 ## Referências principais
 
 - Organização declarada: `README.md:1-27`, `MONOREPO.md:5-45`, `orbit.workspace.json`.
-- Núcleo de dados: `dev/app/apps/api/sql/schema.sql:2-114`.
-- Execução persistida: `dev/app/apps/api/sql/migrations/001_executable_cards.sql:1-49`.
-- Codex e execução: `dev/app/apps/api/src/execution/execution.service.ts`, `codex-executor.ts`, `plugins/ai/prompt-sessions.ts`.
-- Contrato de plugins: `dev/app/apps/api/src/plugins/contract.ts:203-248`.
+- Núcleo de dados: `forge/app/apps/api/sql/schema.sql:2-114`.
+- Execução persistida: `forge/app/apps/api/sql/migrations/001_executable_cards.sql:1-49`.
+- Codex e execução: `forge/app/apps/api/src/execution/execution.service.ts`, `codex-executor.ts`, `plugins/ai/prompt-sessions.ts`.
+- Contrato de plugins: `forge/app/apps/api/src/plugins/contract.ts:203-248`.
 - Contexto local de desenvolvimento: `docs/acceleration/README.md`, `tools/orbit/knowledge.mjs`.

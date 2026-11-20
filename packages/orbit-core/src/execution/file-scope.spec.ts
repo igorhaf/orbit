@@ -59,14 +59,14 @@ test('monorepo scope skips designated operational data and every Next build whil
   try{
     const operational=[
       '.orbit/cache/checks/cache.json','.orbit/local/deliveries/result.json','.orbit/sessions/run.json',
-      'dev/app/.orbit/cache/compiler.json','prod/app/.orbit/local/metrics.json','safdoulas/app/.orbit/sessions/run.json',
+      'forge/app/.orbit/cache/compiler.json','workspace/app/.orbit/local/metrics.json','safdoulas/app/.orbit/sessions/run.json',
       'suinda/app/.orbit/validations/artifacts/evidence.json','products/new-course/app/.orbit/cache/index.json',
-      'dev/data/large.bin','prod/data/large.bin','safdoulas/data/large.bin','suinda/data/large.bin',
+      'forge/data/large.bin','workspace/data/large.bin','safdoulas/data/large.bin','suinda/data/large.bin',
       'products/new-course/data/large.bin','control/state/large.bin','control/backups/large.bin','control/snapshots/large.bin',
-      'dev/app/apps/web/.next-native-dev/large.bin','products/new-course/app/apps/web/.next-custom/large.bin',
+      'forge/app/apps/web/.next-native-dev/large.bin','products/new-course/app/apps/web/.next-custom/large.bin',
     ];
     for(const path of operational){await mkdir(join(root,path,'..'),{recursive:true});await writeFile(join(root,path),'operational');if(path.endsWith('large.bin'))await truncate(join(root,path),110*1024*1024)}
-    const protectedFiles=['src/data/record.ts','dev/app/src/data/record.ts','control/src/data/config.ts','.orbit/orbit.yaml','.orbit/rules/coding.md','suinda/app/.orbit/orbit.yaml'];
+    const protectedFiles=['src/data/record.ts','forge/app/src/data/record.ts','control/src/data/config.ts','.orbit/orbit.yaml','.orbit/rules/coding.md','suinda/app/.orbit/orbit.yaml'];
     for(const path of protectedFiles){await mkdir(join(root,path,'..'),{recursive:true});await writeFile(join(root,path),'protected source')}
     const verify=await captureFileScope(root,[]);
     for(const path of operational.filter(path=>!path.endsWith('large.bin')))await writeFile(join(root,path),'new runtime state');
@@ -81,11 +81,11 @@ test('monorepo scope skips designated operational data and every Next build whil
 test('operational namespaces cannot expand write scope and unrelated data source paths stay available',()=>{
   for(const path of [
     '.orbit/cache/checks/evidence.json','.orbit/local/context.md','.orbit/sessions/session.json',
-    'dev/app/.orbit/cache/index.json','suinda/app/.orbit/local/metrics.json','products/new-course/app/.orbit/sessions/session.json',
-    'dev/data/config.ts','products/new-course/data/config.ts','control/state/config.ts','control/backups/copy.ts','control/snapshots/tree.ts',
+    'forge/app/.orbit/cache/index.json','suinda/app/.orbit/local/metrics.json','products/new-course/app/.orbit/sessions/session.json',
+    'forge/data/config.ts','products/new-course/data/config.ts','control/state/config.ts','control/backups/copy.ts','control/snapshots/tree.ts',
     'apps/web/.next-native-dev/server.js',
   ])assert.throws(()=>validateWriteScope([path]),/Escopo de escrita inválido/);
-  assert.deepEqual(validateWriteScope(['src/data/record.ts','.orbit/orbit.yaml','.orbit/rules/coding.md','dev/app/.orbit/orbit.yaml']),['src/data/record.ts','.orbit/orbit.yaml','.orbit/rules/coding.md','dev/app/.orbit/orbit.yaml']);
+  assert.deepEqual(validateWriteScope(['src/data/record.ts','.orbit/orbit.yaml','.orbit/rules/coding.md','forge/app/.orbit/orbit.yaml']),['src/data/record.ts','.orbit/orbit.yaml','.orbit/rules/coding.md','forge/app/.orbit/orbit.yaml']);
 });
 
 test('operational links are never followed while source replacement still restores another project safely',async()=>{
@@ -93,7 +93,7 @@ test('operational links are never followed while source replacement still restor
   try{
     await mkdir(join(root,'.orbit'),{recursive:true});await mkdir(join(root,'products/new-course/app/.orbit'),{recursive:true});await mkdir(join(root,'dev'),{recursive:true});
     await writeFile(join(outside,'secret.ts'),'another project');
-    await symlink(outside,join(root,'.orbit/cache'),'dir');await symlink(outside,join(root,'products/new-course/app/.orbit/local'),'dir');await symlink(outside,join(root,'dev/data'),'dir');
+    await symlink(outside,join(root,'.orbit/cache'),'dir');await symlink(outside,join(root,'products/new-course/app/.orbit/local'),'dir');await symlink(outside,join(root,'forge/data'),'dir');
     await mkdir(join(root,'src/data'),{recursive:true});await writeFile(join(root,'src/data/secret.ts'),'protected code');
     const verify=await captureFileScope(root,[]);
     await rm(join(root,'src/data'),{recursive:true});await symlink(outside,join(root,'src/data'),'dir');

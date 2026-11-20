@@ -38,6 +38,32 @@ type Version = ExtensionRecord & { actor_id: string };
 const fingerprint = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+function normalizeRecordSearch(value: string) {
+  return value.normalize("NFKD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR").trim();
+}
+
+function matchesRecordSearch(record: ExtensionRecord, definition: RecordKindContribution, query: string, compactQuery: string) {
+  const properties = (definition.schema.properties || {}) as Record<string, unknown>;
+  const fields = definition.searchableFields || [];
+  for (const field of fields) {
+    const property = properties[field] as { type?: unknown } | undefined;
+    if (!/^[a-z][a-z0-9_]{0,79}$/.test(field) || !property || property.type !== "string")
+      throw new Error("Invalid searchableFields definition for extension record kind.");
+  }
+  return [record.title, ...fields.map((field) => record.payload[field])]
+    .filter((value): value is string => typeof value === "string")
+    .some((value) => {
+      const normalized = normalizeRecordSearch(value);
+      return normalized.includes(query) || (compactQuery.length >= 2 && normalized.replace(/[^\p{L}\p{N}]/gu, "").includes(compactQuery));
+    });
+}
+
+function matchesRecordRelation(record: ExtensionRecord, field: string, values: string[]) {
+  if (!values.length) return true;
+  const value = record.payload[field];
+  return Array.isArray(value) && value.some(item => typeof item === "string" && values.includes(item));
+}
+
 
 /** Every leaf plugin uses its own schema and permissions over a shared, immutable history. */
 @Injectable()
@@ -164,6 +190,48 @@ export class ExtensionRecords implements OnModuleInit {
     if (!definition)
       invalid("Tipo de registro não encontrado neste plugin.", 404);
     return definition;
+  }
+
+  /**
+   * Return only authorized, non-sensitive calendar coordinates from versioned records.
+   * Domain calendar providers cannot bypass record ACLs or receive the full payload.
+   */
+  async calendarWindow(plugin: string, kind: string, user: string, start: Date, end: Date,
+    startField: string, endField: string, allDayField?: string): Promise<Array<{ id: string; workspaceId: string; state: string; start: string; end: string; allDay?: boolean }>> {
+    if (!this.registry.isEnabled(plugin) || !(start instanceof Date) || !(end instanceof Date)
+      || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return [];
+    const definition = this.definition(plugin, kind);
+    const properties = (definition.schema?.properties || {}) as Record<string, { type?: unknown; format?: unknown }>;
+    for (const field of [startField, endField]) {
+      const schema = properties[field];
+      if (typeof field !== "string" || !/^[a-z][a-z0-9_]{0,79}$/.test(field)
+        || !schema || schema.type !== "string" || schema.format !== "date-time")
+        throw new Error("Calendar projection fields must be declared date-time fields.");
+    }
+    if (allDayField) {
+      const schema = properties[allDayField];
+      if (!/^[a-z][a-z0-9_]{0,79}$/.test(allDayField) || !schema || schema.type !== "boolean")
+        throw new Error("Calendar projection all-day field must be a declared boolean field.");
+    }
+    const from = new Date(start.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const until = new Date(end.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const rows = await this.db.query<{ id: string; workspace_id: string; state: string; revision: number; payload: Payload }>(
+      `SELECT id,workspace_id,state,revision,payload FROM extension_records
+       WHERE plugin_id=$1 AND kind=$2 AND payload->>$3 >= $4 AND payload->>$3 <= $5
+       ORDER BY payload->>$3,id LIMIT 5000`,
+      [plugin, kind, startField, from, until],
+    );
+    const result: Array<{ id: string; workspaceId: string; state: string; start: string; end: string; allDay?: boolean }> = [];
+    for (const row of rows) {
+      if (!(await this.canRecord(user, plugin, kind, row.id, "read"))) continue;
+      const payload = this.readablePayload(plugin, kind, row.id, row.revision, row.payload);
+      const startsAt = typeof payload[startField] === "string" ? Date.parse(payload[startField] as string) : NaN;
+      const endsAt = typeof payload[endField] === "string" ? Date.parse(payload[endField] as string) : NaN;
+      if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || endsAt <= startsAt || endsAt <= start.getTime() || startsAt >= end.getTime()) continue;
+      result.push({ id: row.id, workspaceId: row.workspace_id, state: row.state, start: new Date(startsAt).toISOString(), end: new Date(endsAt).toISOString(),
+        ...(allDayField ? { allDay: payload[allDayField] === true } : {}) });
+    }
+    return result;
   }
 
   protected sensitivePaths(plugin: string, kind: string) {
@@ -564,12 +632,32 @@ export class ExtensionRecords implements OnModuleInit {
     );
   }
 
-  async list(plugin: string, workspace: string, user: string) {
+  async list(plugin: string, workspace: string, user: string, search = "", kind = "", relationField = "", relationValues: string[] = []) {
     const registered = this.registry.getById(plugin);
     if (!registered.contributions?.recordKinds || !this.registry.isEnabled(plugin))
       invalid("Plugin ou dependência desativada.", 409);
     if (!(await this.db.one("SELECT id FROM workspaces WHERE id=$1 AND archived_at IS NULL", [id(workspace)])))
       invalid("Workspace não encontrado ou arquivado.", 404);
+    const definitions = registered.contributions.recordKinds;
+    const requestedKind = typeof kind === "string" ? kind.trim() : "";
+    if (requestedKind && !Object.hasOwn(definitions, requestedKind)) invalid("Tipo de registro inválido.", 400);
+    const query = typeof search === "string" ? search.trim() : "";
+    if (query.length > 120) invalid("A busca deve ter até 120 caracteres.", 400);
+    if (query && query.replace(/\s/g, "").length < 2) invalid("Informe ao menos dois caracteres para buscar.", 400);
+    const normalizedQuery = normalizeRecordSearch(query);
+    const compactQuery = normalizedQuery.replace(/[^\p{L}\p{N}]/gu, "");
+    const values = [...new Set(Array.isArray(relationValues) ? relationValues : [])];
+    if (values.length > 100 || values.some(value => typeof value !== "string"
+      || !/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/.test(value)))
+      invalid("Filtro de relação inválido.", 400);
+    const filterField = typeof relationField === "string" ? relationField.trim() : "";
+    if (values.length) {
+      if (!requestedKind || !/^[a-z][a-z0-9_]{0,79}$/.test(filterField)) invalid("Filtro de relação incompleto.", 400);
+      const properties = (definitions[requestedKind]!.schema.properties || {}) as Record<string, { type?: unknown; items?: { type?: unknown; recordKind?: unknown } }>;
+      const property = properties[filterField];
+      if (property?.type !== "array" || property.items?.type !== "string" || typeof property.items.recordKind !== "string"
+        || !Object.hasOwn(definitions, property.items.recordKind)) invalid("Este tipo não permite filtrar por essa relação.", 400);
+    }
     const visible: ExtensionRecord[] = [];
     let cursorUpdatedAt: string | null = null;
     let cursorId: string | null = null;
@@ -578,17 +666,24 @@ export class ExtensionRecords implements OnModuleInit {
       const records: Array<ExtensionRecord & { cursor_updated_at: string }> = await this.db.query<ExtensionRecord & { cursor_updated_at: string }>(
         `SELECT extension_records.*,extension_records.updated_at::text AS cursor_updated_at FROM extension_records
          WHERE workspace_id=$1 AND plugin_id=$2
-           AND ($3::timestamptz IS NULL OR (extension_records.updated_at,extension_records.id)<($3::timestamptz,$4::uuid))
-         ORDER BY extension_records.updated_at DESC,extension_records.id DESC LIMIT $5`,
-        [workspace, plugin, cursorUpdatedAt, cursorId, pageSize],
+           AND ($3::text IS NULL OR extension_records.kind=$3)
+           AND ($4::timestamptz IS NULL OR (extension_records.updated_at,extension_records.id)<($4::timestamptz,$5::uuid))
+         ORDER BY extension_records.updated_at DESC,extension_records.id DESC LIMIT $6`,
+        [workspace, plugin, requestedKind || null, cursorUpdatedAt, cursorId, pageSize],
       );
       for (const row of records) {
         const record = { ...row } as ExtensionRecord & { cursor_updated_at?: string };
         delete record.cursor_updated_at;
+        if (requestedKind && record.kind !== requestedKind) continue;
         if (await this.canRecord(user, plugin, record.kind, record.id, "read")) {
-          visible.push(this.readableRecord(record));
-          if (this.definition(plugin, record.kind).resourceScoped)
+          const readable = this.readableRecord(record);
+          const definition = this.definition(plugin, record.kind);
+          if (definition.resourceScoped)
             await this.access.audit(user, `${plugin}.record.read`, record.id, { type: "extension_record", id: record.id });
+          if ((!query || matchesRecordSearch(readable, definition, normalizedQuery, compactQuery))
+            && matchesRecordRelation(readable, filterField, values)) {
+            visible.push(readable);
+          }
           if (visible.length === pageSize) break;
         }
       }
@@ -1574,21 +1669,23 @@ export class ExtensionRecords implements OnModuleInit {
     for (const effect of effects) {
       const userId = id(effect.userId), recordId = id(effect.recordId), roleId = text(effect.roleId, 80);
       if (!/^[a-z][a-z0-9_-]{1,79}$/.test(roleId) || !["grant", "revoke"].includes(effect.effect)) invalid("Efeito de papel de registro inválido.");
-      const [target, role, resource] = await Promise.all([
-        client.query<{ id: string; is_root: boolean }>("SELECT id,is_root FROM users WHERE id=$1 AND NOT disabled", [userId]),
-        client.query("SELECT id FROM access_roles WHERE id=$1", [roleId]),
-        client.query<{ id: string; plugin_id: string; kind: string }>(`SELECT r.id,r.plugin_id,r.kind FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
-          WHERE r.id=$1 AND r.workspace_id=$2 AND v.revision=r.revision`, [recordId, workspace]),
-      ]);
-      if (!target.rows[0] || target.rows[0].is_root || !role.rows[0] || !resource.rows[0]) invalid("O destino, o papel ou o registro do acesso não está disponível.", 409);
-      if (!this.registry.isEnabled(resource.rows[0].plugin_id) || this.definition(resource.rows[0].plugin_id, resource.rows[0].kind).resourceScoped !== true)
+      const { rows: [target] } = await client.query<{ id: string; is_root: boolean }>(
+        "SELECT id,is_root FROM users WHERE id=$1 AND NOT disabled", [userId]);
+      const { rows: [role] } = await client.query("SELECT id FROM access_roles WHERE id=$1", [roleId]);
+      const { rows: [resource] } = await client.query<{ id: string; plugin_id: string; kind: string }>(
+        `SELECT r.id,r.plugin_id,r.kind FROM extension_records r JOIN extension_record_versions v ON v.record_id=r.id
+         WHERE r.id=$1 AND r.workspace_id=$2 AND v.revision=r.revision`, [recordId, workspace]);
+      if (!target || target.is_root || !role || !resource) invalid("O destino, o papel ou o registro do acesso não está disponível.", 409);
+      if (!this.registry.isEnabled(resource.plugin_id) || this.definition(resource.plugin_id, resource.kind).resourceScoped !== true)
         invalid("O acesso automático só pode ser aplicado a um registro com escopo individual habilitado.", 409);
+      // Take the users write lock before access_grants, in editorial lock order.
+      // Both changes and the audit remain part of the same record transaction.
+      await client.query("UPDATE users SET session_version=session_version+1 WHERE id=$1", [userId]);
       if (effect.effect === "grant") {
         await client.query("INSERT INTO access_grants(user_id,role_id,scope_type,scope_id) VALUES($1,$2,'extension_record',$3) ON CONFLICT DO NOTHING", [userId, roleId, recordId]);
       } else {
         await client.query("DELETE FROM access_grants WHERE user_id=$1 AND role_id=$2 AND scope_type='extension_record' AND scope_id=$3", [userId, roleId, recordId]);
       }
-      await client.query("UPDATE users SET session_version=session_version+1 WHERE id=$1", [userId]);
       await client.query("INSERT INTO access_audit(actor_id,action,target,scope_type,scope_id) VALUES($1,$2,$3,'extension_record',$4)", [actor, `role.scope.${effect.effect}`, `${roleId}:${userId}`, recordId]);
     }
   }

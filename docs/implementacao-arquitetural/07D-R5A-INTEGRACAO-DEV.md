@@ -8,8 +8,8 @@ O baseline é Core 1.12.5 com 231 mappings. As migrations 210–212 continuam na
 
 | Arquivo | Mudança |
 |---|---|
-| `dev/app/experimental/plugin-setting-toggle.ts` | Composição interna com `AccessGuard`, `AccessService`, repositório da geração, orquestração R3C-C e recuperação R3C-D. |
-| `dev/app/experimental/plugin-setting-toggle.postgres-fixture.ts` | Exercita o adaptador com sessões assinadas, grants reais, dois registries DEV e pools restritos. |
+| `forge/app/experimental/plugin-setting-toggle.ts` | Composição interna com `AccessGuard`, `AccessService`, repositório da geração, orquestração R3C-C e recuperação R3C-D. |
+| `forge/app/experimental/plugin-setting-toggle.postgres-fixture.ts` | Exercita o adaptador com sessões assinadas, grants reais, dois registries DEV e pools restritos. |
 | `packages/orbit-core/src/execution/editorial-authorization-generation.postgres.spec.ts` | Aciona a fixture DEV dentro do banco e dos papéis da R5-PRE. |
 
 ## Fronteira de autorização e conexões
@@ -36,7 +36,7 @@ O adaptador preserva `committed_reconciled`, `committed_local_stale`, `commit_un
 Executar com a configuração TypeScript da API para carregar os decorators do AccessGuard:
 
 ```sh
-./dev/app/node_modules/.bin/tsx --tsconfig dev/app/apps/api/tsconfig.json --test packages/orbit-core/src/execution/editorial-authorization-generation.postgres.spec.ts
+./forge/app/node_modules/.bin/tsx --tsconfig forge/app/apps/api/tsconfig.json --test packages/orbit-core/src/execution/editorial-authorization-generation.postgres.spec.ts
 ```
 
 ## Pré condições do cutover

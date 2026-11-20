@@ -11,7 +11,8 @@ function client(path:string){
   return spawn(process.execPath,['-e',script,path],{env:{PATH:'/usr/bin:/bin'},stdio:['pipe','pipe','pipe']});
 }
 async function dispose(child:ChildProcess){if(child.exitCode===null&&child.signalCode===null){child.kill('SIGTERM');await once(child,'exit')}}
-function reply(child:ChildProcess,request:unknown):Promise<any>{return new Promise((resolve,reject)=>{let text='';const data=(b:Buffer)=>{text+=b;if(text.includes('\n')){child.stdout!.off('data',data);resolve(JSON.parse(text.split('\n')[0]))}};child.stdout!.on('data',data);child.once('error',reject);child.stdin!.write(JSON.stringify(request)+'\n')})}
+type PeerReply={payload:unknown;signature:string};
+function reply(child:ChildProcess,request:unknown):Promise<PeerReply>{return new Promise((resolve,reject)=>{let text='';const data=(b:Buffer)=>{text+=b;if(text.includes('\n')){child.stdout!.off('data',data);resolve(JSON.parse(text.split('\n')[0]) as PeerReply)}};child.stdout!.on('data',data);child.once('error',reject);child.stdin!.write(JSON.stringify(request)+'\n')})}
 
 test('F7/F8 exact kernel PID,starttime,UID permit only pinned process; endpoint is one-use',{timeout:10000},async t=>{
  let requests=0;const host=await createContextBridgePeer({exchange:async request=>{requests++;return {echo:request}},handshakeTimeoutMs:5000});

@@ -5,7 +5,10 @@ export function permissionForRoute(path:string,method:string){
  const read=['GET','HEAD'].includes(method),action=read?'read':'write';
  if(path.startsWith('/access'))return path==='/access/me'?null:path==='/access/audit'&&read?'access.audit.read':'access.manage';
  if(path==='/auth/me')return null;
- if(/^\/account\/mfa(?:\/|$)/.test(path))return null;
+ if(method==='POST'&&['/auth/email-change','/auth/email-change/complete'].includes(path))return null;
+ // These endpoints are self-service: handlers always derive the account ID
+ // from the authenticated session, so a global account privilege is unnecessary.
+ if((method==='GET'&&path==='/account/mfa')||(method==='POST'&&['/account/mfa/challenge','/account/mfa/confirm'].includes(path)))return null;
  if(path==='/plugins')return read?'plugins.read':'plugins.manage';
  if(path.startsWith('/plugins/'))return 'plugins.manage';
  if(/^\/(boards|cards|lists|comments|checklists|checklist-items|checklist|card-attachments|comment-attachments|card-merges|favorites)(\/|$)/.test(path))return 'boards.'+action;

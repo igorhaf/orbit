@@ -42,6 +42,10 @@ Documentos de concessão, comprovantes e recurso gráfico do terceiro caso estã
 Não havia processos antigos fora desse escopo na base revisada; os três exemplos são os únicos processos de acreditação da demonstração.
 Os originais normativos e o histórico imutável foram preservados.
 
+## Simulação ROOT sem leitura dos registros
+
+A simulação ROOT também recebe exemplos estáticos de cadastro formativo, revisão de governança e acompanhamento de processo. Cada contribuição aparece apenas quando o papel simulado possui a permissão de leitura correspondente (`plugin.safdoulas-registry.read`, `plugin.safdoulas-governance.read` ou `plugin.safdoulas-processes.read`). Eles não são os três processos da demonstração persistida descritos acima; não leem nem alteram esses registros e não representam norma, protocolo ou decisão oficial.
+
 ## Credenciais e verificação
 
 O relatório completo de nomes, funções, logins e senhas está fora do Git, em `safdoulas/data/reports/safdoulas-demonstracao-acessos.md`, com acesso de arquivo restrito ao proprietário.

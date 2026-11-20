@@ -9,7 +9,7 @@ const db={query:async()=>{throw Error('no SQL expected in source contract tests'
 function fixture(){
  const p={schemaVersion:1 as const,scope,status:'active' as const,validFrom:'2026-11-17T11:00:00.000Z',validUntil:'2026-11-17T13:00:00.000Z',policy};
  const e={schemaVersion:1 as const,scope,presence:'present' as const,compatibility:'compatible' as const,verifiedAt:'2026-11-17T11:59:00.000Z',validUntil:'2026-11-17T13:00:00.000Z'};
- let value:EditorialConditions={policy:{...p,reference:{sourceId:'policy-authority',id:'approval',version:'1',hash:editorialPolicyHash(p)}},evidence:{...e,reference:{sourceId:'evidence-authority',id:'assessment',version:'1',hash:editorialEvidenceHash(e)}}};
+ const value:EditorialConditions={policy:{...p,reference:{sourceId:'policy-authority',id:'approval',version:'1',hash:editorialPolicyHash(p)}},evidence:{...e,reference:{sourceId:'evidence-authority',id:'assessment',version:'1',hash:editorialEvidenceHash(e)}}};
  const authority:EditorialSourceAuthority={consistency:'postgresql_transaction',policySourceIds:['policy-authority'],evidenceSourceIds:['evidence-authority'],resolve:async()=>value,historical:async(_db,_ref,kind)=>kind==='policy'?value.policy:value.evidence,pinCurrent:async()=>{}};
  const rehash=()=>{if(value.policy){const {reference,...body}=value.policy;reference.hash=editorialPolicyHash(body)}if(value.evidence){const {reference,...body}=value.evidence;reference.hash=editorialEvidenceHash(body)}};
  return {value,authority,rehash,resolve:()=>new EditorialConditionsResolver(authority,()=>now).resolve(db,scope)};

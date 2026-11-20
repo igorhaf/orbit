@@ -9,6 +9,7 @@ import {currentWorkspaceWriteLease} from './workspace-coordinator';
 /** Exact process identity pinned by trusted host preparation, never agent input. */
 export type ContextBridgePeerIdentity={pid:number;startTime:string;uid:number};
 export type ContextBridgePeerOptions={exchange:(request:unknown)=>Promise<unknown>;signal?:AbortSignal;maxFrameBytes?:number;maxResponseBytes?:number;maxPendingRequests?:number;handshakeTimeoutMs?:number};
+function isRecord(value:unknown):value is Record<string,unknown>{return Boolean(value)&&typeof value==='object'&&!Array.isArray(value)}
 
 export async function readContextBridgePeerIdentity(pid:number):Promise<ContextBridgePeerIdentity>{
   if(process.platform!=='linux'||!Number.isSafeInteger(pid)||pid<1)throw new Error('Context peer identity requires a Linux process.');
@@ -64,7 +65,8 @@ export async function createContextBridgePeer(options:ContextBridgePeerOptions){
     let at:number;
     while((at=buffer.indexOf(10))>=0){
       const frame=buffer.subarray(0,at);buffer=buffer.subarray(at+1);
-      let message:any;try{message=JSON.parse(frame.toString('utf8'))}catch{void close('helper_protocol_failure');return}
+      let message:unknown;try{message=JSON.parse(frame.toString('utf8'))}catch{void close('helper_protocol_failure');return}
+      if(!isRecord(message)){void close('helper_protocol_failure');return}
       if(message.event==='ready'){readyResolve();continue}
       if(message.event==='authorized'){authResolve();continue}
       if(message.event==='connected')continue;
@@ -84,7 +86,7 @@ export async function createContextBridgePeer(options:ContextBridgePeerOptions){
     closed=true;controller.abort(new Error('Context peer channel ended.'));abortInput?.removeEventListener('abort',onAbort);
     readyReject(new Error('Context peer helper ended.'));authReject(new Error('Context peer helper ended.'));
     // Do not delete unknown replacement paths or recursively remove this folder.
-    void (async()=>{try{await lstat(endpointPath)}catch(error:any){if(error?.code==='ENOENT')await rmdir(directory).catch(()=>{})}doneResolve()})();
+    void (async()=>{try{await lstat(endpointPath)}catch(error:unknown){if(isRecord(error)&&error.code==='ENOENT')await rmdir(directory).catch(()=>{})}doneResolve()})();
   });
   send({path:endpointPath,...limits,maxResponseBytes:limits.maxResponseBytes+1024});
   if(abortInput?.aborted)void close('host_revoked');

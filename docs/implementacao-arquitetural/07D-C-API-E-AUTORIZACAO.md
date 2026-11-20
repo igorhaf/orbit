@@ -6,7 +6,7 @@ Implementados os componentes internos seguros permitidos pela cláusula de bloqu
 
 ## Inspeção e lacunas comprovadas
 
-- `dev/app/apps/api/src/access/access.ts`: `AccessGuard` autentica Bearer via `AccessService.authenticate`; verifica JWT, conta ativa e `session_version`. Preserva `orbitActor` e usuário efetivo, com mecanismos próprios de simulação/act-as.
+- `forge/app/apps/api/src/access/access.ts`: `AccessGuard` autentica Bearer via `AccessService.authenticate`; verifica JWT, conta ativa e `session_version`. Preserva `orbitActor` e usuário efetivo, com mecanismos próprios de simulação/act-as.
 - Autorizações existentes usam `access_grants`, `access_roles`, grupos, exceções e configurações de permissões. Consultas de `AccessService` usam `Db`, cujo `query` executa via pool; não recebem uma conexão transacional dedicada e não oferecem protocolo de bloqueio de revogação para este fluxo.
 - `execution.service.ts::discoveryDetail` exige ator da execução, acesso ao card, projeto e identidade de manifesto. `execution.controller.ts` expõe a consulta existente da 07C. Isso não concede permissão de revisão independente a outro editor.
 - Não localizada permissão editorial específica nem regra que autorize aprovação por outro usuário. Não equiparamos administração, ROOT ou edição de card a aprovação editorial.
@@ -79,8 +79,8 @@ Não há fonte de política/evidência de produção configurada. As políticas 
 Executados com Node 24.20.0 e TSX:
 
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
- node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test \
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
+ node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test \
  packages/orbit-core/src/execution/discovery-review-repository.spec.ts \
  packages/orbit-core/src/execution/discovery-review.spec.ts
 ```

@@ -1,0 +1,8 @@
+{
+  "extends": "../apps/api/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true
+  },
+  "include": ["../apps/api/src/**/*.ts", "fixtures/plugin-settings-http.ts", "plugin-settings-http.postgres.spec.ts"]
+}

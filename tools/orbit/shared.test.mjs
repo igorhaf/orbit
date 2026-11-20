@@ -10,13 +10,13 @@ function fixture(t) {
   const root = mkdtempSync(resolve(tmpdir(), 'orbit-shared-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(resolve(root, 'packages/core/src'), { recursive: true });
-  mkdirSync(resolve(root, 'dev/app/src'), { recursive: true });
+  mkdirSync(resolve(root, 'forge/app/src'), { recursive: true });
   writeFileSync(resolve(root, 'packages/core/src/example.ts'), 'export const value = 1;\n');
-  writeFileSync(resolve(root, 'dev/app/src/example.ts'), 'export const value = 1;\n');
+  writeFileSync(resolve(root, 'forge/app/src/example.ts'), 'export const value = 1;\n');
   const pkg = { id: '@orbit/test', path: 'packages/core', version: '1.0.0', files: [{ source: 'src/example.ts', target: 'src/example.ts' }] };
   const metadata = () => writeFileSync(resolve(root, 'packages/core/package.json'), JSON.stringify({ name: pkg.id, version: pkg.version, orbit: { files: pkg.files } }));
   metadata();
-  return { root, config: { runtimes: [{ id: 'dev', app: 'dev/app' }], sharedPackages: [pkg] }, metadata, pkg };
+  return { root, config: { runtimes: [{ id: 'dev', app: 'forge/app' }], sharedPackages: [pkg] }, metadata, pkg };
 }
 
 test('shared source lock is reproducible and changes require a version bump', async t => {
@@ -28,15 +28,15 @@ test('shared source lock is reproducible and changes require a version bump', as
   await assert.rejects(execute('shared', ['sync', '--write'], context), /Bump/);
   context.pkg.version = '1.0.1'; context.metadata();
   await execute('shared', ['sync', '--write'], context);
-  assert.match(readFileSync(resolve(context.root, 'dev/app/src/example.ts'), 'utf8'), /value = 2/);
+  assert.match(readFileSync(resolve(context.root, 'forge/app/src/example.ts'), 'utf8'), /value = 2/);
 });
 
 test('shared sync preflights all files and rejects an independently edited projection', async t => {
   const context = fixture(t);
   await execute('shared', ['sync', '--write'], context);
-  writeFileSync(resolve(context.root, 'dev/app/src/example.ts'), 'local edit');
+  writeFileSync(resolve(context.root, 'forge/app/src/example.ts'), 'local edit');
   await assert.rejects(execute('shared', ['sync', '--write'], context), /independent changes/);
-  assert.equal(readFileSync(resolve(context.root, 'dev/app/src/example.ts'), 'utf8'), 'local edit');
+  assert.equal(readFileSync(resolve(context.root, 'forge/app/src/example.ts'), 'utf8'), 'local edit');
   assert.throws(() => safePath(context.root, '../escape'), /Unsafe/);
   assert.throws(() => safePath(context.root, '.git/config'), /Unsafe/);
 });
@@ -59,9 +59,9 @@ const hash = contents => createHash('sha256').update(contents).digest('hex');
 
 async function initialized(t) {
   const context = fixture(t);
-  context.config.runtimes.push({ id: 'prod', app: 'prod/app' });
-  mkdirSync(resolve(context.root, 'prod/app/src'), { recursive: true });
-  write(context, 'prod/app/src/example.ts', read(context, sourcePath));
+  context.config.runtimes.push({ id: 'prod', app: 'workspace/app' });
+  mkdirSync(resolve(context.root, 'workspace/app/src'), { recursive: true });
+  write(context, 'workspace/app/src/example.ts', read(context, sourcePath));
   write(context, 'orbit.workspace.json', JSON.stringify(context.config));
   await execute('shared', ['sync', '--write'], context);
   return context;
@@ -86,14 +86,14 @@ test('automatic reconciliation bumps once and publishes every runtime projection
 
 test('read-only reconciliation plans a release without writing metadata, locks or projections', async t => {
   const context = await initialized(t);
-  const oldMetadata = read(context, 'packages/core/package.json'), oldLock = read(context, 'dev/app/orbit.shared-lock.json');
+  const oldMetadata = read(context, 'packages/core/package.json'), oldLock = read(context, 'forge/app/orbit.shared-lock.json');
   write(context, sourcePath, 'export const value = 2;\n');
   const result = await reconcileShared(context, { changedFiles: [sourcePath], allowWrite: false });
   assert.equal(result.ok, true); assert.equal(result.written, false); assert.equal(result.requiresWrite, true);
   assert.equal(result.releases[0].next, '1.0.1');
   assert.equal(read(context, 'packages/core/package.json'), oldMetadata);
-  assert.equal(read(context, 'dev/app/orbit.shared-lock.json'), oldLock);
-  assert.equal(read(context, 'dev/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'forge/app/orbit.shared-lock.json'), oldLock);
+  assert.equal(read(context, 'forge/app/src/example.ts'), 'export const value = 1;\n');
 });
 
 test('scope and project boundaries are checked for the entire release before any write', async t => {
@@ -103,12 +103,12 @@ test('scope and project boundaries are checked for the entire release before any
   const denied = await reconcileShared(context, { changedFiles: [sourcePath], writeScope: [sourcePath], allowWrite: true });
   assert.equal(denied.ok, false); assert.equal(denied.blocked, 'write-scope');
   assert.ok(denied.requiredScope.includes('orbit.workspace.json'));
-  assert.ok(denied.requiredScope.includes('prod/app/src/example.ts'));
-  const narrowProject = await reconcileShared(context, { changedFiles: [sourcePath], projectRoot: resolve(context.root, 'dev/app'), allowWrite: true });
+  assert.ok(denied.requiredScope.includes('workspace/app/src/example.ts'));
+  const narrowProject = await reconcileShared(context, { changedFiles: [sourcePath], projectRoot: resolve(context.root, 'forge/app'), allowWrite: true });
   assert.equal(narrowProject.ok, false); assert.ok(narrowProject.requiredScope.includes('packages/core/package.json'));
   assert.equal(read(context, 'packages/core/package.json'), metadata);
   assert.equal(read(context, 'orbit.workspace.json'), workspace);
-  assert.equal(read(context, 'prod/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'workspace/app/src/example.ts'), 'export const value = 1;\n');
   const plan = await reconcileShared(context, { changedFiles: [sourcePath], allowWrite: false });
   const allowed = await reconcileShared(context, { changedFiles: [sourcePath], writeScope: plan.changedPaths, projectRoot: context.root, allowWrite: true });
   assert.equal(allowed.ok, true); assert.equal(allowed.written, true);
@@ -118,11 +118,11 @@ test('a preexisting canonical change not attributed to this execution is preserv
   const context = await initialized(t);
   write(context, sourcePath, 'export const preexisting = true;\n');
   const metadata = read(context, 'packages/core/package.json');
-  const result = await reconcileShared(context, { changedFiles: ['dev/app/src/unrelated.ts'], allowWrite: true });
+  const result = await reconcileShared(context, { changedFiles: ['forge/app/src/unrelated.ts'], allowWrite: true });
   assert.equal(result.ok, false); assert.ok(result.diagnostics.some(item => item.code === 'unattributed-source-change'));
   assert.equal(read(context, sourcePath), 'export const preexisting = true;\n');
   assert.equal(read(context, 'packages/core/package.json'), metadata);
-  assert.equal(read(context, 'dev/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'forge/app/src/example.ts'), 'export const value = 1;\n');
 });
 
 test('a preexisting partial release is not propagated to other runtimes without attribution', async t => {
@@ -133,18 +133,18 @@ test('a preexisting partial release is not propagated to other runtimes without 
   await execute('shared', ['sync', '--runtime', 'dev', '--write'], context);
   const result = await reconcileShared(context, { changedFiles: [], allowWrite: true });
   assert.equal(result.ok, false); assert.ok(result.diagnostics.some(item => item.code === 'unattributed-pending-release'));
-  assert.equal(read(context, 'prod/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'workspace/app/src/example.ts'), 'export const value = 1;\n');
 });
 
 test('independent edits and deletions in a projection block the whole release', async t => {
   const context = await initialized(t);
   write(context, sourcePath, 'export const value = 2;\n');
-  write(context, 'prod/app/src/example.ts', 'independent local edit\n');
+  write(context, 'workspace/app/src/example.ts', 'independent local edit\n');
   const result = await reconcileShared(context, { changedFiles: [sourcePath], allowWrite: true });
   assert.equal(result.ok, false); assert.ok(result.diagnostics.some(item => item.code === 'local-drift'));
-  assert.equal(read(context, 'prod/app/src/example.ts'), 'independent local edit\n');
+  assert.equal(read(context, 'workspace/app/src/example.ts'), 'independent local edit\n');
   assert.equal(JSON.parse(read(context, 'packages/core/package.json')).version, '1.0.0');
-  rmSync(resolve(context.root, 'prod/app/src/example.ts'));
+  rmSync(resolve(context.root, 'workspace/app/src/example.ts'));
   const deletion = await reconcileShared(context, { changedFiles: [sourcePath], allowWrite: true });
   assert.ok(deletion.diagnostics.some(item => item.code === 'local-drift'));
 });
@@ -172,14 +172,14 @@ test('version regression and removed ownership are diagnosed without deleting pr
   write(context, 'orbit.workspace.json', JSON.stringify(context.config));
   const removal = await reconcileShared(context, { changedFiles: ['orbit.workspace.json'], allowWrite: true });
   assert.ok(removal.diagnostics.some(item => item.code === 'removed-projection'));
-  assert.equal(read(context, 'dev/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'forge/app/src/example.ts'), 'export const value = 1;\n');
 });
 
 test('discovered products receive the release without being persisted as raw runtimes', async t => {
   const context = await initialized(t);
   mkdirSync(resolve(context.root, 'products/academy/app/src'), { recursive: true });
   write(context, 'products/academy/app/src/example.ts', read(context, sourcePath));
-  const lock = JSON.parse(read(context, 'dev/app/orbit.shared-lock.json')); lock.runtime = 'academy';
+  const lock = JSON.parse(read(context, 'forge/app/orbit.shared-lock.json')); lock.runtime = 'academy';
   write(context, 'products/academy/app/orbit.shared-lock.json', JSON.stringify(lock));
   context.config.runtimes.push({ id: 'academy', app: 'products/academy/app' });
   write(context, sourcePath, 'export const value = 2;\n');
@@ -235,11 +235,11 @@ test('scoped release preserves independent unselected sources, metadata, project
   write(context, sourcePath, 'export const value = 2;\n');
   write(context, 'packages/ui/src/view.ts', 'unreleased UI source\n');
   write(context, 'packages/ui/package.json', '{invalid unselected package metadata');
-  write(context, 'prod/app/src/view.ts', 'independent product UI\n');
-  const before = preservedUi(context), coreBefore = read(context, 'dev/app/src/example.ts');
+  write(context, 'workspace/app/src/view.ts', 'independent product UI\n');
+  const before = preservedUi(context), coreBefore = read(context, 'forge/app/src/example.ts');
   const plan = await reconcileShared(context, { changedFiles: [sourcePath], packageIds: [context.pkg.id] });
   assert.equal(plan.ok, true); assert.equal(plan.written, false);
-  assert.equal(read(context, 'dev/app/src/example.ts'), coreBefore);
+  assert.equal(read(context, 'forge/app/src/example.ts'), coreBefore);
   assert.ok(!plan.changedPaths.some(path => /packages\/ui|src\/view/.test(path)));
   assert.deepEqual(preservedUi(context), before);
   const applied = await reconcileShared(context, { changedFiles: [sourcePath], packageIds: [context.pkg.id], allowWrite: true });
@@ -262,7 +262,7 @@ test('scoped release rejects missing, duplicate and malformed package selection 
     assert.equal(result.ok, false); assert.equal(result.blocked, 'diagnostics');
     assert.equal(read(context, 'orbit.workspace.json'), before);
   }
-  assert.equal(read(context, 'dev/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'forge/app/src/example.ts'), 'export const value = 1;\n');
 });
 
 test('scoped release respects exact write scope and selected projection protection', async t => {
@@ -272,17 +272,17 @@ test('scoped release respects exact write scope and selected projection protecti
   const denied = await reconcileShared(context, { changedFiles: [sourcePath], packageIds: [context.pkg.id], writeScope: [sourcePath], allowWrite: true });
   assert.equal(denied.blocked, 'write-scope');
   assert.equal(read(context, 'packages/core/package.json'), metadata);
-  write(context, 'dev/app/src/example.ts', 'selected independent edit\n');
+  write(context, 'forge/app/src/example.ts', 'selected independent edit\n');
   const blocked = await reconcileShared(context, { changedFiles: [sourcePath], packageIds: [context.pkg.id], allowWrite: true });
   assert.ok(blocked.diagnostics.some(item => item.code === 'local-drift'));
-  assert.equal(read(context, 'prod/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'workspace/app/src/example.ts'), 'export const value = 1;\n');
   assert.deepEqual(preservedUi(context), uiBefore);
 });
 
 test('scoped release does not silently remove unselected ownership or accept ambiguous locks', async t => {
   const context = await twoPackages(t);
   write(context, sourcePath, 'export const value = 2;\n');
-  const path = 'dev/app/orbit.shared-lock.json', original = read(context, path);
+  const path = 'forge/app/orbit.shared-lock.json', original = read(context, path);
   const lock = JSON.parse(original);
   lock.packages.push({ ...lock.packages[1], id: '@orbit/removed' });
   write(context, path, JSON.stringify(lock));
@@ -293,7 +293,7 @@ test('scoped release does not silently remove unselected ownership or accept amb
   write(context, path, JSON.stringify(lock));
   result = await reconcileShared(context, { changedFiles: [sourcePath], packageIds: [context.pkg.id], allowWrite: true });
   assert.ok(result.diagnostics.some(item => item.code === 'invalid-lock-package'));
-  assert.equal(read(context, 'prod/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'workspace/app/src/example.ts'), 'export const value = 1;\n');
 });
 
 test('scoped release validates ownership collisions without reading unselected package sources', async t => {
@@ -303,18 +303,18 @@ test('scoped release validates ownership collisions without reading unselected p
   write(context, 'orbit.workspace.json', JSON.stringify(context.config));
   const result = await reconcileShared(context, { changedFiles: [sourcePath], packageIds: [context.pkg.id], allowWrite: true });
   assert.ok(result.diagnostics.some(item => item.code === 'invalid-package' && /Multiple packages/.test(item.message)));
-  assert.equal(read(context, 'dev/app/src/example.ts'), 'export const value = 1;\n');
+  assert.equal(read(context, 'forge/app/src/example.ts'), 'export const value = 1;\n');
 });
 
 test('scoped reconcile CLI accepts package IDs and keeps the global default strict', async t => {
   const context = await twoPackages(t);
   write(context, sourcePath, 'export const value = 2;\n');
-  write(context, 'prod/app/src/view.ts', 'independent UI\n');
+  write(context, 'workspace/app/src/view.ts', 'independent UI\n');
   const global = await execute('shared', ['reconcile', '--files', sourcePath], context);
   assert.equal(global.ok, false); assert.ok(global.diagnostics.some(item => item.code === 'local-drift'));
   const scoped = await execute('shared', ['reconcile', '--files', sourcePath, '--packages', context.pkg.id, '--write'], context);
   assert.equal(scoped.ok, true); assert.equal(scoped.written, true);
-  assert.equal(read(context, 'prod/app/src/view.ts'), 'independent UI\n');
+  assert.equal(read(context, 'workspace/app/src/view.ts'), 'independent UI\n');
   const duplicate = await execute('shared', ['reconcile', '--packages', `${context.pkg.id},${context.pkg.id}`], context);
   assert.equal(duplicate.ok, false);
   await assert.rejects(execute('shared', ['reconcile', '--packages'], context), /requires a value/);
@@ -322,7 +322,7 @@ test('scoped reconcile CLI accepts package IDs and keeps the global default stri
 
 test('failed scoped persistence restores locks and metadata while preserving UI entries', async t => {
   const context = await twoPackages(t), uiBefore = preservedUi(context);
-  const paths = ['packages/core/package.json', 'orbit.workspace.json', 'dev/app/orbit.shared-lock.json'];
+  const paths = ['packages/core/package.json', 'orbit.workspace.json', 'forge/app/orbit.shared-lock.json'];
   const originals = new Map(paths.map(path => [path, read(context, path)]));
   const entries = paths.map(path => ({ path, before: hash(originals.get(path)), contents: 'new release\n' }));
   let writes = 0;
@@ -334,7 +334,7 @@ test('failed scoped persistence restores locks and metadata while preserving UI 
 test('lock object key order does not create false stale-lock diagnostics', async t => {
   const context = fixture(t);
   await execute('shared', ['sync', '--write'], context);
-  const path = resolve(context.root, 'dev/app/orbit.shared-lock.json');
+  const path = resolve(context.root, 'forge/app/orbit.shared-lock.json');
   const lock = JSON.parse(readFileSync(path, 'utf8'));
   const reverse = value => Array.isArray(value) ? value.map(reverse) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).reverse().map(([key,item]) => [key,reverse(item)])) : value;
   writeFileSync(path, JSON.stringify(reverse(lock)));

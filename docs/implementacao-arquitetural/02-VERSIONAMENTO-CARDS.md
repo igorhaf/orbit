@@ -83,7 +83,7 @@ A seleção de pacote não amplia escopo de escrita, ignora colisões de ownersh
 
 ## 7. Implementações — quatro runtimes e instruções
 
-Nos quatro prefixos `dev/app`, `prod/app`, `safdoulas/app`, `suinda/app`, foram adaptados os seguintes arquivos não mapeados, por mudanças localizadas que preservam o restante:
+Nos quatro prefixos `forge/app`, `workspace/app`, `safdoulas/app`, `suinda/app`, foram adaptados os seguintes arquivos não mapeados, por mudanças localizadas que preservam o restante:
 
 | Sufixo | Alteração |
 |---|---|
@@ -146,9 +146,9 @@ Comandos reproduzíveis:
 
 ```sh
 node --test --test-concurrency=1 tools/orbit/shared.test.mjs tools/orbit/preflight.test.mjs tools/orbit/catalog.test.mjs tools/orbit/registry-foundation.test.mjs tools/orbit/card-revision-ui.test.mjs tools/orbit/card-version-enqueue.test.mjs tools/orbit/card-revisions.postgres.test.mjs
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/card-versions.spec.ts dev/app/apps/api/src/execution/file-scope.spec.ts dev/app/apps/api/src/execution/execution.spec.ts
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test --test-name-pattern='prompt queue|revision' dev/app/apps/api/src/prompt-question.spec.ts
-node dev/app/node_modules/typescript/bin/tsc --noEmit --incremental false -p dev/app/apps/api/tsconfig.json
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/card-versions.spec.ts forge/app/apps/api/src/execution/file-scope.spec.ts forge/app/apps/api/src/execution/execution.spec.ts
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test --test-name-pattern='prompt queue|revision' forge/app/apps/api/src/prompt-question.spec.ts
+node forge/app/node_modules/typescript/bin/tsc --noEmit --incremental false -p forge/app/apps/api/tsconfig.json
 ```
 
 O terceiro comando pode substituir o prefixo/tsconfig pelos outros runtimes. Não execute automaticamente os testes excluídos ou suítes de integração existentes com DATABASE_URL de produto.
@@ -228,7 +228,7 @@ Na continuação autorizada pelo responsável, foi corrigida uma única aspa tip
 Verificação executada:
 
 ```sh
-node dev/app/node_modules/typescript/bin/tsc --noEmit --incremental false -p suinda/app/apps/web/tsconfig.json
+node forge/app/node_modules/typescript/bin/tsc --noEmit --incremental false -p suinda/app/apps/web/tsconfig.json
 ```
 
 Resultado: exit0, sem erros. Portanto, os três erros de sintaxe registrados nas seções anteriores são evidência histórica da entrega inicial e este bloqueio de compilação está resolvido. Nenhuma validação visual ou operação de aplicação foi inferida desse resultado.

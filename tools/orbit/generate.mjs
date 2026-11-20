@@ -82,19 +82,28 @@ export function isReusableFile(path) {
 function trackedSource(root, app) {
   safePath(root, app);
   const prefix = app.replace(/\/$/, '') + '/';
-  const entries = execFileSync('git', ['ls-files', '-s', '-z', '--', prefix], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
+  // A directory rename is a working-tree operation; until its path changes are
+  // committed, the Git index still names the original source tree. Map only
+  // the two canonical Orbit runtime renames and read from their new locations.
+  // Prefer the current product path when it is present in the index (for
+  // isolated fixtures and after the rename is committed). Before commit, fall
+  // back to the legacy Git index path while reading bytes from the new tree.
+  const sourcePrefixes = app === 'forge/app' ? [prefix, 'dev/app/'] : app === 'workspace/app' ? [prefix, 'prod/app/'] : [prefix];
+  const entries = sourcePrefixes.flatMap(sourcePrefix =>
+    execFileSync('git', ['ls-files', '-s', '-z', '--', sourcePrefix], { cwd: root, encoding: 'utf8' })
+      .split('\0').filter(Boolean).map(entry => ({ entry, sourcePrefix })));
   const files = new Map();
-  for (const entry of entries) {
-    const [metadata, fullPath] = entry.split('\t');
-    if (!fullPath?.startsWith(prefix)) continue;
-    const path = fullPath.slice(prefix.length);
+  for (const { entry, sourcePrefix } of entries) {
+    const [metadata, indexedPath] = entry.split('\t');
+    if (!indexedPath?.startsWith(sourcePrefix)) continue;
+    const path = indexedPath.slice(sourcePrefix.length);
     if (!isReusableFile(path)) continue;
-    if (metadata.split(' ')[0] === '120000') throw new Error(`Fonte rastreada contém link simbólico: ${fullPath}`);
-    const absolute = safePath(root, fullPath);
-    if (!lstatSync(absolute).isFile()) throw new Error(`Fonte não é arquivo regular: ${fullPath}`);
-    files.set(path, readFileSync(absolute));
+    if (metadata.split(' ')[0] === '120000') throw new Error(`Fonte rastreada contém link simbólico: ${indexedPath}`);
+    const absolute = safePath(root, `${app}/${path}`);
+    if (!lstatSync(absolute).isFile()) throw new Error(`Fonte não é arquivo regular: ${app}/${path}`);
+    if (!files.has(path)) files.set(path, readFileSync(absolute));
   }
-  if (!files.has('package.json')) throw new Error('A base DEV precisa ter package.json rastreado no Git.');
+  if (!files.has('package.json')) throw new Error(`A base ${app} precisa ter package.json rastreado no Git.`);
   return files;
 }
 
@@ -243,13 +252,15 @@ function writeNewTree(destination, files) {
 
 async function product(args, context) {
   const { positionals, flags } = options(args);
-  assertFlags(flags, ['target', 'plugins', 'web-port', 'api-port', 'theme']);
+  assertFlags(flags, ['target', 'plugins', 'web-port', 'api-port', 'theme', 'base']);
   const [id] = positionals;
-  if (positionals.length !== 1 || !slugPattern.test(id || '')) throw new Error('Use generate product <slug> [--plugins id,id] [--write].');
+  if (positionals.length !== 1 || !slugPattern.test(id || '')) throw new Error('Use generate product <slug> [--base runtime] [--plugins id,id] [--write].');
   const configuredProducts = [...(context.config.runtimes || []), ...(context.config.products || [])];
   if (configuredProducts.some(item => item.id === id)) throw new Error(`ID de produto já configurado no workspace: ${id}.`);
-  const runtime = context.config.runtimes?.find(item => item.id === 'dev');
-  if (!runtime) throw new Error('Runtime dev não configurado.');
+  const defaultBase = context.config.runtimes?.some(item => item.id === 'prod') ? 'prod' : 'dev';
+  const baseId = flags.base || defaultBase;
+  const runtime = context.config.runtimes?.find(item => item.id === baseId);
+  if (!runtime) throw new Error(`Runtime base não configurado: ${baseId}.`);
   const destinationPath = flags.target || `products/${id}`;
   const destination = safePath(context.root, destinationPath);
   const normalizedDestination = relative(realpathSync(context.root), destination).split(sep).join('/');
@@ -430,8 +441,8 @@ async function plugin(args, context) {
 }
 
 function typescript(root) {
-  const require = createRequire(resolve(root, 'dev/app/package.json'));
-  try { return require('typescript'); } catch { throw new Error('O codemod exige TypeScript instalado na base dev/app.'); }
+  const require = createRequire(resolve(root, 'forge/app/package.json'));
+  try { return require('typescript'); } catch { throw new Error('O codemod exige TypeScript instalado na base forge/app.'); }
 }
 
 export function rewriteImportSpecifiers(ts, source, filename, from, to) {

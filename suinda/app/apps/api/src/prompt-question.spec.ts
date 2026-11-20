@@ -154,7 +154,8 @@ test('card settings accept all execution modes and reject unknown values before 
 function revisionEnqueueService(capturedRevision:number, currentRevision:number) {
   const queries:string[]=[];
   let inserts=0, providerCalls=0, releases=0;
-  const query=async(sql:string,_args:unknown[]=[])=>{
+  const query=async(sql:string,args:unknown[]=[])=>{
+    void args;
     queries.push(sql);
     if(sql.includes('SELECT card_revision FROM cards'))return [{card_revision:currentRevision}];
     if(sql.includes('SELECT id,user_id'))return [{id:runId,user_id:'user',project_id:'project',model:'gpt-6-luna',effort:'high',codex_session_id:'saved',output:'Pergunta',multiple_agents:true,card_revision:1}];

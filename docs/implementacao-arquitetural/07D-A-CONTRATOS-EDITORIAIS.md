@@ -39,8 +39,8 @@ Cada transição válida incrementa `reviewRevision` em um e exige `expectedRevi
 Comando direcionado:
 
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
-  node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test \
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json TSX_DISABLE_CACHE=1 \
+  node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test \
   packages/orbit-core/src/execution/discovery-review.spec.ts
 ```
 

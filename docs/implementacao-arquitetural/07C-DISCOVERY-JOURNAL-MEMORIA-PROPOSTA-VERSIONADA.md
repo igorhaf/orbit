@@ -236,7 +236,7 @@ Consulta retorna contagens de categoria restritas à página e estados de evidê
 | J26 Regressão/segurança | PASS | §25 | Bateria dirigida01–07B e cadeias sintéticas aprovadas. | Operação real/Codex nativo não executados. |
 
 
-U: `node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/discovery-journal.spec.ts dev/app/apps/api/src/execution/discovery-journal-repository.spec.ts` (incluídos na bateria unit247).
+U: `node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/discovery-journal.spec.ts forge/app/apps/api/src/execution/discovery-journal-repository.spec.ts` (incluídos na bateria unit247).
 W: `node --test tools/orbit/discovery-journal-workers.test.mjs`; fixture real `tools/orbit/context-workers.test.mjs`, sem DB/provider reais.
 P: `node --test tools/orbit/discovery-journal.postgres.test.mjs`, PG16 temporário próprio;13 testes agregados pelo runner.
 Todos executados com ambiente allowlist descrito§25; Node24.20.0, dependências locais existentes e caminho TSX_TSCONFIG_PATH absoluto do DEV. Logs finais locais em /tmp/orbit07c-audit.
@@ -272,9 +272,9 @@ Quatro APIs TypeScript:PASS. `git diff --check` e sintaxe dos novos testes:PASS.
 
 Execuções intermediárias e correções: detector inicial deixou passar file:.env por delimitador lógico ':' (corrigido, teste de recusa passou); TypeScript não estreitou campos unknown após helperarrownever (helperdeclaration corrigiu sem mudar schema); fixture07C herdou waiting_answer antigo e bloqueou novos prompts (cleanup só modoJournal, mantendo assert original); PostgreSQL inicial corrigiu outputparameter position reservado/fixturechild incorreta. Duas tentativas PG falharam somente na asserção de baselineglobalmarkers porque outros harnesses próprios ainda criavam/removiam markers; os guards foram preservados e nada foi apagado. A rodada final completa foi serial e passou. Os logs iniciais /tmp/orbit07c-audit/validation-initial-run.log e bridge-postgres-initial.log, /tmp/orbit07c-journal-workers-initial.log, /tmp/orbit07c-discovery-unit.log e /tmp/orbit07c-repository-pg-final.log preservam essas evidências. Nenhum desses fracassos é apresentado como homologação.
 
-Ambiente de reprodução: criar HOME/CODEX_HOME temporários sem autenticação; CODEX_BIN aponta executável inexistente; PATH=/usr/bin:/bin; TSX_DISABLE_CACHE=1; TSX_TSCONFIG_PATH absoluto dev/app/apps/api/tsconfig.json; ORBIT_CONTEXT_COMPILER_ENABLED=0,ORBIT_CONTEXT_BRIDGE_ENABLED=0 no processo pai; wrappers opt-in fornecem suas flags próprias. Não herdar DATABASE_URL,PG*,OPENAI*,CODEX* ou credenciais. Git de fixture: GIT_CONFIG_NOSYSTEM=1,GIT_CONFIG_GLOBAL=/dev/null,core.hooksPath=/dev/null,core.fsmonitor=false e template temporário. PG16 sem TCP, socket privado,data_directory/owner/listener/marker verificados antes DDL. Suites que conferem markersglobais devem rodar em sequência, nunca simultâneas a workers de workspace. Não repetir esses comandos em banco/serviço de produto.
+Ambiente de reprodução: criar HOME/CODEX_HOME temporários sem autenticação; CODEX_BIN aponta executável inexistente; PATH=/usr/bin:/bin; TSX_DISABLE_CACHE=1; TSX_TSCONFIG_PATH absoluto forge/app/apps/api/tsconfig.json; ORBIT_CONTEXT_COMPILER_ENABLED=0,ORBIT_CONTEXT_BRIDGE_ENABLED=0 no processo pai; wrappers opt-in fornecem suas flags próprias. Não herdar DATABASE_URL,PG*,OPENAI*,CODEX* ou credenciais. Git de fixture: GIT_CONFIG_NOSYSTEM=1,GIT_CONFIG_GLOBAL=/dev/null,core.hooksPath=/dev/null,core.fsmonitor=false e template temporário. PG16 sem TCP, socket privado,data_directory/owner/listener/marker verificados antes DDL. Suites que conferem markersglobais devem rodar em sequência, nunca simultâneas a workers de workspace. Não repetir esses comandos em banco/serviço de produto.
 
-Lista exata da bateria unitária, prefixo dev/app/apps/api/src/, passada a Node com loader tsx:
+Lista exata da bateria unitária, prefixo forge/app/apps/api/src/, passada a Node com loader tsx:
 ```text
 execution/discovery-journal.spec.ts
 execution/discovery-journal-repository.spec.ts
@@ -360,21 +360,21 @@ Snapshot pré07C:3434 arquivos regulares e1link Git preexistente (suinda/SUINDA.
 Modificados nesta etapa:
 ```text
 AGENTS.md
-dev/app/apps/api/src/execution/execution.controller.ts
-dev/app/apps/api/src/execution/execution.service.ts
-dev/app/apps/api/src/orbit-architecture.ts
-dev/app/apps/api/src/plugins/ai/prompt-sessions.ts
-dev/app/orbit.shared-lock.json
+forge/app/apps/api/src/execution/execution.controller.ts
+forge/app/apps/api/src/execution/execution.service.ts
+forge/app/apps/api/src/orbit-architecture.ts
+forge/app/apps/api/src/plugins/ai/prompt-sessions.ts
+forge/app/orbit.shared-lock.json
 docs/product-experience.md
 orbit.workspace.json
 packages/orbit-core/package.json
 packages/orbit-core/src/execution/execution.controller.ts
 packages/orbit-core/src/execution/execution.service.ts
-prod/app/apps/api/src/execution/execution.controller.ts
-prod/app/apps/api/src/execution/execution.service.ts
-prod/app/apps/api/src/orbit-architecture.ts
-prod/app/apps/api/src/plugins/ai/prompt-sessions.ts
-prod/app/orbit.shared-lock.json
+workspace/app/apps/api/src/execution/execution.controller.ts
+workspace/app/apps/api/src/execution/execution.service.ts
+workspace/app/apps/api/src/orbit-architecture.ts
+workspace/app/apps/api/src/plugins/ai/prompt-sessions.ts
+workspace/app/orbit.shared-lock.json
 safdoulas/app/apps/api/src/execution/execution.controller.ts
 safdoulas/app/apps/api/src/execution/execution.service.ts
 safdoulas/app/apps/api/src/orbit-architecture.ts
@@ -390,12 +390,12 @@ tools/orbit/context-workers.test.mjs
 
 Novos nesta etapa:
 ```text
-dev/app/apps/api/sql/migrations/209_discovery_journal.sql
-dev/app/apps/api/src/execution/discovery-journal-host.ts
-dev/app/apps/api/src/execution/discovery-journal-repository.spec.ts
-dev/app/apps/api/src/execution/discovery-journal-repository.ts
-dev/app/apps/api/src/execution/discovery-journal.spec.ts
-dev/app/apps/api/src/execution/discovery-journal.ts
+forge/app/apps/api/sql/migrations/209_discovery_journal.sql
+forge/app/apps/api/src/execution/discovery-journal-host.ts
+forge/app/apps/api/src/execution/discovery-journal-repository.spec.ts
+forge/app/apps/api/src/execution/discovery-journal-repository.ts
+forge/app/apps/api/src/execution/discovery-journal.spec.ts
+forge/app/apps/api/src/execution/discovery-journal.ts
 docs/implementacao-arquitetural/07C-DISCOVERY-JOURNAL-MEMORIA-PROPOSTA-VERSIONADA.md
 packages/orbit-core/sql/migrations/209_discovery_journal.sql
 packages/orbit-core/src/execution/discovery-journal-host.ts
@@ -403,12 +403,12 @@ packages/orbit-core/src/execution/discovery-journal-repository.spec.ts
 packages/orbit-core/src/execution/discovery-journal-repository.ts
 packages/orbit-core/src/execution/discovery-journal.spec.ts
 packages/orbit-core/src/execution/discovery-journal.ts
-prod/app/apps/api/sql/migrations/209_discovery_journal.sql
-prod/app/apps/api/src/execution/discovery-journal-host.ts
-prod/app/apps/api/src/execution/discovery-journal-repository.spec.ts
-prod/app/apps/api/src/execution/discovery-journal-repository.ts
-prod/app/apps/api/src/execution/discovery-journal.spec.ts
-prod/app/apps/api/src/execution/discovery-journal.ts
+workspace/app/apps/api/sql/migrations/209_discovery_journal.sql
+workspace/app/apps/api/src/execution/discovery-journal-host.ts
+workspace/app/apps/api/src/execution/discovery-journal-repository.spec.ts
+workspace/app/apps/api/src/execution/discovery-journal-repository.ts
+workspace/app/apps/api/src/execution/discovery-journal.spec.ts
+workspace/app/apps/api/src/execution/discovery-journal.ts
 safdoulas/app/apps/api/sql/migrations/209_discovery_journal.sql
 safdoulas/app/apps/api/src/execution/discovery-journal-host.ts
 safdoulas/app/apps/api/src/execution/discovery-journal-repository.spec.ts

@@ -1,0 +1,8 @@
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+export type CoreCompatibility={minVersion:string;maxExclusive?:string;pluginApiVersion?:number};
+export const coreVersion=JSON.parse(readFileSync(resolve(__dirname,'../../core-version.json'),'utf8')) as {version:string;pluginApiVersion:number;releaseFormat:number};
+function version(value:string){if(typeof value!=='string'||!/^\d+\.\d+\.\d+$/.test(value))throw new Error('Versão do core inválida. Use major.minor.patch.');return value.split('.').map(Number)}
+function compare(a:string,b:string){const left=version(a),right=version(b);for(let i=0;i<3;i++)if(left[i]!==right[i])return left[i]-right[i];return 0}
+export const inheritedCoreCompatibility:CoreCompatibility={minVersion:"1.0.0",maxExclusive:"2.0.0",pluginApiVersion:1};
+export function assertCoreCompatibility(plugin:{id:string;coreCompatibility?:CoreCompatibility},core=coreVersion){const rule=plugin.coreCompatibility||inheritedCoreCompatibility;version(rule.minVersion);if(rule.maxExclusive&&compare(rule.minVersion,rule.maxExclusive)>=0)throw new Error('Faixa de compatibilidade do plugin inválida.');if(rule.pluginApiVersion!==undefined&&(!Number.isInteger(rule.pluginApiVersion)||rule.pluginApiVersion<1))throw new Error('Versão da API de plugins inválida.');if(compare(core.version,rule.minVersion)<0||(rule.maxExclusive&&compare(core.version,rule.maxExclusive)>=0)||(rule.pluginApiVersion!==undefined&&rule.pluginApiVersion!==core.pluginApiVersion))throw new Error(`Plugin ${plugin.id} incompatível com core ${core.version} / API ${core.pluginApiVersion}.`)}

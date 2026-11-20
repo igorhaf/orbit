@@ -5,7 +5,7 @@ O catálogo é reconstruído a partir dos fontes dos runtimes declarados em `orb
 ```sh
 node tools/orbit/cli.mjs catalog
 node tools/orbit/cli.mjs catalog --runtime suinda
-node tools/orbit/cli.mjs impact --files dev/app/apps/api/src/plugins/contract.ts
+node tools/orbit/cli.mjs impact --files forge/app/apps/api/src/plugins/contract.ts
 node tools/orbit/cli.mjs impact --base HEAD~1
 ```
 
@@ -29,15 +29,15 @@ Exemplos de decisão:
 | Implementação de plugin base | Plugin base, dependentes declarados e testes que importam os consumidores |
 | Arquivo exclusivo de Suindá | Consumidores e verificações de Suindá |
 | Ferramenta do CLI | Testes das ferramentas e contrato de compatibilidade |
-| Configuração compartilhada desconhecida | Verificações conservadoras dos quatro runtimes |
+| Configuração compartilhada desconhecida | Verificações conservadoras dos seis runtimes |
 
-O catálogo processa um runtime por vez e guarda apenas metadados JSON em `.orbit/cache/catalog`. Cada entrada depende do hash da ferramenta, de todos os fontes API, da versão do core e dos módulos importados fora desse conjunto; qualquer mudança nessas entradas invalida o resultado. Uma entrada corrompida ou um diretório de cache indisponível provoca reconstrução. O grafo de imports usa a pré-análise de tokens do TypeScript sem reter árvores sintáticas dos quatro aplicativos. Diretórios de builds `.next*` são ignorados. Mudanças apenas em ferramentas/documentação usam um caminho direto que dispensa análise das aplicações. Cache de comandos e evidências pertence ao executor de verificações e também deve usar hashes das entradas.
+O catálogo processa um runtime por vez e guarda apenas metadados JSON em `.orbit/cache/catalog`. Cada entrada depende do hash da ferramenta, de todos os fontes API, da versão do core e dos módulos importados fora desse conjunto; qualquer mudança nessas entradas invalida o resultado. Uma entrada corrompida ou um diretório de cache indisponível provoca reconstrução. O grafo de imports usa a pré-análise de tokens do TypeScript sem reter árvores sintáticas dos aplicativos. Diretórios de builds `.next*` são ignorados. Mudanças apenas em ferramentas/documentação usam um caminho direto que dispensa análise das aplicações. Cache de comandos e evidências pertence ao executor de verificações e também deve usar hashes das entradas.
 
 API para outras ferramentas:
 
 ```js
 import { catalogRuntime, buildCatalog, analyzeImpact, execute } from './tools/orbit/catalog.mjs';
-const catalog = catalogRuntime(root, { id: 'dev', app: 'dev/app' });
+const catalog = catalogRuntime(root, { id: 'dev', app: 'forge/app' });
 const all = buildCatalog(root, config);
 const impact = analyzeImpact(root, config, changedPaths);
 const result = await execute('catalog', ['--runtime', 'dev'], { root, config });

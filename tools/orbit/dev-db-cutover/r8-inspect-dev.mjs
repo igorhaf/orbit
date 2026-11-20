@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFile, readdir } from 'node:fs/promises';
 
-const require = createRequire(new URL('../../../dev/app/package.json', import.meta.url));
+const require = createRequire(new URL('../../../forge/app/package.json', import.meta.url));
 const { Client } = require('pg');
 const { parse } = require('dotenv');
-const api = new URL('../../../dev/app/apps/api/', import.meta.url);
+const api = new URL('../../../forge/app/apps/api/', import.meta.url);
 const expected = { host: '127.0.0.1', port: 5432, database: 'orbit_native_dev', login: 'orbit_dev_app' };
 let stage = 'authorization';
 

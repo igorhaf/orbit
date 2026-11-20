@@ -67,6 +67,8 @@ GRANT SELECT (card_id,plugin_ids,card_type_id,data), INSERT (card_id,card_type_i
   ON public.card_plugin_layouts TO :"app_role";
 -- The record-card guard resolves mappings even for ordinary board routes.
 GRANT SELECT (card_id,board_id,record_id,created_at) ON public.record_card_links TO :"app_role";
+-- The invoker trigger projects a record state to its linked board list.
+GRANT SELECT (board_id,phase_id,list_id) ON public.record_board_phases TO :"app_role";
 GRANT SELECT (id,plugin_id,kind) ON public.extension_records TO :"app_role";
 GRANT SELECT (card_id) ON public.comments, public.checklists TO :"app_role";
 GRANT INSERT (card_id,revision,snapshot,content_hash) ON public.card_revisions TO :"app_role";
@@ -100,10 +102,16 @@ GRANT SELECT, INSERT (record_id,revision,title,state,payload,reason,actor_id)
 GRANT SELECT, INSERT (workspace_id,plugin_id,actor_id,operation_key,request_hash,response)
   ON public.extension_operations TO :"app_role";
 GRANT SELECT ON public.extension_record_links TO :"app_role";
-GRANT SELECT (id,workspace_id,active,event_types) ON public.webhook_subscriptions TO :"app_role";
-GRANT SELECT (id), INSERT (workspace_id,record_id,plugin_id,kind,state,revision,event_type,event_version)
+GRANT SELECT (id,workspace_id,endpoint,event_types,secret_ciphertext,active,created_at),
+  INSERT (workspace_id,endpoint,event_types,secret_ciphertext,created_by),
+  UPDATE (endpoint,event_types,active), DELETE
+  ON public.webhook_subscriptions TO :"app_role";
+GRANT SELECT (id,workspace_id,record_id,plugin_id,kind,state,revision,event_type,event_version,occurred_at),
+  INSERT (workspace_id,record_id,plugin_id,kind,state,revision,event_type,event_version)
   ON public.webhook_events TO :"app_role";
-GRANT INSERT (subscription_id,event_id) ON public.webhook_deliveries TO :"app_role";
+GRANT SELECT (id,subscription_id,event_id,status,attempt_count,available_at,last_error,created_at,updated_at),
+  INSERT (subscription_id,event_id), UPDATE (status,attempt_count,available_at,last_error,updated_at)
+  ON public.webhook_deliveries TO :"app_role";
 
 -- Invoker trigger present on the current DEV clone and exercised by card creation/update.
 GRANT INSERT (board_id, card_id, kind, payload, chain) ON public.automation_events TO :"app_role";

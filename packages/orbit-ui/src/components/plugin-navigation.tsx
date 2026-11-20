@@ -6,7 +6,7 @@ import type {NavigationMenu,PluginNavigationLink} from '@/lib/plugin-navigation'
 
 type Props={menus:NavigationMenu[];standalone:PluginNavigationLink[];mobile?:boolean;onNavigate?:()=>void};
 export function PluginNavigation({menus,standalone,mobile=false,onNavigate}:Props){
- const router=useRouter(),pathname=usePathname();const [open,setOpen]=useState<string|null>(null);const root=useRef<HTMLDivElement>(null);
+ const router=useRouter(),pathname=usePathname();const [open,setOpen]=useState<string|null>(null);const [alignRight,setAlignRight]=useState(false);const root=useRef<HTMLDivElement>(null);
  useEffect(()=>{
   const outside=(event:PointerEvent)=>{if(!root.current?.contains(event.target as Node))setOpen(null)};
   const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){const trigger=root.current?.querySelector<HTMLButtonElement>('button[aria-expanded="true"]');setOpen(null);trigger?.focus()}};
@@ -19,8 +19,8 @@ export function PluginNavigation({menus,standalone,mobile=false,onNavigate}:Prop
  return <div ref={root} className={mobile?'col-span-full min-w-0 border-t border-[#dfe1e6] pt-2':'flex min-w-0 items-center gap-1'}>
   {standalone.map(item=>mobile?link(item):<button type="button" key={item.id} onClick={()=>navigate(item.href)} aria-current={pathname===item.href?'page':undefined} className="min-h-11 whitespace-nowrap rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{item.label}</button>)}
   {menus.map(menu=>mobile?<section key={menu.id} aria-label={menu.label} className="mb-2"><h2 className="px-3 py-2 font-bold">{menu.label}</h2><div className="grid gap-2 sm:grid-cols-2">{sections(menu)}</div></section>:<div key={menu.id} className="relative">
-   <button type="button" aria-expanded={open===menu.id} aria-controls={`plugin-nav-${menu.id}`} onClick={()=>setOpen(open===menu.id?null:menu.id)} className="flex min-h-11 items-center gap-1 whitespace-nowrap rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{menu.label}<ChevronDown size={14}/></button>
-   {open===menu.id&&<nav id={`plugin-nav-${menu.id}`} aria-label={menu.label} className="fixed left-4 right-4 top-[calc(3.5rem+env(safe-area-inset-top))] z-[60] grid max-h-[70dvh] grid-cols-1 gap-3 overflow-y-auto rounded-xl border border-[#dfe1e6] bg-white p-3 shadow-dialog sm:grid-cols-2 sm:left-auto sm:w-[min(38rem,calc(100vw-2rem))]">{sections(menu)}</nav>}
+   <button type="button" aria-expanded={open===menu.id} aria-controls={`plugin-nav-${menu.id}`} onClick={event=>{if(open===menu.id){setOpen(null);return}const rect=event.currentTarget.getBoundingClientRect();const panelWidth=Math.min(608,window.innerWidth-32);setAlignRight(rect.left+panelWidth>window.innerWidth-16);setOpen(menu.id)}} className="flex min-h-11 items-center gap-1 whitespace-nowrap rounded px-3 py-2 text-sm font-semibold hover:bg-[#f1f2f4]">{menu.label}<ChevronDown size={14}/></button>
+   {open===menu.id&&<nav id={`plugin-nav-${menu.id}`} aria-label={menu.label} className={`absolute ${alignRight?'right-0':'left-0'} top-full z-[60] mt-1 grid max-h-[70dvh] w-[min(38rem,calc(100vw-2rem))] grid-cols-1 gap-3 overflow-y-auto rounded-xl border border-[#dfe1e6] bg-white p-3 shadow-dialog sm:grid-cols-2`}>{sections(menu)}</nav>}
   </div>)}
  </div>;
 }

@@ -9,7 +9,7 @@ O ponto de entrada é `npm run orbit -- <comando>` na raiz. As ferramentas usam 
 | Base comum reutilizável | `packages/orbit-core` e `packages/orbit-ui`, com fontes canônicas, versão e projeções determinísticas nos runtimes |
 | Dependências e compatibilidade | Contratos/SDK existentes, `catalog`, `shared check` e `scripts/verify-plugin-compatibility.mjs` |
 | Catálogo de capacidades | Descoberta estática dos plugins reais, capabilities, ações, permissões, eventos e dependências, sem iniciar a aplicação |
-| Novo produto por configuração | `generate product`, perfil declarativo, portas/banco próprios e runner nativo |
+| Novo produto por configuração | `generate product` usa Workspace por padrão, com perfil declarativo, portas/banco próprios e runner nativo |
 | Simulação ROOT em produtos novos | Contexto por papel incluído na base DEV; o gerador documenta cobertura de papéis, fixtures próprias e fail-closed |
 | Plugins e extensões desacopladas | `generate plugin`, incluindo `--extends`, fixtures e stub opt-in |
 | Stubs | Adaptador de exemplo gerado, com contrato explícito e bloqueio em produção |
@@ -24,15 +24,15 @@ O ponto de entrada é `npm run orbit -- <comando>` na raiz. As ferramentas usam 
 | Contexto para IA | `knowledge index/query/context`, recuperação lexical local com referências, hashes, filtro por produto e validade |
 | Medição de ganho real | `metrics start/stop/report`, fases e comparação de tempos observados |
 | Entrega rastreável | `delivery init/check/evidence/review/report`, requisitos e evidências separados de revisão funcional |
-| Orientação persistente | `AGENTS.md`, skills dos quatro runtimes, `orbitArchitecturePrompt` injetado no painel Codex e nas execuções por cartão |
+| Orientação persistente | `AGENTS.md`, skills dos runtimes aplicáveis e `orbitArchitecturePrompt` injetado no painel Codex e nas execuções por cartão nos seis ambientes |
 
 ## Fontes compartilhadas e versões
 
 `orbit.workspace.json` registra os runtimes e os mapas de fontes. Os pacotes distribuem código-fonte projetado nas posições já usadas pelas aplicações. Assim, TypeScript, Next.js e os contextos de build isolados continuam resolvendo seus imports locais. As projeções são artefatos versionados; a edição comum acontece no pacote canônico. Esta distribuição não exige npm registry, links entre containers ou instalação de dependências fora do contexto de build.
 
-Cada `app/orbit.shared-lock.json` fixa versão, integridade do pacote e hashes por arquivo. `shared sync --write` faz preflight e recusa mudanças locais independentes, regressão de versão e publicação de conteúdo diferente sem atualizar a versão. `shared check` verifica os quatro runtimes; `shared audit` lista oportunidades de promoção e diferenças preservadas. Exclusão de módulos exige migração explícita dos consumidores.
+Cada `app/orbit.shared-lock.json` fixa versão, integridade do pacote e hashes por arquivo. `shared sync --write` faz preflight e recusa mudanças locais independentes, regressão de versão e publicação de conteúdo diferente sem atualizar a versão. `shared check` verifica os seis runtimes; `shared audit` lista oportunidades de promoção e diferenças preservadas. Exclusão de módulos exige migração explícita dos consumidores.
 
-Foram promovidos 245 arquivos: 172 no pacote de core e 73 no de interface. São fontes genéricas comprovadamente idênticas, além da orientação de desenvolvimento integrada. O inventário `shared-audit.json` registra os caminhos ainda distintos. Esses caminhos continuam sob responsabilidade dos runtimes e não são substituídos automaticamente por uma variante. Compatibilidade de contratos e integração continua obrigatória.
+O mapa atual controla 316 arquivos fonte: 240 no pacote de core e 76 no pacote de interface, projetados e verificados nos seis runtimes. São fontes genéricas comprovadamente idênticas, além da orientação de desenvolvimento integrada. O último `shared audit` registrou 316 fontes promovidas e nenhuma diferença pendente entre runtimes. Essa igualdade de arquivos não prova equivalência comportamental; diferenças futuras continuam sob responsabilidade dos runtimes e não são substituídas automaticamente. Compatibilidade de contratos e integração continua obrigatória.
 
 Para uma mudança comum:
 
@@ -47,14 +47,22 @@ O aumento da versão do pacote fonte não substitui a versão de API do core nem
 ## Criar um produto ou plugin
 
 ```sh
-npm run orbit -- generate product escola --plugins board-view,workspaces
-npm run orbit -- generate product escola --plugins board-view,workspaces --write
+npm run orbit -- generate product escola --base prod --plugins board-view,workspaces
+npm run orbit -- generate product escola --base prod --plugins board-view,workspaces --write
 npm run orbit -- catalog --runtime escola
 npm run orbit -- shared check --runtime escola
 npm run orbit -- generate plugin escola-notifications --runtime escola --extends notifications
 ```
 
-O produto é criado em `products/escola`; a descoberta do perfil pelo CLI é automática. A geração prepara código, exemplos de configuração, locks e scripts. A instalação e a preparação do banco são passos explícitos descritos no README gerado. A geração não inicia serviços e não altera configurações dos produtos existentes. Use dependências reais e registre o plugin gerado na composição do runtime após revisar seu contrato.
+O produto é criado em `products/escola`; a descoberta do perfil pelo CLI é automática. Workspace (`prod`) é a base padrão; `--base <runtime>` seleciona outra explicitamente. Forge continua sendo o ponto de integração. A geração prepara código, exemplos de configuração, locks e scripts. A instalação e a preparação do banco são passos explícitos descritos no README gerado. A geração não inicia serviços e não altera configurações dos produtos existentes. Use dependências reais e registre o plugin gerado na composição do runtime após revisar seu contrato.
+
+Antes de reconciliar um produto existente, compare sua origem, o manifesto de geração, arquivos locais e a base pretendida:
+
+```sh
+node tools/orbit/cli.mjs reconcile product --runtime rumo --base prod
+```
+
+O comando é somente leitura. Ele identifica arquivos alinhados, divergências, fontes exclusivas, transformações registradas e migrations/schema que exigem revisão de banco; não apaga, restaura nem grava arquivos e não autoriza uma publicação. Mudanças simultâneas em um mesmo caminho precisam de integração explícita. Preserve a linhagem histórica e use o resultado como preflight para um plano de reconciliação.
 
 O scaffold de plugin não implementa a regra de negócio final. Stubs permitem desenvolver contra contratos enquanto a integração real é preparada; o marco deve validar o adaptador real quando ele fizer parte da entrega.
 

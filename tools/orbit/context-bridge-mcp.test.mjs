@@ -7,8 +7,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../..',import.meta.url));
-const require=createRequire(join(root,'dev/app/package.json'));
-process.env.TSX_TSCONFIG_PATH=join(root,'dev/app/apps/api/tsconfig.json');require('tsx/cjs/api').register();
+const require=createRequire(join(root,'forge/app/package.json'));
+process.env.TSX_TSCONFIG_PATH=join(root,'forge/app/apps/api/tsconfig.json');require('tsx/cjs/api').register();
 const {ContextBridgeAdapter}=require(join(root,'packages/orbit-core/src/execution/context-bridge-adapter.ts'));
 
 // Fixture-owned descriptors prove data plumbing only. Codex/supervisor do not
@@ -18,7 +18,7 @@ test('M13 fixture MCP child uses stdio plus private host pipes; no DB or global 
  t.after(()=>{if(child?.exitCode===null)child.kill('SIGKILL');rmSync(dir,{recursive:true,force:true})});
  const script=`
  const assert=require('node:assert/strict'),net=require('node:net');
- process.env.TSX_TSCONFIG_PATH=${JSON.stringify(join(root,'dev/app/apps/api/tsconfig.json'))};require(${JSON.stringify(require.resolve('tsx/cjs/api'))}).register();
+ process.env.TSX_TSCONFIG_PATH=${JSON.stringify(join(root,'forge/app/apps/api/tsconfig.json'))};require(${JSON.stringify(require.resolve('tsx/cjs/api'))}).register();
  const {ContextBridgeMcpAdapter}=require(${JSON.stringify(join(root,'packages/orbit-core/src/execution/context-bridge-mcp.ts'))});
  assert.equal(process.env.DATABASE_URL,undefined);assert.equal(process.env.OPENAI_API_KEY,undefined);
  const upstream=new net.Socket({fd:4,readable:true,writable:false}),downstream=new net.Socket({fd:3,readable:false,writable:true});

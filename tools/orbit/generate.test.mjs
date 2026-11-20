@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -10,38 +10,41 @@ import { dependencyClosure, execute, isReusableFile, rewriteImportSpecifiers, sa
 import { inspectShared } from './shared.mjs';
 
 const repository = resolve(import.meta.dirname, '../..');
-const require = createRequire(resolve(repository, 'dev/app/package.json'));
+const require = createRequire(resolve(repository, 'forge/app/package.json'));
 const ts = require('typescript');
 
 function fixture() {
   const root = mkdtempSync(resolve(tmpdir(), 'orbit-generator-'));
   const write = (path, contents) => { mkdirSync(dirname(resolve(root, path)), { recursive: true }); writeFileSync(resolve(root, path), contents); };
-  write('dev/app/package.json', JSON.stringify({ name: 'orbit', private: true, scripts: { 'orbit:rebuild-dev': 'node scripts/orbit-rebuild-dev.mjs' }, workspaces: ['apps/*'] }));
-  write('dev/app/package-lock.json', JSON.stringify({ name: 'orbit', lockfileVersion: 3, packages: { '': { name: 'orbit', workspaces: ['apps/*'] } } }));
-  write('dev/app/orbit.shared-lock.json', JSON.stringify({ schemaVersion: 1, runtime: 'dev', packages: [] }));
-  write('dev/app/apps/api/core-version.json', JSON.stringify({ version: '1.0.0', pluginApiVersion: 1 }));
-  write('dev/app/apps/api/sql/migrations/065_rbac_core.sql', "ALTER TABLE users ADD COLUMN is_root boolean NOT NULL DEFAULT false;\nUPDATE users SET is_root=true WHERE email='example@example.test';\nCREATE TABLE access_roles(id text PRIMARY KEY);\n");
-  write('dev/app/apps/api/src/plugins/example.ts', `import type { PluginDefinition } from './contract';
+  write('forge/app/package.json', JSON.stringify({ name: 'orbit', private: true, scripts: { 'orbit:rebuild-dev': 'node scripts/orbit-rebuild-dev.mjs' }, workspaces: ['apps/*'] }));
+  write('forge/app/package-lock.json', JSON.stringify({ name: 'orbit', lockfileVersion: 3, packages: { '': { name: 'orbit', workspaces: ['apps/*'] } } }));
+  write('forge/app/orbit.shared-lock.json', JSON.stringify({ schemaVersion: 1, runtime: 'dev', packages: [] }));
+  write('forge/app/apps/api/core-version.json', JSON.stringify({ version: '1.0.0', pluginApiVersion: 1 }));
+  write('forge/app/apps/api/sql/migrations/065_rbac_core.sql', "ALTER TABLE users ADD COLUMN is_root boolean NOT NULL DEFAULT false;\nUPDATE users SET is_root=true WHERE email='example@example.test';\nCREATE TABLE access_roles(id text PRIMARY KEY);\n");
+  write('forge/app/apps/api/src/plugins/example.ts', `import type { PluginDefinition } from './contract';
 export const boardView: PluginDefinition = {id:'board-view', name:'Board', version:'1.0.0'};
 export const workspaces: PluginDefinition = {id:'workspaces', name:'Workspaces', version:'1.0.0', dependencies:['board-view']};
 export const external: PluginDefinition = {id:'external', name:'External', version:'1.0.0'};
 `);
-  write('dev/app/apps/api/src/plugins/contract.ts', 'export type PluginDefinition = Record<string, unknown>;');
-  write('dev/app/apps/api/src/orbit-architecture.ts', "export const orbitContextRuntime='dev';\nexport const policy='fixture';\n");
-  write('dev/app/apps/api/src/main.ts', "import { boardView, workspaces, external } from './plugins/example'; const registry = { register(plugin:unknown) {} }; registry.register(boardView); registry.register(workspaces); registry.register(external);");
-  write('dev/app/.env.example', 'DATABASE_URL=old\nAPI_PORT=4001\nJWT_SECRET=\n');
-  write('dev/app/.env', 'SECRET=do-not-copy');
-  write('dev/app/data/secret.json', 'do-not-copy');
-  write('dev/app/tools/dev-runtime/runtime/suinda.compose.yml', 'do-not-copy');
-  write('dev/app/docs/PLANO-SAFDOULAS.md', 'do-not-copy');
-  write('dev/app/apps/web/components/shared.tsx', 'export const Original = true;');
+  write('forge/app/apps/api/src/plugins/contract.ts', 'export type PluginDefinition = Record<string, unknown>;');
+  write('forge/app/apps/api/src/orbit-architecture.ts', "export const orbitContextRuntime='dev';\nexport const policy='fixture';\n");
+  write('forge/app/apps/api/src/main.ts', "import { boardView, workspaces, external } from './plugins/example'; const registry = { register(plugin:unknown) {} }; registry.register(boardView); registry.register(workspaces); registry.register(external);");
+  write('forge/app/.env.example', 'DATABASE_URL=old\nAPI_PORT=4001\nJWT_SECRET=\n');
+  write('forge/app/.env', 'SECRET=do-not-copy');
+  write('forge/app/data/secret.json', 'do-not-copy');
+  write('forge/app/tools/dev-runtime/runtime/suinda.compose.yml', 'do-not-copy');
+  write('forge/app/docs/PLANO-SAFDOULAS.md', 'do-not-copy');
+  write('forge/app/apps/web/components/shared.tsx', 'export const Original = true;');
   write('canonical/ui.tsx', 'export const Canonical = true;');
+  cpSync(resolve(root, 'forge/app'), resolve(root, 'workspace/app'), { recursive: true, filter: source => !source.includes('/node_modules') });
+  write('workspace/app/orbit.shared-lock.json', JSON.stringify({ schemaVersion: 1, runtime: 'prod', packages: [] }));
+  write('workspace/app/apps/api/src/orbit-architecture.ts', "export const orbitContextRuntime='prod';\nexport const policy='workspace fixture';\n");
   execFileSync('git', ['init', '-q'], { cwd: root });
   execFileSync('git', ['add', '.'], { cwd: root });
   execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'fixture'], { cwd: root });
-  mkdirSync(resolve(root, 'dev/app/node_modules'), { recursive: true });
-  symlinkSync(dirname(require.resolve('typescript/package.json')), resolve(root, 'dev/app/node_modules/typescript'), 'dir');
-  const config = { runtimes: [{ id: 'dev', app: 'dev/app', webPort: 3001, apiPort: 4001 }], sharedPackages: [{ id: 'ui', path: 'canonical', version: '1.0.0', files: [{ source: 'ui.tsx', target: 'apps/web/components/shared.tsx' }] }] };
+  mkdirSync(resolve(root, 'forge/app/node_modules'), { recursive: true });
+  symlinkSync(dirname(require.resolve('typescript/package.json')), resolve(root, 'forge/app/node_modules/typescript'), 'dir');
+  const config = { runtimes: [{ id: 'dev', app: 'forge/app', webPort: 3001, apiPort: 4001 }, { id: 'prod', app: 'workspace/app', webPort: 3000, apiPort: 4000 }], sharedPackages: [{ id: 'ui', path: 'canonical', version: '1.0.0', files: [{ source: 'ui.tsx', target: 'apps/web/components/shared.tsx' }] }] };
   write('canonical/package.json', JSON.stringify({ name: 'ui', version: '1.0.0', orbit: { files: config.sharedPackages[0].files } }));
   return { root, config, write, cleanup() { rmSync(root, { recursive: true, force: true }); } };
 }
@@ -80,7 +83,8 @@ test('product generation uses canonical source, isolated profile and explicit wr
     assert.deepEqual(profile.plugins.disabled, ['external']);
     assert.equal(profile.database.name, 'orbit_academy');
     assert.match(readFileSync(resolve(base,'app/apps/api/src/orbit-architecture.ts'),'utf8'),/orbitContextRuntime="academy"/);
-    assert.match(readFileSync(resolve(context.root,'dev/app/apps/api/src/orbit-architecture.ts'),'utf8'),/orbitContextRuntime='dev'/);
+    assert.match(readFileSync(resolve(context.root,'workspace/app/apps/api/src/orbit-architecture.ts'),'utf8'),/orbitContextRuntime='prod'/);
+    assert.equal(JSON.parse(readFileSync(resolve(base, 'product.profile.json'), 'utf8')).basedOn, 'prod');
     assert.notEqual(profile.ports.web, context.config.runtimes[0].webPort);
     assert.equal(readFileSync(resolve(base, 'app/apps/web/components/shared.tsx'), 'utf8'), 'export const Canonical = true;');
     const shared = inspectShared({ root: context.root, config: { ...context.config, runtimes: [{ id: 'academy', app: 'products/academy/app' }] } });
@@ -91,7 +95,7 @@ test('product generation uses canonical source, isolated profile and explicit wr
     assert.equal(dependencyLock.name, 'orbit-academy'); assert.equal(dependencyLock.packages[''].name, 'orbit-academy');
     assert.match(readFileSync(resolve(base, 'AGENTS.md'), 'utf8'), /branch ativa é unicamente main/);
     const migrationPath = 'apps/api/sql/migrations/065_rbac_core.sql';
-    const sourceMigration = readFileSync(resolve(context.root, 'dev/app', migrationPath), 'utf8');
+    const sourceMigration = readFileSync(resolve(context.root, 'workspace/app', migrationPath), 'utf8');
     const generatedMigration = readFileSync(resolve(base, 'app', migrationPath), 'utf8');
     assert.match(sourceMigration, /WHERE email='example@example.test'/);
     assert.doesNotMatch(generatedMigration, /example@example.test|UPDATE users SET is_root/);
@@ -119,6 +123,7 @@ test('product generation uses canonical source, isolated profile and explicit wr
 test('product generator rejects unsafe target, duplicate ports and empty view profile', async () => {
   const context = fixture();
   try {
+    await assert.rejects(() => execute('generate', ['product', 'academy', '--base', 'missing-runtime'], context), /Runtime base não configurado/);
     await assert.rejects(() => execute('generate', ['product', 'academy', '--target', '../escape'], context), /Caminho/);
     await assert.rejects(() => execute('generate', ['product', 'academy', '--web-port', '3001'], context), /Porta/);
     await assert.rejects(() => execute('generate', ['product', 'academy', '--plugins', 'external'], context), /board-view/);
@@ -130,7 +135,7 @@ test('product generator rejects configured identities and destinations within ru
   try {
     context.config.products = [{ id: 'existing-product', app: 'products/existing-product/app' }];
     for (const id of ['dev', 'existing-product']) await assert.rejects(() => execute('generate', ['product', id], context), /ID de produto já configurado/);
-    for (const target of ['dev/app/generated-product', 'canonical/generated-product', '.orbit/generated-product', 'control/generated-product', 'tools/generated-product', 'products/existing-product/app/generated-product']) {
+    for (const target of ['forge/app/generated-product', 'canonical/generated-product', '.orbit/generated-product', 'control/generated-product', 'tools/generated-product', 'products/existing-product/app/generated-product']) {
       await assert.rejects(() => execute('generate', ['product', 'academy', '--target', target], context), /Destino reservado/);
       assert.equal(existsSync(resolve(context.root, target)), false);
     }
@@ -146,9 +151,9 @@ test('child plugin declares parent dependency and stub rejects production', asyn
     assert.match(definition, /parentPlugin: "workspaces"/);
     const source = readFileSync(resolve(context.root, result.destination, 'adapter.ts'), 'utf8');
     // Check the generated plugin against the actual Orbit SDK without writing into an app.
-    const virtualDirectory = resolve(repository, 'dev/app/apps/api/src/plugins/__generator_contract__');
+    const virtualDirectory = resolve(repository, 'forge/app/apps/api/src/plugins/__generator_contract__');
     const virtualFiles = new Map([[resolve(virtualDirectory, 'definition.ts'), definition], [resolve(virtualDirectory, 'adapter.ts'), source]]);
-    const configPath = resolve(repository, 'dev/app/apps/api/tsconfig.json');
+    const configPath = resolve(repository, 'forge/app/apps/api/tsconfig.json');
     const config = ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, ts.sys.readFile).config, ts.sys, dirname(configPath));
     const compilerOptions = { ...config.options, incremental: false, noEmit: true };
     const host = ts.createCompilerHost(compilerOptions);
@@ -175,7 +180,7 @@ test('child plugin declares parent dependency and stub rejects production', asyn
 test('import codemod changes module positions while preserving text and supports safe rollback', async () => {
   const context = fixture();
   try {
-    const path = 'dev/app/apps/api/src/consumer.ts';
+    const path = 'forge/app/apps/api/src/consumer.ts';
     const original = `import { x } from 'old-module';\nexport { x } from 'old-module';\nconst text = 'old-module';\nconst lazy = import('old-module');\n// old-module\n`;
     context.write(path, original);
     const result = await execute('migrate', ['imports', '--from', 'old-module', '--to', 'new-module', '--files', path, '--write'], context);

@@ -48,7 +48,7 @@ export class ProjectKnowledgeRetriever {
   }
  }
  const equivalents=new Set<string>();const uniqueDocuments=documents.filter(d=>{const c=d.chunk,key=hashContextValue({body:c.bodyHash,version:c.source.version,origin:c.source.origin,trust:c.source.trust});if(equivalents.has(key))return false;equivalents.add(key);return true});
- const ranked=rankLexical(query.text,uniqueDocuments,{tieBreak:(a:any,b:any)=>compare(a.id,b.id)});const selected:KnowledgeChunk[]=[],perDoc=new Map<string,number>(),seen=new Set<string>();
+ const ranked=rankLexical(query.text,uniqueDocuments,{tieBreak:(a,b)=>compare(a.id,b.id)});const selected:KnowledgeChunk[]=[],perDoc=new Map<string,number>(),seen=new Set<string>();
  for(const row of ranked){const c=row.document.chunk,source=c.source;const duplicate=hashContextValue({body:c.bodyHash,version:source.version,origin:source.origin,trust:source.trust});if(seen.has(duplicate)||(perDoc.get(source.id)??0)>=policy.maxPerDocument)continue;
   const original=candidates.find(v=>v.source.id===source.id)!;alive();if(!await input.authorize(original))throw new Error('Knowledge authorization revoked during retrieval.');alive();
   selected.push({...c,score:row.score,rank:selected.length+1});seen.add(duplicate);perDoc.set(source.id,(perDoc.get(source.id)??0)+1);if(selected.length>=policy.maxResults)break;
@@ -56,7 +56,7 @@ export class ProjectKnowledgeRetriever {
  alive();this.cache.set(scopeKey,next);
  const queryHash=hashContextValue({text:query.text,fields:query.fields,cardId:identity.cardId,cardRevision:query.cardRevision});
  const stable={schemaVersion:1 as const,algorithm:lexicalAlgorithm,policy,corpusHash,queryId:'knowledge-query:'+queryHash,queryHash,queryFields:query.fields,cardId:identity.cardId,cardRevision:query.cardRevision,candidateCount:candidates.length,considered,selected,status:!documents.length?'insufficient_corpus' as const:!selected.length?'no_match' as const:'matched' as const,limitations:['lexical_not_semantic','retrieved_data_not_instructions','not_complete_dependency_discovery'],warnings:[...new Set(warnings)]};
- const fingerprint=hashContextValue({...stable,selected:selected.map(({source,text,...c})=>({...c,sourceId:source.id,sourceVersion:source.version}))});
+ const fingerprint=hashContextValue({...stable,selected:selected.map(item=>({...Object.fromEntries(Object.entries(item).filter(([key])=>key!=='source')),sourceId:item.source.id,sourceVersion:item.source.version}))});
  return JSON.parse(canonicalContextJson({...stable,fingerprint}));
  }
 }
@@ -66,5 +66,5 @@ export function knowledgeCompileInputs(result:KnowledgeResult):{sources:ContextS
  return {sources,blocks};
 }
 export function knowledgeRetrievalMetadata(result:KnowledgeResult,compilation?:{decisions:ReadonlyArray<{blockId:string}>}):ContextObject{
- return JSON.parse(JSON.stringify({...result,selected:result.selected.map(({text,source,...chunk})=>({...chunk,sourceId:source.id,sourceVersion:source.version,trust:source.trust})),...(compilation?{compilationDecisions:compilation.decisions.filter(d=>result.selected.some(c=>c.id===d.blockId))}:{})}));
+ return JSON.parse(JSON.stringify({...result,selected:result.selected.map(item=>({...Object.fromEntries(Object.entries(item).filter(([key])=>!['text','source'].includes(key))),sourceId:item.source.id,sourceVersion:item.source.version,trust:item.source.trust})),...(compilation?{compilationDecisions:compilation.decisions.filter(d=>result.selected.some(c=>c.id===d.blockId))}:{})}));
 }

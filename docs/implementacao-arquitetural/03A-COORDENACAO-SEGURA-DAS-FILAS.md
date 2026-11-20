@@ -92,7 +92,7 @@ Fontes canônicas, relativas à raiz:
 | `packages/orbit-core/sql/migrations/158_workspace_coordination.sql` | Coluna worker_id no genérico e JSON de diagnóstico no IA. Não altera157. |
 | `packages/orbit-core/package.json`, `orbit.workspace.json` | Registra novos artefatos e versão final1.5.4. |
 
-Arquivos não mapeados adaptados de modo localizado nos quatro prefixos `dev/app`, `prod/app`, `safdoulas/app`, `suinda/app`:
+Arquivos não mapeados adaptados de modo localizado nos quatro prefixos `forge/app`, `workspace/app`, `safdoulas/app`, `suinda/app`:
 
 - `apps/api/src/plugins/ai/prompt-sessions.ts`: usa o contrato core, retira lock lógico de projeto redundante, mantém FIFO por card, persiste diagnóstico, aborta ownership perdido, fence de resultado e quota isolável nos testes.
 - `apps/api/src/plugins/ai/codex-provider.ts`: exige proteção para execução mutável, usa supervisor/checks sinalizados, não resolve timeout antes da drenagem, supervisiona revisão Git e permite HOME sintético nos testes. Geração textual read-only permanece separada.
@@ -218,9 +218,9 @@ Comandos seguros principais:
 
 ```sh
 node --test tools/orbit/workspace-coordinator.postgres.test.mjs tools/orbit/workspace-workers.test.mjs
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/workspace-coordinator.spec.ts dev/app/apps/api/src/execution/workspace-process.spec.ts dev/app/apps/api/src/execution/managed-process.spec.ts dev/app/apps/api/src/execution/project-checks.spec.ts dev/app/apps/api/src/execution/file-scope.spec.ts dev/app/apps/api/src/execution/execution.spec.ts
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test --test-name-pattern='prompt queue|revision|disabled AI startup|Questionar|multi_agent' dev/app/apps/api/src/prompt-question.spec.ts
-node dev/app/node_modules/typescript/bin/tsc --noEmit --incremental false -p dev/app/apps/api/tsconfig.json
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/workspace-coordinator.spec.ts forge/app/apps/api/src/execution/workspace-process.spec.ts forge/app/apps/api/src/execution/managed-process.spec.ts forge/app/apps/api/src/execution/project-checks.spec.ts forge/app/apps/api/src/execution/file-scope.spec.ts forge/app/apps/api/src/execution/execution.spec.ts
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test --test-name-pattern='prompt queue|revision|disabled AI startup|Questionar|multi_agent' forge/app/apps/api/src/prompt-question.spec.ts
+node forge/app/node_modules/typescript/bin/tsc --noEmit --incremental false -p forge/app/apps/api/tsconfig.json
 ```
 
 O comando de prompt aplica-se aos demais prefixos/tsconfigs **na versão já corrigida dos testes**. Não extrapolar para toda suíte herdada sem revisar efeitos de HOME/CLI/DB.

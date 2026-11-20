@@ -141,10 +141,15 @@ async function probe(){
 probe().catch(error=>{console.error(error);process.exitCode=1});
 `;
 
-for(const runtime of ['dev','prod','safdoulas','suinda']){
+for(const {runtime,directory} of [
+ {runtime:'dev',directory:'forge'},
+ {runtime:'prod',directory:'workspace'},
+ {runtime:'safdoulas',directory:'safdoulas'},
+ {runtime:'suinda',directory:'suinda'},
+]){
  test(`${runtime}: actual authorization inventory and registry mutations`,()=>{
   const root=process.cwd();
-  const cwd=join(root,runtime,'app');
+  const cwd=join(root,directory,'app');
   const canonical=join(root,'packages/orbit-core/src/execution');
   execFileSync(process.execPath,[
    '--import',join(cwd,'node_modules/tsx/dist/loader.mjs'),'--eval',runtimeProbe,

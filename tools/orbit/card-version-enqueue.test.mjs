@@ -51,9 +51,9 @@ test('generic enqueue pins captured revision, rejects preparation drift and pres
     }
     verify().catch(error=>{console.error(error);process.exitCode=1;});
   `);
-  assert.doesNotThrow(() => execFileSync(process.execPath, ['--import', resolve(root, 'dev/app/node_modules/tsx/dist/loader.mjs'), path], {
+  assert.doesNotThrow(() => execFileSync(process.execPath, ['--import', resolve(root, 'forge/app/node_modules/tsx/dist/loader.mjs'), path], {
     cwd: temporary,
-    env: { ...process.env, TSX_DISABLE_CACHE: '1', TSX_TSCONFIG_PATH: resolve(root, 'dev/app/apps/api/tsconfig.json') },
+    env: { ...process.env, TSX_DISABLE_CACHE: '1', TSX_TSCONFIG_PATH: resolve(root, 'forge/app/apps/api/tsconfig.json') },
     stdio: 'pipe', timeout: 30_000,
   }));
 });

@@ -10,17 +10,17 @@ import {tmpdir} from 'node:os';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../..',import.meta.url));
-const require=createRequire(join(root,'dev/app/package.json'));
-process.env.TSX_TSCONFIG_PATH=join(root,'dev/app/apps/api/tsconfig.json');
+const require=createRequire(join(root,'forge/app/package.json'));
+process.env.TSX_TSCONFIG_PATH=join(root,'forge/app/apps/api/tsconfig.json');
 require('tsx/cjs/api').register();
 const ts=require('typescript');
-const {ProjectRegistry}=require(join(root,'dev/app/apps/api/src/execution/project-registry.ts'));
-const {CardExecutionService}=require(join(root,'dev/app/apps/api/src/execution/execution.service.ts'));
-const {PluginRegistry}=require(join(root,'dev/app/apps/api/src/execution/registries.ts'));
-const {emptyConfig}=require(join(root,'dev/app/apps/api/src/execution/types.ts'));
+const {ProjectRegistry}=require(join(root,'forge/app/apps/api/src/execution/project-registry.ts'));
+const {CardExecutionService}=require(join(root,'forge/app/apps/api/src/execution/execution.service.ts'));
+const {PluginRegistry}=require(join(root,'forge/app/apps/api/src/execution/registries.ts'));
+const {emptyConfig}=require(join(root,'forge/app/apps/api/src/execution/types.ts'));
 // Evaluate the actual prompt service with only its quota function replaced. Never create
 // an application, Codex service, real pool, HOME or network connection.
-const source=join(root,'dev/app/apps/api/src/plugins/ai/prompt-sessions.ts');
+const source=join(root,'forge/app/apps/api/src/plugins/ai/prompt-sessions.ts');
 const module={exports:{}};let quotaChecks=0;
 const compiled=ts.transpileModule(readFileSync(source,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,experimentalDecorators:true}}).outputText;
 const localRequire=createRequire(source);
@@ -77,7 +77,7 @@ test('actual queues route only to the pinned isolated checkout, preserving revis
  Object.assign(generic.runs,{stage:async()=>{},finish:async(run,status,result,error)=>{terminal={status,result,error}}});
  const config={...emptyConfig(),project_id:projectId,executor:'plugin',action:'fixture',permissions:[],context:{}};
  Object.assign(generic,{resolved:async()=>({project,context:{workingDirectory:workspace,prompt:'Fixture',resources:[]},executor:{id:'plugin',execute:async input=>{calls.push({queue:'generic',path:input.projectRoot});assert.notEqual(input.projectRoot,workspace);currentRevision=2;writeFileSync(join(input.projectRoot,'shared.txt'),'generic result\n');return {summary:'done',outputs:[]}}}})});
- const {captureIsolationRequest}=require(join(root,'dev/app/apps/api/src/execution/isolated-checkout.ts'));
+ const {captureIsolationRequest}=require(join(root,'forge/app/apps/api/src/execution/isolated-checkout.ts'));
  const request=await captureIsolationRequest({...project,workspace_id:workspaceId}),genericRun=randomUUID();
  await generic.processRun({id:genericRun,card_id:cardId,card_revision:1,project_id:projectId,user_id:userId,executor:'plugin',action:'fixture',status:'running',input:{config,card:{id:cardId,title:'Fixture',description:'Pinned demand'},checkout_request:request}});
  assert.equal(terminal.status,'success',terminal.error);assert.equal(ledger.get(genericRun).card_revision,1);assert.equal(currentRevision,2);assert.equal(ledger.get(genericRun).evidence.integration,'not_integrated');

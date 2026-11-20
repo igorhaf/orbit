@@ -335,7 +335,7 @@ Nenhuma migration criada/modificada/aplicada.157–160/207 e migrations de produ
 
 Comandos novos:
 ```sh
-TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/context-bridge-peer.spec.ts dev/app/apps/api/src/execution/context-bridge-mcp-entry.spec.ts dev/app/apps/api/src/execution/context-bridge-mcp.spec.ts
+TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/context-bridge-peer.spec.ts forge/app/apps/api/src/execution/context-bridge-mcp-entry.spec.ts forge/app/apps/api/src/execution/context-bridge-mcp.spec.ts
 node --test tools/orbit/context-bridge-mcp-supervised.test.mjs
 ```
 Evidências locais: /tmp/orbit06c-audit e /tmp/orbit06c-offline. Operações offline com exit1/2 esperado para schema/flag inválidos são provas de recusa do parser, não falhas de regressão.
@@ -400,14 +400,14 @@ Testes de coordinator usam fake lock e temporários; PG usa instâncias descart�
 
 Baseline3348 arquivos. Nesta etapa: **16 modificados,27 novos,0 removidos**. Inventário individual:
 
-- dev/app/apps/api/src/execution/context-bridge-mcp-entry.spec.ts
-- dev/app/apps/api/src/execution/context-bridge-mcp-entry.ts
-- dev/app/apps/api/src/execution/context-bridge-mcp.spec.ts
-- dev/app/apps/api/src/execution/context-bridge-mcp.ts
-- dev/app/apps/api/src/execution/context-bridge-peer.py
-- dev/app/apps/api/src/execution/context-bridge-peer.spec.ts
-- dev/app/apps/api/src/execution/context-bridge-peer.ts
-- dev/app/orbit.shared-lock.json
+- forge/app/apps/api/src/execution/context-bridge-mcp-entry.spec.ts
+- forge/app/apps/api/src/execution/context-bridge-mcp-entry.ts
+- forge/app/apps/api/src/execution/context-bridge-mcp.spec.ts
+- forge/app/apps/api/src/execution/context-bridge-mcp.ts
+- forge/app/apps/api/src/execution/context-bridge-peer.py
+- forge/app/apps/api/src/execution/context-bridge-peer.spec.ts
+- forge/app/apps/api/src/execution/context-bridge-peer.ts
+- forge/app/orbit.shared-lock.json
 - docs/implementacao-arquitetural/06C-FECHAMENTO-TRANSPORTE-MCP-CODEX.md
 - orbit.workspace.json
 - packages/orbit-core/package.json
@@ -418,14 +418,14 @@ Baseline3348 arquivos. Nesta etapa: **16 modificados,27 novos,0 removidos**. Inv
 - packages/orbit-core/src/execution/context-bridge-peer.py
 - packages/orbit-core/src/execution/context-bridge-peer.spec.ts
 - packages/orbit-core/src/execution/context-bridge-peer.ts
-- prod/app/apps/api/src/execution/context-bridge-mcp-entry.spec.ts
-- prod/app/apps/api/src/execution/context-bridge-mcp-entry.ts
-- prod/app/apps/api/src/execution/context-bridge-mcp.spec.ts
-- prod/app/apps/api/src/execution/context-bridge-mcp.ts
-- prod/app/apps/api/src/execution/context-bridge-peer.py
-- prod/app/apps/api/src/execution/context-bridge-peer.spec.ts
-- prod/app/apps/api/src/execution/context-bridge-peer.ts
-- prod/app/orbit.shared-lock.json
+- workspace/app/apps/api/src/execution/context-bridge-mcp-entry.spec.ts
+- workspace/app/apps/api/src/execution/context-bridge-mcp-entry.ts
+- workspace/app/apps/api/src/execution/context-bridge-mcp.spec.ts
+- workspace/app/apps/api/src/execution/context-bridge-mcp.ts
+- workspace/app/apps/api/src/execution/context-bridge-peer.py
+- workspace/app/apps/api/src/execution/context-bridge-peer.spec.ts
+- workspace/app/apps/api/src/execution/context-bridge-peer.ts
+- workspace/app/orbit.shared-lock.json
 - safdoulas/app/apps/api/src/execution/context-bridge-mcp-entry.spec.ts
 - safdoulas/app/apps/api/src/execution/context-bridge-mcp-entry.ts
 - safdoulas/app/apps/api/src/execution/context-bridge-mcp.spec.ts

@@ -264,7 +264,7 @@ Comandos utilizados:
 
 ```sh
 # A: unidade Core/registry/builders/runtime, descrita por arquivos em§19
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json CODEX_BIN=/nonexistent/orbit-fixture-never-codex node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test dev/app/apps/api/src/execution/context-manifest.spec.ts dev/app/apps/api/src/execution/context-registry.spec.ts dev/app/apps/api/src/execution/context-runtime.spec.ts dev/app/apps/api/src/execution/execution.spec.ts dev/app/apps/api/src/card-contexts.spec.ts dev/app/apps/api/src/execution/isolated-execution-policy.spec.ts dev/app/apps/api/src/execution/file-scope.spec.ts dev/app/apps/api/src/execution/managed-process.spec.ts dev/app/apps/api/src/execution/project-checks.spec.ts dev/app/apps/api/src/execution/workspace-coordinator.spec.ts dev/app/apps/api/src/execution/workspace-process.spec.ts
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json CODEX_BIN=/nonexistent/orbit-fixture-never-codex node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test forge/app/apps/api/src/execution/context-manifest.spec.ts forge/app/apps/api/src/execution/context-registry.spec.ts forge/app/apps/api/src/execution/context-runtime.spec.ts forge/app/apps/api/src/execution/execution.spec.ts forge/app/apps/api/src/card-contexts.spec.ts forge/app/apps/api/src/execution/isolated-execution-policy.spec.ts forge/app/apps/api/src/execution/file-scope.spec.ts forge/app/apps/api/src/execution/managed-process.spec.ts forge/app/apps/api/src/execution/project-checks.spec.ts forge/app/apps/api/src/execution/workspace-coordinator.spec.ts forge/app/apps/api/src/execution/workspace-process.spec.ts
 # B: SQL e concorrência reais, cluster privado
 node --test tools/orbit/context-manifests.postgres.test.mjs
 # C: classes reais, DB/quota/provider fake, worktrees reais de fixtures
@@ -317,7 +317,7 @@ Comandos de regressão adicionais:
 node --test tools/orbit/shared.test.mjs tools/orbit/preflight.test.mjs tools/orbit/catalog.test.mjs tools/orbit/registry-foundation.test.mjs tools/orbit/card-revision-ui.test.mjs tools/orbit/card-version-enqueue.test.mjs tools/orbit/card-revisions.postgres.test.mjs tools/orbit/workspace-coordinator.postgres.test.mjs tools/orbit/workspace-workers.test.mjs
 node --test tools/orbit/isolated-checkout.test.mjs tools/orbit/isolated-provider.test.mjs
 node --test tools/orbit/isolated-workers.test.mjs
-TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=dev/app/apps/api/tsconfig.json CODEX_BIN=/nonexistent/orbit-fixture-never-codex node --import ./dev/app/node_modules/tsx/dist/loader.mjs --test --test-name-pattern='prompt queue|revision|disabled AI startup|Questionar|multi_agent' dev/app/apps/api/src/prompt-question.spec.ts
+TSX_DISABLE_CACHE=1 TSX_TSCONFIG_PATH=forge/app/apps/api/tsconfig.json CODEX_BIN=/nonexistent/orbit-fixture-never-codex node --import ./forge/app/node_modules/tsx/dist/loader.mjs --test --test-name-pattern='prompt queue|revision|disabled AI startup|Questionar|multi_agent' forge/app/apps/api/src/prompt-question.spec.ts
 ```
 
 O comando de prompt é aplicado aos outros três prefixos/tsconfigs/loaders. Gerador foi executado com Node24 e env restrito: HOME mkdtemp, Git global/system desativados, hooksPath=/dev/null, fsmonitor=false, template vazio e CODEX_BIN inexistente. O teste de `database.mjs migrate` é negativo: URL sintética de nome incorreto causa exceção **antes de spawn/migration**, sem conexão DB.

@@ -23,7 +23,7 @@ A intenção informada — plugin base IA como fornecedor comum e desacoplado �
 
 - HEAD: `d9307b8e6a54316f802acbd7bcb96baa26116f16`, branch `main`.
 - Arquivos rastreados coincidem com o HEAD. Antes desta auditoria, os relatórios 18 e 19 já apareciam como arquivos não rastreados; foram preservados.
-- Inspecionados diretamente: `dev/app` como referência central, fontes `packages/orbit-core` e `packages/orbit-ui`, além dos runtimes `prod/app`, `safdoulas/app` e `suinda/app` para diferenças relevantes.
+- Inspecionados diretamente: `forge/app` como referência central, fontes `packages/orbit-core` e `packages/orbit-ui`, além dos runtimes `workspace/app`, `safdoulas/app` e `suinda/app` para diferenças relevantes.
 - Banco, processos, serviços, containers e configurações secretas não foram consultados. Nenhuma chamada a IA, API paga, migração, build ou teste foi executada.
 - Achados a seguir são de inspeção estática, salvo quando citam testes que existem, mas que não foram executados.
 
@@ -39,16 +39,16 @@ A intenção informada — plugin base IA como fornecedor comum e desacoplado �
 
 ### 3.1 Contrato e registro
 
-`PluginDefinition` declara `id`, versão, compatibilidade com o core, plugin pai, dependências, rotas, escopo, configuração, capabilities, actions, connection provider, policies de registros, eventos e contribuições de UI/dados (`dev/app/apps/api/src/plugins/contract.ts:224-248`). `definePlugin`, `defineAction` e `defineCapability` validam identificadores e schemas e congelam partes das definições (`plugins/sdk.ts:35-47,78-111`).
+`PluginDefinition` declara `id`, versão, compatibilidade com o core, plugin pai, dependências, rotas, escopo, configuração, capabilities, actions, connection provider, policies de registros, eventos e contribuições de UI/dados (`forge/app/apps/api/src/plugins/contract.ts:224-248`). `definePlugin`, `defineAction` e `defineCapability` validam identificadores e schemas e congelam partes das definições (`plugins/sdk.ts:35-47,78-111`).
 
-O `PluginRegistry` em `dev/app/apps/api/src/execution/registries.ts:13-163`:
+O `PluginRegistry` em `forge/app/apps/api/src/execution/registries.ts:13-163`:
 
 - recebe definições por `register(plugin)`; rejeita IDs/versões inválidos, duplicatas, configurações conflitantes, schemas inválidos, contributions inválidas e incompatibilidade com o core (`:21-74,95-108`);
 - resolve `dependencies` recursivamente, detecta ciclos e informa dependências ausentes (`:105-128`);
 - computa `blockedBy`, `dependents`, `isEnabled`, seleção de plugins para layouts e valida actions/capabilities (`:122-160`);
 - publica um catálogo que inclui versão, pai/filhos, dependências, estado, capabilities, actions e contributions (`:162`).
 
-Não há descoberta automática de módulos lendo diretórios. `main.ts` importa serviços, controladores e definições e registra-os explicitamente num factory (`dev/app/apps/api/src/main.ts:30-68,1326-1335`). O array `genericPlugins` também é importado/registrado explicitamente (`main.ts:8-12,1334`). O `PluginRegistry` não instancia ou inicializa classes Nest; ele mantém definições de plugin e despacha actions.
+Não há descoberta automática de módulos lendo diretórios. `main.ts` importa serviços, controladores e definições e registra-os explicitamente num factory (`forge/app/apps/api/src/main.ts:30-68,1326-1335`). O array `genericPlugins` também é importado/registrado explicitamente (`main.ts:8-12,1334`). O `PluginRegistry` não instancia ou inicializa classes Nest; ele mantém definições de plugin e despacha actions.
 
 O `register` permite que uma dependência ainda não registrada permaneça temporariamente pendente (`dependencyChain(..., false)`, `registries.ts:107-108`). Depois que o registry está montado, `isEnabled` exige cadeia registrada e ativa (`:117-128`). A ordem explícita do factory é a ordem de registro, não uma ordem automática de inicialização de serviços. `dependencyChain` fornece uma lista topológica para seleção, mas não controla bootstrap Nest.
 
@@ -76,7 +76,7 @@ Contribuições de navegação, layouts, tipos de card e views são declaraçõe
 
 Há eventos em três níveis diferentes, que não devem ser confundidos:
 
-1. `OrbitEvents` publica eventos Socket.IO tipados de plugin, board, notificação, progresso de prompt e comentário (`dev/app/apps/api/src/orbit-events.ts:5-22`). É um barramento de atualização para clientes, não um RPC geral entre plugins.
+1. `OrbitEvents` publica eventos Socket.IO tipados de plugin, board, notificação, progresso de prompt e comentário (`forge/app/apps/api/src/orbit-events.ts:5-22`). É um barramento de atualização para clientes, não um RPC geral entre plugins.
 2. `PluginNotifications` oferece publicação de notificações e processamento/outbox (`plugins/notifications.ts:28-66`).
 3. `recordEvents` permite a plugins declarar eventos versionados decorrentes de snapshots de registros de outro plugin, com dependência explícita e entrega por webhook (`contract.ts:191-197,243-246`; `plugins/records/records.service.ts:1095-1105`; `plugins/webhooks.ts:13-20`). Esse é um contrato de eventos de domínio limitado, não um bus universal para qualquer capacidade.
 
@@ -86,7 +86,7 @@ As definições carregam campos de configuração e suas chaves; o registry vali
 
 Permissões são registradas no AccessService a partir de actions/capabilities/plugins, e a action é revalidada pelo registry no momento de execução (`access/access.ts:53-59`; `registries.ts:145-160`). Isso dá uma checagem determinística na entrada do action. Imports diretos de providers não passam por essa validação genérica e dependem das autorizações da rota/serviço chamador.
 
-O banco é compartilhado dentro de cada runtime, com tabelas de domínio e nomes/prefixos por capacidade. Não há schema/database dedicado por plugin. Migrations são numeradas por aplicação e aplicadas por um runner central com checksum imutável (`dev/app/apps/api/src/migrations.ts:7-20`). Não existe lifecycle de migrations declarado em `PluginDefinition`, nem rollback/down migration por plugin. Registros extensíveis têm isolamento lógico por workspace/plugin/kind e revisões no mecanismo comum (`plugins/records/records.service.ts`; contrato `RecordKindContribution` em `plugins/contract.ts:86-176`).
+O banco é compartilhado dentro de cada runtime, com tabelas de domínio e nomes/prefixos por capacidade. Não há schema/database dedicado por plugin. Migrations são numeradas por aplicação e aplicadas por um runner central com checksum imutável (`forge/app/apps/api/src/migrations.ts:7-20`). Não existe lifecycle de migrations declarado em `PluginDefinition`, nem rollback/down migration por plugin. Registros extensíveis têm isolamento lógico por workspace/plugin/kind e revisões no mecanismo comum (`plugins/records/records.service.ts`; contrato `RecordKindContribution` em `plugins/contract.ts:86-176`).
 
 Desativação/remoção lógica não apaga automaticamente tabelas, embeddings, registros ou histórico. A migration de instalação não define limpeza de dados. Os dados continuam no DB, enquanto os caminhos que consultam `isEnabled` podem bloquear operações.
 
@@ -146,7 +146,7 @@ O conjunto de plugins que **declara** dependência direta de `ai` é menor do qu
 
 ### 5.1 Registro e serviços
 
-- ID: `ai`; definição e versão `1.0.0` em `dev/app/apps/api/src/plugins/ai/ai.plugin.ts:7-18`.
+- ID: `ai`; definição e versão `1.0.0` em `forge/app/apps/api/src/plugins/ai/ai.plugin.ts:7-18`.
 - O factory do `PluginRegistry` registra `aiPluginDefinition(ai)` e registra os outros plugins explicitamente (`main.ts:1334`). `ai.setAvailability(() => registry.isEnabled('ai'))` liga o provider ao estado do registry (`main.ts:1360`).
 - `AiPluginModule` é `@Global()` e exporta `CodexAiService` e `OrbitEmbeddingsService` (`ai.plugin.ts:1-11`). Isso facilita injeção por toda a aplicação, mas cria acoplamento global em runtime.
 - `OrbitKnowledgeRetrievalService` é exportado como classe simples, porém **não** está no array de providers/exports Nest do módulo (`ai.plugin.ts:9-15`). O host consumidor precisa receber DB/embeddings e construir a instância; o assistente do Suindá faz isso diretamente.
@@ -314,7 +314,7 @@ Uma interface de capacidades do plugin AI pode ser ampliada sem expor classes: p
 
 ### Fontes e recuperação existentes
 
-1. **Conhecimento de projeto:** `ProjectRegistry` lê `.orbit/agents`, `skills`, `rules`, `knowledge`, plugins e `orbit.yaml`, calcula hash de documentos e valida referências/permissões (`dev/app/apps/api/src/execution/project-registry.ts:26-79`). `ContextBuilder` inclui recursos selecionados no prompt (`execution/context-builder.ts:26-51`). É contexto explícito, não índice global automático.
+1. **Conhecimento de projeto:** `ProjectRegistry` lê `.orbit/agents`, `skills`, `rules`, `knowledge`, plugins e `orbit.yaml`, calcula hash de documentos e valida referências/permissões (`forge/app/apps/api/src/execution/project-registry.ts:26-79`). `ContextBuilder` inclui recursos selecionados no prompt (`execution/context-builder.ts:26-51`). É contexto explícito, não índice global automático.
 2. **RAG vetorial da IA:** `OrbitKnowledgeRetrievalService.rank(scope, query, candidates)` recebe até 200 candidatos do host, busca/reusa embeddings por hash, elimina embeddings fora do conjunto quando invocado e devolve ranking (`plugins/ai/knowledge-retrieval.ts:24-93`). Serviço não autoriza conteúdo e não é provider do Nest.
 3. **Embeddings:** modelo fixo `text-embedding-3-small`, 1536 dimensões; só habilitado com flag e chave e chama API OpenAI (`plugins/ai/embeddings.ts:3-37`; migration `144_orbit_knowledge_embeddings.sql:1-12`). Mesmo com vetor de documento em cache, query nova precisa ser embedada externamente.
 4. **Busca lexical local no Suindá:** `retrieveLearningSources` ranqueia títulos, objetivos e conteúdo; o assistente primeiro verifica a projeção de matrícula/acesso e monta apenas aulas publicadas/liberadas (`suinda/app/apps/api/src/plugins/suinda/learning-assistant.ts:129-164,189-205`). É fallback sem custo de embeddings/API.

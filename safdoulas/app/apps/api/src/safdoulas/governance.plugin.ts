@@ -347,7 +347,7 @@ const recordKinds: Record<string, RecordKindContribution> = {
 export const safdoulasGovernancePlugin: PluginDefinition = {
   id: "safdoulas-governance",
   name: "Governança SAFDOULAS",
-  version: "1.0.0",
+  version: "1.1.0",
   description: "Versiona fontes normativas, regras parametrizadas e modelos institucionais do SAFDOULAS.",
   scope: "workspace",
   dependencies: ["versioned-records", "reference-library", "policy-parameters", "documents", "workflows"],
@@ -357,6 +357,12 @@ export const safdoulasGovernancePlugin: PluginDefinition = {
     permissions: [`plugin.safdoulas-governance.${action}`],
   })),
   contributions: {
+    profileSimulationExamples: context => context.permissions.includes("plugin.safdoulas-governance.read") ? [
+      {
+        id: "requirement-review", title: "Revisar requisito demonstrativo", type: "governance_requirement", state: "draft",
+        description: "Exemplo fictício de revisão de requisito; não representa norma vigente nem parecer institucional.", is_demo: true,
+      },
+    ] : [],
     navigation: [{ id: "safdoulas-governance", href: "/extensions/safdoulas-governance", label: "Governança" , permission: "plugin.safdoulas-governance.read", group: { id: "accreditation", label: "Acreditação" }, section: {"id": "registry", "label": "Cadastros e normas", "order": 1}, order: 2}],
     recordKinds,
   },

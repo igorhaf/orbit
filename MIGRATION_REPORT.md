@@ -7,8 +7,8 @@ Data: 2026-10-06. Inventário anterior a alterações estruturais:
 
 | Item | Estado inicial | Estado após migração |
 | --- | --- | --- |
-| PROD | `/home/meada/projetos/orbit`, branch `main`, commit `ca5c46821e7c7c8841a45914066f43b26e7edbc5`, `apps/web/next-env.d.ts` modificado | Original renomeado atomicamente para `/home/meada/projetos/orbit-prod`; cópia em `prod/app` |
-| DEV | `/home/meada/projetos/orbit-dev`, branch `develop`, commit `dc18aa47abe861e35b5337f7799e06b0f4a4a21f`, 47 alterações locais | Original preservado; cópia em `dev/app` |
+| PROD | `/home/meada/projetos/orbit`, branch `main`, commit `ca5c46821e7c7c8841a45914066f43b26e7edbc5`, `apps/web/next-env.d.ts` modificado | Original renomeado atomicamente para `/home/meada/projetos/orbit-prod`; cópia em `workspace/app` |
+| DEV | `/home/meada/projetos/orbit-dev`, branch `develop`, commit `dc18aa47abe861e35b5337f7799e06b0f4a4a21f`, 47 alterações locais | Original preservado; cópia em `forge/app` |
 | Runtime | Nenhum processo Orbit ou proxy escutava; PostgreSQL nativo 16.15 em `127.0.0.1:5432` | Seis contêineres Orbit; PostgreSQL nativo mantido |
 | Docker | Ausente | Engine 29.1.3, Compose 2.40.3 instalados e habilitados no boot |
 
@@ -65,7 +65,7 @@ Serviços: `orbit-control`, `orbit-prod-api`, `orbit-prod-web`, `orbit-db-prod`,
 `orbit_dev_net`, `orbit_prod_db_net` e `orbit_dev_db_net`; as duas redes dos
 bancos são internas. Volumes persistentes: `orbit_db_prod_data` e
 `orbit_db_dev_data`. Configurações, backups locais e sessões usam diretórios
-separados em `prod/data/` e `dev/data/`. PROD executa código da imagem, sem bind
+separados em `workspace/data/` e `forge/data/`. PROD executa código da imagem, sem bind
 mount do source; DEV monta apenas sua própria cópia do código. Apenas CONTROL
 monta o socket Docker. Nenhum serviço usa `privileged: true`.
 
@@ -137,7 +137,7 @@ CLI sem alterar os serviços.
 Após a migração, o projeto de IA `Orbit (nativo)` em DEV ainda apontava para
 `/home/meada/projetos/orbit-dev`, caminho existente só no host. Seu registro
 DEV foi corrigido para `/home/meada/projetos/orbit`, que é o mount de
-`/home/meada/projetos/orbit/dev/app` dentro do contêiner. O código DEV agora
+`/home/meada/projetos/orbit/forge/app` dentro do contêiner. O código DEV agora
 reconcilia esse registro após futuros restores. O original no host foi mantido.
 O registro nativo de PROD foi corrigido para o mesmo caminho interno, que em
 PROD é código da imagem e permanece somente leitura. A cópia de PROD foi

@@ -5,7 +5,7 @@ import {knowledgePolicyForManifest} from './knowledge-host';
 import type {KnowledgeRetrievalPolicy} from './knowledge-retrieval';
 import {contextBridgePolicyFromHost,contextBridgePolicyForManifest,bridgeConfiguration,openContextBridge} from './context-bridge-host';
 import {ContextBridgeRepository} from './context-bridge-repository';
-import {ContextManifestRepository,StoredContextManifest,compareContextManifest,ContextManifest,createContextManifest} from './context-manifest';
+import {ContextManifestRepository,compareContextManifest,ContextManifest,createContextManifest} from './context-manifest';
 import {contextTechnicalState,executionContextIdentity,manifestForExecution,relevantPluginSources,currentContext,verifyRunContext,finalRunContext,contextManifestDto} from './context-runtime';
 import type {IsolatedCheckoutRequest} from './isolated-checkout';
 import type {Project} from './project-registry';
@@ -31,6 +31,7 @@ import type {ContextCompilerPolicy} from './context-compiler';
 import {ContextBuilder} from './context-builder';
 import {ExecutorRegistry,PluginRegistry,filesystemPlugin} from './registries';
 import {CodexExecutor} from './codex-executor';
+import {assertAiCodeDevelopmentAllowed} from './runtime-code-policy';
 import {Run,RunRepository} from './run-repository';
 import {emptyConfig,ExecutionConfig,ExecutionInput,ExecutionResult,permissions} from './types';
 import {validateConfig} from './config';
@@ -150,10 +151,11 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
     const identity=record.manifest.identity;
     if(identity.runtimeId!==orbitContextRuntime||identity.actorId!==user||identity.projectId!==run.project_id||identity.cardId!==run.card_id||identity.workspaceId!==(card.workspace_id??null))throw new HttpException('Descobertas fora do escopo.',403);
     const limit=filters.limit===undefined?50:Number(filters.limit),offset=filters.offset===undefined?0:Number(filters.offset);
-    if(!Number.isSafeInteger(limit)||limit<1||limit>100||!Number.isSafeInteger(offset)||offset<0||offset>10000||filters.category!==undefined&&!discoveryCategories.includes(filters.category as any))throw new HttpException('Filtro inválido.',400);
+    if(!Number.isSafeInteger(limit)||limit<1||limit>100||!Number.isSafeInteger(offset)||offset<0||offset>10000||filters.category!==undefined&&!discoveryCategories.includes(filters.category as typeof discoveryCategories[number]))throw new HttpException('Filtro inválido.',400);
     try{return await readExecutionDiscoveries(this.db,record,user,{limit,offset,...(filters.category?{category:filters.category as typeof discoveryCategories[number]}:{})})}catch{throw new HttpException('Journal indisponível para consulta autorizada.',503)}
   }
   async enqueue(id:string,user:string,body:{request_key?:string;workspace_mode?:'isolated'}){
+    assertAiCodeDevelopmentAllowed(orbitContextRuntime);
     await this.layouts?.assertExecutionAllowed(id,user);
     const card=await this.card(id,user),config=await this.config(id);
     if(body.workspace_mode!==undefined&&body.workspace_mode!=='isolated')throw new HttpException('Modo de workspace inválido.',400);
@@ -216,7 +218,8 @@ export class CardExecutionService implements OnModuleInit,OnModuleDestroy {
       catch(error){if(contextRecord)await this.contextManifests.observe(contextRecord.id,{phase:'started',compatibility:{status:'changed',changes:['compilation:policy'],reasons:['A política de compilação do host mudou ou foi desativada.']}});throw error;}
       try{knowledgePolicy=knowledgePolicyForManifest(contextRecord?.manifest??null);}
       catch(error){if(contextRecord)await this.contextManifests.observe(contextRecord.id,{phase:'started',compatibility:{status:'changed',changes:['knowledge:policy'],reasons:['A política capturada de recuperação mudou ou foi desativada.']}});throw error;}
-      let {project,context,executor}=await this.resolved(run.input.config,capturedCard,run.user_id,compilerPolicy,knowledgePolicy);
+      const resolved=await this.resolved(run.input.config,capturedCard,run.user_id,compilerPolicy,knowledgePolicy);
+      let {project,context}=resolved;const executor=resolved.executor;
       const checkoutRequest=run.input.checkout_request;
       if(checkoutRequest){
         if(run.project_id!==project.id||run.input.config.project_id!==project.id)throw new Error('Projeto do run isolado não corresponde à autorização atual.');

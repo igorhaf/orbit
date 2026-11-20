@@ -1,19 +1,19 @@
 # Geração, exemplos locais e migrações assistidas
 
-Os comandos usam a base DEV existente e os contratos atuais do Orbit. O padrão é mostrar um plano. A escrita exige `--write`; a geração não instala dependências, cria bancos, inicia serviços, altera branches ou faz deploy.
+Os comandos usam os contratos atuais do Orbit. Novos produtos usam Workspace (`prod`) como base por padrão; Forge (`dev`) continua sendo a bancada de integração e compatibilidade. O padrão é mostrar um plano. A escrita exige `--write`; a geração não instala dependências, cria bancos, inicia serviços, altera branches ou faz deploy.
 
 ## Novo produto
 
 ```sh
-node tools/orbit/cli.mjs generate product escola --plugins board-view,workspaces
-node tools/orbit/cli.mjs generate product escola --plugins board-view,workspaces --write
+node tools/orbit/cli.mjs generate product escola --base prod --plugins board-view,workspaces
+node tools/orbit/cli.mjs generate product escola --base prod --plugins board-view,workspaces --write
 ```
 
 O destino padrão é `products/escola`, com a aplicação em `products/escola/app`. `--target` permite escolher outro caminho relativo dentro do monorepo. Destinos existentes, caminhos fora do repositório, links simbólicos e colisões com portas configuradas são recusados. `--web-port`, `--api-port` e `--theme` permitem configurar o produto. O perfil padrão usa tema escuro, portas não reservadas no workspace a partir de 3010/4010 e banco `orbit_escola`.
 
 O identificador do novo produto precisa ser exclusivo entre runtimes e produtos configurados. Destinos dentro de aplicações existentes, fontes dos pacotes compartilhados ou diretórios `.orbit`, `control` e `tools` são reservados e recusados, inclusive com `--target` explícito.
 
-O gerador copia apenas arquivos rastreados da base DEV, preservando a interface, a lógica e o modelo de permissões existentes. Ele exclui `.env` reais, dados, dependências instaladas, builds, sessões, resultados de navegador, snapshots dos ambientes e artefatos específicos de Safdoulas/Suindá. Projeções declaradas em `sharedPackages` são preenchidas a partir de suas fontes canônicas, mesmo quando uma alteração compartilhada ainda não chegou às cópias DEV. A versão e os hashes dessas projeções ficam no perfil.
+O gerador copia apenas arquivos rastreados da base selecionada (Workspace por padrão), preservando a interface, a lógica e o modelo de permissões existentes. `--base <runtime>` seleciona explicitamente outro runtime configurado. Ele exclui `.env` reais, dados, dependências instaladas, builds, sessões, resultados de navegador, snapshots dos ambientes e artefatos específicos de Safdoulas/Suindá. Projeções declaradas em `sharedPackages` são preenchidas a partir de suas fontes canônicas. A versão e os hashes dessas projeções ficam no perfil.
 
 `product.profile.json` registra os plugins solicitados, suas dependências transitivas habilitadas e os demais plugins desabilitados. Um modo de quadro (`board-view` ou `structured-view`) é obrigatório. Plugins reutilizáveis permanecem disponíveis no código; o perfil controla sua ativação no banco do produto. `generation.manifest.json` registra o commit de origem e SHA256 dos arquivos gerados, permitindo comparar a origem com alterações posteriores.
 
@@ -60,8 +60,8 @@ O adaptador de exemplo aceita apenas o payload declarado na fixture, exige `mode
 ## Migração de imports e rollback
 
 ```sh
-node tools/orbit/cli.mjs migrate imports --from ./antigo --to ./novo --files dev/app/apps/api/src/exemplo.ts
-node tools/orbit/cli.mjs migrate imports --from ./antigo --to ./novo --files dev/app/apps/api/src/exemplo.ts --write
+node tools/orbit/cli.mjs migrate imports --from ./antigo --to ./novo --files forge/app/apps/api/src/exemplo.ts
+node tools/orbit/cli.mjs migrate imports --from ./antigo --to ./novo --files forge/app/apps/api/src/exemplo.ts --write
 node tools/orbit/cli.mjs migrate rollback --id imports-AAAA-MM-DDTHH-MM-SS-sssZ-PID
 node tools/orbit/cli.mjs migrate rollback --id imports-AAAA-MM-DDTHH-MM-SS-sssZ-PID --write
 ```

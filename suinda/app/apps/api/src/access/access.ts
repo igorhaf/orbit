@@ -1,8 +1,11 @@
 import {discoveryEditorialPermissions} from './editorial-permissions';
+import {withProfileSimulationPluginExamples} from './profile-simulation-plugins';
 import type {PluginDefinition} from '../plugins/contract';
 import {corePrivileges,permissionForRoute,evaluatePermissions,Privilege} from './privileges';
 import {Body,CanActivate,Controller,ExecutionContext,Get,HttpException,Inject,Injectable,Param,Patch,Post,Put,Query,Req} from '@nestjs/common';
 import type {Request} from 'express';
+import type {QueryResultRow} from 'pg';
+import type {ContextQueryClient} from '../execution/context-manifest';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 import {Db} from '../db';
@@ -108,7 +111,7 @@ export class AccessService {
    {id:'teaching_cohort',label:'Trabalho da turma',description:'Consultar agenda e contexto didático de exemplo',permission:'plugin.suinda-learning.write'},
    {id:'academic_operations',label:'Acompanhamento acadêmico',description:'Revisar filas e indicadores fictícios da unidade',permission:'plugin.suinda-learning.manage'},
   ].map(flow=>({id:flow.id,label:flow.label,available:permissions.includes(flow.permission),permission:flow.permission,description:flow.description}));
-  return {mode:'read_only_demo',product:'Suindá',role:{id:simulation.roleId,name:simulation.roleName,permissions},persona,workspace:{id:'demo:suinda-academia',name:'Unidade demonstrativa Suindá'},records:demoRecords,flows,message:'Contexto fictício e somente de leitura. Nenhum registro real é consultado ou alterado.'};
+  return withProfileSimulationPluginExamples({mode:'read_only_demo',product:'Suindá',role:{id:simulation.roleId,name:simulation.roleName,permissions},persona,workspace:{id:'demo:suinda-academia',name:'Unidade demonstrativa Suindá'},records:demoRecords,flows,message:'Contexto fictício e somente de leitura. Nenhum registro real é consultado ou alterado.'},[...this.pluginDefinitions.values()],{roleId:simulation.roleId,roleName:simulation.roleName,permissions});
  }
  private async requestPermission(user:string,permission:string,type:string,scope:string){
   const request=this.requestContexts.getStore();if(!request||request.active===false)return null;
@@ -135,9 +138,10 @@ export class AccessService {
    WHERE g.user_id=$1 AND ((g.scope_type='global' AND g.scope_id='*') OR (g.scope_type=$2 AND g.scope_id=$3))`,[user,type,scope]);const grouped=await this.db.query<{permissions:string[]}>('SELECT g.permissions FROM access_groups g JOIN access_group_members m ON m.group_id=g.id WHERE m.user_id=$1',[user]);const exceptions=await this.db.query<{permission_id:string;effect:string}>('SELECT permission_id,effect FROM access_user_exceptions WHERE user_id=$1',[user]);const disabled=await this.db.query<{permission_id:string}>('SELECT permission_id FROM access_permission_settings WHERE NOT enabled');const custom=type==='global'?[]:(await Promise.all(this.scopedPermissionProviders.map(provider=>provider(user,type,scope)))).flat();const rolePermissions=[...roles.flatMap(r=>r.permissions),...custom];return evaluatePermissions(false,rolePermissions,grouped.flatMap(g=>g.permissions),exceptions,disabled.map(p=>p.permission_id),this.catalog())}
  /** Narrow transactional entry: reuse real grants/groups/exceptions evaluation without ROOT bypass.
   * Callback providers have no transaction contract, so they are not silently bypassed. */
- async editorialPermissions(db:{query:(sql:string,p?:any[])=>Promise<any>},user:string){
+ async editorialPermissions(db:ContextQueryClient,user:string){
   if(this.currentProfileSimulation()?.actor===user)deny();
-  const proxy=new AccessService({query:async(sql:string,p:any[]=[])=>{const r=await db.query(sql,p);return Array.isArray(r)?r:r.rows},one:async(sql:string,p:any[]=[])=>{const r=await db.query(sql,p);return (Array.isArray(r)?r:r.rows)[0]??null}} as Db);
+  const query=async<T extends QueryResultRow>(sql:string,parameters:unknown[]=[]):Promise<T[]>=>{const result:unknown=await db.query(sql,parameters);if(Array.isArray(result))return result as T[];if(result&&typeof result==='object'&&'rows' in result&&Array.isArray(result.rows))return result.rows as T[];throw new Error('Resultado SQL de autorização editorial inválido.')};
+  const proxy=new AccessService({query,one:async<T extends QueryResultRow>(sql:string,parameters:unknown[]=[])=>(await query<T>(sql,parameters))[0]??null} as Db);
   proxy.registeredPermissions=this.registeredPermissions;
   return proxy.effective(user,'global','*',true);
  }

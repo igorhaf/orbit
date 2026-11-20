@@ -6,7 +6,7 @@ Análise estática do código DEV. Componentes e linhas são evidências observa
 
 ## A — Atualização de card não executado
 
-- **Comprovado:** `updateCard` edita a mesma linha e atualiza `updated_at` (`dev/app/apps/api/src/main.ts:881-963`). Prompt de IA lê o card, compõe e armazena prompt antes de inserir a execução (`dev/app/apps/api/src/plugins/ai/prompt-sessions.ts:413-485`). A fila `card_runs` guarda `input` com card/config (`dev/app/apps/api/src/execution/run-repository.ts:10-18`).
+- **Comprovado:** `updateCard` edita a mesma linha e atualiza `updated_at` (`forge/app/apps/api/src/main.ts:881-963`). Prompt de IA lê o card, compõe e armazena prompt antes de inserir a execução (`forge/app/apps/api/src/plugins/ai/prompt-sessions.ts:413-485`). A fila `card_runs` guarda `input` com card/config (`forge/app/apps/api/src/execution/run-repository.ts:10-18`).
 - **Comportamento:** o prompt enfileirado não é regenerado quando o texto do card muda. Na execução genérica, o snapshot de `input` é usado ao processar (`execution.service.ts:104-115`).
 - **Não encontrado:** revisão do card, invalidação de run antigo ou verificação de frescor no claim.
 - **Risco/inferência:** execução agendada pode atender texto obsoleto, embora o card atual mostre outra intenção.

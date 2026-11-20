@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const [command = 'help', ...args] = process.argv.slice(2);
 const modules = {
-  catalog: './catalog.mjs', impact: './catalog.mjs', generate: './generate.mjs', migrate: './generate.mjs',
+  catalog: './catalog.mjs', impact: './catalog.mjs', generate: './generate.mjs', migrate: './generate.mjs', reconcile: './reconcile.mjs',
   knowledge: './knowledge.mjs', metrics: './knowledge.mjs', delivery: './knowledge.mjs',
   preflight: './preflight.mjs', shared: './shared.mjs', plan: './plan.mjs', check: './verify.mjs', verify: './verify.mjs',
 };
@@ -18,8 +18,9 @@ if (command === 'help' || command === '--help') {
   catalog [--runtime id]                 Discover real plugin definitions and contracts
   impact [--files path,...] [--base ref] Identify dependent files/runtimes and checks
   shared check|sync [--write]            Verify or update versioned source projections
-  generate product <slug> [--write]     Create an isolated product from Orbit DEV
+  generate product <slug> [--write]     Create an isolated product from Workspace by default
   generate plugin <id> [--write]        Generate plugin/child, contract fixture and stub
+  reconcile product --runtime id [--base id]  Audit product/base drift without writes
   migrate imports ... | rollback ...    Plan/apply/revert import adaptations
   knowledge index|query|context ...     Retrieve local development context with citations
   plan --spec <file.json>               Assess independent tasks, time and token estimates

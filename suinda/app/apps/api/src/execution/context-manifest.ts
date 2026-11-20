@@ -72,7 +72,7 @@ function semantic(value:ContextJson):ContextJson {
   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([key])=>!operationalKeys.has(key)).map(([key,entry])=>[key,semantic(entry)]));
   return value;
 }
-function semanticIdentity(identity:ContextManifestIdentity){const {runId,...rest}=identity;return rest}
+function semanticIdentity(identity:ContextManifestIdentity){return Object.fromEntries(Object.entries(identity).filter(([key])=>key!=='runId'))}
 function sourceSemantic(source:ContextSource){return semantic(source as unknown as ContextJson)}
 function scopeMatches(scope:ContextScope,identity:ContextScope){return ['runtimeId','projectId','workspaceId','actorId'].every(key=>scope[key as keyof ContextScope]===identity[key as keyof ContextScope])}
 function validateIdentity(identity:ContextManifestIdentity){
@@ -148,12 +148,23 @@ export function compareContextManifest(manifest:ContextManifest|null|undefined,c
 
 // Structural adapters accept Db (rows) and a transaction PoolClient ({rows}).
 // There are no runtime imports of pg, Db, providers, filesystem or executors.
-export type ContextQueryClient={query:(sql:string,parameters?:any[])=>Promise<any>};
+export type ContextQueryRow=Record<string,unknown>;
+export type ContextQueryResult={rows:ContextQueryRow[];command?:string;rowCount?:number|null};
+export type ContextQueryResponse=ContextQueryRow[]|ContextQueryResult;
+export type ContextQueryClient={query:(sql:string,parameters?:unknown[])=>Promise<ContextQueryResponse>};
+export type ContextQueryResultClient=Omit<ContextQueryClient,'query'>&{query:(sql:string,parameters?:unknown[])=>Promise<ContextQueryResult>};
+/** Tolerates legacy in-memory adapters used by deterministic fixtures. Production
+ * PostgreSQL clients return the structured result object in ContextQueryResult. */
+export function contextQueryRows(result:ContextQueryResponse):ContextQueryRow[]{
+  if(Array.isArray(result))return result as unknown as ContextQueryRow[];
+  return result.rows;
+}
 export type StoredContextManifest={id:string;queue:ContextQueue;runId:string;turn:number;parentId:string|null;manifest:ContextManifest;createdAt:string};
 export type ContextManifestObservation={phase:string;compatibility:ContextCompatibility;delivery?:ContextObject;checkout?:ContextObject;observedAt?:string};
 export type StoredContextVerification=ContextManifestObservation & {id:string;manifestId:string;observedAt:string};
-async function rows(client:ContextQueryClient,sql:string,values:any[]=[]):Promise<any[]>{const result=await client.query(sql,values);return Array.isArray(result)?result:result.rows}
-function stored(row:any):StoredContextManifest {return {id:row.id,queue:row.queue,runId:row.run_id,turn:row.turn,parentId:row.parent_id??null,manifest:freeze(typeof row.manifest==='string'?JSON.parse(row.manifest):row.manifest),createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at)}}
+async function rows(client:ContextQueryClient,sql:string,values:unknown[]=[]):Promise<ContextQueryRow[]>{return contextQueryRows(await client.query(sql,values))}
+type ContextManifestDatabaseRow={id:string;queue:ContextQueue;run_id:string;turn:number;parent_id:string|null;manifest:ContextManifest|string;created_at:Date|string};
+function stored(value:ContextQueryRow):StoredContextManifest {const row=value as unknown as ContextManifestDatabaseRow;return {id:row.id,queue:row.queue,runId:row.run_id,turn:row.turn,parentId:row.parent_id??null,manifest:freeze(typeof row.manifest==='string'?JSON.parse(row.manifest) as ContextManifest:row.manifest),createdAt:row.created_at instanceof Date?row.created_at.toISOString():String(row.created_at)}}
 export class ContextManifestRepository {
   constructor(private readonly db:ContextQueryClient){}
   /** Caller owns the transaction joining this immutable record to the queued run. */
@@ -188,5 +199,8 @@ export class ContextManifestRepository {
       VALUES($1,$2,$3,$4,$5::jsonb,$6::timestamptz)`,[id,manifestId,snapshot.phase,snapshot.compatibility.status,canonicalContextJson({...snapshot,observedAt}),observedAt]);
     return freeze({...snapshot,id,manifestId,observedAt});
   }
-  async history(manifestId:string):Promise<StoredContextVerification[]>{return (await rows(this.db,'SELECT * FROM context_manifest_verifications WHERE manifest_id=$1 ORDER BY observed_at,id',[manifestId])).map(row=>({...row.observation,id:row.id,manifestId:row.manifest_id,observedAt:row.observed_at instanceof Date?row.observed_at.toISOString():String(row.observed_at)}))}
+  async history(manifestId:string):Promise<StoredContextVerification[]>{
+    type VerificationDatabaseRow={observation:ContextManifestObservation|string;id:string;manifest_id:string;observed_at:Date|string};
+    return (await rows(this.db,'SELECT * FROM context_manifest_verifications WHERE manifest_id=$1 ORDER BY observed_at,id',[manifestId])).map(value=>{const row=value as unknown as VerificationDatabaseRow,observation=typeof row.observation==='string'?JSON.parse(row.observation) as ContextManifestObservation:row.observation;return {...observation,id:row.id,manifestId:row.manifest_id,observedAt:row.observed_at instanceof Date?row.observed_at.toISOString():String(row.observed_at)}})
+  }
 }

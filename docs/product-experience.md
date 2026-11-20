@@ -48,11 +48,11 @@ A simulação de perfil deve permitir validar o trabalho real que cada papel enc
 
 O gerador de produtos deve carregar este contrato desde o início. Cada projeto novo precisa manter contexto genérico para todos os papéis e exigir que plugins específicos contribuam exemplos de domínio para seus papéis e tarefas. A cobertura de simulação por papel faz parte da revisão de produto; não é uma etapa opcional posterior. As instruções do produto gerado devem documentar o isolamento, o comportamento somente leitura e o fail-closed para rotas ainda não ligadas a fixtures.
 
-## DEV como ponto de integração
+## Forge como ponto de integração
 
-O monorepo contém quatro runtimes de aplicação independentes: `dev/app`, `prod/app`, `safdoulas/app` e `suinda/app`. Eles compartilham a branch Git `main`, mas ainda têm cópias que podem divergir; bancos, arquivos, configuração, dados e serviços permanecem isolados por ambiente/produto.
+O monorepo contém seis runtimes de aplicação independentes: `forge/app`, `workspace/app`, `safdoulas/app`, `suinda/app`, `rumo/app` e `gastro-oceanica/app`. Eles compartilham a branch Git `main`, mas ainda têm cópias que podem divergir; bancos, arquivos, configuração, dados e serviços permanecem isolados por ambiente/produto.
 
-O Orbit DEV é o ponto de interseção para desenvolver e validar compatibilidade das capacidades comuns. Mudanças de core ou plugins comuns precisam ser reconciliadas em DEV, onde se conferem contratos, dependências, permissões, eventos, versões, referências de core, schemas e comportamento conjunto. Depois, determine e atualize os runtimes aplicáveis, preservando customizações e diferenças de produto intencionais. Não trate a cópia de DEV como publicação automática para PROD, Safdoulas ou Suindá; a compatibilidade é verificada e integrada, e a implantação permanece um passo separado e autorizado.
+O Forge (identidade persistida `dev`) é o ponto de interseção para desenvolver e validar compatibilidade das capacidades comuns. Mudanças de core ou plugins comuns precisam ser reconciliadas no Forge, onde se conferem contratos, dependências, permissões, eventos, versões, referências de core, schemas e comportamento conjunto. Depois, determine e atualize os runtimes aplicáveis, preservando customizações e diferenças de produto intencionais. Não trate a cópia do Forge como publicação automática para Workspace, Safdoulas, Suindá, Rumo ou Gastro Oceânica; a compatibilidade é verificada e integrada, e a implantação permanece um passo separado e autorizado.
 
 Antes de encerrar uma mudança que toque contratos ou capacidades comuns:
 
@@ -60,7 +60,7 @@ Antes de encerrar uma mudança que toque contratos ou capacidades comuns:
 2. Verifique compatibilidade e interação com os plugins que podem coexistir, não apenas com o plugin que motivou a mudança.
 3. Confirme quais runtimes precisam receber a mudança comum e quais diferenças específicas devem ser mantidas.
 4. Mantenha configuração, bancos, arquivos e dados isolados; não use dados de um produto para validar outro.
-5. Registre o que foi validado em DEV e em cada runtime, sem inferir publicação ou validação visual que não ocorreu.
+5. Registre o que foi validado no Forge e em cada runtime, sem inferir publicação ou validação visual que não ocorreu.
 
 ## Revisão de uma experiência
 
@@ -74,13 +74,13 @@ Antes de concluir uma tela ou fluxo novo, confirme:
 - Workspaces, permissões e políticas de dados são respeitados tanto na interface quanto no servidor?
 - A solução reutiliza capacidades Orbit onde apropriado e mantém extensões de domínio desacopladas?
 - O resultado funciona em desktop e mobile, por teclado e com feedback acessível?
-- Se há contratos comuns envolvidos, a compatibilidade foi reconciliada em DEV e nos runtimes aplicáveis?
+- Se há contratos comuns envolvidos, a compatibilidade foi reconciliada no Forge e nos runtimes aplicáveis?
 
 As respostas devem orientar decisões concretas de implementação; este documento não autoriza mudanças fora do escopo, serviços, commits ou deploy.
 
 ## Instruções também usadas pelo painel Codex
 
-Este contrato orienta agentes em sessões diretas e o painel Codex incorporado ao Orbit. O painel inicia e retoma sessões com `orbitArchitecturePrompt`, enviado como `developerInstructions`, e atualiza esse contexto antes de cada novo turno; as execuções dos cartões também incluem esse contrato em seu contexto. Portanto, qualquer nova regra persistente sobre arquitetura Orbit, experiência por produto, compatibilidade ou fluxo de desenvolvimento deve ser sincronizada em `AGENTS.md`, nas skills aplicáveis e em `apps/api/src/orbit-architecture.ts` nos quatro runtimes. O prompt incorporado reforça a leitura deste documento, o papel integrador do DEV e o isolamento de cada runtime. Atualize primeiro DEV, confira os contratos e então mantenha os runtimes aplicáveis alinhados. Não finalize uma instrução persistente apenas na documentação enquanto o contexto injetado nas ferramentas de IA permanecer diferente.
+Este contrato orienta agentes em sessões diretas e o painel Codex incorporado ao Orbit. O painel inicia e retoma sessões com `orbitArchitecturePrompt`, enviado como `developerInstructions`, e atualiza esse contexto antes de cada novo turno; as execuções dos cartões também incluem esse contrato em seu contexto. Portanto, qualquer nova regra persistente sobre arquitetura Orbit, experiência por produto, compatibilidade ou fluxo de desenvolvimento deve ser sincronizada em `AGENTS.md`, nas skills aplicáveis e em `apps/api/src/orbit-architecture.ts` nos seis runtimes. O prompt incorporado reforça a leitura deste documento, o papel integrador do Forge e o isolamento de cada runtime. Atualize primeiro Forge, confira os contratos e então mantenha os runtimes aplicáveis alinhados. Não finalize uma instrução persistente apenas na documentação enquanto o contexto injetado nas ferramentas de IA permanecer diferente.
 
 ## Atualidade de resultados de cartões
 
@@ -119,3 +119,13 @@ A busca lexical dinâmica knowledge.search é opcional e exclusiva do binding au
 ## Descobertas propostas por execuções
 
 O Discovery Journal pertence ao Core e registra apenas propostas estruturadas, limitadas e vinculadas pelo host a runtime/projeto/workspace/ator/card/revisão/run/turno/manifesto. Capture sob lease e checkout autorizados; preserve outputs e status técnico quando a captura falhar. Propostas permanecem proposed/review_required, sem aprovação, injeção em outros cards ou indexação automática na recuperação07A/07B. Ingestão de texto livre exige política explícita por projeto e revisão de privacidade do envelope completo pelo host; hashes e citações não comprovam verdade, aprovação ou disponibilidade atual. Reautorize leituras, diferencie evidência histórica e observação atual, mantenha idempotência e histórico append-only. Não use o Bridge/MCP para escrever no Journal nem desbloqueie Codex nativo. Consulte docs/implementacao-arquitetural/07C-DISCOVERY-JOURNAL-MEMORIA-PROPOSTA-VERSIONADA.md.
+
+## Capacidades de IA por produto
+
+Geração, edição e execução de código por IA ficam restritas a Forge e Workspace e são verificadas no backend. Safdoulas, Suindá, Rumo e Gastro Oceânica usam IA apenas em tarefas assistivas sem geração, alteração ou execução de código. Plugins e permissões precisam preservar a mesma barreira; bloqueios de interface são insuficientes. A simulação ROOT continua read-only, e contribuições de plugins podem fornecer exemplos sintéticos limitados sem conceder autorização.
+
+Rumo organiza o trabalho com quadros, listas e cartões como objetos centrais, usando os componentes compartilhados de Orbit. Gastro Oceânica compõe cadastros e agenda administrativos com identidade clínica própria. Dados de saúde são sintéticos durante desenvolvimento; prontuários, prescrições, condutas e obrigações legais dependem de regras validadas antes de implementação.
+
+## Base para novos produtos
+
+Produtos novos devem partir do Workspace (`prod`) por padrão e selecionar somente os plugins e capacidades necessários ao domínio. Forge (`dev`) permanece como ponto de integração para reconciliar e validar compatibilidade entre ambientes. Um produto derivado mantém banco, dados, configuração e serviços próprios, além da identidade de runtime que o gerador atribui.
